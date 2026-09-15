@@ -1,11 +1,23 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { addDays, fromDateKey, nowIso, startOfWeek, toDateKey, type DateKey } from '@/lib/date';
+import {
+  addDays,
+  fromDateKey,
+  isDateKey,
+  nowIso,
+  startOfWeek,
+  toDateKey,
+  todayKey,
+  type DateKey,
+} from '@/lib/date';
 
-// 타임존 경계를 명확히 노리기 위해 이 파일은 UTC 대비 음수 오프셋 지역(America/New_York, DST 있음)에서 돈다.
-// 모든 Date 는 각 테스트 실행 시점(beforeAll 이후)에 만들어지므로 여기서 고정하면 충분하다.
+// 기본 TZ 는 America/New_York(UTC-5, DST 있음). toDateKey 자정 경계 테스트만 각자 TZ 를 바꿨다가 되돌린다.
+const ORIGINAL_TZ = process.env.TZ;
 beforeAll(() => {
   process.env.TZ = 'America/New_York';
+});
+afterAll(() => {
+  process.env.TZ = ORIGINAL_TZ;
 });
 
 describe('toDateKey', () => {
@@ -13,107 +25,126 @@ describe('toDateKey', () => {
     expect(toDateKey(new Date(2026, 0, 5))).toBe('2026-01-05');
   });
 
-  it('자정 직전 로컬 시각도 그날의 DateKey 를 돌려준다(UTC 로 넘어가지 않음)', () => {
-    // America/New_York 은 UTC 보다 느리므로, 로컬 23:59 는 UTC 로는 이미 다음날이다.
-    // getUTC* 로 잘못 구현했다면 이 값이 다음날로 나온다.
-    const almostMidnight = new Date(2026, 0, 1, 23, 59, 59, 999);
-    expect(toDateKey(almostMidnight)).toBe('2026-01-01');
-  });
-
-  it('자정 직후 로컬 시각도 그날의 DateKey 를 돌려준다', () => {
-    const justAfterMidnight = new Date(2026, 0, 2, 0, 0, 0, 0);
-    expect(toDateKey(justAfterMidnight)).toBe('2026-01-02');
-  });
+  // getUTC* 오용 회귀는 음수 오프셋에서 "다음날", 양수 오프셋에서 "전날"로 반대 방향으로 나타난다.
+  // 주 사용 시간대(+9)를 포함해 양 극단(+14 / -5)까지 자정 경계를 돈다.
+  it.each(['America/New_York', 'Asia/Seoul', 'Pacific/Kiritimati'])(
+    '%s: 자정 경계에서 로컬 날짜가 밀리지 않는다',
+    (tz) => {
+      const saved = process.env.TZ;
+      process.env.TZ = tz;
+      try {
+        expect(toDateKey(new Date(2026, 0, 1, 23, 59, 59, 999))).toBe('2026-01-01');
+        expect(toDateKey(new Date(2026, 0, 2, 0, 0, 0, 0))).toBe('2026-01-02');
+      } finally {
+        process.env.TZ = saved;
+      }
+    },
+  );
 });
 
 describe('fromDateKey', () => {
-  it('DateKey 가 가리키는 로컬 자정 Date 를 돌려준다', () => {
+  it('DateKey 가 가리키는 로컬 자정 Date 를 돌려주고 toDateKey 와 왕복한다', () => {
     const date = fromDateKey('2026-03-10' as DateKey);
     expect([date.getFullYear(), date.getMonth(), date.getDate()]).toEqual([2026, 2, 10]);
     expect([date.getHours(), date.getMinutes(), date.getSeconds()]).toEqual([0, 0, 0]);
+    expect(toDateKey(fromDateKey('2026-07-04' as DateKey))).toBe('2026-07-04');
   });
 
-  it('toDateKey 와 왕복한다', () => {
-    const key = '2026-07-04' as DateKey;
-    expect(toDateKey(fromDateKey(key))).toBe(key);
+  it('실존하지 않거나 형식이 다른 입력을 조용히 정규화하지 않고 RangeError 를 던진다', () => {
+    expect(() => fromDateKey('2026-02-30' as DateKey)).toThrow(RangeError); // 형식은 맞지만 실존 안 함
+    expect(() => fromDateKey('' as DateKey)).toThrow(RangeError); // 형식 자체가 다름
+  });
+});
+
+describe('isDateKey', () => {
+  it.each([
+    ['2026-09-15', true],
+    ['2028-02-29', true], // 윤년
+    ['2026-02-29', false], // 평년엔 2월 29일이 없다
+    ['2026-02-30', false], // 2월엔 30일이 없다
+    ['2026-13-01', false], // 13월은 없다
+    ['2026-00-01', false], // 0월은 없다
+    ['2026-01-32', false], // 1월 32일은 없다
+    ['2026-01-00', false], // 0일은 없다
+    ['', false],
+    ['abc', false],
+    ['2026-1-5', false], // 0 채움이 아니다
+    ['2026-01-05T00:00:00Z', false], // 형식이 다르다
+    ['0099-01-01', false], // 두 자리 연도 함정(Date 가 1999로 재해석) — 왕복 대조로 거부된다
+  ] as const)('%s → %s', (value, expected) => {
+    expect(isDateKey(value)).toBe(expected);
+  });
+
+  it('문자열이 아닌 값은 전부 거부한다', () => {
+    expect([null, undefined, 20260915, {}].map(isDateKey)).toEqual([false, false, false, false]);
   });
 });
 
 describe('addDays', () => {
-  it('월말을 넘어간다', () => {
-    expect(addDays('2026-01-31' as DateKey, 1)).toBe('2026-02-01');
+  it.each([
+    ['2026-01-31', 1, '2026-02-01'],
+    ['2026-12-31', 1, '2027-01-01'],
+    ['2026-01-01', -1, '2025-12-31'],
+    ['2028-02-28', 1, '2028-02-29'], // 윤년
+    ['2028-02-29', 1, '2028-03-01'],
+    ['2027-02-28', 1, '2027-03-01'], // 평년은 28일에서 바로 3월로
+    ['2026-06-15', 0, '2026-06-15'],
+    ['2026-09-17', 7, '2026-09-24'], // 목 → 목, 요일 유지
+    ['2026-09-17', -7, '2026-09-10'],
+    ['2026-03-07', 1, '2026-03-08'], // DST 시작(미국 2026-03-08)
+    ['2026-03-08', 1, '2026-03-09'],
+    ['2026-10-31', 1, '2026-11-01'], // DST 종료(미국 2026-11-01)
+    ['2026-11-01', 1, '2026-11-02'],
+  ] as const)('%s + %i일 = %s', (key, days, expected) => {
+    expect(addDays(key as DateKey, days)).toBe(expected);
   });
 
-  it('연말을 넘어간다', () => {
-    expect(addDays('2026-12-31' as DateKey, 1)).toBe('2027-01-01');
-  });
-
-  it('연초에서 하루 전으로 가면 전해 12월 31일이다', () => {
-    expect(addDays('2026-01-01' as DateKey, -1)).toBe('2025-12-31');
-  });
-
-  it('윤년 2월을 올바르게 넘는다(2028년)', () => {
-    expect(addDays('2028-02-28' as DateKey, 1)).toBe('2028-02-29');
-    expect(addDays('2028-02-29' as DateKey, 1)).toBe('2028-03-01');
-  });
-
-  it('평년 2월은 28일에서 바로 3월로 넘어간다(2027년)', () => {
-    expect(addDays('2027-02-28' as DateKey, 1)).toBe('2027-03-01');
-  });
-
-  it('0일을 더하면 같은 날이다', () => {
-    expect(addDays('2026-06-15' as DateKey, 0)).toBe('2026-06-15');
-  });
-
-  it('7일 이동(주 단위 네비게이션)은 요일을 유지한다', () => {
-    // 2026-09-17 은 목요일 → +7 도 목요일
-    expect(addDays('2026-09-17' as DateKey, 7)).toBe('2026-09-24');
-    expect(addDays('2026-09-17' as DateKey, -7)).toBe('2026-09-10');
-  });
-
-  it('DST 전환일(미국 2026년 3월 8일, 써머타임 시작)을 하루 단위로 정상 이동한다', () => {
-    expect(addDays('2026-03-07' as DateKey, 1)).toBe('2026-03-08');
-    expect(addDays('2026-03-08' as DateKey, 1)).toBe('2026-03-09');
-  });
-
-  it('DST 전환일(미국 2026년 11월 1일, 써머타임 종료)을 하루 단위로 정상 이동한다', () => {
-    expect(addDays('2026-10-31' as DateKey, 1)).toBe('2026-11-01');
-    expect(addDays('2026-11-01' as DateKey, 1)).toBe('2026-11-02');
+  it('정수가 아닌 days(소수·NaN)는 RangeError 를 던진다', () => {
+    expect(() => addDays('2026-06-15' as DateKey, 0.5)).toThrow(RangeError);
+    expect(() => addDays('2026-06-15' as DateKey, Number.NaN)).toThrow(RangeError);
   });
 });
 
 describe('startOfWeek', () => {
-  it('월요일이면 그 날 자신이다', () => {
-    expect(startOfWeek('2026-09-14' as DateKey)).toBe('2026-09-14');
-  });
-
-  it('일요일이면 그 주 월요일로 되돌아간다(일→월 경계)', () => {
-    expect(startOfWeek('2026-09-20' as DateKey)).toBe('2026-09-14');
-  });
-
-  it('토요일이면 그 주 월요일로 되돌아간다', () => {
-    expect(startOfWeek('2026-09-19' as DateKey)).toBe('2026-09-14');
-  });
-
-  it('월 경계에 걸친 주도 올바른 월요일을 찾는다', () => {
-    // 2026-10-01(목) 이 속한 주의 월요일은 9월 28일
-    expect(startOfWeek('2026-10-01' as DateKey)).toBe('2026-09-28');
-  });
-
-  it('연 경계에 걸친 주도 올바른 월요일을 찾는다', () => {
-    // 2026-01-01(목) 이 속한 주의 월요일은 2025-12-29
-    expect(startOfWeek('2026-01-01' as DateKey)).toBe('2025-12-29');
+  it.each([
+    ['2026-09-14', '2026-09-14'], // 월요일이면 자신
+    ['2026-09-20', '2026-09-14'], // 일 → 월 경계
+    ['2026-09-19', '2026-09-14'], // 토요일
+    ['2026-10-01', '2026-09-28'], // 월 경계(목요일)
+    ['2026-01-01', '2025-12-29'], // 연 경계(목요일)
+  ] as const)('%s 가 속한 주의 월요일은 %s', (key, monday) => {
+    expect(startOfWeek(key as DateKey)).toBe(monday);
   });
 });
 
 describe('nowIso', () => {
-  it('toISOString 형식(밀리초·Z)의 문자열을 돌려준다', () => {
-    expect(nowIso()).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  it('toISOString 형식(밀리초·Z)이며 과거로 가지 않는다', () => {
+    const a = nowIso();
+    expect(a).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(new Date(nowIso()).getTime()).toBeGreaterThanOrEqual(new Date(a).getTime());
   });
 
-  it('호출할 때마다 유효한 시각이며 과거로 가지 않는다', () => {
-    const a = nowIso();
-    const b = nowIso();
-    expect(new Date(b).getTime()).toBeGreaterThanOrEqual(new Date(a).getTime());
+  it('vi.setSystemTime 로 고정된 시각을 그대로 돌려준다(후속 티켓의 시간 고정 계약)', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-09-15T08:59:00.000Z'));
+      expect(nowIso()).toBe('2026-09-15T08:59:00.000Z');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('todayKey', () => {
+  it('vi.setSystemTime 로 고정되며, 자정을 넘기면 갱신된다(date-strip.md R12 전제)', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(2026, 8, 15, 23, 59, 59, 999));
+      expect(todayKey()).toBe('2026-09-15');
+      vi.setSystemTime(new Date(2026, 8, 16, 0, 0, 0, 0));
+      expect(todayKey()).toBe('2026-09-16');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

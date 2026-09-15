@@ -6,7 +6,9 @@
 // 조용히 저품질 ID를 만드는 대신, 없으면 즉시 에러를 던진다.
 export function newId(): string {
   if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') {
-    throw new Error('crypto.randomUUID 를 사용할 수 없는 환경입니다(보안 컨텍스트 필요).');
+    throw new Error(
+      'crypto.randomUUID 를 사용할 수 없는 환경입니다(보안 컨텍스트 필요). https 또는 localhost 로 접속해 주세요.',
+    );
   }
   return crypto.randomUUID();
 }
