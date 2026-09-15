@@ -16,7 +16,7 @@
 | `.githooks/` | pre-commit(금지어·author), commit-msg(트레일러) | [.githooks/AGENTS.md](../.githooks/AGENTS.md) | 커밋이 훅에 막혔을 때 |
 | `.worktrees/` | 워크트리 + 로컬 BOARD/tickets/handoffs/reviews | [.worktrees/AGENTS.md](../.worktrees/AGENTS.md) | 워크트리 만들기 전, 티켓/핸드오프 쓰기 전 |
 | `scripts/` | setup, wt, check-*, arch-layers.mjs | [scripts/AGENTS.md](../scripts/AGENTS.md) | 스크립트가 실패했거나 수정할 때 |
-| `public/` (예정) | 아이콘, manifest.json | — (정적 자산) | PWA 아이콘 교체 시 |
+| `public/` (예정) | 아이콘 등 정적 자산 | `public/AGENTS.md` | PWA 아이콘 교체 시 |
 | `tests/e2e/` (예정) | Playwright 스모크 | `tests/AGENTS.md` | E2E 작성 시 |
 
 ## docs/
@@ -39,7 +39,7 @@
 | `src/` | 소스 루트 | `src/AGENTS.md` | 새 최상위 디렉토리를 만들 때만 |
 | `src/app/` | Next.js 라우트·레이아웃·providers(조립 지점)·PWA 메타 | `src/app/AGENTS.md` | 라우트/레이아웃/메타데이터 수정 시 |
 | `src/components/` | 공용 무상태 UI 프리미티브(`ui/`) | `src/components/AGENTS.md` | 새 프리미티브 추가, 기존 프리미티브 수정 시 |
-| `src/features/` | 기능 슬라이스: `todo` `category` `date-strip` `stats` `theme` | `src/features/AGENTS.md` | feature 코드 작성 시 (하위 feature별 AGENTS.md는 두지 않음 — 60줄 안에서 `features/AGENTS.md`가 전부 다룸) |
+| `src/features/` | 기능 슬라이스: `todo` `category` `date-strip` `stats` `theme` | `src/features/AGENTS.md`(규칙 본문) | feature 코드 작성 시. 하위 `<f>/AGENTS.md`는 `components/hooks/store` 관할 선언 전용 최소 파일(관할은 직계 자식만 면제하므로 손자 디렉토리엔 별도 선언 필요) |
 | `src/domain/` | 엔티티·규칙·순수 함수, 프레임워크 의존 0 | `src/domain/AGENTS.md` | 도메인 타입/규칙 추가·수정 시 |
 | `src/repositories/` | 레포지토리 인터페이스, memory 구현, 컨테이너 | `src/repositories/AGENTS.md` | 저장소 계약 변경 시 |
 | `src/infra/` | `indexeddb/`(Dexie), 후일 `sync/` | `src/infra/AGENTS.md` | 스키마/마이그레이션/구현 수정 시 |

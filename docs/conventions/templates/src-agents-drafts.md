@@ -4,7 +4,9 @@
 
 #### 3.12-h `src/**` AGENTS.md 초안 (스캐폴딩 티켓에서 디렉토리 생성과 동시에 작성)
 
-아래 초안은 스캐폴딩 티켓의 `owns:`에 포함시켜 함께 생성한다. 각 60줄 이하. **전역 규칙은 여기 다시 쓰지 않는다** — 의존 방향은 `docs/ARCHITECTURE.md` §1, 코드·import·테스트 규칙은 `docs/conventions/code-style.md`(위반은 `pnpm lint`·`pnpm typecheck`가 잡는다). 각 초안의 "## 규칙"에는 **그 디렉토리에만 해당하는 것**만 적고 마지막 항목으로 출처를 링크한다. 이 파일은 11개 `AGENTS.md`로 복사되므로 여기 적힌 문장은 사본 11벌이 된다.
+아래 초안은 스캐폴딩 티켓의 `owns:`에 포함시켜 함께 생성한다. 각 60줄 이하. **전역 규칙은 여기 다시 쓰지 않는다** — 의존 방향은 `docs/ARCHITECTURE.md` §1, 코드·import·테스트 규칙은 `docs/conventions/code-style.md`(위반은 `pnpm lint`·`pnpm typecheck`가 잡는다). 각 초안의 "## 규칙"에는 **그 디렉토리에만 해당하는 것**만 적고 마지막 항목으로 출처를 링크한다. 이 파일은 17개 `AGENTS.md`로 복사되므로 여기 적힌 문장은 사본 17벌이 된다.
+
+**`관할:` 은 직계 자식 한 단계만 면제한다**(`scripts/check-agents-md.sh`는 항상 *직계* 부모의 `AGENTS.md`만 본다). 그래서 실제 하위 구조가 2단 이상 깊어지는 곳(`features/<f>/{components,hooks,store}`)은 상위 문서 하나의 `관할:` 선언만으로 손자 디렉토리까지 면제할 수 없다 — 중간 단계에 관할 선언 전용 최소 `AGENTS.md`를 둔다. 반대로 한 단만 깊어지는 곳(`components/ui`, `infra/indexeddb`, `repositories/memory`, `test/fixtures`, `tests/e2e`)은 그 디렉토리가 상위와 같은 규칙을 그대로 쓰므로(고유 제약 없음) 상위 문서에 `관할:` 한 줄만 추가한다.
 
 ##### 파일: `/home/user/Tasky/src/AGENTS.md`
 ````markdown
@@ -64,6 +66,9 @@ pnpm build 2>&1 | tail -5
 4. 세 번째 사용처가 생길 때 여기로 승격. 그 전엔 feature 안에 둔다.
 5. 출처: `docs/ARCHITECTURE.md` §1, `docs/conventions/code-style.md` §3·§6·§10.
 
+## 관할: ui/
+`src/components/ui/`에는 별도 `AGENTS.md`를 두지 않는다(이 문서가 관할). 실제 컴포넌트 파일은 전부 여기 아래 있다.
+
 ## 검증
 ```bash
 pnpm test -- src/components --reporter=dot 2>&1 | tail -20
@@ -85,12 +90,8 @@ pnpm test -- src/components --reporter=dot 2>&1 | tail -20
 3. `src/features/` 직속 파일 금지 — 공용 코드는 `components` 또는 `lib`로.
 4. 출처: `docs/ARCHITECTURE.md` §1, `docs/conventions/code-style.md` §2·§4·§7(같은 feature 안도 `@/features/<f>/…`).
 
-## 관할: todo/
-## 관할: category/
-## 관할: date-strip/
-## 관할: stats/
-## 관할: theme/
-`src/features/{todo,category,date-strip,stats,theme}/`에는 별도 `AGENTS.md`를 두지 않는다(이 문서가 관할, CLAUDE.md §1-4의 면제 조건). 각 feature 하위 디렉토리는 위 "규칙"을 그대로 따른다.
+## 하위 구조
+각 feature 는 `components/` `hooks/` `store/` 세 하위 디렉토리 + `index.ts`를 갖는다. `관할:`은 직계 자식만 면제하므로 여기서 `todo/`를 선언해도 그 아래 `components/`는 면제되지 않는다 — 그래서 `src/features/<f>/AGENTS.md`(5개)를 관할 선언 전용 최소 파일로 둔다. 규칙 본문은 이 문서가 전담(중복 금지).
 
 ## 검증
 ```bash
@@ -100,6 +101,71 @@ pnpm test -- src/features/<f> --reporter=dot 2>&1 | tail -20 && pnpm lint
 ## 자주 하는 실수
 - 스토어 전체 구독(`useTodoStore()`) → 리렌더 폭증, selector 사용.
 - `repo.upsert({ ...todo, done: true })` → 컴파일 에러. 도메인 함수(`toggleDone`)의 반환값을 저장한다.
+````
+
+##### 파일: `/home/user/Tasky/src/features/todo/AGENTS.md`
+````markdown
+<!-- 읽기 조건: src/features/todo/ 바로 아래(components/hooks/store)에 파일을 추가하기 전, 관할만 확인하려고. 규칙 본문은 src/features/AGENTS.md. -->
+
+# src/features/todo/ — AGENTS
+
+관할 선언 전용 — 고유 규칙 없음. 규칙 본문: [src/features/AGENTS.md](../AGENTS.md).
+
+## 관할: components/
+## 관할: hooks/
+## 관할: store/
+````
+
+##### 파일: `/home/user/Tasky/src/features/category/AGENTS.md`
+````markdown
+<!-- 읽기 조건: src/features/category/ 바로 아래(components/hooks/store)에 파일을 추가하기 전, 관할만 확인하려고. 규칙 본문은 src/features/AGENTS.md. -->
+
+# src/features/category/ — AGENTS
+
+관할 선언 전용 — 고유 규칙 없음. 규칙 본문: [src/features/AGENTS.md](../AGENTS.md).
+
+## 관할: components/
+## 관할: hooks/
+## 관할: store/
+````
+
+##### 파일: `/home/user/Tasky/src/features/date-strip/AGENTS.md`
+````markdown
+<!-- 읽기 조건: src/features/date-strip/ 바로 아래(components/hooks/store)에 파일을 추가하기 전, 관할만 확인하려고. 규칙 본문은 src/features/AGENTS.md. -->
+
+# src/features/date-strip/ — AGENTS
+
+관할 선언 전용 — 고유 규칙 없음. 규칙 본문: [src/features/AGENTS.md](../AGENTS.md).
+
+## 관할: components/
+## 관할: hooks/
+## 관할: store/
+````
+
+##### 파일: `/home/user/Tasky/src/features/stats/AGENTS.md`
+````markdown
+<!-- 읽기 조건: src/features/stats/ 바로 아래(components/hooks/store)에 파일을 추가하기 전, 관할만 확인하려고. 규칙 본문은 src/features/AGENTS.md. -->
+
+# src/features/stats/ — AGENTS
+
+관할 선언 전용 — 고유 규칙 없음. 규칙 본문: [src/features/AGENTS.md](../AGENTS.md).
+
+## 관할: components/
+## 관할: hooks/
+## 관할: store/
+````
+
+##### 파일: `/home/user/Tasky/src/features/theme/AGENTS.md`
+````markdown
+<!-- 읽기 조건: src/features/theme/ 바로 아래(components/hooks/store)에 파일을 추가하기 전, 관할만 확인하려고. 규칙 본문은 src/features/AGENTS.md. -->
+
+# src/features/theme/ — AGENTS
+
+관할 선언 전용 — 고유 규칙 없음. 규칙 본문: [src/features/AGENTS.md](../AGENTS.md).
+
+## 관할: components/
+## 관할: hooks/
+## 관할: store/
 ````
 
 ##### 파일: `/home/user/Tasky/src/domain/AGENTS.md`
@@ -145,6 +211,9 @@ pnpm test -- src/domain --coverage --reporter=dot 2>&1 | tail -20
 5. `SettingsRepository.get()`은 행이 없으면 `id: 'default'` 기본 행을 만들어 반환(단일 행 보장).
 6. 출처: `docs/conventions/code-style.md` §5·§11, ADR-0007.
 
+## 관할: memory/
+`src/repositories/memory/`에는 별도 `AGENTS.md`를 두지 않는다(이 문서가 관할, 특히 규칙 3).
+
 ## 검증
 ```bash
 pnpm test -- src/repositories --reporter=dot 2>&1 | tail -20
@@ -166,6 +235,9 @@ pnpm test -- src/repositories --reporter=dot 2>&1 | tail -20
 3. `db.ts`를 import하는 파일은 `indexeddb/query.ts`뿐(린트). 레포지토리 구현은 `query.ts`의 `liveAll/liveOne/put`만 쓴다 — 툼스톤 필터와 역직렬화 `as`가 그 한 곳에 있다.
 4. 각 구현은 계약 테스트를 통과해야 한다(`repositories/*.contract.test.ts` 재사용). 트랜잭션은 다중 테이블 쓰기에만.
 5. 출처: `docs/ARCHITECTURE.md` §1·§6, ADR-0002·0007.
+
+## 관할: indexeddb/
+`src/infra/indexeddb/`에는 별도 `AGENTS.md`를 두지 않는다(이 문서가 관할, 위 규칙이 그대로 적용된다).
 
 ## 검증
 ```bash
@@ -228,6 +300,9 @@ Vitest 셋업(`setup.ts`: jsdom, `fake-indexeddb/auto`, `setRepositories(memory)
 2. 각 테스트는 독립: `beforeEach`에서 memory 레포지토리 초기화. `vi.useFakeTimers()`는 애니메이션 테스트에만.
 3. 출처: `docs/conventions/code-style.md` §11.
 
+## 관할: fixtures/
+`src/test/fixtures/`에는 별도 `AGENTS.md`를 두지 않는다(이 문서가 관할, 특히 규칙 1).
+
 ## 검증
 ```bash
 pnpm test --reporter=dot 2>&1 | tail -20
@@ -248,8 +323,30 @@ Playwright E2E(`tests/e2e/`). 스모크 1개(앱 로드 → 카테고리 추가 
 2. 각 테스트는 새 브라우저 컨텍스트(IndexedDB 격리). CI에서는 chromium만, 로컬은 `pnpm test:e2e --headed`.
 3. 실패 시 트레이스 첨부(`--trace on-first-retry`).
 
+## 관할: e2e/
+`tests/e2e/`에는 별도 `AGENTS.md`를 두지 않는다(이 문서가 관할).
+
 ## 검증
 ```bash
 pnpm test:e2e 2>&1 | tail -20
+```
+````
+
+##### 파일: `/home/user/Tasky/public/AGENTS.md`
+````markdown
+<!-- 읽기 조건: PWA 아이콘·manifest 관련 정적 자산을 추가·교체할 때. -->
+
+# public/ — AGENTS
+
+## 목적
+PWA 아이콘 등 정적 자산만. 실제 web manifest는 `src/app/manifest.ts`(Next.js `MetadataRoute.Manifest`)가 생성한다 — 여기는 그 매니페스트가 참조하는 아이콘 파일만 둔다.
+
+## 규칙
+1. 코드 파일(`.ts`/`.tsx`/`.js`) 금지 — 정적 자산만.
+2. 아이콘 크기·이름은 `src/app/manifest.ts`의 `icons` 배열과 1:1로 맞춘다(어긋나면 빌드는 통과해도 PWA 설치 아이콘이 깨진다).
+
+## 검증
+```bash
+pnpm build 2>&1 | tail -5
 ```
 ````
