@@ -28,6 +28,7 @@
  경고 점: 사이드바 "백업/복원"에 작은 점 — 마지막 백업 30일 초과(또는 없음) 이면서 투두 ≥ 20개일 때
               (닫기 버튼 없음 · 끄는 설정 없음 — R14)
 ```
+
 - 상태: **빈 상태** 데이터 0개면 내보내기 버튼 비활성 + "아직 내보낼 데이터가 없어요". **로딩** 가져오기 진행 중 버튼 스피너 + 다이얼로그 닫기 불가. **에러** 형식 오류 → 파일 아래 `role=alert` 문구(§3 R8), 저장 실패 → "가져오지 못했어요. 파일은 바뀌지 않았어요" (교체 모드는 전부 롤백).
 
 ## 3. 규칙
@@ -35,11 +36,15 @@
 - R1. 내보내기 파일명 `tasky-backup-YYYY-MM-DD.json`(로컬 날짜), MIME `application/json`, UTF-8, 들여쓰기 2칸.
 - R2. 파일 형식:
   ```json
-  { "app": "tasky", "schemaVersion": 1, "exportedAt": "2026-09-15T09:00:00.000Z",
+  {
+    "app": "tasky",
+    "schemaVersion": 1,
+    "exportedAt": "2026-09-15T09:00:00.000Z",
     "settings": { "theme": "system", "accentColor": "#7CC6FF", "updatedAt": "2026-09-15T08:59:00.000Z" },
-    "categories": [ /* 삭제되지 않은 것 + 아래 todos/focusSessions가 가리키는 tombstone(deletedAt 유지) */ ],
-    "todos": [ /* Todo 전체 필드, deletedAt 있는 것 제외 */ ],
-    "focusSessions": [ /* FocusSession 전체 필드, timer.md */ ] }
+    "categories": [/* 삭제되지 않은 것 + 아래 todos/focusSessions가 가리키는 tombstone(deletedAt 유지) */],
+    "todos": [/* Todo 전체 필드, deletedAt 있는 것 제외 */],
+    "focusSessions": [/* FocusSession 전체 필드, timer.md */]
+  }
   ```
 - R3. `schemaVersion`은 저장소 스키마 버전(TECH_PLAN §5)과 같다. 파일 버전 < 현재면 가져오기 전에 순차 변환, 파일 버전 > 현재면 거부("더 새로운 버전의 Tasky에서 만든 파일이에요").
 - R4. 검증: `app === "tasky"`, 배열 타입, 각 항목 필수 필드·타입, 카테고리 이름/색/투두 제목 길이(각 스펙 규칙), 투두의 `categoryId`가 파일 안 카테고리(tombstone 포함)에 존재, 세션의 `todoId`는 없어도 됨(없으면 `null`로 정규화). 하나라도 실패하면 아무것도 쓰지 않는다.
