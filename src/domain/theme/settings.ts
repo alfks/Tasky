@@ -1,15 +1,22 @@
-// 앱 설정 엔티티 타입 (docs/ARCHITECTURE.md §4). 단일 행이며 삭제되지 않는다.
+// 앱 설정 엔티티 타입 (docs/ARCHITECTURE.md §4, TECH_PLAN §5). 단일 행이며 삭제되지 않는다.
 import type { Meta } from '@/domain/meta';
 
-/** 라이트/다크/시스템 세 가지 테마 모드. */
+/** 라이트/다크/시스템 세 가지 테마 모드. 기본값은 `'system'` (theme R6). */
 export type ThemeMode = 'light' | 'dark' | 'system';
 
-/** 앱 전역 설정. 고정 id 'default' 한 행만 존재한다 (ADR-0005 규칙 1). */
+/** `Settings` 단일 행의 고정 id (ADR-0005 규칙 1). */
+export const SETTINGS_ID = 'default';
+
+/** 앱 전역 설정. 고정 id 'default' 한 행만 존재하고 `deletedAt` 은 설정되지 않는다 (ADR-0005 규칙 1). */
 export type Settings = Meta & {
   /** 항상 'default'. */
-  id: 'default';
+  id: typeof SETTINGS_ID;
   /** 선택된 테마 모드. */
   theme: ThemeMode;
-  /** 강조색(CSS 색 문자열). --color-accent 로 주입된다. */
+  /** 강조색. 팔레트 12색의 라이트 HEX 를 저장하고 다크 모드는 같은 프리셋의 다크 값을 쓴다 (theme R3). */
   accentColor: string;
+  /** 첫 실행 시드를 수행한 시각. 있으면 다시 시드하지 않는다 (category R18). */
+  seededAt?: string;
+  /** 마지막 백업 내보내기 시각 (backup R10). */
+  lastBackupAt?: string;
 };

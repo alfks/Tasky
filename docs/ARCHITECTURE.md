@@ -21,7 +21,7 @@ flowchart TB
     RU["규칙 · 순수 함수 (validate, completionRate, reorder, touch/markDeleted → Persistable)"]
   end
   subgraph PORT["레포지토리 인터페이스  (src/repositories)"]
-    RI["TodoRepository · CategoryRepository · SettingsRepository (upsert(Persistable) + 조회)"]
+    RI["TodoRepository · CategoryRepository · SettingsRepository · FocusSessionRepository (upsert(Persistable) + 조회) · DatasetRepository (readAll/write/restore)"]
     RM["memory/* (테스트용 구현)"]
     RC["container.ts — Repositories 컨테이너, get/setRepositories()"]
   end
@@ -91,9 +91,9 @@ Tasky/
     │   ├── stats/        달성률 표시(도메인 계산 결과 렌더)
     │   └── theme/        테마 토글·강조색, theme-store
     ├── domain/         → src/domain/AGENTS.md         (배럴 없음)
-    │   ├── todo/  category/  date/  theme/  meta.ts(Meta, Persistable, createMeta/touch/markDeleted)  errors.ts
+    │   ├── todo/  category/  date/  theme/  focus/  meta.ts(Meta, Persistable, createMeta/touch/markDeleted/adopt)  ids.ts  dataset.ts  errors.ts
     ├── repositories/   → src/repositories/AGENTS.md
-    │   ├── todo-repository.ts  category-repository.ts  settings-repository.ts
+    │   ├── todo-repository.ts  category-repository.ts  settings-repository.ts  focus-session-repository.ts  dataset-repository.ts
     │   ├── memory/           in-memory 구현(테스트) + live.ts(툼스톤 필터 헬퍼)
     │   └── container.ts      컨테이너(get/setRepositories)
     ├── infra/          → src/infra/AGENTS.md
@@ -121,16 +121,51 @@ Tasky/
 ```ts
 type DateKey = `${number}-${number}-${number}`; // 'YYYY-MM-DD'
 type Meta = { id: string; createdAt: string; updatedAt: string; rev: number; deletedAt?: string }; // 공통 필드 — 의미·규칙은 ADR-0005
-type Persistable<T extends Meta> = T & { readonly [PERSISTABLE]: true }; // 저장 가능 브랜드 — ADR-0007
-type Todo = Meta & { categoryId: string; date: DateKey; title: string; done: boolean; order: number };
-type Category = Meta & { name: string; color: string; emoji?: string; order: number };
-type Settings = Meta & { id: 'default'; theme: 'light' | 'dark' | 'system'; accentColor: string };
+type Persistable<T extends Meta> = T & { readonly [PERSISTABLE]: T }; // 저장 가능 브랜드(값은 true 가 아니라 T — 위조 방지, ADR-0007 결정 1)
+type Todo = Meta & {
+  categoryId: string;
+  date: DateKey;
+  title: string;
+  memo?: string;
+  done: boolean;
+  doneAt?: string;
+  order: number;
+  focusSeconds?: number;
+};
+type Category = Meta & {
+  name: string;
+  color: string;
+  emoji?: string;
+  order: number;
+  status: 'active' | 'completed' | 'paused';
+  closedAt?: string;
+};
+type Settings = Meta & {
+  id: 'default';
+  theme: 'light' | 'dark' | 'system';
+  accentColor: string;
+  seededAt?: string;
+  lastBackupAt?: string;
+};
+type FocusSession = Meta & {
+  todoId?: string;
+  categoryId?: string;
+  date: DateKey;
+  plannedSeconds: number;
+  startedAt: string;
+  pausedAt?: string;
+  pausedTotalSeconds: number;
+  endedAt?: string;
+  elapsedSeconds: number;
+  status: 'running' | 'paused' | 'completed' | 'canceled';
+};
 ```
 
-- `Meta`는 세 엔티티 모두 **예외 없이** 갖는다. `id`는 UUID v4(`lib/id.ts#newId()`), 시각은 ISO 8601 UTC(`toISOString()` 형식), `rev`는 쓰기마다 +1. 모든 변경은 도메인 `touch(entity, now)`를 거치고 그 결과(`Persistable<T>`)만 `upsert` 할 수 있다(타입으로 강제). 근거: ADR-0005 · ADR-0007.
+- `Meta`는 네 엔티티 모두 **예외 없이** 갖는다. `id`는 UUID v4(`lib/id.ts#newId()`), 시각은 ISO 8601 UTC(`toISOString()` 형식), `rev`는 쓰기마다 +1. 모든 변경은 도메인 `touch(entity, now)`를 거치고 그 결과(`Persistable<T>`)만 `upsert` 할 수 있다(타입으로 강제). 근거: ADR-0005 · ADR-0007.
 - `Settings`는 단일 행(고정 id `'default'`)이다. 별도 key-value 테이블은 타입 안정성을 잃고, 다른 저장소(localStorage)는 계약 테스트·동기화 경로에서 빠지므로 기각. `Settings`는 삭제되지 않으므로 `deletedAt`이 설정되지 않는다(타입은 공통 유지 — 계약 테스트 단순화).
 - 소프트 삭제 필터는 `query.ts`(IndexedDB)·`memory/live.ts` 한 곳씩. 카테고리 삭제 시 투두는 `categoryId`를 유지한다(ADR-0005 삭제 행).
-- IndexedDB 인덱스: `todos: id, date, categoryId, [date+categoryId], updatedAt`, `categories: id, order`, `settings: id`. 인덱스에 없는 필드(`rev`, `deletedAt`)는 Dexie 버전업 없이 추가·변경 가능.
+- **툼스톤을 읽는 유일한 경로는 `DatasetRepository.readAll()`**이다(TECH_PLAN §6, ADR-0009 규칙 4 — 호출처 셋: 백업 내보내기, 병합 가져오기의 현재 스냅샷, "삭제됨" 그룹 표시). 엔티티 레포지토리에는 `includeDeleted` 옵션이 없다.
+- IndexedDB 인덱스: `todos: id, date, categoryId, [date+categoryId], updatedAt`, `categories: id, order, status, updatedAt`, `settings: id`, `focusSessions: id, todoId, date, status, updatedAt`. 인덱스에 없는 필드(`rev`, `deletedAt`)는 Dexie 버전업 없이 추가·변경 가능.
 
 ## 5. 확장 지점 (지금 만들지 않되, 막지 않는다)
 
