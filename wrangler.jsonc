@@ -1,0 +1,15 @@
+// 읽기 조건: Cloudflare Workers 배포 대상(이름·호환성 날짜·정적 자산 경로)을 바꿀 때.
+// 실제 배포에 쓰이는 파일은 빌드가 생성하는 dist/server/wrangler.json 이다(이 파일을 재작성한 것).
+// account_id 는 여기 적지 않는다 — CLOUDFLARE_ACCOUNT_ID 환경변수로 넘긴다(레포에 계정 ID 비커밋).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tasky",
+  "compatibility_date": "2026-09-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "vinext/server/fetch-handler",
+  "assets": {
+    "directory": "dist/client",
+    "not_found_handling": "none",
+    "binding": "ASSETS",
+  },
+}

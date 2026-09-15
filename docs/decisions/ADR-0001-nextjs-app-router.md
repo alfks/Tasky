@@ -2,9 +2,9 @@
 
 # ADR-0001: Next.js 15 App Router + TypeScript + PWA(Serwist) 채택
 
-- 상태: accepted
+- 상태: accepted (빌드 스택·PWA 통합 지점은 ADR-0010이 보정)
 - 날짜: 2026-09-15
-- 관련: docs/ARCHITECTURE.md, ADR-0002
+- 관련: docs/ARCHITECTURE.md, ADR-0002, ADR-0010
 
 ## 맥락
 
@@ -12,7 +12,9 @@
 
 ## 결정
 
-Next.js 15(App Router) + React 19 + TypeScript strict + pnpm. PWA는 `@serwist/next`.
+Next.js App Router 규약 + React 19 + TypeScript strict + pnpm. PWA는 Serwist.
+
+> **ADR-0010 보정**: 빌드 CLI는 `next`가 아니라 **Vinext**(Next.js API on Vite)이고, Serwist는 `@serwist/next`가 아니라 `serwist build` **빌드 후처리**로 붙는다. 아래 결정 중 "App Router 규약·서버 컴포넌트 경계·Serwist" 는 그대로 유효하고, 통합 지점만 바뀌었다.
 
 - App Router의 파일 규약이 병렬 작업 시 구조 논쟁을 줄인다.
 - 로컬 우선 앱이므로 서버 컴포넌트는 셸·메타데이터에만 쓰고 데이터는 전부 클라이언트.
@@ -28,7 +30,8 @@ Next.js 15(App Router) + React 19 + TypeScript strict + pnpm. PWA는 `@serwist/n
 
 ## 결과
 
-- 좋은 점: 규약 기반 구조, 이미지·폰트 최적화, 후일 API Route로 동기화 서버 확장 가능.
+- 좋은 점: 규약 기반 구조, 후일 API Route로 동기화 서버 확장 가능.
+- ADR-0010 이후: 이미지·폰트 자동 최적화는 받지 못한다(`next/image` 미사용, 폰트는 `@font-face` 직접 선언).
 - 감수하는 점: 로컬 우선 앱에서 서버 컴포넌트 이점이 작다. `'use client'` 경계 관리 필요.
 
 ## 지켜야 할 규칙
@@ -36,4 +39,4 @@ Next.js 15(App Router) + React 19 + TypeScript strict + pnpm. PWA는 `@serwist/n
 1. `src/app/page.tsx`는 feature 화면 컴포넌트 1개 렌더만(10줄 이내).
 2. `'use client'`는 `providers.tsx`, `error.tsx`, 그리고 `features/components`의 상태·이벤트 컴포넌트에만.
 3. 라우트 추가는 스펙 + 오케스트레이터 승인. MVP는 `/` 단일 페이지.
-4. 서비스워커 설정은 `next.config.ts`(Serwist)에서만.
+4. 서비스워커 설정은 `serwist.config.js` + `src/sw.ts`에서만 — `next.config.ts`·`vite.config.ts`에 두지 않는다(ADR-0010 규칙 3이 이 문장을 대체).

@@ -4,6 +4,8 @@
 node_modules/
 .pnpm-store/
 .next/
+.vinext/
+.wrangler/
 out/
 build/
 dist/
@@ -20,11 +22,9 @@ blob-report/
 .env
 .env.*
 !.env.example
+.dev.vars
 
-# --- PWA (Serwist가 빌드 시 생성) ---
-public/sw.js
-public/sw.js.map
-public/swe-worker-*.js
+# --- PWA (serwist build 가 dist/client/sw.js 로 생성 — dist/ 가 이미 무시된다) ---
 
 # --- 워크트리 + 로컬 협업 상태 (AGENTS.md만 트래킹) ---
 .worktrees/*
