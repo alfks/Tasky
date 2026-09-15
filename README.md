@@ -27,4 +27,4 @@ pnpm check              # lint + typecheck + test
 
 ## 서드파티 고지
 
-- Pretendard — SIL Open Font License 1.1 — https://github.com/orioncactus/pretendard (공식 배포 릴리스에서 서브셋, `src/app/fonts/OFL.txt`)
+- Pretendard — SIL Open Font License 1.1 — https://github.com/orioncactus/pretendard (공식 배포 릴리스에서 서브셋, `public/fonts/OFL.txt`)

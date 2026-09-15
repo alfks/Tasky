@@ -3,7 +3,7 @@
 #
 # Pretendard 가변 폰트(woff2, R14) 서브셋 생성 스크립트. docs/specs/theme.md §3-F(R12) 의
 # 서브셋 범위를 원본 가변 폰트(PretendardVariable.ttf)에 적용해
-# src/app/fonts/PretendardVariable.subset.woff2 를 만든다.
+# public/fonts/PretendardVariable.subset.woff2 를 만든다.
 #
 # 서브셋 범위(R12):
 #   - ASCII                    U+0020-007E
@@ -26,13 +26,13 @@
 # 원본 출처(공식 배포 릴리스, R16): https://github.com/orioncactus/pretendard
 #   packages/pretendard/dist/public/variable/PretendardVariable.ttf
 #   이 스크립트는 원본을 내려받지 않는다 — 네트워크 정책상 막힐 수 있어 경로를 인자로 받는다.
-#   같은 저장소의 LICENSE(SIL OFL 1.1)를 src/app/fonts/OFL.txt 로 그대로 동봉해야 한다(R16).
+#   같은 저장소의 LICENSE(SIL OFL 1.1)를 public/fonts/OFL.txt 로 그대로 동봉해야 한다(R16).
 
 set -euo pipefail
 
 SRC="${1:-${PRETENDARD_SRC:-}}"
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-OUT_DIR="$ROOT_DIR/src/app/fonts"
+OUT_DIR="$ROOT_DIR/public/fonts"
 OUT_FILE="$OUT_DIR/PretendardVariable.subset.woff2"
 
 if [ -z "$SRC" ]; then
