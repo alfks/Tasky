@@ -1,17 +1,13 @@
 #!/usr/bin/env bash
-# 읽기 조건: scripts/wt.sh 를 고쳤을 때 커밋 전에 반드시 먼저 돌려 볼 것.
-#           wt.sh 는 라운드 1·2 리뷰에서 연속으로 Blocker(반쪽 상태로 브랜치·커밋 유실)를 냈다 —
-#           이 스모크 테스트가 그런 회귀를 다시 커밋 전에 잡기 위한 안전망이다.
+# 읽기 조건: scripts/wt.sh 를 고쳤을 때 커밋 전에 반드시 먼저 돌려 볼 것. wt.sh 는 라운드 1~3 에서
+#           연속으로 Blocker(반쪽 상태·브랜치/커밋 유실)를 냈다 — 그 회귀를 잡는 안전망이다.
 # 사용법: bash scripts/test-wt.sh
 # /tmp 에 가짜 bare origin + 워킹 클론(+ 제3의 클론 "agentB")을 만들어 이 레포의 scripts/wt.sh 를
-# 그대로 복사해 넣고 주요 경로를 왕복시킨다: new · new --existing 3종 · rm 일반 머지/스쿼시 머지/
-# 미머지 거부/--force · 빈 커밋만 있는 브랜치 거부 · 되돌려 트리가 같아진 브랜치 거부 · 원격이
-# 로컬보다 앞선 브랜치 거부(다른 클론이 push한 커밋 보존, --force 도 거부해야 함) · 미커밋 변경
-# 있는 워크트리 거부 · git cherry 실패 시 fail-closed(PATH 셰임) · flock 없는 환경에서의 동시 실행
-# · flock 있는 환경에서의 동시 BOARD 갱신. 원본 레포(.worktrees, 브랜치)는 절대 건드리지 않고,
-# 끝나면(성공·실패·SIGINT/SIGTERM 무관) trap 으로 임시 디렉토리를 항상 지운다. pnpm 등 무거운
-# 의존성이 없어 CI 에서도 수 초 안에 끝난다(실행 시간이 길어지면 scripts/check.sh 에서 이 스텝을
-# 빼는 것도 검토할 것 — 이 파일은 그 판단만 하고 check.sh 자체는 건드리지 않는다).
+# 그대로 복사해 넣고 주요 경로를 왕복시킨다: new · new --existing 3종 · rm 일반/스쿼시 머지 · 미머지
+# 거부/--force · 빈 커밋 거부 · 되돌려 트리가 같아진 브랜치 거부 · 원격 앞섬 거부 · 미커밋 변경 거부
+# · cherry 실패 fail-closed · 원격 조회 실패 거부 · stale ref 거부(PATH·URL 셰임) · 원격 삭제 실패
+# 보고 · flock 유무 양쪽의 동시 BOARD 갱신. 원본 레포는 절대 건드리지 않고, 끝나면(성공·실패·
+# SIGINT/SIGTERM 무관) trap 으로 임시 디렉토리를 항상 지운다. CI 에서도 수 초 안에 끝난다.
 set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/wt-smoke.XXXXXX")"
@@ -45,16 +41,12 @@ assert_exists() { [ -e "$1" ] && ok "$2" || bad "$2 — $1 없음"; }
 assert_absent()  { [ -e "$1" ] && bad "$2 — $1 이 남아있음(반쪽 상태)" || ok "$2"; }
 assert_branch_gone() { git branch --list "$1" | grep -q . && bad "$2 — 브랜치 '$1' 남음" || ok "$2"; }
 assert_branch_kept() { git branch --list "$1" | grep -q . && ok "$2" || bad "$2 — 브랜치 '$1' 사라짐(손실!)"; }
-# git worktree add 자체는 wt.sh 의 BOARD 락이 감싸지 않는다(BOARD.md 갱신만 보호 대상).
-# 그래서 여러 프로세스가 정말 동시에 새 워크트리를 만들면 git 내부 메타데이터 레이스로
-# "failed to read .git/worktrees/.../commondir" 처럼 드물게(관찰상 8개 중 수 회) 실패할 수 있다 —
-# 이건 wt.sh 의 BOARD 락 설계가 잡으려는 문제(행 유실)와는 다른, git 자체의 동시성 한계다.
-# 아래 동시성 테스트가 검증하려는 것은 "BOARD 행이 드랍되는가"이므로, 이 레이스는 짧게 재시도해
-# 흡수하고(최대 5회) 그래도 실패하면 진짜 실패로 취급한다.
+# wt.sh 의 BOARD 락은 BOARD.md 갱신만 보호한다 — git worktree add 자체는 여러 프로세스가 정말
+# 동시에 돌면 git 내부 메타데이터 레이스로 드물게 실패한다(BOARD 행 유실과는 다른, git 의 한계).
+# 아래 동시성 테스트가 보려는 건 "BOARD 행이 드랍되는가"이므로 이 레이스는 짧게 재시도해 흡수한다.
 new_with_retry() { # $1 PATH(빈 문자열이면 현재 PATH 유지), $2 branch
   local envpath="$1" branch="$2" tries=0
-  # log 는 별도 local 문으로 뺀다 — 같은 local 문 안에서 뒤 항목의 명령 치환이 앞 항목(branch)을
-  # 참조하면, bash 가 치환을 실제 대입보다 먼저 평가해 set -u 에서 "unbound variable" 로 샌다.
+  # log 는 별도 local 문으로 — 같은 local 안에서 뒤 항목이 앞 항목을 참조하면 set -u 로 샌다.
   local log="$TMP/nwr-$(printf '%s' "$branch" | tr '/' '_').log"
   while true; do
     if [ -n "$envpath" ]; then
@@ -223,9 +215,8 @@ lockleft="$(find .worktrees -maxdepth 1 -name '.board.lock.d' 2>/dev/null | wc -
 [ "$lockleft" -eq 0 ] && ok "no-flock 락 디렉토리 잔여물 없음" || bad "no-flock 락 디렉토리 잔존"
 
 echo "=== 16) 락: 획득 실패로 타임아웃 죽는 프로세스가 살아있는 보유자의 락을 훔치지 않음(회귀 방지) ==="
-# .board.lock.d 를 이 테스트 프로세스($$, 항상 살아있음) 소유로 미리 만들어 "다른 보유자가 락을
-# 쥐고 있다"를 흉내낸 뒤, no-flock PATH 에서 짧은 timeout 으로 새 프로세스를 죽인다. 정상이라면
-# board_lock_release 가 "내가 획득한 락이 아니면 손대지 않는다" 가드로 이 락을 그대로 둬야 한다.
+# .board.lock.d 를 이 프로세스($$, 항상 살아있음) 소유로 미리 만들어 "다른 보유자가 쥐고 있다"를
+# 흉내낸 뒤 timeout 으로 새 프로세스를 죽인다 — 남의 락을 rmdir 하지 않아야 한다.
 if command -v timeout >/dev/null 2>&1; then
   mkdir -p .worktrees/.board.lock.d
   echo "$$" > .worktrees/.board.lock.d/pid
@@ -252,8 +243,9 @@ REAL_GIT2="$(command -v git)"
 mkdir -p "$TMP/shim2"
 cat > "$TMP/shim2/git" <<SHIM2
 #!/usr/bin/env bash
+# 원격 브랜치 "삭제" push 만 실패시킨다 — 표기가 --delete 든 :refs/heads/… 든 전부 잡는다.
 if [ "\$1" = push ]; then
-  for a in "\$@"; do [ "\$a" = --delete ] && exit 1; done
+  for a in "\$@"; do case "\$a" in --delete|-d|:refs/heads/*) exit 1 ;; esac; done
 fi
 exec "$REAL_GIT2" "\$@"
 SHIM2
@@ -265,6 +257,39 @@ if printf '%s' "$out" | grep -q "원격 삭제 실패"; then
 else
   bad "원격 삭제가 실패했는데도 성공한 것처럼 보고함(회귀!): $out"
 fi
+
+echo "=== 18) rm: 원격 조회 실패 → 판정 불가로 삭제 거부(stale ref 로 원격 커밋 유실 방지, Blocker 회귀 방지) ==="
+run "new(smoke-fetchfail)" bash scripts/wt.sh new feature/smoke-fetchfail
+( cd .worktrees/smoke-fetchfail && echo f > F.md && git add -A && git commit -q -m "feat(t): 작업" \
+  && git push -q origin feature/smoke-fetchfail )
+git merge --no-ff feature/smoke-fetchfail -q -m "merge smoke-fetchfail"   # 로컬 판정으로는 merged
+git push -q origin main
+# 다른 클론이 같은 브랜치에 커밋을 더 올린다 — 로컬 origin/<branch> 는 이 값을 모른다(stale).
+( cd "$TMP/agentB" && git fetch -q origin && echo f2 > F2.md \
+  && git checkout -q -B feature/smoke-fetchfail origin/feature/smoke-fetchfail && git add -A \
+  && git commit -q -m "feat(t): 리뷰어가 origin 에만 올린 커밋" && git push -q origin feature/smoke-fetchfail )
+remote_before="$(git ls-remote --heads "$TMP/origin.git" feature/smoke-fetchfail | cut -f1)"
+# fetch 만 끊고 push 는 정상으로 — 과거 버전은 fetch 실패를 삼키고 stale ref 로 가드를 통과해 경고 0줄로 원격을 지웠다.
+git remote set-url origin "$TMP/broken-nonexistent.git" && git remote set-url --push origin "$TMP/origin.git"
+expect_fail "원격 조회 실패 시 rm 거부(fail-closed)" bash scripts/wt.sh rm smoke-fetchfail
+expect_fail "원격 조회 실패 시 rm --force 도 거부" bash scripts/wt.sh rm smoke-fetchfail --force
+remote_after="$(git ls-remote --heads "$TMP/origin.git" feature/smoke-fetchfail | cut -f1)"
+if [ -n "$remote_after" ] && [ "$remote_after" = "$remote_before" ]; then
+  ok "원격 조회 불가 상태에서 원격 브랜치·커밋 보존됨"
+else
+  bad "원격을 조회할 수 없는데도 원격 브랜치를 지웠습니다 — 커밋 유실!(before=$remote_before after=${remote_after:-없음})"
+fi
+git remote set-url origin "$TMP/origin.git"
+
+echo "=== 19) rm: fetch 가 성공해도 origin/<branch> 가 갱신되지 않으면 거부(stale ref 신뢰 금지) ==="
+# 18) 직후 상태 그대로: 로컬 ref 는 stale, 원격 tip 은 agentB 커밋. fetch 를 no-op 성공으로 셰임한다.
+mkdir -p "$TMP/shim3"
+printf '#!/usr/bin/env bash\n[ "$1" = fetch ] && exit 0\nexec %s "$@"\n' "$REAL_GIT" > "$TMP/shim3/git"
+chmod +x "$TMP/shim3/git"
+out19="$(env PATH="$TMP/shim3:$PATH" bash scripts/wt.sh rm smoke-fetchfail --force 2>&1)" && bad "fetch 가 ref 를 갱신하지 않았는데 rm --force 가 성공함" || ok "fetch 가 ref 를 갱신하지 않으면 rm --force 거부"
+printf '%s' "$out19" | grep -q "갱신되지 않았습니다" && ok "거부 사유로 'ref 미갱신'을 정확히 지목" || bad "ref 미갱신 검사가 사라졌습니다(다른 경로로 우연히 막힌 것일 수 있음): $out19"
+remote_after2="$(git ls-remote --heads "$TMP/origin.git" feature/smoke-fetchfail | cut -f1)"
+[ "$remote_after2" = "$remote_before" ] && ok "stale ref 상태에서도 원격 커밋 보존됨" || bad "stale ref 를 믿고 원격 브랜치를 지웠습니다 — 커밋 유실!(after=${remote_after2:-없음})"
 
 echo "=================================="
 if [ "$fail" -eq 0 ]; then

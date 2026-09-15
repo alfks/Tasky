@@ -5,7 +5,7 @@
 #   bash scripts/wt.sh rm  <name>|<type>/<name> [--force]
 #                                                        워크트리 · 로컬/원격 브랜치 정리 + BOARD 갱신
 #                                                        기본: git만으로 머지 여부 판정(squash 포함) 후에만 삭제.
-#                                                        판정 불가/미확정이면 거부 — 정말 지우려면 --force.
+#                                                        미머지·판정 불가면 거부(--force 로 강행). 원격 조회 실패·원격 앞섬은 --force 도 거부.
 #   bash scripts/wt.sh list                             워크트리 목록 + BOARD
 #   bash scripts/wt.sh init                             .worktrees/ 하위 디렉토리 · BOARD 헤더 생성 (setup.sh 가 호출)
 # 예시: bash scripts/wt.sh new feature/category-color-picker
@@ -199,24 +199,44 @@ OK 워크트리 생성: $dir   (branch: $branch, base: $base)
 NEXT
 }
 
+# 원격 상태를 "이번 실행에서" 확인한다(fail-closed). 로컬 origin/<branch> ref 는 언제 갱신됐는지
+# 알 수 없다 — 과거 버전은 fetch 실패를 `|| true` 로 삼키고 그 stale ref 로 가드를 통과시켜 다른
+# 클론이 push 한 커밋을 경고 없이 지웠다(Blocker). 이제 ls-remote 로 원격의 진짜 값을 받고, 못 받으면
+# 판정 불가 → 거부하며, fetch 뒤 ref 가 그 값과 같은지도 본다. 전역 REMOTE_SHA/REMOTE_MAIN_SHA 설정.
+probe_origin() { # $1 branch
+  local branch="$1" out rc=0 r fargs=()
+  REMOTE_SHA=""; REMOTE_MAIN_SHA=""
+  git remote get-url origin >/dev/null 2>&1 || return 0   # 원격 없음 = 원격에 잃을 것도 없음
+  out="$(git ls-remote origin "refs/heads/$branch" refs/heads/main 2>&1)" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "ERROR: origin 조회 실패(git ls-remote rc=$rc) — 원격에 '$branch' 커밋이 남아 있는지 판정할 수 없어 삭제를 거부합니다."
+    printf '%s\n' "$out" | sed 's/^/      /'
+    echo "  로컬 'origin/$branch' 는 stale 일 수 있어 신뢰하지 않습니다(믿고 지우면 원격 커밋이 조용히 유실됩니다). 원격에 닿은 뒤 다시:  git ls-remote origin"; exit 1
+  fi
+  REMOTE_SHA="$(printf '%s\n' "$out" | awk -v r="refs/heads/$branch" '$2==r{print $1}')"
+  REMOTE_MAIN_SHA="$(printf '%s\n' "$out" | awk '$2=="refs/heads/main"{print $1}')"
+  [ -z "$REMOTE_MAIN_SHA" ] || fargs+=("+refs/heads/main:refs/remotes/origin/main")
+  [ -z "$REMOTE_SHA" ] || fargs+=("+refs/heads/$branch:refs/remotes/origin/$branch")
+  [ "${#fargs[@]}" -eq 0 ] || git fetch origin "${fargs[@]}" --quiet || {
+    echo "ERROR: origin fetch 실패 — 머지 여부·원격 커밋 보존 여부를 판정할 수 없어 삭제를 거부합니다."
+    echo "  복구 후 다시:  git fetch origin"; exit 1; }
+  for r in "main:$REMOTE_MAIN_SHA" "$branch:$REMOTE_SHA"; do
+    [ -z "${r#*:}" ] || [ "$(git rev-parse --verify -q "origin/${r%%:*}" 2>/dev/null || true)" = "${r#*:}" ] || { echo "ERROR: 'origin/${r%%:*}' 가 이번 실행에서 갱신되지 않았습니다(원격 실제 값 $(printf %.7s "${r#*:}")) — 판정 불가로 삭제를 거부합니다."; exit 1; }
+  done
+}
+
 cmd_rm() {
   local name="${1:-}" flag="${2:-}"
   [ -n "$name" ] || { usage; exit 1; }
-  # new 는 <type>/<name> 을, rm 은 관례상 <name> 을 받지만 <type>/<name> 을 그대로 넣어도 되게 한다.
   local dir="$WT_DIR/${name#*/}" branch
   branch="$(git worktree list --porcelain | awk -v d="$dir" '$1=="worktree"{w=$2} $1=="branch" && w==d {sub("refs/heads/","",$2); print $2}')"
   [ -n "$branch" ] || { echo "ERROR: $dir 에 해당하는 워크트리가 없습니다. 확인:  git worktree list"; exit 1; }
-
-  local target="main"
-  # main 뿐 아니라 이 브랜치의 원격도 같이 받는다 — 아래에서 원격 브랜치를 삭제하므로,
-  # 판정·삭제 모두 로컬 tip 만으로는 부족하다(다른 클론이 먼저 push 했을 수 있다).
-  git fetch origin main "+refs/heads/$branch:refs/remotes/origin/$branch" --quiet 2>/dev/null \
-    || git fetch origin main --quiet 2>/dev/null || true
-  git rev-parse --verify -q origin/main >/dev/null 2>&1 && target="origin/main"
+  local tip; tip="$(git rev-parse "$branch")"
+  probe_origin "$branch"
+  local target=main; [ -z "$REMOTE_MAIN_SHA" ] || target=origin/main
 
   if [ "$flag" != "--force" ]; then
-    local rc=0
-    is_branch_merged "$branch" "$target" || rc=$?
+    local rc=0; is_branch_merged "$branch" "$target" || rc=$?
     if [ "$rc" -ne 0 ]; then
       local why="'$target' 에 머지되지 않았습니다"
       [ "$rc" -eq 2 ] && why="머지 여부를 git만으로 판정할 수 없습니다(공통 조상 없음 등)"
@@ -228,39 +248,41 @@ cmd_rm() {
     fi
   fi
 
-  local tip remote_tip=""
-  tip="$(git rev-parse "$branch")"
-  # 원격이 로컬보다 앞서 있으면(다른 에이전트·리뷰어의 "Commit suggestion"·봇 커밋이 같은 브랜치에
-  # push된 경우) 로컬 판정만 믿고 원격을 지우면 그 커밋이 origin에서 영구 소멸한다. --force 는
-  # "머지 판정 없이 로컬을 지워도 된다"는 뜻이지 "원격의 남의 커밋을 지워도 된다"는 뜻이 아니므로
-  # --force 경로에서도 이 검사는 건너뛰지 않는다.
-  remote_tip="$(git rev-parse --verify -q "origin/$branch" 2>/dev/null || true)"
-  if [ -n "$remote_tip" ] && [ "$remote_tip" != "$tip" ] && ! git merge-base --is-ancestor "$remote_tip" "$tip" 2>/dev/null; then
-    echo "ERROR: 'origin/$branch'($(git rev-parse --short "$remote_tip"))가 로컬 tip($(git rev-parse --short "$tip"))에 없는 커밋을 갖고 있습니다 — 지금 삭제하면 원격에서 유실됩니다."
-    git log --oneline --no-decorate "$tip..$remote_tip" | sed 's/^/      /'
-    echo "  먼저 받아오세요:  git fetch origin $branch && git branch -f $branch origin/$branch   그 다음 다시 판정하세요."
-    exit 1
+  # 원격 tip 이 로컬 tip 에도 origin/main 에도 없는 커밋을 가지면(리뷰어 "Commit suggestion"·봇 커밋)
+  # 삭제 시 origin 에서 참조 불가가 된다. --force 는 "원격의 남의 커밋을 지워도 된다"가 아니므로 예외 없다.
+  if [ -n "$REMOTE_SHA" ] && [ "$REMOTE_SHA" != "$tip" ]; then
+    local safe=0
+    if git merge-base --is-ancestor "$REMOTE_SHA" "$tip" 2>/dev/null; then safe=1
+    elif [ "$target" = origin/main ] && git merge-base --is-ancestor "$REMOTE_SHA" origin/main 2>/dev/null; then safe=1
+    fi
+    if [ "$safe" != 1 ]; then
+      echo "ERROR: 'origin/$branch'($(git rev-parse --short "$REMOTE_SHA"))가 로컬 tip($(git rev-parse --short "$tip"))에도 '$target' 에도 없는 커밋을 갖고 있습니다 — 지금 삭제하면 원격에서 유실됩니다."
+      git log --oneline --no-decorate "$tip..$REMOTE_SHA" 2>/dev/null | sed 's/^/      /' || true
+      echo "  먼저 받아오세요:  git fetch origin $branch && git branch -f $branch origin/$branch   그 다음 다시 판정하세요."
+      exit 1
+    fi
   fi
+
   if [ "$flag" = "--force" ]; then
     git worktree remove --force "$dir"
   else
     git worktree remove "$dir" || { echo "ERROR: 미커밋 변경이 있습니다. 확인 후:  bash scripts/wt.sh rm $name --force"; exit 1; }
   fi
-  git branch -D "$branch" >/dev/null 2>&1 || true
-  # 여기까지 왔다는 건 위에서 이미 merged 로 판정됐거나 --force 였다는 뜻, 그리고 원격이 로컬보다
-  # 앞서 있지 않다는 것도 확인됐다는 뜻 — 원격도 지운다. 단, 삭제 실패를 삼키지 않고 보고한다.
-  local remote_msg="로컬 삭제"
-  if [ -n "$remote_tip" ]; then
-    if git push origin --delete "$branch" >/dev/null 2>&1; then
-      remote_msg="로컬·원격 삭제"
+  git branch -D "$branch" >/dev/null 2>&1 || {   # 로컬이 안 지워지면 원격도 손대지 않는다(반쪽 방지)
+    echo "ERROR: 로컬 브랜치 '$branch' 삭제 실패 — 원격은 건드리지 않았습니다. 확인:  git branch --list '$branch'"; exit 1; }
+  # --force-with-lease: 판정 이후 누가 push 했으면 삭제가 거부된다(TOCTOU). 실패는 삼키지 않는다.
+  local remote_msg="로컬 삭제" undo="git branch $branch $tip"
+  if [ -n "$REMOTE_SHA" ]; then
+    if git push --force-with-lease="refs/heads/$branch:$REMOTE_SHA" origin ":refs/heads/$branch" >/dev/null 2>&1; then
+      remote_msg="로컬·원격 삭제"; undo="$undo && git push origin $branch"
     else
-      remote_msg="로컬 삭제(원격 삭제 실패 — 수동: git push origin --delete $branch)"
+      remote_msg="로컬 삭제(원격 삭제 실패 — 그 사이 누가 push 했을 수 있습니다. 확인: git ls-remote origin $branch)"
     fi
   fi
-  git worktree prune
+  git worktree prune || echo "WARN: git worktree prune 실패 — 수동: git worktree prune"
   set_status "$branch" "done"
   echo "OK 정리 완료: $dir 제거, 브랜치 '$branch' $remote_msg, BOARD → done"
-  echo "   되돌리기(로컬 reflog 만료 전):  git branch $branch $tip"
+  echo "   되돌리기(로컬 reflog 만료 전):  $undo"
 }
 
 cmd_list() {
