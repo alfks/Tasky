@@ -4,7 +4,7 @@
 
 - 상태: accepted
 - 날짜: 2026-09-15
-- 관련: ADR-0002(저장 방식·레포지토리), ADR-0007(규칙 4·5 의 강제 수단), docs/ARCHITECTURE.md §4·§5, docs/conventions/code-style.md §5
+- 관련: ADR-0002(저장 방식·레포지토리), ADR-0007(규칙 4·5 의 강제 수단), ADR-0009(규칙 5 의 적용 범위 한정), docs/ARCHITECTURE.md §4·§5, docs/conventions/code-style.md §5
 
 ## 맥락
 
@@ -46,7 +46,7 @@ ADR-0002는 `updatedAt`을 "후일 동기화 충돌 해결 키"로 지정했지�
 2. 도메인은 `Date`·`crypto`·`Math.random`을 호출하지 않는다(ESLint `no-restricted-syntax`). `deps = { now: () => string, id: () => string }` 주입.
 3. `updatedAt`·`createdAt`은 `toISOString()` 출력 형식(`/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/`) — 도메인 생성 함수가 검증. `id` 형식 검증은 `Settings`를 제외한다.
 4. `touch` 단위 테스트: 호출 후 `rev`가 정확히 +1, `updatedAt`이 주입한 `now`와 같다. 레포지토리 계약 테스트의 필수 케이스는 ADR-0007 규칙 3.
-5. 물리 삭제 API 없음. 삭제는 `upsert(markDeleted(e, now))`. 조회 메서드는 툼스톤을 반환하지 않는다(`getById` → `undefined`) — ADR-0007 규칙 4·5.
+5. 물리 삭제 API 없음. 삭제는 `upsert(markDeleted(e, now))`. 조회 메서드는 툼스톤을 반환하지 않는다(`getById` → `undefined`) — ADR-0007 규칙 4·5. **이 규칙의 적용 범위는 엔티티 레포지토리다** — 데이터셋 단위 연산(`DatasetRepository`의 `readAll`/`write`/`restore`)의 예외와 그 안전 조건은 ADR-0009 가 정한다(종속 문서가 아니라 ADR 이 정한다).
 6. 동기화 도입 ADR이 이 ADR을 supersede하며 충돌 정책·툼스톤 GC를 확정한다. 그 전에 `rev`를 읽는 코드가 생기면 리뷰 Major.
 
 ## 재검토 트리거

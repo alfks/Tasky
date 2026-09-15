@@ -1,0 +1,40 @@
+<!-- 읽기 조건: 데이터셋 단위 연산(백업 내보내기·가져오기, 교차 테이블 트랜잭션, 툼스톤 읽기)을 만들거나 `DatasetRepository` 시그니처를 바꾸기 전. 엔티티 하나를 저장·삭제할 때는 ADR-0005·0007로 충분. -->
+
+# ADR-0009: 데이터셋 단위 연산은 별개 계약 — `DatasetRepository`와 채택(`adopt`) 쓰기 경로
+
+- 상태: accepted
+- 날짜: 2026-09-15
+- 관련: ADR-0005(규칙 5의 적용 범위를 한정 — supersede 아님), ADR-0007(규칙 2·결정 1·4의 적용 범위를 한정 — supersede 아님), ADR-0002, docs/TECH_PLAN.md §5 규칙 7·§6, docs/specs/backup.md, docs/specs/category.md
+
+## 맥락
+백업 교체·병합(backup R7)과 카테고리 삭제·되돌리기(category R13·R15)는 **여러 테이블을 한 번에** 써야 하고, 내보내기(backup R2)와 "삭제됨" 그룹(category R17)은 **툼스톤을 읽어야** 한다. ADR-0005·0007은 엔티티 하나를 다루는 경로만 규정했으므로 문면 그대로는 위 요구가 전부 불가능하다. 그런데 이 예외를 종속 문서(TECH_PLAN §5·§6)가 선언하면 "충돌하면 ADR이 이긴다"는 같은 문서의 선언과 자기모순이라 구현자가 어느 쪽을 따를지 알 수 없다. 예외를 만들 곳은 여기다.
+
+## 결정
+**데이터셋 단위 연산은 엔티티 레포지토리와 별개의 계약(`DatasetRepository`)에 두되, 그 계약도 브랜드 쓰기 경로 밖으로 나가지 않는다.**
+1. **적용 범위 한정**: ADR-0005 규칙 5("물리 삭제 API 없음")와 ADR-0007 규칙 2("쓰기 메서드는 `upsert` 뿐")·결정 4("조회는 툼스톤을 반환하지 않는다")는 **엔티티 레포지토리**(`Todo`·`Category`·`Settings`·`FocusSession`)에 적용된다. 두 ADR 본문에 이 한정을 이 PR에서 함께 넣었다 — 종속 문서가 상위 규칙에 예외를 만드는 형태를 남기지 않는다. 결정을 뒤집는 게 아니라 적용 범위를 명시하는 수정이라 supersede가 아니다(decisions/AGENTS.md 규칙 2).
+2. **계약은 세 메서드뿐**: `readAll()`(툼스톤 포함 전량 읽기) · `write(writes)`(값 목록의 교차 테이블 단일 트랜잭션) · `restore(snapshot)`(네 테이블을 비우고 스냅샷으로 대체). 엔티티 단위 `remove`·`delete`는 여기에도 없고, 콜백을 받는 일반 `transaction(fn)`도 두지 않는다.
+3. **브랜드 우회로를 만들지 않는다**: `restore`의 인자는 plain 엔티티가 아니라 `PersistableSnapshot`(각 배열 원소가 `Persistable<T>`)이다. 파일에서 온 행은 `src/domain/meta.ts`의 **네 번째** 브랜드 생성 함수 `adopt(e)`가 만든다. `adopt`는 시각·`rev`를 새로 찍지 않고(찍으면 backup R6의 비교 기준과 R2 왕복 동일성이 무너진다) `Meta` 형식만 검증한다 — ADR-0005 규칙 3의 `toISOString()` 정규식, `rev` 양의 정수, `id` 형식(`Settings` 제외). 검증 실패는 backup R4의 형식 오류로 보고되고 아무것도 쓰지 않는다. 브랜드는 여전히 "도메인을 거쳤다"의 증거다.
+4. **`restore`의 물리 삭제가 정보 손실이 아닌 이유는 인자 스냅샷이 툼스톤을 포함한 최종 전량이기 때문이다.** 병합·교체 **둘 다** 도메인이 `readAll()` 결과(툼스톤 포함)와 파일을 합쳐 최종 스냅샷을 만든다. 병합에서 로컬 툼스톤을 스냅샷에 싣지 않으면 삭제한 카테고리가 파일의 옛 비삭제 버전으로 부활하고 그 툼스톤은 영구 소실된다(그 카테고리를 가리키던 완료 투두가 category R14·R17을 깨뜨린다) — 규칙 3이 이를 계약 테스트로 고정한다. 교체 모드는 여기에 사용자 확인 체크박스(backup R7)가 더해질 뿐, 안전성의 근거는 체크박스가 아니라 이 불변식이다.
+
+## 대안과 기각 이유
+| 대안 | 기각 이유 |
+|------|----------|
+| `DatasetRepository` 없이 엔티티 `upsert` 반복 | 원자성이 없다 — backup R7 "실패 시 전부 롤백", category R13·R15의 2테이블 원자성을 만족할 수 없다 |
+| 엔티티 레포지토리에 `includeDeleted`·`removeAll` 추가 | ADR-0007 결정 4의 "필터 진입점 1개" 가 깨지고 옵션 기본값 실수의 통로가 생긴다 |
+| `restore(snapshot: DatasetSnapshot)`(plain) | ADR-0007 검증 (d)가 지키는 불변식에 **문서화된 우회로**가 생긴다. 타입이 도메인 경유를 더는 증명하지 못한다 |
+| `adopt` 대신 `touch`로 가져온 행을 다시 찍기 | `updatedAt`·`rev`가 바뀌어 R6 병합 비교 기준과 R2 왕복 동일성이 무너진다 |
+| `restore`를 툼스톤 전량 쓰기로 구현(물리 삭제 없이) | 교체 가져오기마다 옛 데이터셋이 영구 누적된다(5만 행·20MB 규모, backup R9·R13) |
+
+## 결과
+- 좋은 점: 자기모순이 사라져 T-05·T-08·T-10·T-14 구현자가 읽을 문서가 하나다. `restore`까지 브랜드 안에 들어와 `Persistable` 불변식에 예외가 0이 된다. 병합 데이터 손실이 계약 테스트로 고정된다.
+- 감수하는 점: 브랜드 생성 함수가 셋에서 넷으로 는다 — `adopt`는 값을 만들지 않고 검증만 하며 호출처를 한 곳(`src/domain/backup/**`)으로 묶어 비용을 한정한다. 물리 삭제 경로가 앱에 정확히 하나 생긴다(Phase 2 동기화에서 "기기 데이터셋 리셋"으로 재검토).
+
+## 지켜야 할 규칙 (검증 가능한 문장 — 리뷰 판정 근거)
+1. `Persistable`를 만드는 함수는 `src/domain/meta.ts`의 **넷**뿐이다(`createMeta`·`touch`·`markDeleted`·`adopt`). `adopt`의 호출처는 `src/domain/backup/**` 하나 — 다른 곳에서 부르면 리뷰 Blocker. 엔티티 레포지토리에는 여전히 `remove`·`delete`·`replaceAll`이 없다(결정 1의 한정은 `DatasetRepository` 하나에만 적용되며, 여섯째 레포지토리를 더하는 것은 새 ADR 사안이다).
+2. `DatasetRepository.restore`의 인자 타입은 `PersistableSnapshot`이다. `readAll()`이 돌려준 plain `DatasetSnapshot`을 그대로 넘기면 컴파일 에러 — 데이터셋 계약 테스트에 `// @ts-expect-error` 고정 케이스를 둔다(ADR-0007 규칙 3 (d)와 같은 방식).
+3. 병합 가져오기의 `planMerge(local, incoming)`에서 `local`은 `readAll()` 결과다. 계약 테스트 필수 케이스: 로컬 툼스톤 + 파일의 더 오래된 비삭제 같은 `id` → 적용 후에도 툼스톤이 남고(부활 0) 그 툼스톤이 스냅샷에 실린다.
+4. `readAll()`의 호출처는 셋이다 — 내보내기(backup R2), 병합 가져오기의 현재 스냅샷(backup R6), "삭제됨" 그룹(category R17). 넷째가 생기면 이 ADR을 다시 본다.
+
+## 재검토 트리거
+- Phase 2 동기화 ADR이 `SyncRepository.listChangedSince`를 도입할 때 — `readAll`의 자리를 잇는지, 툼스톤 GC가 규칙 4를 바꾸는지 확인한다.
+- `DatasetRepository`에 넷째 메서드가 필요해지거나 `adopt` 호출처가 둘 이상이 될 때. 휴지통(삭제 복구)·부분 내보내기 스펙이 들어오면 결정 2·4를 다시 본다.
