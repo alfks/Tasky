@@ -9,8 +9,8 @@
 | 스크립트 | 역할 | 호출처 |
 |---------|------|-------|
 | `setup.sh` | author config, `core.hooksPath=.githooks`, `pnpm install`(있을 때). 재실행 안전(idempotent), 워크트리 안에서 실행하면 BOARD 초기화만 건너뜀 | 사람/에이전트 최초 1회, 훅이 안 돌 때 재실행 |
-| `wt.sh new|rm|list` | 워크트리 생성/정리/목록 + BOARD.md 갱신(락으로 보호). `rm`은 git만으로 머지 여부(일반/squash) 판정 후 삭제, 판정 불가·모호하면 fail-closed(거부) | 구현자·오케스트레이터 |
-| `test-wt.sh` | `wt.sh` 스모크 테스트. `/tmp` 샌드박스(가짜 bare origin)에서 new·new --existing(로컬/원격/미존재 3종)·rm merged·rm unmerged 거부·rm --force·동시 BOARD 갱신을 왕복. 원본 레포는 건드리지 않고 항상 자동 정리 | `check.sh wt`, CI guard, `wt.sh` 수정 후 수동 |
+| `wt.sh new|rm|list` | 워크트리 생성/정리/목록 + BOARD.md 갱신(락으로 보호). `rm`은 git만으로 머지 여부(일반/squash) 판정 후 삭제, 판정 불가·모호하면 fail-closed(거부). 원격도 `origin/$branch`를 같이 fetch해 로컬 tip이 원격보다 뒤처져 있으면(다른 클론·리뷰어 커밋 제안이 먼저 push한 경우) `--force`에서도 삭제를 거부 — 원격 커밋 유실 방지 | 구현자·오케스트레이터 |
+| `test-wt.sh` | `wt.sh` 스모크 테스트. `/tmp` 샌드박스(가짜 bare origin + 제3의 클론)에서 new·new --existing(로컬/원격/미존재 3종)·rm(일반 머지/스쿼시 머지/미머지 거부/--force/빈 커밋 거부/되돌린 트리 거부/원격 앞섬 거부/미커밋 변경 거부/cherry 실패 fail-closed/원격 삭제 실패 보고)·flock 유무 양쪽 동시성을 왕복. 원본 레포는 건드리지 않고 항상 자동 정리(trap) | `check.sh wt`, CI guard, `wt.sh` 수정 후 수동 |
 | `check.sh [base]` \| `check.sh <step> [인자]` | **검사 목록의 단일 소스.** 인자 없이/`[base]`만 주면 전체를 순서대로 실행하고 요약 출력. `<step>`(forbidden-words\|agents-md\|eslint-disable\|author\|wt\|arch\|lint\|typecheck\|test) 하나만 주면 그 검사만 실행하고 그 exit code 그대로 반환 — CI(`ci.yml`)가 이 형태로 스텝별 호출해 실패 지점을 GitHub UI에 그대로 노출한다 | 커밋/PR 전 수동, `wt.sh new` 안내, CI 전 스텝 |
 | `check-forbidden-words.sh [paths…]` | 금지어 검사(조각 조립 정규식) | pre-commit, CI, 수동 |
 | `check-author.sh <base>` | `<base>..HEAD` 커밋 author/트레일러 검증. `--message-file`/`--body-file` 은 실제 커밋에 남는 원문(`#` 줄 포함 — git의 기본 cleanup은 `-m`/`-F` 에서 주석을 지우지 않는다) 그대로 검사 | CI, 수동 |

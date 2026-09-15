@@ -208,7 +208,10 @@ cmd_rm() {
   [ -n "$branch" ] || { echo "ERROR: $dir 에 해당하는 워크트리가 없습니다. 확인:  git worktree list"; exit 1; }
 
   local target="main"
-  git fetch origin main --quiet 2>/dev/null || true
+  # main 뿐 아니라 이 브랜치의 원격도 같이 받는다 — 아래에서 원격 브랜치를 삭제하므로,
+  # 판정·삭제 모두 로컬 tip 만으로는 부족하다(다른 클론이 먼저 push 했을 수 있다).
+  git fetch origin main "+refs/heads/$branch:refs/remotes/origin/$branch" --quiet 2>/dev/null \
+    || git fetch origin main --quiet 2>/dev/null || true
   git rev-parse --verify -q origin/main >/dev/null 2>&1 && target="origin/main"
 
   if [ "$flag" != "--force" ]; then
@@ -225,19 +228,38 @@ cmd_rm() {
     fi
   fi
 
-  local tip
+  local tip remote_tip=""
   tip="$(git rev-parse "$branch")"
+  # 원격이 로컬보다 앞서 있으면(다른 에이전트·리뷰어의 "Commit suggestion"·봇 커밋이 같은 브랜치에
+  # push된 경우) 로컬 판정만 믿고 원격을 지우면 그 커밋이 origin에서 영구 소멸한다. --force 는
+  # "머지 판정 없이 로컬을 지워도 된다"는 뜻이지 "원격의 남의 커밋을 지워도 된다"는 뜻이 아니므로
+  # --force 경로에서도 이 검사는 건너뛰지 않는다.
+  remote_tip="$(git rev-parse --verify -q "origin/$branch" 2>/dev/null || true)"
+  if [ -n "$remote_tip" ] && [ "$remote_tip" != "$tip" ] && ! git merge-base --is-ancestor "$remote_tip" "$tip" 2>/dev/null; then
+    echo "ERROR: 'origin/$branch'($(git rev-parse --short "$remote_tip"))가 로컬 tip($(git rev-parse --short "$tip"))에 없는 커밋을 갖고 있습니다 — 지금 삭제하면 원격에서 유실됩니다."
+    git log --oneline --no-decorate "$tip..$remote_tip" | sed 's/^/      /'
+    echo "  먼저 받아오세요:  git fetch origin $branch && git branch -f $branch origin/$branch   그 다음 다시 판정하세요."
+    exit 1
+  fi
   if [ "$flag" = "--force" ]; then
     git worktree remove --force "$dir"
   else
     git worktree remove "$dir" || { echo "ERROR: 미커밋 변경이 있습니다. 확인 후:  bash scripts/wt.sh rm $name --force"; exit 1; }
   fi
   git branch -D "$branch" >/dev/null 2>&1 || true
-  # 여기까지 왔다는 건 위에서 이미 merged 로 판정됐거나 --force 였다는 뜻 — 원격도 같은 기준으로 삭제.
-  git push origin --delete "$branch" >/dev/null 2>&1 || true
+  # 여기까지 왔다는 건 위에서 이미 merged 로 판정됐거나 --force 였다는 뜻, 그리고 원격이 로컬보다
+  # 앞서 있지 않다는 것도 확인됐다는 뜻 — 원격도 지운다. 단, 삭제 실패를 삼키지 않고 보고한다.
+  local remote_msg="로컬 삭제"
+  if [ -n "$remote_tip" ]; then
+    if git push origin --delete "$branch" >/dev/null 2>&1; then
+      remote_msg="로컬·원격 삭제"
+    else
+      remote_msg="로컬 삭제(원격 삭제 실패 — 수동: git push origin --delete $branch)"
+    fi
+  fi
   git worktree prune
   set_status "$branch" "done"
-  echo "OK 정리 완료: $dir 제거, 브랜치 '$branch' 로컬·원격 삭제, BOARD → done"
+  echo "OK 정리 완료: $dir 제거, 브랜치 '$branch' $remote_msg, BOARD → done"
   echo "   되돌리기(로컬 reflog 만료 전):  git branch $branch $tip"
 }
 

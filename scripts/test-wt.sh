@@ -3,10 +3,15 @@
 #           wt.sh 는 라운드 1·2 리뷰에서 연속으로 Blocker(반쪽 상태로 브랜치·커밋 유실)를 냈다 —
 #           이 스모크 테스트가 그런 회귀를 다시 커밋 전에 잡기 위한 안전망이다.
 # 사용법: bash scripts/test-wt.sh
-# /tmp 에 가짜 bare origin + 워킹 클론을 만들어 이 레포의 scripts/wt.sh 를 그대로 복사해 넣고
-# 주요 경로(new · new --existing 3종 · rm merged · rm unmerged 거부 · rm --force · 동시 BOARD
-# 갱신)를 왕복시킨다. 원본 레포(.worktrees, 브랜치)는 절대 건드리지 않고, 끝나면(성공·실패 무관)
-# 임시 디렉토리를 항상 지운다. pnpm 등 무거운 의존성이 없어 CI 에서도 수십 초 안에 끝난다.
+# /tmp 에 가짜 bare origin + 워킹 클론(+ 제3의 클론 "agentB")을 만들어 이 레포의 scripts/wt.sh 를
+# 그대로 복사해 넣고 주요 경로를 왕복시킨다: new · new --existing 3종 · rm 일반 머지/스쿼시 머지/
+# 미머지 거부/--force · 빈 커밋만 있는 브랜치 거부 · 되돌려 트리가 같아진 브랜치 거부 · 원격이
+# 로컬보다 앞선 브랜치 거부(다른 클론이 push한 커밋 보존, --force 도 거부해야 함) · 미커밋 변경
+# 있는 워크트리 거부 · git cherry 실패 시 fail-closed(PATH 셰임) · flock 없는 환경에서의 동시 실행
+# · flock 있는 환경에서의 동시 BOARD 갱신. 원본 레포(.worktrees, 브랜치)는 절대 건드리지 않고,
+# 끝나면(성공·실패·SIGINT/SIGTERM 무관) trap 으로 임시 디렉토리를 항상 지운다. pnpm 등 무거운
+# 의존성이 없어 CI 에서도 수 초 안에 끝난다(실행 시간이 길어지면 scripts/check.sh 에서 이 스텝을
+# 빼는 것도 검토할 것 — 이 파일은 그 판단만 하고 check.sh 자체는 건드리지 않는다).
 set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/wt-smoke.XXXXXX")"
@@ -40,6 +45,28 @@ assert_exists() { [ -e "$1" ] && ok "$2" || bad "$2 — $1 없음"; }
 assert_absent()  { [ -e "$1" ] && bad "$2 — $1 이 남아있음(반쪽 상태)" || ok "$2"; }
 assert_branch_gone() { git branch --list "$1" | grep -q . && bad "$2 — 브랜치 '$1' 남음" || ok "$2"; }
 assert_branch_kept() { git branch --list "$1" | grep -q . && ok "$2" || bad "$2 — 브랜치 '$1' 사라짐(손실!)"; }
+# git worktree add 자체는 wt.sh 의 BOARD 락이 감싸지 않는다(BOARD.md 갱신만 보호 대상).
+# 그래서 여러 프로세스가 정말 동시에 새 워크트리를 만들면 git 내부 메타데이터 레이스로
+# "failed to read .git/worktrees/.../commondir" 처럼 드물게(관찰상 8개 중 수 회) 실패할 수 있다 —
+# 이건 wt.sh 의 BOARD 락 설계가 잡으려는 문제(행 유실)와는 다른, git 자체의 동시성 한계다.
+# 아래 동시성 테스트가 검증하려는 것은 "BOARD 행이 드랍되는가"이므로, 이 레이스는 짧게 재시도해
+# 흡수하고(최대 5회) 그래도 실패하면 진짜 실패로 취급한다.
+new_with_retry() { # $1 PATH(빈 문자열이면 현재 PATH 유지), $2 branch
+  local envpath="$1" branch="$2" tries=0
+  # log 는 별도 local 문으로 뺀다 — 같은 local 문 안에서 뒤 항목의 명령 치환이 앞 항목(branch)을
+  # 참조하면, bash 가 치환을 실제 대입보다 먼저 평가해 set -u 에서 "unbound variable" 로 샌다.
+  local log="$TMP/nwr-$(printf '%s' "$branch" | tr '/' '_').log"
+  while true; do
+    if [ -n "$envpath" ]; then
+      PATH="$envpath" bash scripts/wt.sh new "$branch" >"$log" 2>&1 && return 0
+    else
+      bash scripts/wt.sh new "$branch" >"$log" 2>&1 && return 0
+    fi
+    tries=$((tries + 1))
+    [ "$tries" -lt 5 ] || { cat "$log"; return 1; }
+    sleep "0.$((RANDOM % 5 + 1))"
+  done
+}
 
 # --- 샌드박스: bare origin + 워킹 클론, wt.sh 만 지금 버전으로 넣는다 ---
 git init --bare -q "$TMP/origin.git"
@@ -98,7 +125,7 @@ assert_branch_gone feature/smoke-existing "--force 삭제 확인"
 echo "=== 8) 동시 BOARD 갱신: new 8개 동시 실행 ==="
 pids=()
 for i in 1 2 3 4 5 6 7 8; do
-  ( bash scripts/wt.sh new "feature/smoke-c$i" >"$TMP/c$i.log" 2>&1 ) &
+  ( new_with_retry "" "feature/smoke-c$i" ) &
   pids+=("$!")
 done
 for p in "${pids[@]}"; do wait "$p"; done
@@ -106,6 +133,138 @@ rows="$(grep -cE 'smoke-c[1-8]' .worktrees/BOARD.md)"
 [ "$rows" -eq 8 ] && ok "동시 실행 후 BOARD 행 8/8 보존" || bad "동시 실행 후 BOARD 행 손실 ($rows/8)"
 headers="$(grep -cE '^# BOARD' .worktrees/BOARD.md)"
 [ "$headers" -eq 1 ] && ok "BOARD 헤더 중복 없음" || bad "BOARD 헤더 중복 발생 ($headers)"
+
+echo "=== 9) rm: 스쿼시 머지된 브랜치 → 삭제 성공 (commit-tree+cherry 판정 경로) ==="
+run "new(smoke-sq)" bash scripts/wt.sh new feature/smoke-sq
+( cd .worktrees/smoke-sq \
+  && echo a > A.md && git add -A && git commit -q -m "feat(t): sq 1" \
+  && echo b > B.md && git add -A && git commit -q -m "feat(t): sq 2" )
+git merge --squash feature/smoke-sq -q >/dev/null 2>&1
+git commit -q -m "feat(t): 스쿼시 병합"
+git push -q origin main
+run "스쿼시 머지 브랜치 rm 성공" bash scripts/wt.sh rm smoke-sq
+assert_branch_gone feature/smoke-sq "스쿼시 머지 브랜치 삭제됨"
+
+echo "=== 10) rm: 빈 커밋만 있는 브랜치 → 거부(히스토리 보존, tree==base_tree 인데 커밋 있음) ==="
+run "new(smoke-empty)" bash scripts/wt.sh new feature/smoke-empty
+( cd .worktrees/smoke-empty && git commit -q --allow-empty -m "chore(t): 빈 커밋" )
+expect_fail "빈 커밋 브랜치 rm 거부" bash scripts/wt.sh rm smoke-empty
+assert_branch_kept feature/smoke-empty "빈 커밋 브랜치 보존됨"
+bash scripts/wt.sh rm smoke-empty --force >"$TMP/last.log" 2>&1 || true
+
+echo "=== 11) rm: 추가 후 되돌려 트리가 base 와 같아진 브랜치(커밋 2개) → 거부 ==="
+run "new(smoke-revert)" bash scripts/wt.sh new feature/smoke-revert
+( cd .worktrees/smoke-revert \
+  && echo tmp > T.md && git add -A && git commit -q -m "feat(t): 추가" \
+  && git rm -q T.md && git commit -q -m "revert(t): 되돌림" )
+expect_fail "되돌린(트리 동일) 브랜치 rm 거부" bash scripts/wt.sh rm smoke-revert
+assert_branch_kept feature/smoke-revert "되돌린 브랜치 보존됨"
+bash scripts/wt.sh rm smoke-revert --force >"$TMP/last.log" 2>&1 || true
+
+echo "=== 12) rm: 원격이 로컬보다 앞선 브랜치 → 거부 (커밋 유실 방지, Blocker 회귀 방지) ==="
+run "new(smoke-ahead)" bash scripts/wt.sh new feature/smoke-ahead
+( cd .worktrees/smoke-ahead && echo a1 > A1.md && git add -A && git commit -q -m "feat(t): 1차" \
+  && git push -q origin feature/smoke-ahead )
+git merge --no-ff feature/smoke-ahead -q -m "merge smoke-ahead 1차"
+git push -q origin main
+git clone -q "$TMP/origin.git" "$TMP/agentB"
+( cd "$TMP/agentB" && git config user.name alfks && git config user.email millie020524@gmail.com \
+  && git checkout -q feature/smoke-ahead && echo a2 > A2.md && git add -A \
+  && git commit -q -m "feat(t): 2차(다른 클론)" && git push -q origin feature/smoke-ahead )
+expect_fail "원격이 앞선 브랜치 rm 거부(--force 도 거부해야 함)" bash scripts/wt.sh rm smoke-ahead --force
+if git ls-remote --heads origin feature/smoke-ahead 2>/dev/null | grep -q .; then
+  ok "원격 브랜치 '2차' 커밋 보존됨(유실 없음)"
+else
+  bad "원격 브랜치가 사라짐 — 다른 클론의 커밋이 유실됐습니다!"
+fi
+
+echo "=== 13) rm: 머지됐지만 워크트리에 미커밋 변경이 있음 → 거부(worktree remove 보호) ==="
+run "new(smoke-dirty)" bash scripts/wt.sh new feature/smoke-dirty
+( cd .worktrees/smoke-dirty && echo d > D.md && git add -A && git commit -q -m "feat(t): dirty 작업" )
+git merge --no-ff feature/smoke-dirty -q -m "merge smoke-dirty"
+git push -q origin main
+echo unsaved > .worktrees/smoke-dirty/U.md   # 미추적 파일 — 커밋되지 않음
+expect_fail "미커밋 변경 있는 워크트리 rm 거부" bash scripts/wt.sh rm smoke-dirty
+assert_exists .worktrees/smoke-dirty/U.md "미저장 파일 보존됨(worktree remove 가 거부됨)"
+bash scripts/wt.sh rm smoke-dirty --force >"$TMP/last.log" 2>&1 || true
+
+echo "=== 14) rm: git cherry 실패 시 fail-closed(판정 불가 → 거부) ==="
+run "new(smoke-cherry)" bash scripts/wt.sh new feature/smoke-cherry
+( cd .worktrees/smoke-cherry && echo c > C.md && git add -A && git commit -q -m "feat(t): 미머지" )
+REAL_GIT="$(command -v git)"
+mkdir -p "$TMP/shim"
+cat > "$TMP/shim/git" <<SHIM
+#!/usr/bin/env bash
+for a in "\$@"; do [ "\$a" = cherry ] && exit 128; done
+exec "$REAL_GIT" "\$@"
+SHIM
+chmod +x "$TMP/shim/git"
+expect_fail "git cherry 실패 시 rm 거부(fail-closed)" env PATH="$TMP/shim:$PATH" bash scripts/wt.sh rm smoke-cherry
+assert_branch_kept feature/smoke-cherry "cherry 실패 시에도 브랜치 보존됨"
+bash scripts/wt.sh rm smoke-cherry --force >"$TMP/last.log" 2>&1 || true
+
+echo "=== 15) 락: flock 없는 환경에서도 new 8개 동시 실행 무결 ==="
+NOFLOCK="$TMP/noflock"
+mkdir -p "$NOFLOCK"
+for bin in bash env git mkdir rm mv cp cat sed awk grep printf wc tr kill sleep dirname basename chmod; do
+  p="$(command -v "$bin" 2>/dev/null || true)"
+  [ -n "$p" ] && ln -sf "$p" "$NOFLOCK/$bin"
+done
+# flock 을 일부러 넣지 않는다 — command -v flock 이 실패해야 mkdir 스핀락 경로를 탄다.
+pids=()
+for i in 1 2 3 4 5 6 7 8; do
+  ( new_with_retry "$NOFLOCK" "feature/smoke-nf$i" ) &
+  pids+=("$!")
+done
+for p in "${pids[@]}"; do wait "$p"; done
+rows="$(grep -cE 'smoke-nf[1-8]' .worktrees/BOARD.md)"
+[ "$rows" -eq 8 ] && ok "no-flock 동시 실행 후 BOARD 행 8/8 보존" || bad "no-flock 동시 실행 후 BOARD 행 손실 ($rows/8)"
+lockleft="$(find .worktrees -maxdepth 1 -name '.board.lock.d' 2>/dev/null | wc -l | tr -d ' ')"
+[ "$lockleft" -eq 0 ] && ok "no-flock 락 디렉토리 잔여물 없음" || bad "no-flock 락 디렉토리 잔존"
+
+echo "=== 16) 락: 획득 실패로 타임아웃 죽는 프로세스가 살아있는 보유자의 락을 훔치지 않음(회귀 방지) ==="
+# .board.lock.d 를 이 테스트 프로세스($$, 항상 살아있음) 소유로 미리 만들어 "다른 보유자가 락을
+# 쥐고 있다"를 흉내낸 뒤, no-flock PATH 에서 짧은 timeout 으로 새 프로세스를 죽인다. 정상이라면
+# board_lock_release 가 "내가 획득한 락이 아니면 손대지 않는다" 가드로 이 락을 그대로 둬야 한다.
+if command -v timeout >/dev/null 2>&1; then
+  mkdir -p .worktrees/.board.lock.d
+  echo "$$" > .worktrees/.board.lock.d/pid
+  timeout -s TERM 2 env PATH="$NOFLOCK" bash scripts/wt.sh new feature/smoke-lockrace >"$TMP/lockrace.log" 2>&1
+  if [ -d .worktrees/.board.lock.d ] && [ "$(cat .worktrees/.board.lock.d/pid 2>/dev/null)" = "$$" ]; then
+    ok "타임아웃으로 죽은 프로세스가 살아있는 보유자의 락을 훔치지 않음"
+  else
+    bad "타임아웃으로 죽은 프로세스가 살아있는 보유자의 락(.board.lock.d)을 지웠습니다 — 락 훔치기!"
+  fi
+  rm -rf .worktrees/.board.lock.d
+  git worktree remove --force .worktrees/smoke-lockrace >/dev/null 2>&1 || true
+  git branch -D feature/smoke-lockrace >/dev/null 2>&1 || true
+else
+  echo "SKIP: timeout 명령이 없어 16번을 건너뜁니다."
+fi
+
+echo "=== 17) rm: 원격 삭제만 실패해도 삼키지 않고 정확히 보고한다(거짓 성공 보고 방지, 회귀 방지) ==="
+run "new(smoke-remotefail)" bash scripts/wt.sh new feature/smoke-remotefail
+( cd .worktrees/smoke-remotefail && echo r > R.md && git add -A && git commit -q -m "feat(t): 작업" \
+  && git push -q origin feature/smoke-remotefail )
+git merge --no-ff feature/smoke-remotefail -q -m "merge smoke-remotefail"
+git push -q origin main
+REAL_GIT2="$(command -v git)"
+mkdir -p "$TMP/shim2"
+cat > "$TMP/shim2/git" <<SHIM2
+#!/usr/bin/env bash
+if [ "\$1" = push ]; then
+  for a in "\$@"; do [ "\$a" = --delete ] && exit 1; done
+fi
+exec "$REAL_GIT2" "\$@"
+SHIM2
+chmod +x "$TMP/shim2/git"
+out="$(env PATH="$TMP/shim2:$PATH" bash scripts/wt.sh rm smoke-remotefail 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ok "원격 삭제만 실패해도 로컬 정리는 rc=0" || bad "원격 삭제 실패 시 rc=$rc(예상 밖, 로그: $out)"
+if printf '%s' "$out" | grep -q "원격 삭제 실패"; then
+  ok "원격 삭제 실패가 메시지에 정확히 보고됨(거짓 '로컬·원격 삭제' 보고 없음)"
+else
+  bad "원격 삭제가 실패했는데도 성공한 것처럼 보고함(회귀!): $out"
+fi
 
 echo "=================================="
 if [ "$fail" -eq 0 ]; then

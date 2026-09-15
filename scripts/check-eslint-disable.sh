@@ -14,15 +14,27 @@ cd "$(git rev-parse --show-toplevel)"
 RESTRICTED='import/no-restricted-paths|no-restricted-imports|no-restricted-globals|no-restricted-syntax|import/no-cycle|import/no-unresolved|import/no-default-export|@typescript-eslint/no-explicit-any'
 
 check_file() { # $1 파일
-  local f="$1" line n body rules desc pre q
+  local f="$1" line n body rules desc dircount
   # eslint-disable 계열 + 인라인 설정 주석(/* eslint …, /* eslint-env, /* global(s)) 후보 줄만 추출
   { grep -nE 'eslint-disable|/\*[[:space:]]*eslint(-env)?[[:space:]]|/\*[[:space:]]*globals?[[:space:]]' "$f" 2>/dev/null || true; } | while IFS= read -r line; do
     n="${line%%:*}"
     line="${line#*:}"
-    # 주석 기호가 문자열 리터럴 안이면(앞의 따옴표 수가 홀수) 코드가 아니라 문자열 — 건너뛴다
-    pre="$(printf '%s' "$line" | sed -E 's#(//|/\*).*$##')"
-    q="$(printf '%s' "$pre" | tr -cd "\"'" | wc -c | tr -d ' ')"
-    [ $((q % 2)) -eq 0 ] || continue
+    # 문자열 리터럴('...'/"...")의 *내용만* 지운다(줄 전체를 건너뛰지 않는다). 과거 버전은
+    # "주석 기호 앞 따옴표가 홀수면 문자열 안이니 줄 전체를 건너뛴다"였는데, 그러면
+    # `const s = "don't"; // eslint-disable-line import/no-restricted-paths` 처럼 흔한
+    # 아포스트로피가 낀 코드에서 뒤의 진짜 지시자까지 통째로 새 나간다(감사망 우회).
+    # false negative(우회 허용)는 금지, false positive(문자열 속 가짜 주석 오탐)는 허용 쪽으로
+    # 기운다 — 문자열 내용을 비우면 두 문제가 동시에 없어진다: 진짜 주석은 그대로 남고,
+    # 문자열 안의 가짜 "// eslint-disable" 텍스트는 사라진다.
+    line="$(printf '%s' "$line" | sed -E "s/'([^'\\\\]|\\\\.)*'/''/g; s/\"([^\"\\\\]|\\\\.)*\"/\"\"/g")"
+    printf '%s' "$line" | grep -qE 'eslint-disable|/\*[[:space:]]*eslint(-env)?[[:space:]]|/\*[[:space:]]*globals?[[:space:]]' || continue
+    # 한 줄에 eslint-disable 지시자가 2개 이상이면 아래 sed(greedy)가 뒤의 것만 남기고 앞의
+    # 것은 검사되지 않은 채 통과한다 — 판정을 시도하는 대신 애초에 금지한다(줄 분리 강제).
+    dircount="$(printf '%s' "$line" | grep -o 'eslint-disable' | wc -l | tr -d ' ')"
+    if [ "$dircount" -gt 1 ]; then
+      echo "FAIL: $f:$n 한 줄에 eslint-disable 지시자가 2개 이상입니다. 줄을 나누세요(뒤의 것만 검사되어 앞의 것이 감사망을 빠져나갑니다)."
+      continue
+    fi
     if printf '%s' "$line" | grep -qE '/\*[[:space:]]*eslint(-env)?[[:space:]]|/\*[[:space:]]*globals?[[:space:]]'; then
       echo "FAIL: $f:$n 인라인 ESLint 설정 주석 금지(규칙 (4)). 설정은 eslint.config.mjs 에서만."
       continue
