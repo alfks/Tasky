@@ -41,6 +41,9 @@ jobs:
       - name: AGENTS.md 구조 검사 (필수 디렉토리 · 60줄 · 읽기 조건 · CLAUDE.md 250줄)
         run: bash scripts/check-agents-md.sh
 
+      - name: eslint-disable 정책 검사 (src/ — 아키텍처 규칙 우회 금지)
+        run: bash scripts/check-eslint-disable.sh
+
       - name: 브랜치명 규칙 검사 (PR)
         if: github.event_name == 'pull_request'
         env:
@@ -113,6 +116,10 @@ jobs:
       - name: lint
         if: steps.pkg.outputs.present == 'true'
         run: pnpm lint
+
+      - name: 레이어 경계 린트 검증 (위반 픽스처가 실제로 잡히는지)
+        if: steps.pkg.outputs.present == 'true'
+        run: bash scripts/check-arch.sh
 
       - name: typecheck
         if: steps.pkg.outputs.present == 'true'

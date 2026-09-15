@@ -38,6 +38,7 @@ tmp/
 .scratchpad/
 *.orig
 *.rej
+__arch__/
 *.bak
 
 # --- OS ---

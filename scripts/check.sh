@@ -24,10 +24,12 @@ run_step() { # $1 라벨, 나머지는 명령
 
 run_step "금지어 검사"        bash scripts/check-forbidden-words.sh
 run_step "AGENTS.md 구조 검사" bash scripts/check-agents-md.sh
+run_step "eslint-disable 정책 검사" bash scripts/check-eslint-disable.sh
 run_step "author/커밋 메시지 검사 ($BASE)" bash scripts/check-author.sh "$BASE"
 
 if [ -f package.json ] && command -v pnpm >/dev/null 2>&1; then
   run_step "pnpm lint"      pnpm lint
+  run_step "레이어 경계 린트 검증" bash scripts/check-arch.sh
   run_step "pnpm typecheck" pnpm typecheck
   run_step "pnpm test"      pnpm test -- --reporter=dot
 else

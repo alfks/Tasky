@@ -59,6 +59,8 @@ pnpm check                                # lint+typecheck+test, PR 전 필수 (
 bash scripts/check-forbidden-words.sh     # 금지어 검사
 bash scripts/check-author.sh main         # main 이후 커밋 author 검증
 bash scripts/check-agents-md.sh           # AGENTS.md 누락 검사
+bash scripts/check-eslint-disable.sh      # eslint-disable 정책(아키텍처 규칙 우회 금지)
+bash scripts/check-arch.sh                # 레이어 경계 린트가 실제로 잡는지(스캐폴딩 후)
 pnpm dev | pnpm build | pnpm test -- <pattern>
 ```
 
