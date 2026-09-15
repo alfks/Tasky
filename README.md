@@ -4,7 +4,7 @@
 
 ## 기술 스택
 
-Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · Zustand · Dexie(IndexedDB) · Vitest · Playwright · pnpm
+Vinext(Next.js API on Vite 8, App Router) · React 19 · TypeScript · Tailwind CSS v4 · Zustand · Dexie(IndexedDB) · Vitest · Playwright · pnpm · 배포 Cloudflare Workers
 
 ## 시작하기
 
@@ -24,3 +24,7 @@ pnpm check              # lint + typecheck + test
 
 - Phase 1 (MVP): 날짜 스트립, 카테고리별 투두 CRUD, 체크·달성률, 테마/색상
 - Phase 2: 클라우드 동기화, 친구·피드·반응
+
+## 서드파티 고지
+
+- Pretendard — SIL Open Font License 1.1 — https://github.com/orioncactus/pretendard (공식 배포 릴리스에서 서브셋, `public/fonts/OFL.txt`)

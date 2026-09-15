@@ -245,10 +245,14 @@ export type CategoryRemovalResult = {
 /** 저장소가 추측할 것이 남지 않도록, 쓸 값 전부를 도메인이 만든다. 반환한 writes 를 dataset.write(writes) 한 번으로 적용한다. */
 export function planCategoryRemoval(input: {
   category: Category;
-  todos: readonly Todo[]; // categories.getById + todos.listByCategory(id) 결과(툼스톤 제외)
+  todos: readonly Todo[]; // todos.listByCategory(id) 결과(툼스톤 제외)
   targetTodos: readonly Todo[]; // ①: 대상 카테고리의 투두 전량 / ②③: 빈 배열
   choice: CategoryRemovalChoice;
   deps: { now: () => string; id: () => string };
+  /** 삭제 시점의 카테고리 전량(`categories.list()` 결과 그대로, 삭제 대상 자신 포함).
+   *  ② 새 카테고리의 order(활성 최대 + 1, R5)와 이름 유일성·개수 제한(R12 → R2·R6)의 모집단.
+   *  선택 인자면 빠뜨려도 타입이 잡지 못해 ② 가 빈 모집단으로 돌아가므로 **①③ 에서도 필수**다. */
+  categories: readonly Category[];
 }): { writes: DatasetWrite[]; result: CategoryRemovalResult };
 /** R15 되돌리기. result + 삭제 직전 엔티티를 받아 되감을 writes 를 만든다. 역시 dataset.write 한 번.
  *  category·todos 는 삭제 직전 값을 **호출자(스토어)가 6초 창 동안 메모리에 들고 있는 것**이다 — markDeleted 된 뒤라 엔티티 조회로는 다시 읽히지 않고(규칙 3), 이 경로는 readAll 을 쓰지 않는다(category R15). */
@@ -263,6 +267,7 @@ export function planCategoryRemovalUndo(input: {
 
 **`planCategoryRemoval`이 계약 수준에서 고정하는 것**(memory·indexeddb가 갈릴 여지를 남기지 않기 위한 것 — 계약 테스트는 이 문장들을 그대로 단언한다):
 
+- `categories` 에 삭제 대상이 없으면 `CATEGORY_NOT_IN_LIST` 로 거부한다. 타입이 인자 누락을 막고, 이 검사가 "타입만 맞춘 빈·엉뚱한 목록"을 막는다.
 - `at = deps.now()`를 **한 번만** 호출해 카테고리 tombstone·이동·삭제 투두 전부에 같은 값을 쓴다(category R14의 "같은 `deletedAt`").
 - "미완료" = `done === false`. 조회가 이미 툼스톤을 제외하므로 `deletedAt` 재판정은 하지 않는다. 완료 투두는 `writes`에 **들어가지 않는다**(한 글자도 건드리지 않음 = R14).
 - 이동 `order`(R14-a "대상 그룹 끝, 날짜별"): 날짜 `d`마다 `base(d) = max(targetTodos 중 date===d 인 것의 order, -1) + 1`. 옮기는 투두는 **원래 카테고리에서의 정렬 순서(order asc → createdAt asc → id asc)** 를 유지한 채 같은 날짜끼리 `base(d), base(d)+1, …` 를 받는다. 동률이 남지 않으므로 두 구현의 결과가 같다.
