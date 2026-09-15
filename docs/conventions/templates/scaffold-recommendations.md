@@ -1,0 +1,112 @@
+<!-- 읽기 조건: Next.js 스캐폴딩 티켓(chore/scaffold-nextjs)을 수행할 때만 읽는다. -->
+
+# 스캐폴딩 권장안 (package.json / vitest.config.ts / 완료 조건)
+
+**스캐폴딩 전에는 린트가 존재하지 않는다.** `package.json`이 없는 동안 CI `build` 잡은 건너뛰고 `docs/ARCHITECTURE.md` §1의 레이어 경계는 문서일 뿐이다. 이 티켓이 머지되기 전에는 `src/` 코드 티켓을 발행하지 않는다.
+
+#### 3.15-d `package.json` 권장안 (scripts + 의존성 — 스캐폴딩 결과에 **병합**)
+
+```json
+{
+  "name": "tasky",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.9.0",
+  "engines": { "node": ">=22 <23" },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "check": "bash scripts/check.sh",
+    "check:arch": "bash scripts/check-arch.sh",
+    "setup": "bash scripts/setup.sh",
+    "wt": "bash scripts/wt.sh"
+  },
+  "dependencies": {
+    "next": "15.x",
+    "react": "19.x",
+    "react-dom": "19.x",
+    "dexie": "^4",
+    "zustand": "^5",
+    "clsx": "^2",
+    "tailwind-merge": "^3",
+    "@serwist/next": "^9"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.x",
+    "@eslint/eslintrc": "^3",
+    "eslint-config-prettier": "^10",
+    "prettier": "^3",
+    "prettier-plugin-tailwindcss": "^0.6",
+    "tailwindcss": "^4",
+    "@tailwindcss/postcss": "^4",
+    "vitest": "^3",
+    "@vitest/coverage-v8": "^3",
+    "@vitejs/plugin-react": "^4",
+    "jsdom": "^26",
+    "@testing-library/react": "^16",
+    "@testing-library/jest-dom": "^6",
+    "@testing-library/user-event": "^14",
+    "fake-indexeddb": "^6",
+    "@playwright/test": "^1",
+    "serwist": "^9"
+  }
+}
+```
+- 버전은 스캐폴딩 시점의 최신 안정판으로 `pnpm add`가 확정한다(위는 메이저 고정 의도만). `packageManager`의 정확한 pnpm 버전은 `pnpm --version` 출력으로 채운다.
+- **검사 목록의 단일 소스는 `scripts/check.sh`** — `pnpm check`는 그것을 부를 뿐이고 `check:all`·개별 `check:*` 나열은 두지 않는다(CI도 같은 스크립트를 호출). `check:arch`는 실패 원인을 단독 재현할 때만 쓴다.
+- ID는 `crypto.randomUUID()`(ADR-0005) — `nanoid`를 넣지 않는다.
+- 레이어 경계 린트(`import/no-restricted-paths`, `import/no-unresolved`)는 `eslint-config-next`가 함께 설치하는 `eslint-plugin-import`(≥2.31)와 `eslint-import-resolver-typescript`를 쓴다. **추가 devDependency 없음**(ADR-0006 — `eslint-plugin-boundaries`·`dependency-cruiser`는 재검토 트리거 충족 시에만). 리졸버 설정도 `next/core-web-vitals`가 절대 경로 키로 주입하므로 `eslint.config.mjs`에 따로 적지 않는다. 레이어·허용 목록·확장자는 `scripts/arch-layers.mjs`가 단일 소스이며 `eslint.config.mjs`가 그것을 import 한다.
+- Playwright는 스캐폴딩 티켓에 넣지 않고 별도 `test/e2e-smoke` 티켓에서 추가해도 된다(그때 `tests/AGENTS.md`도 생성).
+
+#### 3.15-e `vitest.config.ts` 권장안 (스캐폴딩 티켓에서 생성)
+
+```ts
+// 읽기 조건: 테스트 러너 설정 변경 시.
+import path from 'node:path';
+
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vitest/config';
+
+const config = defineConfig({
+  plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
+    exclude: ['**/*.slow.test.*', '**/__arch__/**', 'tests/**', 'node_modules/**', '.worktrees/**'],
+    coverage: { provider: 'v8', include: ['src/domain/**', 'src/repositories/**', 'src/lib/**'], reporter: ['text-summary'] },
+  },
+  resolve: { alias: { '@': path.resolve(__dirname, 'src') } },
+});
+
+export default config;
+```
+
+#### 3.15-f 스캐폴딩 완료 조건 (아키텍처 강제가 실제로 켜졌는지)
+
+**원칙**: 새 디렉토리를 만들 때마다 그 자리에서 `AGENTS.md`(고유 규칙이 있을 때) 또는 상위 문서의 `관할: <dir>/` 선언(상위와 규칙이 같을 때) 중 하나를 함께 만든다 — 어느 쪽도 없는 디렉토리를 남기지 않는다. `관할:`은 직계 자식 한 단계만 면제하므로 2단 이상 깊어지면 중간 단계에 관할 선언 전용 최소 `AGENTS.md`가 필요하다(`src/features/<f>/AGENTS.md` 5개가 그 예). 그 자리에서 `bash scripts/check-agents-md.sh`로 확인한다.
+
+1. `src/features/{todo,category,date-strip,stats,theme}/{components,hooks,store}/`와 `index.ts`(빈 명시 export), `src/{app,components/ui,domain,repositories/memory,infra/indexeddb,lib,styles,test/fixtures}/`, `tests/e2e/`, `public/`가 전부 생성되고 `docs/conventions/templates/src-agents-drafts.md`의 초안 17개가 각 경로 그대로 `AGENTS.md`로 복사돼 있다(`src/repositories/container.ts`, `src/infra/indexeddb/{db,query}.ts`, `src/domain/meta.ts`도 빈 껍데기라도 존재). `src/` 직속 파일은 `AGENTS.md`(+ 도입하면 `middleware.ts`·`instrumentation.ts`)뿐, `src/**` 에 `index.ts`는 features 다섯 개뿐, `src/**` 의 `.md` 는 전부 `AGENTS.md`, `.js/.jsx` 없음.
+2. `bash scripts/check-agents-md.sh` 가 `OK`로 통과한다(하위 디렉토리까지 포함한 **실제 트리** 기준 — 평평한 트리로 확인하지 않는다).
+3. `tsconfig.json`에 `"paths": { "@/*": ["./src/*"] }`. `.gitignore`에 `__arch__/` 한 줄.
+4. `pnpm lint` 가 경고 0으로 통과한다(`eslint.config.mjs`·`scripts/arch-layers.mjs` 자체도 린트 대상 — `export default config` 형태 유지, 익명 배열 `export default [` 는 next 규칙 경고로 실패).
+5. `bash scripts/check-arch.sh` 가 `PASS: src/** 전수 분류` + `PASS: 2차 패스(--no-inline-config)`(커버리지 포함) + 픽스처 전 케이스 `PASS`(부정 + 긍정) + disable 픽스처 5건이 각각 `PASS: … 1차 0건(지시자가 먹힘) / 2차 N건(지시자 무시)` + 마지막 줄 `OK`. 하나라도 `FAIL`이면 `eslint.config.mjs`의 해당 블록 또는 `@/` 별칭 해석(`import/no-unresolved`가 `@/` import 전체에 오탐을 내면 리졸버 문제)을 고친 뒤 머지.
+6. `bash scripts/check-arch.sh` 가 `OK`(아키텍처 2차 패스 포함). `bash scripts/check.sh main` 통과(= `pnpm check`).
+7. `src/**/__arch__/` 잔여물이 없다(`git status`에 나타나지 않아야 한다).
+8. `src/domain/meta.ts`의 `Persistable` 브랜드가 동작한다: `repo.upsert(plainTodo)`가 `tsc`에서 TS2345 로 실패하는 `// @ts-expect-error` 줄이 계약 테스트에 있다(ADR-0007 규칙 3-d).

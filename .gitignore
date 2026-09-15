@@ -1,0 +1,67 @@
+# 읽기 조건: 무시 규칙을 바꿀 때만.
+
+# --- 의존성 / 빌드 ---
+node_modules/
+.pnpm-store/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# --- 테스트 산출물 ---
+coverage/
+playwright-report/
+test-results/
+blob-report/
+
+# --- 환경 변수 ---
+.env
+.env.*
+!.env.example
+
+# --- PWA (Serwist가 빌드 시 생성) ---
+public/sw.js
+public/sw.js.map
+public/swe-worker-*.js
+
+# --- 워크트리 + 로컬 협업 상태 (AGENTS.md만 트래킹) ---
+.worktrees/*
+!.worktrees/AGENTS.md
+
+# --- 스크래치 / 임시 ---
+tmp/
+*.tmp
+*.draft.md
+*.scratch.*
+.scratchpad/
+*.orig
+*.rej
+__arch__/
+*.bak
+
+# --- OS ---
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+
+# --- 에디터 ---
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+
+# --- 로그 ---
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-*.log
+
+# --- 배포/도구 ---
+.vercel
+.turbo
+.eslintcache
+.claude/settings.local.json
