@@ -13,7 +13,7 @@ ADR-0005 는 `rev`·`updatedAt` 갱신을 도메인 `touch()` 한 곳으로 정�
 **저장 가능한 값은 타입으로만 만들어지고, 툼스톤은 조회 API 밖에 있다.**
 1. 브랜드 타입: `src/domain/meta.ts` 가 `Persistable<T extends Meta> = T & { readonly [PERSISTABLE]: true }`(`declare const PERSISTABLE: unique symbol` — 런타임 흔적 없음)를 정의한다. 이 타입을 만드는 함수는 같은 파일의 `createMeta(deps)`, `touch(e, now)`, `markDeleted(e, now)` 셋뿐이다.
 2. 레포지토리의 쓰기 메서드는 `upsert(entity: Persistable<T>): Promise<void>` 하나. 조회는 브랜드 없는 `T` 를 돌려주므로 읽은 값을 그대로, 또는 스프레드해서 다시 저장하면 **컴파일 에러**(TS2345 — 실측). `remove()` 는 없다: 삭제는 `upsert(markDeleted(e, deps.now()))`.
-3. 린트 보조(`eslint.config.mjs`): `src/domain/meta.ts` 밖에서 `rev`·`updatedAt`·`createdAt`·`deletedAt` 를 객체 리터럴·대입으로 **쓰면** 에러(읽기·구조분해는 허용), `as Persistable<…>` 캐스팅 에러. `src/infra/indexeddb/db.ts` 는 `query.ts` 만 import 할 수 있다. `meta.ts` 예외 블록이 푸는 것은 이 둘뿐 — 도메인 결정성 규칙(`Date`·`crypto`·`Math.random`)은 그 파일에서도 그대로 걸린다(`meta.ts` 는 시각·ID 를 `deps` 로 받으므로 필요하지 않다).
+3. 린트 보조(`eslint.config.mjs`): `src/domain/meta.ts` 밖에서 `rev`·`updatedAt`·`createdAt`·`deletedAt` 를 객체 리터럴·대입으로 **쓰면** 에러(읽기·구조분해는 허용), `as Persistable<…>` 캐스팅 에러. 테스트 계층(`src/test/**`, `*.test.*`)은 픽스처를 위해 이 둘이 허용된다(실측 — 결과 절). `src/infra/indexeddb/db.ts` 는 테스트 계층 밖에서 `query.ts` 만 import 할 수 있다. `meta.ts` 예외 블록이 푸는 것은 이 둘뿐 — 도메인 결정성 규칙(`Date`·`crypto`·`Math.random`)은 그 파일에서도 그대로 걸린다(`meta.ts` 는 시각·ID 를 `deps` 로 받으므로 필요하지 않다).
 4. 툼스톤 조회: 모든 조회 메서드는 툼스톤을 반환하지 않는다 — `getById` 는 `undefined`, `list*`/`get` 은 제외. `includeDeleted` 옵션은 MVP 에 두지 않는다(호출처가 없다). Phase 2 동기화는 별도 인터페이스(`SyncRepository.listChangedSince`)로 툼스톤을 읽는다.
 5. 필터 위치: IndexedDB 에서는 `src/infra/indexeddb/query.ts` 의 `liveAll()`/`liveOne()`/`put()` 만 테이블에 닿는다(3 이 강제). memory 구현도 같은 이름의 헬퍼 하나를 거친다. 필터를 빼먹을 수 있는 코드 경로가 하나뿐이다.
 6. 계약 테스트(`*.contract.test.ts`, memory·indexeddb 공용)의 `READS` 는 **배열이 아니라 매핑 타입**이다 — `type ReadName = Exclude<keyof TodoRepository, 'upsert'>` 에 대해 `const READS = { getById: (r, id) => r.getById(id), … } satisfies Record<ReadName, ReadCall>`. 조회 메서드를 추가하고 목록을 안 고치면 `TS1360`(빠진 이름을 지목), 쓰기 메서드를 넣으면 `TS2353` 이다. `satisfies readonly (keyof T)[]` 형태는 **전수성을 검사하지 않으므로**(원소 하나하나만 본다 — tsc 5.9 실측 exit 0) 쓰지 않는다.
@@ -32,7 +32,7 @@ ADR-0005 는 `rev`·`updatedAt` 갱신을 도메인 `touch()` 한 곳으로 정�
 - 감수하는 점: `{ ...touch(e, now), done: true }` 처럼 touch **뒤** 스프레드는 브랜드가 남는다 — `rev` 는 이미 +1 됐으므로 LWW 에 무해. 픽스처(`src/test/**`, `*.test.*`)는 Meta 리터럴 허용.
 
 ## 지켜야 할 규칙 (검증 가능한 문장 — 리뷰 판정 근거)
-1. `Persistable` 를 반환하는 함수는 `src/domain/meta.ts` 에만 있다. 다른 파일의 `as Persistable` 은 린트 에러.
+1. `Persistable` 를 반환하는 함수는 `src/domain/meta.ts` 에만 있다. `meta.ts` 와 테스트 계층(`src/test/**`, `*.test.*`) 밖의 `as Persistable` 은 린트 에러(실측한 허용 범위가 정확히 이것이다).
 2. 레포지토리 인터페이스에 `remove`·`delete` 메서드가 없다. 쓰기 메서드는 `upsert` 뿐이며 인자 타입은 `Persistable<T>`.
 3. 계약 테스트 필수 케이스: (a) `Meta` 왕복 동일 (b) `upsert(touch(e))` 후 `getById(id)?.rev === e.rev + 1` (c) `upsert(markDeleted(e))` 후 `READS` 의 모든 메서드가 그 id 를 반환하지 않음 (d) `// @ts-expect-error` 로 `upsert(plain)` 컴파일 실패 고정 (e) `READS satisfies Record<ReadName, ReadCall>` 전수 대조 — (c) 는 `Object.entries(READS)` 를 순회해 이 맵을 실제로 호출한다.
 4. `src/infra/indexeddb/*-repository.ts` 는 `db.ts` 를 import 하지 않는다(린트).

@@ -119,6 +119,30 @@ add "$FT/rel1.ts"      no-restricted-imports      "$I './a'; export const x = a;
 add "$FT/req.ts"       no-restricted-syntax       "export const x = require('@/infra/__arch__/a');"
 add "$FT/dyn.ts"       import/no-restricted-paths "export const x = import('@/infra/__arch__/a');"
 add "$FT/dyn-tpl.ts"   no-restricted-syntax       'export const x = import(`@/infra/__arch__/a`);'   # 리터럴이 아니면 경계 검사를 못 받으므로 문법 단계에서 금지
+# (c2) 경로 표기 정규형(CANONICAL) — 같은 파일을 다른 문자열로 써서 문자열 기반 규칙을 우회하는 경로를 막는다.
+#      아래가 뚫리면 조립 지점·lib 시계·db.ts·자기 배럴·패키지 목록이 전부 함께 뚫린다(라운드 3 검증 4-b).
+printf '// 아키텍처 검사 임시 파일\nexport const a = 1;\n' > src/domain/__arch__/a.rules.ts
+add "$FT/note-dot.ts"       no-restricted-imports "$I '@/infra/__arch__/./a'; export const x = a;"
+add "$FT/note-dotdot.ts"    no-restricted-imports "$I '@/infra/__arch__/../__arch__/a'; export const x = a;"
+add "$FT/note-slash2.ts"    no-restricted-imports "$I '@/infra//__arch__/a'; export const x = a;"
+add "$FT/note-trail.ts"     no-restricted-imports "$I '@/infra/__arch__/a/'; export const x = a;"
+add "$FT/note-ext.ts"       no-restricted-imports "$I '@/infra/__arch__/a.ts'; export const x = a;"
+add "$FT/note-pct.ts"       no-restricted-imports "$I '@/infra/%2e/__arch__/a'; export const x = a;"
+add "$FT/note-backslash.ts" no-restricted-imports "$I '@/infra\\\\__arch__/a'; export const x = a;"   # 값에 백슬래시가 남는 표기
+add "$FT/note-barrel-index.ts" no-restricted-imports "$I '@/features/$FA/index'; export const x = a;"
+add src/domain/__arch__/note-lib-clock.ts no-restricted-imports "$I '@/lib/./date'; export const x = a;"
+add src/app/__arch__/note-providers.ts    no-restricted-imports "$I '@/app/__arch__/./providers'; export const x = a;"
+add src/app/__arch__/note-providers-ext.ts no-restricted-imports "$I '@/app/__arch__/providers.ts'; export const x = a;"
+add "$FT/note-ok-dotted.ts" -             "$I '@/domain/__arch__/a.rules'; export const x = a;"   # 긍정: 이름 속 '.'(todo.rules)은 정규형이다
+# (c3) 동적 import() 거울 — no-restricted-imports 는 import() 를 검사하지 않는다. 거울이 빠지면 한 줄로 전부 우회된다
+add src/app/__arch__/dyn-providers.ts  no-restricted-syntax "export const x = import('@/app/__arch__/providers');"
+add src/infra/__arch__/dyn-db.ts       no-restricted-syntax "export const x = import('@/infra/indexeddb/db');"
+add src/domain/__arch__/dyn-pkg.ts     no-restricted-syntax "export const x = import('zustand');"
+add src/domain/__arch__/dyn-lib-clock.ts no-restricted-syntax "export const x = import('@/lib/date');"
+add "$FT/dyn-self-barrel.ts"           no-restricted-syntax "export const x = import('@/features/$FA');"
+add "$FT/dyn-rel.ts"                   no-restricted-syntax "export const x = import('./a');"
+add src/test/__arch__/dyn-note.ts      no-restricted-syntax "export const x = import('@/infra/__arch__/./a');" # 테스트도 표기 규칙은 받는다
+add src/domain/__arch__/meta-dyn.ts     no-restricted-syntax "export const x = import('@/lib/date');"            # meta.ts 예외 블록도 거울을 갖는다
 # (d) 미분류 파일·잘못된 확장자·배럴 위치 — 파일 자체가 에러
 add src/__arch__/stray.ts              no-restricted-syntax       "export const x = 1;"
 add src/features/__arch__/stray.ts     no-restricted-syntax       "export const x = 1;"

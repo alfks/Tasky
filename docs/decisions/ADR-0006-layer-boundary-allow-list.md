@@ -14,11 +14,12 @@
 1. 허용 목록: 레이어마다 "import 해도 되는 src/ 하위 경로"만 적는다(`scripts/arch-layers.mjs` 의 `ALLOW` = ARCHITECTURE.md §1 표). ESLint 표현은 `import/no-restricted-paths` 의 `from: './src'` + `except: 허용 목록` — 그 외 `src/**` 는 열거하지 않아도 금지된다.
 2. 전수 분류: `src/**` 의 모든 파일은 `LAYERS` 중 정확히 하나에 속한다. 밖의 파일(`src/` 직속, 미등록 디렉토리, `src/features/` 직속, `src/styles/*.ts`)은 **파일 자체가 린트 에러**(`no-restricted-syntax` `Program` 셀렉터). `scripts/check-arch.sh` 가 트래킹 파일 전체를 셸에서 한 번 더 검사한다. 예외는 Next.js 가 위치를 강제하는 `src/middleware.ts`·`src/instrumentation.ts`(`lib` 만 import).
 3. 확장자: 레이어 블록은 확장자를 열거하지 않는다(`src/<layer>/**`). 린트 대상 확장자는 `LINTED` 한 곳, `src/` 에 존재 가능한 확장자는 `SRC_EXT`(`ts tsx css md`) 한 곳 — 그 밖의 파일(`.js`·`.jsx`·`.mts`)은 파일 자체가 에러이고 레이어 규칙도 그대로 받는다.
-4. 표기: `src/` 안 import 는 **항상 `@/…` 절대 경로**, 상대 경로(`./`, `../`) 전부 금지. 어떤 출발·대상 조합에도 합법 표기가 정확히 하나(code-style.md §7 표).
+4. 표기: `src/` 안 import 는 **항상 `@/…` 절대 경로**, 상대 경로(`./`, `../`) 전부 금지. 어떤 출발·대상 조합에도 합법 표기가 정확히 하나(code-style.md §7 표) — 그 "하나" 를 문자열 수준에서 강제하는 것이 결정 9다.
 5. 배럴: `index.ts` 는 `src/features/<f>/index.ts` 에만(다른 곳의 `index.*` 는 에러). 밖에서는 그 파일만 import 가능, 안에서는 자기 배럴 import 금지, `export *` 금지. `domain` 은 배럴 없음(파일 직접 import), `repositories/index.ts` 는 `container.ts` 로 개명.
-6. 2홉 이상 간접 경로: (2) 로 경유지 파일도 반드시 어떤 레이어에 속하고, 허용 목록의 이행적 폐포가 `infra`·`test` 에 닿는 레이어를 늘리지 않는다. **예외는 조립 지점 하나뿐이고 그것만 따로 막는다** — `@/app/providers` 를 import 할 수 있는 파일은 `src/app/layout.tsx` 하나(`no-restricted-imports`), `providers.tsx` 안의 재export(`export … from`)는 금지(`ExportNamedDeclaration[source]`). 비테스트 파일의 `*.test.*` import 도 금지(테스트 예외를 경유지로 못 쓴다).
+6. 2홉 이상 간접 경로: (2) 로 경유지 파일도 반드시 어떤 레이어에 속하고, 허용 목록의 이행적 폐포가 `infra`·`test` 에 닿는 레이어를 늘리지 않는다. **예외는 조립 지점 하나뿐이고 그것만 따로 막는다** — `@/app/providers` 를 import 할 수 있는 파일은 `src/app/layout.tsx` 하나(`no-restricted-imports` + 결정 9 의 정규형·거울이 전제다: 그것 없이는 `@/app/./providers` 한 줄로 우회된다 — 라운드 3 실측), `providers.tsx` 안의 재export(`export … from`)는 금지(`ExportNamedDeclaration[source]`). 비테스트 파일의 `*.test.*` import 도 금지(테스트 예외를 경유지로 못 쓴다).
 7. **한계를 명시한다**: 위는 전부 *import 간선* 규칙이므로 `providers.tsx` 가 직접 래퍼(`export const getDb = () => db`)로 infra 값을 내보내는 것은 잡지 못한다(실측 ALLOWED). 도구로 닫지 않고 그 한 파일의 리뷰로 받는다 — ARCHITECTURE.md §1 에 "보장되는 것/보장되지 않는 것" 으로 적는다.
 8. 설정 드리프트 가드: `LAYERS` 에 이름만 추가하면 무제약 영역이 생기므로, `ALLOW` 항목도 규칙 블록(`files: 'src/<layer>/**'`)도 없는 레이어가 있으면 **설정 로드 시점에 throw** 한다(`arch-layers.mjs` + `eslint.config.mjs`) — `pnpm lint` 가 즉시 실패한다.
+9. 문자열 규칙의 전제 — **표기 정규형 + 동적 `import()` 거울**: 해석 경로로 판정할 수 없는 규칙(조립 지점·`lib/date`·`db.ts`·자기 배럴·패키지 허용 목록)은 쓰인 문자열만 보므로, ①`@/…` 표기를 정규형 하나로 고정하고(`'.'`/`'..'` 세그먼트·중복/후행 슬래시·백슬래시·`%` 인코딩·허용 밖 문자·코드 확장자·`/index` 는 그 자체가 에러), ②`no-restricted-imports` 가 보지 않는 `import()` 에 같은 패턴을 `ImportExpression` 셀렉터로 복제하고, ③둘 중 하나라도 블록에서 빠지면 **설정 로드 시점에 throw** 한다(가드 2). 대소문자 변형은 패턴의 기본 대소문자 무시 매칭과 `import/no-unresolved`(`caseSensitive`)가 잡는다. 전제: 경로 별칭은 `@/*` 하나 — 별칭을 늘리면 이 결정을 다시 본다.
 
 ## 대안과 기각 이유
 | 대안 | 기각 이유 |
@@ -29,7 +30,7 @@
 | 표기: 같은 디렉토리 `./`, 그 외 `@/` | "같은 디렉토리" 의 범위(폴더? feature?)를 린트가 파일별로 판정할 수 없어 dead-end 가 재발한다. 유일 표기가 우선 |
 
 ## 결과
-- 좋은 점: 새 디렉토리·파일·확장자가 **기본 금지**. 이행적 도달: `domain→{domain,lib}`, `repositories→+domain`, `infra→+repositories`, `components→{components,lib,styles}`, `features→{features(자기+index),domain,repositories,components,lib,styles}` — 전부 폐포. `infra`·`test` 를 **import** 하는 비테스트 파일은 `app/providers.tsx` 뿐이고, 그 파일을 import 하는 파일은 `layout.tsx` 뿐이다. `app→features(index)→domain` 만 2홉으로 열리는데 이것이 "훅 경유" 의 의도다.
+- 좋은 점: 새 디렉토리·파일·확장자가 **기본 금지**. 이행적 도달: `domain→{domain,lib}`, `repositories→+domain`, `infra→+repositories`, `components→{components,lib,styles}`, `features→{features(자기+index),domain,repositories,components,lib,styles}` — 전부 폐포. 테스트 계층(`src/test/**`·`*.test.*` — 경계 면제)과 자기 레이어를 빼면 `infra`·`test` 를 **import** 하는 파일은 `app/providers.tsx` 뿐이고, 그 파일을 import 하는 파일은 `layout.tsx` 뿐이다(경로 표기 변형·동적 `import()` 포함 — `check-arch.sh` 픽스처가 고정). `app→features(index)→domain` 만 2홉으로 열리는데 이것이 "훅 경유" 의 의도다.
 - 감수하는 점: 같은 디렉토리도 `@/…` 로 써 import 가 길다. 새 레이어·확장자는 ADR + `arch-layers.mjs` 수정이 필요하다(의도된 마찰). 의존성 결정의 근거: 도구를 바꾸는 비용(+1 dep, 규칙 언어 2개)보다 설정 형태를 바꾸는 비용이 작았고 실측으로 충분함이 확인됐다.
 
 ## 지켜야 할 규칙 (검증 가능한 문장 — 리뷰 판정 근거)
@@ -37,7 +38,8 @@
 2. `bash scripts/check-arch.sh` 가 매 CI 에서 픽스처 전부 PASS(부정 + 긍정). 픽스처는 손으로 고른 목록이지 `ALLOW` 전수 생성이 아니다 — 경계·표기 규칙을 바꾸면 케이스도 같은 PR.
 3. `src/` 에 상대 경로 import, `features/*/index.ts` 외의 `index.*`, `.js/.jsx`, 직속 파일(`middleware.ts`·`instrumentation.ts` 외)이 없다 — `pnpm lint` 와 `check-arch.sh` 가 잡는다.
 4. `noInlineConfig` 는 쓰지 않는다. disable 정책의 단일 소스는 `scripts/check-eslint-disable.sh`.
-5. 예외 블록(`meta.ts`, `app/providers.tsx`, `layout.tsx`)은 `files` 에 `src/<layer>/__arch__/<이름>.ts` 픽스처 경로를 함께 적는다. 예외가 **무엇을 지우고 무엇을 남기는지** check-arch.sh 가 실제로 판정하게 하기 위해서다(`__arch__` 는 레포에 존재하지 않는다).
+5. 경로 표기 변형(`@/app/./providers`, `@/lib/date.ts`, `@/features/<f>/index`, 중복 슬래시…)과 동적 `import()` 는 정상 표기와 같은 판정을 받는다 — `check-arch.sh` 의 표기·동적 픽스처가 고정한다(라운드 3 우회 재발 방지).
+6. 예외 블록(`meta.ts`, `app/providers.tsx`, `layout.tsx`)은 `files` 에 `src/<layer>/__arch__/<이름>.ts` 픽스처 경로를 함께 적는다. 예외가 **무엇을 지우고 무엇을 남기는지** check-arch.sh 가 실제로 판정하게 하기 위해서다(`__arch__` 는 레포에 존재하지 않는다).
 
 ## 재검토 트리거
 (레포에서 읽히는 수치나 실제로 일어나는 사건만 적는다 — "문제가 생기면" 은 트리거가 아니다)

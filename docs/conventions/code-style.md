@@ -40,7 +40,7 @@ src/repositories/
   memory/<entity>-memory-repository.ts # 테스트/스토리용
   container.ts                         # Repositories 타입 + getRepositories()/setRepositories() (index.ts 아님)
 src/infra/indexeddb/
-  db.ts                                # Dexie 스키마·버전 — query.ts 만 import 한다(린트)
+  db.ts                                # Dexie 스키마·버전 — 테스트 계층 밖에선 query.ts 만 import(린트)
   query.ts                             # liveAll/liveOne/put — 툼스톤 필터와 쓰기가 있는 유일한 곳
   <entity>-indexeddb-repository.ts     # query.ts 헬퍼만 사용
 ```
@@ -76,11 +76,11 @@ src/infra/indexeddb/
 
 ## 5. 도메인 / 레포지토리 규칙 (ADR-0005 · ADR-0007)
 
-- `src/domain/**`는 외부 패키지를 하나도 import 하지 않고(린트 허용 목록 0개) 브라우저 전역·`Date`·`crypto`·`Math.random`도 참조하지 않는다(린트). 시간·ID는 `deps = { now: () => string, id: () => string }`로 주입(런타임 구현은 `lib/date.ts#nowIso`, `lib/id.ts#newId` — domain 에서 이 둘을 **직접 import 하는 것도 금지**). `meta.ts` 예외 블록은 `Meta` 필드 쓰기와 `Persistable` 생성만 풀고 결정성 규칙은 그대로 받는다(`check-arch.sh` 의 `meta-clock`/`meta-write` 픽스처가 고정).
+- `src/domain/**`(테스트 파일 제외 — §7 의 테스트 계층 단서)는 외부 패키지를 하나도 import 하지 않고(린트 허용 목록 0개) 브라우저 전역·`Date`·`crypto`·`Math.random`도 참조하지 않는다(린트). 시간·ID는 `deps = { now: () => string, id: () => string }`로 주입(런타임 구현은 `lib/date.ts#nowIso`, `lib/id.ts#newId` — domain 에서 이 둘을 **직접 import 하는 것도 금지**). `meta.ts` 예외 블록은 `Meta` 필드 쓰기와 `Persistable` 생성만 풀고 결정성 규칙은 그대로 받는다(`check-arch.sh` 의 `meta-clock`/`meta-write` 픽스처가 고정).
 - 엔티티는 `type` + 생성 함수 `createTodo(input, deps): Persistable<Todo>`. 클래스 금지. 모든 변경 함수는 `touch(next, deps.now())` 로 끝나고 `Persistable<T>` 를 반환한다. 삭제는 `markDeleted(e, deps.now())`.
-- **쓰기 경로 타입**: `Persistable<T>` 를 만드는 함수는 `src/domain/meta.ts` 의 `createMeta`·`touch`·`markDeleted` 셋뿐. 레포지토리 `upsert` 는 이 타입만 받고 조회는 브랜드 없는 `T` 를 돌려주므로, 읽은 값을 그대로/스프레드해서 저장하면 컴파일 에러. `as Persistable` 캐스팅과 `meta.ts` 밖에서의 `rev/updatedAt/createdAt/deletedAt` 쓰기는 린트 에러(읽기는 허용).
+- **쓰기 경로 타입**: `Persistable<T>` 를 만드는 함수는 `src/domain/meta.ts` 의 `createMeta`·`touch`·`markDeleted` 셋뿐. 레포지토리 `upsert` 는 이 타입만 받고 조회는 브랜드 없는 `T` 를 돌려주므로, 읽은 값을 그대로/스프레드해서 저장하면 컴파일 에러. `meta.ts`·테스트 계층(`src/test/**`, `*.test.*`) 밖에서의 `as Persistable` 캐스팅과 `rev/updatedAt/createdAt/deletedAt` 쓰기는 린트 에러(읽기는 허용).
 - 레포지토리 인터페이스: `Promise` 반환, 도메인 타입만(Dexie 타입 금지). 메서드는 조회(`getById / listByDate / listAll / get`)와 `upsert(entity: Persistable<T>)` — **`remove` 없음**. 조회는 툼스톤을 반환하지 않는다(`getById` → `undefined`, `list*` 제외, `includeDeleted` 옵션 없음).
-- 소프트 삭제 필터의 위치는 하나: IndexedDB 는 `infra/indexeddb/query.ts` 의 `liveAll/liveOne/put`(`db.ts` 를 import 할 수 있는 유일한 파일 — 린트), memory 는 `memory/live.ts` 의 같은 이름 헬퍼. 레포지토리 구현은 이 헬퍼만 쓴다.
+- 소프트 삭제 필터의 위치는 하나: IndexedDB 는 `infra/indexeddb/query.ts` 의 `liveAll/liveOne/put`(테스트 계층 밖에서 `db.ts` 를 import 할 수 있는 유일한 파일 — 린트), memory 는 `memory/live.ts` 의 같은 이름 헬퍼. 레포지토리 구현은 이 헬퍼만 쓴다.
 - 마이그레이션은 `infra/indexeddb/db.ts`의 Dexie `version(n)`으로만. 스키마 변경 = ADR + 마이그레이션 테스트.
 
 ## 6. CSS 전략
@@ -93,7 +93,7 @@ src/infra/indexeddb/
 
 ## 7. import 경로 · 순서 · disable 정책
 
-**경로 규칙 — 표 하나로 판단한다.** `src/` 안의 import 는 **항상 `@/…` 절대 경로**이고 상대 경로(`./`, `../`)는 전부 린트 에러다. 레이어 경계는 `import/no-restricted-paths` 가 **해석된 실제 경로**로 검사하므로 표기와 무관하게 판정이 같다. 아래 표는 가능한 출발·대상 조합 전부이며, 각 조합의 합법 표기는 정확히 하나다(빈칸 없음).
+**경로 규칙 — 표 하나로 판단한다.** `src/` 안의 import 는 **항상 `@/…` 절대 경로**이고 상대 경로(`./`, `../`)는 전부 린트 에러다. 레이어 경계는 `import/no-restricted-paths` 가 **해석된 실제 경로**로 검사하므로 표기와 무관하게 판정이 같다. 아래 표는 가능한 출발·대상 조합 전부이며, 각 조합의 합법 표기는 정확히 하나다(빈칸 없음). **표기는 정규형 하나로 강제된다**(`no-restricted-imports` 의 CANONICAL 패턴): 확장자(`.ts`·`.tsx`·`.js`…), `/index`, `./`·`../` 세그먼트, 중복·후행 슬래시, 백슬래시·`%` 인코딩·공백·비ASCII 는 전부 에러다. 같은 파일을 다른 문자열로 가리켜 문자열 기반 규칙(조립 지점·`lib/date`·`db.ts`·자기 배럴·패키지 목록)을 우회하는 길을 막는 전제다.
 
 | # | 출발 파일 | 대상 | 합법 표기(유일) | 예 |
 |---|----------|------|----------------|----|
@@ -110,8 +110,10 @@ src/infra/indexeddb/
 | 11 | `*.test.*`, `src/test/**` | 무엇이든 | `@/<layer>/<경로>` (경계 제한 없음, 상대 경로는 여기서도 금지) | `'@/infra/indexeddb/todo-indexeddb-repository'` |
 | 12 | `src/middleware.ts`·`src/instrumentation.ts` | `lib` 만 | `@/lib/<경로>` | `'@/lib/date'` |
 
-- `@/` import는 반드시 해석되어야 한다(`import/no-unresolved`) — 별칭이 깨지면 경계 검사가 조용히 무력화되므로 카나리로 둔다.
-- `require()`·`export *` 는 `src/` 전체에서 금지(린트). 동적 `import()` 는 **인자가 문자열 리터럴일 때만** 같은 경계 판정을 받으므로, 리터럴이 아닌 인자(변수·템플릿 리터럴)는 그 자체가 린트 에러다.
+- **테스트 계층 단서**: 이 문서에서 "린트가 막는다" 는 서술은 전부 **비테스트 파일 기준**이다. 테스트 계층(`src/test/**`, `*.test.*`)은 레이어 경계·브라우저 전역·패키지 허용 목록·`Meta` 쓰기·`as Persistable` 이 면제되고 표기 규칙(상대 경로 금지 + 정규형)만 받는다(§11, 실측).
+- `@/` import는 반드시 해석되어야 한다(`import/no-unresolved`, `caseSensitive`) — 별칭이 깨지면 경계 검사가 조용히 무력화되므로 카나리로 둔다. 대소문자만 다른 표기(`@/app/Providers`)도 여기서 걸린다.
+- `require()`·`require.resolve()`·`export *` 는 `src/` 전체에서 금지(린트). 동적 `import()` 는 **인자가 문자열 리터럴일 때만** 같은 경계 판정을 받으므로, 리터럴이 아닌 인자(변수·템플릿 리터럴)는 그 자체가 린트 에러다.
+- 동적 `import()` 도 위의 문자열 규칙을 똑같이 받는다: ESLint 의 `no-restricted-imports` 는 `import()` 를 검사하지 않으므로 `eslint.config.mjs` 가 같은 패턴을 `ImportExpression` 셀렉터로 복제하고(거울), 복제 누락은 설정 로드 시점에 throw 한다(ADR-0006 결정 9).
 - `@/app/providers`(조립 지점)를 import 할 수 있는 파일은 `src/app/layout.tsx` 하나이고, `providers.tsx` 는 재export(`export … from`)를 할 수 없다 — 조립 지점을 경유지로 쓰지 못하게 한다(ADR-0006 규칙 6, 한계는 ARCHITECTURE.md §1).
 
 **순서** (`import/order`가 정렬, 여기선 그룹 정의)
@@ -137,7 +139,7 @@ src/infra/indexeddb/
 - 스토어 액션은 try/catch로 받아 `error: string | null` 상태에 사용자 문구를 넣는다. `console.error`는 개발 모드에서만(`if (process.env.NODE_ENV !== 'production')`).
 - 에러를 삼키지 않는다(빈 catch 금지). 복구 불가 시 `app/error.tsx` 바운더리로 전파.
 - 사용자 문구는 한국어, 원인이 아닌 **다음 행동**을 안내("다시 시도해 주세요").
-- `any` 금지, `as` 캐스팅은 경계(IndexedDB 역직렬화, `query.ts`)에서만 + 주석. `as Persistable` 은 어디서도 금지(린트). 역직렬화 결과는 검증 후 도메인 함수로 되돌린다 — `JSON.parse` 결과를 바로 `upsert` 하지 않는다(타입도 린트도 못 잡는 경로).
+- `any` 금지, `as` 캐스팅은 경계(IndexedDB 역직렬화, `query.ts`)에서만 + 주석. `as Persistable` 은 `domain/meta.ts` 와 테스트 계층(`src/test/**`, `*.test.*`) 밖에서 금지(린트 — 실측으로 확인한 범위다). 역직렬화 결과는 검증 후 도메인 함수로 되돌린다 — `JSON.parse` 결과를 바로 `upsert` 하지 않는다(타입도 린트도 못 잡는 경로).
 
 ## 10. 접근성 최소 기준
 
@@ -163,4 +165,4 @@ src/infra/indexeddb/
 
 ## 12. 금지 목록 (요약)
 
-`any` · `React.FC` · index key · `div onClick` · 하드코딩 색상 · `export *` · `require()` · 상대 경로 import · `features/*` 밖의 `index.ts` · `.js/.jsx` · 빈 catch · 티켓 없는 TODO · 컴포넌트 내 Dexie · `domain`의 외부 패키지 import · `domain`의 `Date`/`crypto` 직접 호출 · `touch()` 없는 엔티티 저장(컴파일 에러) · `meta.ts` 밖 `Meta` 필드 쓰기 · `as Persistable` · 레포지토리 `remove` · 리터럴 아닌 동적 `import()` · `layout.tsx` 밖에서 `@/app/providers` import · `providers.tsx` 의 재export · 아키텍처 규칙 `eslint-disable` · 사유 없는 `eslint-disable` · `useEffect` 상태 동기화 · 스냅샷 테스트 · 300줄 초과 파일 · 레퍼런스 앱 제품명
+`any` · `React.FC` · index key · `div onClick` · 하드코딩 색상 · `export *` · `require()` · 상대 경로 import · `features/*` 밖의 `index.ts` · `.js/.jsx` · 빈 catch · 티켓 없는 TODO · 컴포넌트 내 Dexie · `domain`의 외부 패키지 import · `domain`의 `Date`/`crypto` 직접 호출 · `touch()` 없는 엔티티 저장(컴파일 에러) · `meta.ts` 밖 `Meta` 필드 쓰기 · 테스트 계층 밖 `as Persistable` · 비정규형 import 표기(확장자·`/index`·`./`) · 레포지토리 `remove` · 리터럴 아닌 동적 `import()` · `layout.tsx` 밖에서 `@/app/providers` import · `providers.tsx` 의 재export · 아키텍처 규칙 `eslint-disable` · 사유 없는 `eslint-disable` · `useEffect` 상태 동기화 · 스냅샷 테스트 · 300줄 초과 파일 · 레퍼런스 앱 제품명
