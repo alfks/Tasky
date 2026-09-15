@@ -28,7 +28,7 @@ MVP는 서버 없이 동작해야 하며, Phase 2에서 클라우드 동기화�
 - 감수하는 점: 컨테이너 주입 보일러플레이트, liveQuery의 자동 반응성을 포기(스토어가 갱신 책임).
 
 ## 지켜야 할 규칙
-1. `infra`를 import하는 비테스트 파일은 `src/app/providers.tsx` **하나뿐**이다 — `pnpm lint`(`import/no-restricted-paths`)와 2차 패스가 막는다(ARCHITECTURE.md §1, 실측). `src/test/setup.ts` 도 `infra` 를 import 하지만 그것은 테스트 계층이라 경계가 면제된 것이다(금지 목록의 예외가 아니다).
+1. `infra` 밖의 비테스트 파일 중 `infra`를 import하는 것은 `src/app/providers.tsx` **하나뿐**이다(`infra` 내부끼리는 당연히 서로 import 한다) — `pnpm lint`(`import/no-restricted-paths`)와 2차 패스가 막는다(ARCHITECTURE.md §1, 실측). `src/test/setup.ts` 도 `infra` 를 import 하지만 그것은 테스트 계층이라 경계가 면제된 것이다(금지 목록의 예외가 아니다).
 2. 레포지토리 인터페이스는 도메인 타입만 노출. Dexie 타입 금지.
 3. 스키마 변경은 `db.ts`의 새 `version(n+1)` + 마이그레이션 테스트 + 새 ADR.
 4. 공통 필드·삭제·갱신 규칙은 ADR-0005 규칙 1~5를 따른다.

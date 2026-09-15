@@ -7,7 +7,10 @@
 #       eslint.config.mjs 의 ignores(pnpm lint 무해)가 막고, 여기서는 --no-ignore 로 그 ignores 를 뚫고 검사한다.
 #       또한 **2차 패스**(eslint.arch.config.mjs + --no-inline-config)를 실제 src/ 에 한 번 돌린다 — 아키텍처 규칙은
 #       인라인 지시자로 끌 수 없다는 보장이 여기서 강제된다(ADR-0008). 그 패스는 arch_pass() 한 곳에만 적혀 있고
-#       (g) 픽스처가 같은 함수를 호출하므로, 플래그·설정을 지우면 픽스처가 실패한다. 대상 범위는 커버리지 검사가 본다.
+#       (g) 픽스처가 같은 함수를 호출하므로 `--no-inline-config` 를 지우면 픽스처가 실패한다. 대상 범위는
+#       커버리지 검사가 본다. 예외: `-c eslint.arch.config.mjs` 만 지우면 1차 설정으로 떨어지는데,
+#       아키텍처 규칙 집합이 같아 실제 위반은 그대로 잡히고 정당한 style disable 이 오분류돼 시끄럽게
+#       실패한다(클린 트리에서만 통과). 조용한 구멍은 아니다 — 실측.
 #       비정상 종료로 남았으면: rm -rf src/**/__arch__
 # 사용법: bash scripts/check-arch.sh   (package.json 이 없으면 SKIP)
 set -euo pipefail
