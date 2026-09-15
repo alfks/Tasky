@@ -83,7 +83,7 @@ cd /home/user/Tasky/.worktrees/date-strip
 ### 작업 중
 ```bash
 git status --short                 # owns: 밖 파일이 보이면 즉시 되돌림
-pnpm check                          # lint + typecheck + test (스캐폴딩 전: bash scripts/check.sh)
+pnpm check                          # = bash scripts/check.sh (금지어·AGENTS.md·author·wt·arch·lint·typecheck·format·test)
 git add <파일…>                     # git add -A 금지 (소유권 밖 파일 방지)
 git commit -m "feat(date-strip): 주 단위 날짜 스트립 컴포넌트 추가"
 git push -u origin feature/date-strip

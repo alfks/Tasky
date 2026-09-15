@@ -15,7 +15,7 @@
 | `check-forbidden-words.sh [paths…]` | 금지어 검사(조각 조립 정규식) | pre-commit, CI, 수동 |
 | `check-author.sh <base>` | `<base>..HEAD` 커밋 author/트레일러 검증. `--message-file`/`--body-file` 은 실제 커밋에 남는 원문(`#` 줄 포함 — git의 기본 cleanup은 `-m`/`-F` 에서 주석을 지우지 않는다) 그대로 검사 | CI, 수동 |
 | `check-agents-md.sh` | 트래킹 파일이 있는 모든 디렉토리마다 `AGENTS.md` 존재(상위의 `관할:` 선언 시 면제)·60줄 이하 검사 | CI, 수동 |
-| `check-arch.sh` | ① `src/**` 전수 분류 ② **아키텍처 2차 패스**(`eslint --no-inline-config -c eslint.arch.config.mjs src`) ③ 경계 린트가 위반을 실제로 잡는지 임시 픽스처(`src/**/__arch__/`)로 검증 — 마지막 5건은 인라인 지시자가 1차에서는 먹히고 2차에서는 무시되는지 대조한다(ADR-0008). `package.json` 없으면 SKIP | CI build, `check.sh`, `pnpm check:arch` |
+| `check-arch.sh` | ① `src/**` 전수 분류(코드 파일 = 레이어 하나, `.md` 는 `AGENTS.md` 만) ② **아키텍처 2차 패스**(`arch_pass()` = `eslint --no-inline-config -c eslint.arch.config.mjs src`) + 커버리지(트래킹된 `src` 코드 파일이 전부 그 패스에 들어갔는지) ③ 경계 린트가 위반을 실제로 잡는지 임시 픽스처(`src/**/__arch__/`)로 검증 — 마지막 5건은 같은 `arch_pass()` 를 불러 인라인 지시자가 1차에서는 먹히고 2차에서는 무시되는지 대조한다(ADR-0008). `package.json` 없으면 SKIP | CI build, `check.sh`, `pnpm check:arch` |
 | `arch-layers.mjs` | 레이어·허용 목록·`src/` 직속 파일·확장자 + **아키텍처 규칙 목록(`ARCH_RULES`)**의 단일 소스(데이터만, 로직 없음). `eslint.config.mjs`·`eslint.arch.config.mjs`·`check-arch.sh`가 import | `pnpm lint`, `check-arch.sh` |
 
 ## 규칙

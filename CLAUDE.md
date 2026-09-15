@@ -57,7 +57,7 @@ bash scripts/setup.sh                     # 최초 1회: author config + 훅 + p
 bash scripts/wt.sh new feature/<name>     # 워크트리 생성(+브랜치) → .worktrees/<name>
 bash scripts/wt.sh list                   # 워크트리/보드 상태
 bash scripts/wt.sh rm <name>              # 머지 후 워크트리+브랜치 정리
-pnpm check                                # lint+typecheck+test, PR 전 필수 (스캐폴딩 전: bash scripts/check.sh)
+pnpm check                                # = bash scripts/check.sh (금지어·AGENTS.md·author·wt·arch·lint·typecheck·format·test). PR 전 필수
 bash scripts/check-forbidden-words.sh     # 금지어 검사
 bash scripts/check-author.sh main         # main 이후 커밋 author 검증
 bash scripts/check-agents-md.sh           # AGENTS.md 누락 검사

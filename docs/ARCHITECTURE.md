@@ -56,7 +56,7 @@ flowchart TB
 | `src/lib` | `lib` | `clsx`, `tailwind-merge` 만 |
 | `src/styles` | (코드 없음 — `.css` 만) | — |
 | `src/test`, `*.test.*` | 전부(계약 테스트가 구현을 직접 돌린다). 역방향: 비테스트 파일은 `src/test`·`*.test.*` import 금지 | 제한 없음 |
-| `src/middleware.ts`, `src/instrumentation.ts` | `lib` (Next.js 가 위치를 강제하는 유일한 `src/` 직속 파일) | — |
+| `src/middleware.ts`, `src/instrumentation.ts` | `lib` (Next.js 가 위치를 강제하는 유일한 `src/` 직속 **코드** 파일 — 그 밖에 `src/` 직속에 올 수 있는 것은 `AGENTS.md` 뿐) | — |
 
 원칙: **UI → 상태 → 도메인 → 인터페이스 ← 인프라**. 인프라는 인터페이스를 구현할 뿐이다. 경로 표기는 항상 `@/…`(code-style.md §7 표).
 

@@ -15,12 +15,12 @@ ESLint 는 "쓰인" `eslint-disable` 을 조용히 통과시킨다. 그래서 �
 **문법 파싱을 ESLint 에 맡긴다. 아키텍처 규칙만 담은 별도 flat config 로 `--no-inline-config` 2차 패스를 한 번 더 돌린다.**
 1. `scripts/arch-layers.mjs` 가 아키텍처 규칙 목록의 단일 소스다 — `ARCH_RULES_COMMON`(공통 블록에서 켜는 규칙, **설정값까지** 여기 있다) + `ARCH_RULES_LAYER`(레이어 블록이 레이어마다 생성하는 경계 규칙) = `ARCH_RULES`.
 2. `eslint.config.mjs`(1차 패스)는 그대로 둔다. 스타일 규칙의 정당한 disable(`// eslint-disable-next-line react/jsx-key -- 사유`)은 계속 허용되어야 한다 — 전체 설정에 `--no-inline-config` 를 걸면 그것까지 무력화되어 개발이 막힌다. 공통 블록은 `...ARCH_RULES_COMMON` 을 펼치기만 한다.
-3. `eslint.arch.config.mjs`(2차 패스)는 **규칙을 다시 적지 않는다.** 1차 설정을 import 해 `ARCH_RULES` 에 없는 규칙만 지운다(`files`·`ignores`·plugins·parser·settings 는 그대로). 그래서 규칙 내용·옵션·레이어별 생성 결과가 1차와 어긋날 수 없다. `reportUnusedDisableDirectives` 는 이 패스에서만 끈다(지시자를 무시하는 패스에서는 모든 지시자가 "미사용" 으로 보인다).
-4. `scripts/check-arch.sh` 가 `eslint --no-inline-config -c eslint.arch.config.mjs src` 를 실제 `src/` 에 돌린다. `node_modules` 가 필요하므로 CI 의 `guard` 가 아니라 `build` 잡(`check.sh --build`)에 있고, 스캐폴딩 전에는 `check-arch.sh` 가 통째로 SKIP 한다.
-5. 같은 스크립트가 2차 패스가 **살아 있는지** 픽스처 5건으로 확인한다: 빈 규칙 목록·규칙명 없는 disable·제한 규칙 명시 disable·NBSP 인라인 설정 주석·삼중슬래시 + 그 규칙 disable. 판정 기준은 "1차에서는 0건(지시자가 실제로 먹힘 = 음성 대조) **그리고** 2차에서는 1건 이상".
+3. `eslint.arch.config.mjs`(2차 패스)는 **규칙을 다시 적지 않는다.** 1차 설정을 import 해 `ARCH_RULES` 에 없는 규칙만 지운다(`files`·`ignores`·plugins·parser·settings 는 그대로). 그래서 규칙 내용·옵션·레이어별 생성 결과가 1차와 어긋날 수 없다. `reportUnusedDisableDirectives` 는 이 패스에서만 끈다 — 방어적 설정이다(실측: ESLint 9 는 `--no-inline-config` 에서 미사용 지시자를 아예 보고하지 않는다. 그 동작에 기대지 않는다).
+4. `scripts/check-arch.sh` 가 `eslint --no-inline-config -c eslint.arch.config.mjs src` 를 실제 `src/` 에 돌린다(그 명령은 스크립트 안 `arch_pass()` 한 곳에만 적혀 있다). 같은 실행의 JSON 결과로 **커버리지**도 본다: 트래킹된 `src` 코드 파일(`.ts`·`.tsx`) 중 하나라도 결과에 없으면 FAIL — 대상 경로를 좁히거나 전역 `ignores` 에 `src/…` 를 넣어 2차 패스를 조용히 비우는 변조가 여기서 잡힌다(실측). `node_modules` 가 필요하므로 CI 의 `guard` 가 아니라 `build` 잡(`check.sh --build`)에 있고, 스캐폴딩 전에는 `check-arch.sh` 가 통째로 SKIP 한다.
+5. 같은 스크립트가 2차 패스가 **살아 있는지** 픽스처 5건으로 확인한다: 빈 규칙 목록·규칙명 없는 disable·제한 규칙 명시 disable·NBSP 인라인 설정 주석·삼중슬래시 + 그 규칙 disable. 판정 기준은 "1차에서는 0건(지시자가 실제로 먹힘 = 음성 대조) **그리고** 2차에서는 1건 이상". 픽스처는 명령을 따로 조립하지 않고 결정 4 의 `arch_pass()` 를 그대로 호출한다 — 따로 조립하면 실제 실행 줄에서 `--no-inline-config` 를 지워도 픽스처가 전부 PASS 한다(실측으로 그 상태였다).
 6. 목록이 갈라지면 **설정 로드 시점에 throw** 한다 — 가드 4(경계 헬퍼가 만드는 규칙 ⊆ `ARCH_RULES`, 1차 설정에서), 가드 5(`ARCH_RULES_COMMON` 이 공통 블록에서 그 값 그대로 켜져 있는지 + 레이어 규칙이 어딘가에서 `'off'` 가 아닌지, 2차 설정에서), 가드 6(파생 결과에 규칙이 하나도 없으면 2차 패스가 조용히 무검사가 된다). 목록을 줄이려면 두 파일을 고쳐야 한다.
 7. `scripts/check-eslint-disable.sh` 는 삭제한다. 스타일 규칙 disable 에 사유를 적는 것은 **리뷰 항목**으로 남긴다(도구로 강제하지 않는다 — 그 강제가 바로 위 과잉 검출의 출처였다).
-8. **남는 한계**(실측으로 뒷받침되는 것만 적는다): ① 2차 패스의 범위는 `src/` 다. 레포 루트나 `src/` 밖에 둔 코드 파일은 아키텍처 규칙을 받지 않는다(위치 규칙은 DIRECTORY_MAP.md + 리뷰). ② 설정 파일 3개(`eslint.config.mjs`·`eslint.arch.config.mjs`·`arch-layers.mjs`)와 `tsconfig.json` 의 별칭을 고치는 것은 리뷰가 받는다 — 규칙 목록이 갈라지는 방향은 가드 4~6 이 막지만, 세 파일을 함께 고치는 diff 는 도구가 아니라 사람이 본다. ③ ESLint 가 파싱하지 못하는 파일은 fatal 로 보고되므로 조용히 빠지지는 않는다.
+8. **남는 한계**(실측으로 뒷받침되는 것만 적는다): ① 2차 패스의 범위는 `src/` 다. 레포 루트나 `src/` 밖에 둔 코드 파일은 아키텍처 규칙을 받지 않는다(위치 규칙은 DIRECTORY_MAP.md + 리뷰). ② 설정을 고치는 diff 는 대부분 도구가 잡지만 전부는 아니다. 실측: 규칙 목록이 갈라지는 방향은 가드 4~6 이 로드 시점에 죽이고, **한 파일 한 줄**짜리 변조도 `check-arch.sh` 가 잡는다(전역 `ignores` 에 `src/…` 추가·2차 패스 대상 축소 → 커버리지 검사, `--no-inline-config` 제거·`ARCH` 필터 축소 → disable 픽스처, 허용 목록 확대·레이어 규칙 `off` → 경계 픽스처). 도구가 보지 못하는 것은 **검사를 부르는 쪽을 지우는 diff** 다 — `scripts/check.sh` 의 `step_arch` 한 줄, `.github/workflows/ci.yml` 의 build 잡, `check-arch.sh` 자체의 삭제, 그리고 `tsconfig.json` 의 `@/*` 별칭. 이 넷은 사람이 본다. ③ ESLint 가 파싱하지 못하는 파일은 fatal 로 보고되므로 조용히 빠지지는 않는다.
 
 ## 대안과 기각 이유
 | 대안 | 기각 이유 |
@@ -37,7 +37,7 @@ ESLint 는 "쓰인" `eslint-disable` 을 조용히 통과시킨다. 그래서 �
 ## 지켜야 할 규칙 (검증 가능한 문장 — 리뷰 판정 근거)
 1. 아키텍처 규칙을 추가·삭제하려면 `arch-layers.mjs` 의 `ARCH_RULES_*` 와 `eslint.config.mjs` 를 같은 PR 에서 고친다. 한쪽만 고치면 `pnpm lint` 또는 2차 패스가 로드 시점에 죽는다(가드 4~6, 음성 대조 실측).
 2. `eslint.arch.config.mjs` 에 규칙 이름을 직접 적지 않는다 — 1차 설정에서 파생한다.
-3. `bash scripts/check-arch.sh` 가 매 CI 에서 2차 패스 + 픽스처 5건 PASS. 새 우회 문법을 발견하면 픽스처를 늘린다.
+3. `bash scripts/check-arch.sh` 가 매 CI 에서 2차 패스(+ 커버리지) + 픽스처 5건 PASS. 새 우회 문법을 발견하면 픽스처를 늘린다. 2차 패스의 명령을 픽스처가 따로 조립하지 않는다 — 실행하는 줄과 검증하는 줄이 갈라지면 검증이 거짓이 된다(실측으로 그랬다).
 4. ESLint 의 문법을 셸·정규식으로 재현하는 검사기를 다시 만들지 않는다(scripts/AGENTS.md 규칙 8).
 
 ## 재검토 트리거

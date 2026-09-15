@@ -13,7 +13,7 @@
 ## 결정
 **금지 목록을 허용 목록(allow-list)으로 뒤집고 `src/**` 를 전수 분류한다. 추가 의존성 없음.**
 1. 허용 목록: 레이어마다 "import 해도 되는 src/ 하위 경로"만 적는다(`scripts/arch-layers.mjs` 의 `ALLOW` = ARCHITECTURE.md §1 표). ESLint 표현은 `import/no-restricted-paths` 의 `from: './src'` + `except: 허용 목록` — 그 외 `src/**` 는 열거하지 않아도 금지된다.
-2. 전수 분류: `src/**` 의 모든 파일은 `LAYERS` 중 정확히 하나에 속한다. 밖의 파일(`src/` 직속, 미등록 디렉토리, `src/features/` 직속, `src/styles/*.ts`)은 **파일 자체가 린트 에러**(`no-restricted-syntax` `Program` 셀렉터). `scripts/check-arch.sh` 가 트래킹 파일 전체를 셸에서 한 번 더 검사한다. 예외는 Next.js 가 위치를 강제하는 `src/middleware.ts`·`src/instrumentation.ts`(`lib` 만 import).
+2. 전수 분류: `src/**` 의 모든 **코드** 파일은 `LAYERS` 중 정확히 하나에 속한다. 밖의 파일(`src/` 직속, 미등록 디렉토리, `src/features/` 직속, `src/styles/*.ts`)은 **파일 자체가 린트 에러**(`no-restricted-syntax` `Program` 셀렉터). `scripts/check-arch.sh` 가 트래킹 파일 전체를 셸에서 한 번 더 검사한다. 예외는 둘이다: Next.js 가 위치를 강제하는 `src/middleware.ts`·`src/instrumentation.ts`(`lib` 만 import), 그리고 디렉토리 규칙 문서인 `AGENTS.md`(ESLint 는 `.md` 를 린트하지 않고, 루트 헌법 §1-4 가 트래킹 파일이 있는 모든 디렉토리에 요구한다 — `src/` 직속 포함. `src/` 안의 `.md` 는 그 이름만 허용한다).
 3. 확장자: 레이어 블록은 확장자를 열거하지 않는다(`src/<layer>/**`). 린트 대상 확장자는 `LINTED` 한 곳, `src/` 에 존재 가능한 확장자는 `SRC_EXT`(`ts tsx css md`) 한 곳 — 그 밖의 파일(`.js`·`.jsx`·`.mts`)은 파일 자체가 에러이고 레이어 규칙도 그대로 받는다.
 4. 표기: `src/` 안 import 는 **항상 `@/…` 절대 경로**, 상대 경로(`./`, `../`) 전부 금지. 어떤 출발·대상 조합에도 합법 표기가 정확히 하나(code-style.md §7 표) — 그 "하나" 를 문자열 수준에서 강제하는 것이 결정 9다.
 5. 배럴: `index.ts` 는 `src/features/<f>/index.ts` 에만(다른 곳의 `index.*` 는 에러). 밖에서는 그 파일만 import 가능, 안에서는 자기 배럴 import 금지, `export *` 금지. `domain` 은 배럴 없음(파일 직접 import), `repositories/index.ts` 는 `container.ts` 로 개명.
@@ -39,7 +39,7 @@
 ## 지켜야 할 규칙 (검증 가능한 문장 — 리뷰 판정 근거)
 1. `scripts/arch-layers.mjs` 의 `LAYERS`/`ALLOW` 와 ARCHITECTURE.md §1 표는 같은 PR 에서만 바뀐다(둘 다 ADR 필요).
 2. `bash scripts/check-arch.sh` 가 매 CI 에서 픽스처 전부 PASS(부정 + 긍정). 픽스처는 손으로 고른 목록이지 `ALLOW` 전수 생성이 아니다 — 경계·표기 규칙을 바꾸면 케이스도 같은 PR.
-3. `src/` 에 상대 경로 import, `features/*/index.ts` 외의 `index.*`, `.js/.jsx`, 직속 파일(`middleware.ts`·`instrumentation.ts` 외)이 없다 — `pnpm lint` 와 `check-arch.sh` 가 잡는다.
+3. `src/` 에 상대 경로 import, `features/*/index.ts` 외의 `index.*`, `.js/.jsx`, 직속 파일(`middleware.ts`·`instrumentation.ts`·`AGENTS.md` 외), `AGENTS.md` 아닌 `.md` 가 없다 — `pnpm lint` 와 `check-arch.sh` 가 잡는다.
 4. ~~`noInlineConfig` 는 쓰지 않는다. disable 정책의 단일 소스는 `scripts/check-eslint-disable.sh`.~~ → **ADR-0008 로 대체**: 아키텍처 규칙만 담은 2차 설정에 `--no-inline-config` 를 걸고, 그 규칙 목록의 단일 소스는 `scripts/arch-layers.mjs` 의 `ARCH_RULES` 다.
 5. 경로 표기 변형(`@/app/./providers`, `@/lib/date.ts`, `@/features/<f>/index`, 중복 슬래시…)과 결정 10 의 모든 구문(동적 `import()`·`typeof import()`·모킹·`require` 계열)은 정상 표기의 정적 import 와 같은 판정을 받는다 — `check-arch.sh` 의 표기·구문 픽스처가 고정한다(라운드 3·4 우회 재발 방지).
 6. 예외 블록(`meta.ts`, `app/providers.tsx`, `layout.tsx`)은 `files` 에 `src/<layer>/__arch__/<이름>.ts` 픽스처 경로를 함께 적는다. 예외가 **무엇을 지우고 무엇을 남기는지** check-arch.sh 가 실제로 판정하게 하기 위해서다(`__arch__` 는 레포에 존재하지 않는다).

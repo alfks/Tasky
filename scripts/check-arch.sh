@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # 읽기 조건: 이 검사가 실패했을 때, 또는 레이어 경계(eslint.config.mjs)를 바꿀 때 — 경계 하나 = 아래 케이스 하나.
 # 규칙: 레이어 경계 린트가 "실제로 위반을 잡는지"(부정 케이스)와 "허용해야 할 것을 허용하는지"(긍정 케이스)를
-#       임시 파일로 확인한다(린트 규칙의 테스트). 그 전에 src/** 전수 분류(모든 트래킹 파일이 정확히 한 레이어)와
-#       확장자 목록(SRC_EXT)을 검사한다 — 목록의 단일 소스는 scripts/arch-layers.mjs.
+#       임시 파일로 확인한다(린트 규칙의 테스트). 그 전에 src/** 전수 분류(모든 트래킹 코드 파일이 정확히 한 레이어,
+#       .md 는 AGENTS.md 만)와 확장자 목록(SRC_EXT)을 검사한다 — 목록의 단일 소스는 scripts/arch-layers.mjs.
 #       임시 파일은 src/<layer>/__arch__/ 에 만들었다가 trap 으로 반드시 지운다. 잔여물은 .gitignore(커밋 불가)와
 #       eslint.config.mjs 의 ignores(pnpm lint 무해)가 막고, 여기서는 --no-ignore 로 그 ignores 를 뚫고 검사한다.
 #       또한 **2차 패스**(eslint.arch.config.mjs + --no-inline-config)를 실제 src/ 에 한 번 돌린다 — 아키텍처 규칙은
-#       인라인 지시자로 끌 수 없다는 보장이 여기서 강제된다(ADR-0008). (g) 가 그 패스가 살아 있는지 픽스처로 확인한다.
+#       인라인 지시자로 끌 수 없다는 보장이 여기서 강제된다(ADR-0008). 그 패스는 arch_pass() 한 곳에만 적혀 있고
+#       (g) 픽스처가 같은 함수를 호출하므로, 플래그·설정을 지우면 픽스처가 실패한다. 대상 범위는 커버리지 검사가 본다.
 #       비정상 종료로 남았으면: rm -rf src/**/__arch__
 # 사용법: bash scripts/check-arch.sh   (package.json 이 없으면 SKIP)
 set -euo pipefail
@@ -28,15 +29,21 @@ LAYERS="$(printf '%s\n' "$lists" | sed -n 1p)"
 ROOT_FILES="$(printf '%s\n' "$lists" | sed -n 2p)"
 SRC_EXT="$(printf '%s\n' "$lists" | sed -n 3p)"
 
-# --- 1. 전수 분류: src/ 의 모든 트래킹 파일은 LAYERS 중 하나 아래에 있거나 ROOT_FILES 다. 확장자는 SRC_EXT 안 ---
+# --- 1. 전수 분류: src/ 의 모든 트래킹 코드 파일은 LAYERS 중 하나 아래에 있거나 ROOT_FILES 다. 확장자는 SRC_EXT 안 ---
+# .md 는 레이어가 아니라 디렉토리 규칙 문서다(ESLint 도 .md 를 린트하지 않는다) — 레이어로 분류하면
+# CLAUDE.md §1-4(트래킹 파일이 있는 모든 디렉토리에 AGENTS.md)와 서로 배제한다: src/middleware.ts 가 생기는
+# 순간 src/AGENTS.md 가 필수가 되는데 그 파일이 src/ 직속 허용 목록에 없어 여기서 거부되기 때문이다.
+# 대신 src/ 안의 .md 는 이름을 AGENTS.md 로 고정한다(그 밖의 문서는 docs/ 로 — 코드 옆 문서 난립 금지).
 bad=0
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   rel="${f#src/}"
   top="${rel%%/*}"
   ext="${f##*.}"
-  if [ "$top" = "$rel" ]; then # src/ 직속 파일
-    case " $ROOT_FILES " in *" $rel "*) ;; *) echo "FAIL: $f — src/ 직속 파일은 ${ROOT_FILES// /, } 만 허용. 레이어 디렉토리로 옮기세요."; bad=1 ;; esac
+  if [ "$ext" = "md" ]; then
+    case "${f##*/}" in AGENTS.md) ;; *) echo "FAIL: $f — src/ 안의 .md 는 AGENTS.md(디렉토리 규칙 문서)만 허용. 그 밖의 문서는 docs/ 로 옮기세요."; bad=1 ;; esac
+  elif [ "$top" = "$rel" ]; then # src/ 직속 파일
+    case " $ROOT_FILES " in *" $rel "*) ;; *) echo "FAIL: $f — src/ 직속 파일은 ${ROOT_FILES// /, } 만 허용(AGENTS.md 는 예외). 레이어 디렉토리로 옮기세요."; bad=1 ;; esac
   else
     case " $LAYERS " in *" $top "*) ;; *) echo "FAIL: $f — 'src/$top' 은 레이어가 아닙니다(LAYERS: $LAYERS). 새 레이어는 ADR + eslint.config.mjs LAYERS/ALLOW."; bad=1 ;; esac
   fi
@@ -66,13 +73,59 @@ echo "PASS: src/** 전수 분류(레이어 $(git ls-files src | wc -l | tr -d ' 
 
 # --- 1.5. 2차 패스: 아키텍처 규칙만 남긴 설정으로 인라인 지시자를 전부 무시하고 실제 src/ 를 다시 검사한다(ADR-0008).
 #      1차 패스(pnpm lint)는 스타일 규칙의 정당한 disable 을 허용하므로 그것만으로는 아키텍처 판정이 남지 않는다.
+#      2차 패스의 명령은 이 함수 한 곳에만 적는다 — 아래 (g) 픽스처가 같은 함수를 호출하므로, --no-inline-config 나
+#      --config eslint.arch.config.mjs 를 지우면 픽스처가 곧바로 FAIL 한다(지우고 돌려보면 재현된다).
+arch_pass() { "$ESLINT" --no-inline-config --config eslint.arch.config.mjs "$@"; }
+
+covjson=""; json=""; ARCH_DIRS=""
+cleanup() {
+  for d in $ARCH_DIRS; do rm -rf "$d/__arch__"; done
+  [ -z "$covjson" ] || rm -f "$covjson"
+  [ -z "$json" ] || rm -f "$json"
+}
+trap cleanup EXIT
+
 if [ -d src ]; then
-  if ! "$ESLINT" --no-inline-config --config eslint.arch.config.mjs src; then
-    echo "FAIL: 아키텍처 규칙 위반(2차 패스). 이 패스는 eslint-disable·/* eslint … */ 등 인라인 지시자를 전부 무시합니다"
-    echo "      — 지시자로는 끌 수 없습니다. 경계를 지키도록 코드를 옮기거나 ADR 로 경계를 바꾸세요(docs/ARCHITECTURE.md §1)."
+  # --format json 으로 받는 이유: 위반 보고와 함께 "이 패스가 실제로 어떤 파일을 봤는지"를 같은 한 번의 실행에서
+  # 확인하기 위해서다. 트래킹된 src 코드 파일이 하나라도 결과에 없으면 대상 경로가 좁혀졌거나 전역 ignores 가
+  # 그 파일을 먹은 것이므로(둘 다 2차 패스를 조용히 무력화한다) 실패로 본다.
+  covjson="$(mktemp)"
+  arch_pass --format json src > "$covjson" || true
+  covfiles="$(git ls-files src | grep -E '\.tsx?$' || true)"
+  if ! node -e '
+const fs = require("fs"), path = require("path");
+const [jsonPath, ...expected] = process.argv.slice(1);
+let results;
+try { results = JSON.parse(fs.readFileSync(jsonPath, "utf8")); } catch {
+  console.log("FAIL: 2차 패스가 결과를 내지 못했습니다(설정 로드 실패?). 직접 실행: ./node_modules/.bin/eslint --no-inline-config --config eslint.arch.config.mjs src");
+  process.exit(1);
+}
+let fail = 0;
+const linted = new Set();
+for (const r of results) {
+  const rel = path.relative(process.cwd(), r.filePath);
+  linted.add(rel);
+  for (const m of r.messages.filter((m) => m.severity === 2)) {
+    console.log(`FAIL: ${rel}:${m.line}:${m.column}  ${m.ruleId || "(fatal)"}  ${m.message}`);
+    fail = 1;
+  }
+}
+if (fail) {
+  console.log("FAIL: 아키텍처 규칙 위반(2차 패스). 이 패스는 eslint-disable·/* eslint … */ 등 인라인 지시자를 전부 무시합니다");
+  console.log("      — 지시자로는 끌 수 없습니다. 경계를 지키도록 코드를 옮기거나 ADR 로 경계를 바꾸세요(docs/ARCHITECTURE.md §1).");
+}
+const missing = expected.filter((f) => !linted.has(f));
+if (missing.length) {
+  console.log(`FAIL: 2차 패스가 트래킹된 src 코드 파일 ${missing.length}개를 검사하지 않았습니다: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? " …" : ""}`);
+  console.log("      — 2차 패스의 대상 경로나 eslint.config.mjs 의 전역 ignores 를 확인하세요(ADR-0008: 2차 패스는 src/ 전부를 본다).");
+  fail = 1;
+}
+process.exit(fail);
+' "$covjson" $covfiles; then
     exit 1
   fi
-  echo "PASS: 2차 패스(--no-inline-config) — 아키텍처 규칙 위반 없음"
+  rm -f "$covjson"; covjson=""
+  echo "PASS: 2차 패스(--no-inline-config) — 아키텍처 규칙 위반 없음, src 코드 파일 $(printf '%s\n' "$covfiles" | grep -c . || true)개 전부 검사됨"
 fi
 
 # --- 2. 린트 픽스처 ---
@@ -90,8 +143,7 @@ FA="$1"; FB="${2:-}"
 
 DIRS="src src/domain src/repositories src/infra src/components src/lib src/app src/test src/styles src/features src/features/$FA"
 [ -n "$FB" ] && DIRS="$DIRS src/features/$FB"
-cleanup() { for d in $DIRS; do rm -rf "$d/__arch__"; done; }
-trap cleanup EXIT
+ARCH_DIRS="$DIRS"   # 위에서 건 trap(cleanup)이 이 목록의 __arch__ 를 반드시 지운다
 for d in $DIRS; do
   rm -rf "$d/__arch__"; mkdir -p "$d/__arch__"
   printf '// 아키텍처 검사 임시 파일 — scripts/check-arch.sh 가 만들고 지운다. 남아 있으면 rm -rf src/**/__arch__\nexport const a = 1;\n' > "$d/__arch__/a.ts"
@@ -230,7 +282,6 @@ add "$FT/ok.test.ts"       - "$I '@/infra/__arch__/a'; export const x = a;"
 [ -n "$FB" ] && add "$FT/ok-other.ts" - "$I '@/features/$FB'; export const x = a;"
 
 json="$(mktemp)"
-trap 'cleanup; rm -f "$json"' EXIT
 "$ESLINT" --no-ignore --format json $FILES > "$json" 2>/dev/null || true   # 위반이 있으면 eslint 는 exit 1 — 정상
 
 node -e '
@@ -268,19 +319,23 @@ DIS5="$FT/dis-triple-slash.ts"
 printf '// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- 사유\n/// <reference types = "node" />\nexport const x = 1;\n' > "$DIS5"
 DISABLES="$DIS $DIS2 $DIS3 $DIS4 $DIS5"
 
-count_errors() { # $1.. 파일 → "파일:에러수" 줄 (추가 인자 없이 1차, ARCHCFG 가 있으면 2차)
-  "$ESLINT" --no-ignore $ARCHFLAGS --format json "$@" 2>/dev/null > "$json" || true
+count_errors() { # $1 = 패스(1|2), 나머지 = 파일 → "파일 에러수" 줄.
+  # 2차는 반드시 arch_pass(1.5 에서 실제 src/ 를 검사하는 그 함수)로 돌린다 — 픽스처가 자기 명령을 따로 조립하면
+  # 그 함수의 플래그를 지워도 픽스처는 통과해 버린다(검증이 실제 실행 줄과 끊긴다).
+  local pass="$1"; shift
+  if [ "$pass" = 2 ]; then
+    arch_pass --no-ignore --format json "$@" 2>/dev/null > "$json" || true
+  else
+    "$ESLINT" --no-ignore --format json "$@" 2>/dev/null > "$json" || true
+  fi
   node -e '
 const fs = require("fs"), path = require("path");
 for (const r of JSON.parse(fs.readFileSync(process.argv[1], "utf8"))) {
   console.log(path.relative(process.cwd(), r.filePath) + " " + r.messages.filter((m) => m.severity === 2).length);
 }' "$json"
 }
-ARCHFLAGS=""
-first="$(count_errors $DISABLES)"
-ARCHFLAGS="--no-inline-config --config eslint.arch.config.mjs"
-second="$(count_errors $DISABLES)"
-ARCHFLAGS=""
+first="$(count_errors 1 $DISABLES)"
+second="$(count_errors 2 $DISABLES)"
 gfail=0
 for f in $DISABLES; do
   n1="$(printf '%s\n' "$first"  | awk -v f="$f" '$1 == f { print $2 }')"

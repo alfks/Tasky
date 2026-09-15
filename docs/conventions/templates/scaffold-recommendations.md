@@ -102,11 +102,11 @@ export default config;
 
 **원칙**: 새 디렉토리를 만들 때마다 그 자리에서 `AGENTS.md`(고유 규칙이 있을 때) 또는 상위 문서의 `관할: <dir>/` 선언(상위와 규칙이 같을 때) 중 하나를 함께 만든다 — 어느 쪽도 없는 디렉토리를 남기지 않는다. `관할:`은 직계 자식 한 단계만 면제하므로 2단 이상 깊어지면 중간 단계에 관할 선언 전용 최소 `AGENTS.md`가 필요하다(`src/features/<f>/AGENTS.md` 5개가 그 예). 그 자리에서 `bash scripts/check-agents-md.sh`로 확인한다.
 
-1. `src/features/{todo,category,date-strip,stats,theme}/{components,hooks,store}/`와 `index.ts`(빈 명시 export), `src/{app,components/ui,domain,repositories/memory,infra/indexeddb,lib,styles,test/fixtures}/`, `tests/e2e/`, `public/`가 전부 생성되고 `docs/conventions/templates/src-agents-drafts.md`의 초안 17개가 각 경로 그대로 `AGENTS.md`로 복사돼 있다(`src/repositories/container.ts`, `src/infra/indexeddb/{db,query}.ts`, `src/domain/meta.ts`도 빈 껍데기라도 존재). `src/` 직속 파일 없음, `src/**` 에 `index.ts`는 features 다섯 개뿐, `.js/.jsx` 없음.
+1. `src/features/{todo,category,date-strip,stats,theme}/{components,hooks,store}/`와 `index.ts`(빈 명시 export), `src/{app,components/ui,domain,repositories/memory,infra/indexeddb,lib,styles,test/fixtures}/`, `tests/e2e/`, `public/`가 전부 생성되고 `docs/conventions/templates/src-agents-drafts.md`의 초안 17개가 각 경로 그대로 `AGENTS.md`로 복사돼 있다(`src/repositories/container.ts`, `src/infra/indexeddb/{db,query}.ts`, `src/domain/meta.ts`도 빈 껍데기라도 존재). `src/` 직속 파일은 `AGENTS.md`(+ 도입하면 `middleware.ts`·`instrumentation.ts`)뿐, `src/**` 에 `index.ts`는 features 다섯 개뿐, `src/**` 의 `.md` 는 전부 `AGENTS.md`, `.js/.jsx` 없음.
 2. `bash scripts/check-agents-md.sh` 가 `OK`로 통과한다(하위 디렉토리까지 포함한 **실제 트리** 기준 — 평평한 트리로 확인하지 않는다).
 3. `tsconfig.json`에 `"paths": { "@/*": ["./src/*"] }`. `.gitignore`에 `__arch__/` 한 줄.
 4. `pnpm lint` 가 경고 0으로 통과한다(`eslint.config.mjs`·`scripts/arch-layers.mjs` 자체도 린트 대상 — `export default config` 형태 유지, 익명 배열 `export default [` 는 next 규칙 경고로 실패).
-5. `bash scripts/check-arch.sh` 가 `PASS: src/** 전수 분류` + 픽스처 전 케이스 `PASS`(부정 + 긍정) + disable 2건 거부 + 마지막 줄 `OK`. 하나라도 `FAIL`이면 `eslint.config.mjs`의 해당 블록 또는 `@/` 별칭 해석(`import/no-unresolved`가 `@/` import 전체에 오탐을 내면 리졸버 문제)을 고친 뒤 머지.
+5. `bash scripts/check-arch.sh` 가 `PASS: src/** 전수 분류` + `PASS: 2차 패스(--no-inline-config)`(커버리지 포함) + 픽스처 전 케이스 `PASS`(부정 + 긍정) + disable 픽스처 5건이 각각 `PASS: … 1차 0건(지시자가 먹힘) / 2차 N건(지시자 무시)` + 마지막 줄 `OK`. 하나라도 `FAIL`이면 `eslint.config.mjs`의 해당 블록 또는 `@/` 별칭 해석(`import/no-unresolved`가 `@/` import 전체에 오탐을 내면 리졸버 문제)을 고친 뒤 머지.
 6. `bash scripts/check-arch.sh` 가 `OK`(아키텍처 2차 패스 포함). `bash scripts/check.sh main` 통과(= `pnpm check`).
 7. `src/**/__arch__/` 잔여물이 없다(`git status`에 나타나지 않아야 한다).
 8. `src/domain/meta.ts`의 `Persistable` 브랜드가 동작한다: `repo.upsert(plainTodo)`가 `tsc`에서 TS2345 로 실패하는 `// @ts-expect-error` 줄이 계약 테스트에 있다(ADR-0007 규칙 3-d).
