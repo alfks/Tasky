@@ -112,18 +112,17 @@ src/infra/indexeddb/
 
 - **테스트 계층 단서**: 이 문서에서 "린트가 막는다" 는 서술은 전부 **비테스트 파일 기준**이다. 테스트 계층(`src/test/**`, `*.test.*`)은 레이어 경계·브라우저 전역·패키지 허용 목록·`Meta` 쓰기·`as Persistable` 이 면제되고, 표기 규칙(상대 경로 금지 + 정규형)과 공통 문법 규칙(`export *`·`require` 계열·리터럴 아닌 `import()` 금지)은 그대로 받는다(§11, 실측).
 - `@/` import는 반드시 해석되어야 한다(`import/no-unresolved`, `caseSensitive`) — 별칭이 깨지면 경계 검사가 조용히 무력화되므로 카나리로 둔다. 대소문자만 다른 표기(`@/app/Providers`)도 여기서 걸린다.
-- `export *` 와 `require` 계열(`require()`·`require.resolve()`·`createRequire()`·`import.meta.resolve`·`import x = require()`)은 `src/` 전체에서 금지(린트) — 경로 판정을 받을 수 없는 구문이다. 동적 `import()` 는 **인자가 문자열 리터럴일 때만** 경계 판정을 받으므로, 리터럴이 아닌 인자(변수·템플릿 리터럴)는 그 자체가 린트 에러다. 삼중슬래시 지시자(`/// <reference path|types>`)도 금지(`@typescript-eslint/triple-slash-reference` + `scripts/check-arch.sh`).
-- 동적 `import()`·`typeof import()`(및 `import('…').Q`)·`vi`/`jest` 모킹의 경로 인자도 위의 문자열 규칙과 **레이어 허용 목록을 똑같이 받는다**: `no-restricted-imports` 와 `import/no-restricted-paths` 는 이 구문들을 보지 않으므로 `eslint.config.mjs` 가 같은 패턴을 셀렉터로 복제하고(거울), 복제 누락은 설정 로드 시점에 throw 한다(ADR-0006 결정 9~11). 모듈 경로를 쓰는 구문이 각각 어느 규칙을 받는지는 결정 10 의 전수 목록이 단일 소스다. `typeof import()` 는 이와 별개로 `@typescript-eslint/consistent-type-imports` 가 표기 자체를 막는다(`import type * as X` 를 쓴다) — 그 규칙을 사유와 함께 disable 해도 위 경계 판정은 그대로 남는다.
+- `export *` 와 `require` 계열(`require()`·`require.resolve()`·`createRequire()`·`import.meta.resolve`·`import x = require()`)은 `src/` 전체에서 금지(린트) — 경로 판정을 받을 수 없는 구문이다. 동적 `import()` 는 **인자가 문자열 리터럴일 때만** 경계 판정을 받으므로, 리터럴이 아닌 인자(변수·템플릿 리터럴)는 그 자체가 린트 에러다. 삼중슬래시 지시자(`/// <reference path|types|lib>`)도 금지(`@typescript-eslint/triple-slash-reference` 의 세 옵션을 전부 `never` 로 고정 + `scripts/check-arch.sh` 의 grep — `=` 양옆 공백 변형 포함).
+- 동적 `import()`·`typeof import()`(및 `import('…').Q`)·`vi`/`jest` 모킹·`new URL('@/…', import.meta.url)` 의 경로 인자도 위의 문자열 규칙과 **레이어 허용 목록을 똑같이 받는다**: `no-restricted-imports` 와 `import/no-restricted-paths` 는 이 구문들을 보지 않으므로 `eslint.config.mjs` 가 같은 패턴을 셀렉터로 복제하고(거울), 복제 누락은 설정 로드 시점에 throw 한다(ADR-0006 결정 9~11). 모듈 경로를 쓰는 구문이 각각 어느 규칙을 받는지는 결정 10 의 전수 목록이 단일 소스다. `typeof import()` 는 이와 별개로 `@typescript-eslint/consistent-type-imports` 가 표기 자체를 막는다(`import type * as X` 를 쓴다) — 그 규칙을 사유와 함께 disable 해도 위 경계 판정은 그대로 남는다.
 - `@/app/providers`(조립 지점)를 import 할 수 있는 파일은 `src/app/layout.tsx` 하나이며(결정 10 의 구문 전수에 대해 실측), `providers.tsx` 는 재export(`export … from`)를 할 수 없다 — 조립 지점을 경유지로 쓰지 못하게 한다(ADR-0006 규칙 6, 한계는 ARCHITECTURE.md §1).
 
 **순서** (`import/order`가 정렬, 여기선 그룹 정의)
 1. `react`, `next/*` · 2. 외부 패키지 · 3. `@/domain/*` · 4. `@/repositories/*`, `@/infra/*` · 5. `@/features/*` · 6. `@/components/*` · 7. `@/lib/*`, `@/styles/*` · 8. `import type`은 각 그룹 마지막.
 
-**`eslint-disable` 정책** (`scripts/check-eslint-disable.sh`가 CI `guard`에서 검사, 규칙 목록의 단일 소스는 그 스크립트 상단)
-- 규칙명 없는 disable(`/* eslint-disable */`)과 인라인 설정 주석(`/* eslint … */`, `/* global */`) 금지. 규칙명 부분에 ASCII 밖 문자(NBSP 등) 금지.
-- 아키텍처 규칙(`import/no-restricted-paths`, `no-restricted-imports`, `no-restricted-globals`, `no-restricted-syntax`, `import/no-cycle`, `import/no-unresolved`, `import/no-default-export`, `@typescript-eslint/no-explicit-any`)은 **disable 불가**. 경계가 불편하면 코드를 옮기거나 ADR로 경계를 바꾼다.
-- 그 외 규칙은 `// eslint-disable-next-line <rule> -- <사유>` 형식으로 사유 필수. 사유 없는 disable은 CI 실패.
-- 경계 규칙이 실제로 위반을 잡는지(그리고 허용할 것을 허용하는지)는 `scripts/check-arch.sh`가 픽스처로 확인한다. 경계를 바꾸면 그 케이스도 같은 PR에서 바꾼다.
+**`eslint-disable` 정책** (강제: `scripts/check-arch.sh` 의 2차 패스, 규칙 목록의 단일 소스는 `scripts/arch-layers.mjs` 의 `ARCH_RULES` — ADR-0008)
+- 아키텍처 규칙(`import/no-restricted-paths`, `no-restricted-imports`, `no-restricted-globals`, `no-restricted-syntax`, `import/no-cycle`, `import/no-unresolved`, `import/no-default-export`, `@typescript-eslint/no-explicit-any`, `@typescript-eslint/triple-slash-reference`)은 **어떤 문법으로도 끌 수 없다**. `check-arch.sh` 가 `eslint --no-inline-config -c eslint.arch.config.mjs src` 를 한 번 더 돌리는데, 그 모드에서 ESLint 는 파일 안의 모든 인라인 지시자(`eslint-disable` 계열·`/* eslint … */`·`/* eslint-env */`·`/* global */`)를 무시한다 — 빈 규칙 목록(`/* eslint-disable , -- 사유 */`)·NBSP 구분자·BOM 같은 변형도 소용없다(실측). 경계가 불편하면 코드를 옮기거나 ADR로 경계를 바꾼다.
+- 그 외(스타일) 규칙은 `// eslint-disable-next-line <rule> -- <사유>` 로 끌 수 있고 **사유를 적는다**(리뷰 항목). 2차 패스는 그 규칙들을 아예 보지 않으므로 정당한 disable 이 막히지 않는다. 미사용 지시자는 1차 패스의 `reportUnusedDisableDirectives` 가 에러로 잡는다.
+- 경계 규칙이 실제로 위반을 잡는지(그리고 허용할 것을 허용하는지), 2차 패스가 살아 있는지는 `scripts/check-arch.sh`가 픽스처로 확인한다. 경계를 바꾸면 그 케이스도 같은 PR에서 바꾼다.
 
 ## 8. 주석 정책
 
@@ -165,4 +164,4 @@ src/infra/indexeddb/
 
 ## 12. 금지 목록 (요약)
 
-`any` · `React.FC` · index key · `div onClick` · 하드코딩 색상 · `export *` · `require` 계열(`require()`·`createRequire()`·`import x = require()`·`import.meta.resolve`) · 삼중슬래시 지시자 · 상대 경로 import · `features/*` 밖의 `index.ts` · `.js/.jsx` · 빈 catch · 티켓 없는 TODO · 컴포넌트 내 Dexie · `domain`의 외부 패키지 import · `domain`의 `Date`/`crypto` 직접 호출 · `touch()` 없는 엔티티 저장(컴파일 에러) · `meta.ts` 밖 `Meta` 필드 쓰기 · 테스트 계층 밖 `as Persistable` · 비정규형 import 표기(확장자·`/index`·`./`) · 레포지토리 `remove` · 리터럴 아닌 동적 `import()` · `layout.tsx` 밖에서 `@/app/providers` import · `providers.tsx` 의 재export · 아키텍처 규칙 `eslint-disable` · 사유 없는 `eslint-disable` · `useEffect` 상태 동기화 · 스냅샷 테스트 · 300줄 초과 파일 · 레퍼런스 앱 제품명
+`any` · `React.FC` · index key · `div onClick` · 하드코딩 색상 · `export *` · `require` 계열(`require()`·`createRequire()`·`import x = require()`·`import.meta.resolve`) · 삼중슬래시 지시자 · 상대 경로 import · `features/*` 밖의 `index.ts` · `.js/.jsx` · 빈 catch · 티켓 없는 TODO · 컴포넌트 내 Dexie · `domain`의 외부 패키지 import · `domain`의 `Date`/`crypto` 직접 호출 · `touch()` 없는 엔티티 저장(컴파일 에러) · `meta.ts` 밖 `Meta` 필드 쓰기 · 테스트 계층 밖 `as Persistable` · 비정규형 import 표기(확장자·`/index`·`./`) · 레포지토리 `remove` · 리터럴 아닌 동적 `import()` · `layout.tsx` 밖에서 `@/app/providers` import · `providers.tsx` 의 재export · 아키텍처 규칙 `eslint-disable`(2차 패스가 무시하므로 효과 자체가 없다) · 사유 없는 스타일 규칙 `eslint-disable`(리뷰 항목) · `useEffect` 상태 동기화 · 스냅샷 테스트 · 300줄 초과 파일 · 레퍼런스 앱 제품명

@@ -16,6 +16,7 @@
 | `.githooks/` | pre-commit(금지어·author), commit-msg(트레일러) | [.githooks/AGENTS.md](../.githooks/AGENTS.md) | 커밋이 훅에 막혔을 때 |
 | `.worktrees/` | 워크트리 + 로컬 BOARD/tickets/handoffs/reviews | [.worktrees/AGENTS.md](../.worktrees/AGENTS.md) | 워크트리 만들기 전, 티켓/핸드오프 쓰기 전 |
 | `scripts/` | setup, wt, check-*, arch-layers.mjs | [scripts/AGENTS.md](../scripts/AGENTS.md) | 스크립트가 실패했거나 수정할 때 |
+| `eslint.config.mjs` · `eslint.arch.config.mjs` | 린트 설정(1차) · 아키텍처 규칙만 남긴 2차 패스 설정 | — | 린트·레이어 경계 규칙을 바꿀 때 (ADR-0006·0008) |
 | `public/` (예정) | 아이콘 등 정적 자산 | `public/AGENTS.md` | PWA 아이콘 교체 시 |
 | `tests/e2e/` (예정) | Playwright 스모크 | `tests/AGENTS.md` | E2E 작성 시 |
 

@@ -47,3 +47,26 @@ for (const l of LAYERS) {
     );
   }
 }
+
+/**
+ * 아키텍처 규칙 = 인라인 지시자로 끌 수 없는 규칙. 2차 패스(eslint.arch.config.mjs + --no-inline-config)가
+ * 이 목록만 남겨 다시 검사하므로, 어떤 disable 문법을 쓰든 아키텍처 판정은 그대로 남는다(ADR-0008).
+ * 목록이 갈라지지 않게 하는 두 가드: eslint.config.mjs 의 가드 4(경계 헬퍼가 만드는 규칙 ⊆ ARCH_RULES)와
+ * eslint.arch.config.mjs 의 가드 5(ARCH_RULES 가 eslint.config.mjs 에서 실제로 그 설정으로 켜져 있는지).
+ */
+/** 공통 블록에서 켜는 아키텍처 규칙 — 설정값까지 여기가 단일 소스다(eslint.config.mjs 가 그대로 펼친다) */
+export const ARCH_RULES_COMMON = {
+  'import/no-cycle': ['error', { maxDepth: 4 }],
+  // @/ 별칭이 해석되지 않으면 no-restricted-paths 가 조용히 무력화된다 — @/ import 만 반드시 해석되게 강제(카나리).
+  // caseSensitive: 대소문자만 다른 표기('@/app/Providers')는 대소문자 무시 파일시스템(macOS/Windows)에서도 여기서 막힌다.
+  'import/no-unresolved': ['error', { ignore: ['^(?!@/)'], caseSensitive: true }],
+  'import/no-default-export': 'error',
+  '@typescript-eslint/no-explicit-any': 'error',
+  // 삼중슬래시 지시자는 주석이라 셀렉터가 닿지 않는다. 기본값(types: 'prefer-import', lib: 'always')은
+  // `/// <reference types = "…" />` 를 통과시키므로 셋 다 'never' 로 고정한다(라운드 3 우회 m14·m16·m17).
+  '@typescript-eslint/triple-slash-reference': ['error', { lib: 'never', path: 'never', types: 'never' }],
+};
+/** 레이어 블록이 레이어마다 생성하는 경계 규칙(설정은 eslint.config.mjs 의 layerRules()/importRules() 가 만든다) */
+export const ARCH_RULES_LAYER = ['no-restricted-imports', 'no-restricted-syntax', 'import/no-restricted-paths', 'no-restricted-globals'];
+/** 2차 패스가 남기는 규칙 전체 */
+export const ARCH_RULES = [...Object.keys(ARCH_RULES_COMMON), ...ARCH_RULES_LAYER];

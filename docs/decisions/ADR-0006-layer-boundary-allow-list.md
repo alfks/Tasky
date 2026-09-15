@@ -5,6 +5,7 @@
 - 상태: accepted
 - 날짜: 2026-09-15
 - 관련: docs/ARCHITECTURE.md §1, docs/conventions/code-style.md §2·§7, scripts/arch-layers.mjs, eslint.config.mjs, scripts/check-arch.sh
+- 결정 4 는 **ADR-0008 이 뒤집었다**(`--no-inline-config` 2차 패스). 나머지 결정은 그대로 유효하다.
 
 ## 맥락
 경계 강제가 두 번 뚫렸다. 1차: 문자열 패턴(`no-restricted-imports`)이 상대 경로·배럴에 우회됨 → 해석 경로 기준 `import/no-restricted-paths` 로 교체. 2차: **금지 목록(deny-list) 구조 자체의 구멍** — "A 에서 B 로 가면 안 된다" 를 열거하므로 어느 목록에도 없는 위치(`src/shared.ts`, `src/styles/*.ts`, `.tsx`·`.js` 파일)가 2홉 경유지가 됐다(실측 ALLOWED 7건). 같은 라운드에 import 표기 규칙의 dead-end(자기-alias 금지 ↔ 2단계 상대 경로 금지)와 배럴 위치 불일치(domain)도 확인됐다.
@@ -20,7 +21,7 @@
 7. **한계를 명시한다**: 위는 전부 *import 간선* 규칙이므로 `providers.tsx` 가 직접 래퍼(`export const getDb = () => db`)로 infra 값을 내보내는 것은 잡지 못한다(실측 ALLOWED). 도구로 닫지 않고 그 한 파일의 리뷰로 받는다 — ARCHITECTURE.md §1 에 "보장되는 것/보장되지 않는 것" 으로 적는다.
 8. 설정 드리프트 가드: `LAYERS` 에 이름만 추가하면 무제약 영역이 생기므로, `ALLOW` 항목도 규칙 블록(`files: 'src/<layer>/**'`)도 없는 레이어가 있으면 **설정 로드 시점에 throw** 한다(`arch-layers.mjs` + `eslint.config.mjs`) — `pnpm lint` 가 즉시 실패한다.
 9. 문자열 규칙의 전제 — **표기 정규형 + 구문 거울**: 해석 경로로 판정할 수 없는 규칙(조립 지점·`lib/date`·`db.ts`·자기 배럴·패키지 허용 목록)은 쓰인 문자열만 보므로 ①`@/…` 표기를 정규형 하나로 고정하고(`'.'`/`'..'` 세그먼트·중복/후행 슬래시·백슬래시·`%` 인코딩·허용 밖 문자·코드 확장자·`/index` 는 그 자체가 에러), ②`no-restricted-imports` 가 보지 않는 구문에 같은 패턴을 셀렉터로 복제한다(거울). 대소문자 변형은 패턴의 기본 대소문자 무시 매칭과 `import/no-unresolved`(`caseSensitive`)가 잡는다. 전제: 경로 별칭은 `@/*` 하나 — 별칭을 늘리면 이 결정을 다시 본다.
-10. **모듈 경로 구문 전수 분담**(라운드 4 실측 — 빠진 구문이 곧 다음 우회로다. 구문을 추가하면 `check-arch.sh` 픽스처도 같이): `import`·`export … from`·`import type`·`export type … from` → `no-restricted-imports` + `import/no-restricted-paths` / 동적 `import()`·`typeof import()`·`import('…').Q`(TSImportType)·`vi`·`jest` 모킹 → 거울 셀렉터(`MIRROR_NODES`) / `require()`·`require.resolve()`·`createRequire()`·`import.meta.resolve`·`import x = require()` → 구문 자체가 에러 / 리터럴 아닌 `import()` → 구문 자체가 에러 / `/// <reference path|types>` → 주석이라 셀렉터가 닿지 않아 `@typescript-eslint/triple-slash-reference` + `check-arch.sh` 의 grep / 앰비언트 `declare module` → import 간선을 만들지 않아 대상 아님.
+10. **모듈 경로 구문 전수 분담**(라운드 4·5 실측 — 빠진 구문이 곧 다음 우회로다. 구문을 추가하면 `check-arch.sh` 픽스처도 같이): `import`·`export … from`·`import type`·`export type … from` → `no-restricted-imports` + `import/no-restricted-paths` / 동적 `import()`·`typeof import()`·`import('…').Q`(TSImportType)·`vi`·`jest` 모킹·`new URL('…', import.meta.url)`(워커·자산 참조, 2번째 인자가 `import.meta.url` 인 형태만) → 거울 셀렉터(`MIRROR_NODES`) / `require()`·`require.resolve()`·`createRequire()`·`import.meta.resolve`·`import x = require()` → 구문 자체가 에러 / 리터럴 아닌 `import()` → 구문 자체가 에러 / `/// <reference path|types|lib>` → 주석이라 셀렉터가 닿지 않아 `@typescript-eslint/triple-slash-reference`(세 옵션 전부 `never` — 기본값은 `types = "…"` 를 놓친다) + `check-arch.sh` 의 grep(`=` 양옆 공백 포함) / JSDoc `@type {import('@/…')}` → 주석이고 `src/` 는 `.ts`/`.tsx` 만 허용되므로 타입이 적용되지 않는다(실측: `.ts` 에서 JSDoc 타입은 무시된다) — 의존 간선을 만들지 않아 대상 아님 / 앰비언트 `declare module` → import 간선을 만들지 않아 대상 아님.
 11. 허용 목록의 **두 표현과 세 가드**: `import/no-restricted-paths` 는 해석 경로만 보므로 `typeof import()`·모킹에는 걸리지 않는다(라운드 4 에 이것으로 레이어 경계가 뚫렸다). 그래서 같은 `except` 배열에서 문자열 패턴(`allowPattern`)도 만들어 함께 걸고, 둘은 `layerRules()` 한 곳에서만 나온다. 설정 로드 시점에 throw 하는 가드 — 0: 거울 노드 종류가 목록에서 빠짐 · 2: 블록의 문자열 패턴에 거울이 없거나 공통 문법 규칙이 빠짐 · 3: zone 은 있는데 대응하는 문자열 패턴이 없음.
 
 ## 대안과 기각 이유
@@ -39,7 +40,7 @@
 1. `scripts/arch-layers.mjs` 의 `LAYERS`/`ALLOW` 와 ARCHITECTURE.md §1 표는 같은 PR 에서만 바뀐다(둘 다 ADR 필요).
 2. `bash scripts/check-arch.sh` 가 매 CI 에서 픽스처 전부 PASS(부정 + 긍정). 픽스처는 손으로 고른 목록이지 `ALLOW` 전수 생성이 아니다 — 경계·표기 규칙을 바꾸면 케이스도 같은 PR.
 3. `src/` 에 상대 경로 import, `features/*/index.ts` 외의 `index.*`, `.js/.jsx`, 직속 파일(`middleware.ts`·`instrumentation.ts` 외)이 없다 — `pnpm lint` 와 `check-arch.sh` 가 잡는다.
-4. `noInlineConfig` 는 쓰지 않는다. disable 정책의 단일 소스는 `scripts/check-eslint-disable.sh`.
+4. ~~`noInlineConfig` 는 쓰지 않는다. disable 정책의 단일 소스는 `scripts/check-eslint-disable.sh`.~~ → **ADR-0008 로 대체**: 아키텍처 규칙만 담은 2차 설정에 `--no-inline-config` 를 걸고, 그 규칙 목록의 단일 소스는 `scripts/arch-layers.mjs` 의 `ARCH_RULES` 다.
 5. 경로 표기 변형(`@/app/./providers`, `@/lib/date.ts`, `@/features/<f>/index`, 중복 슬래시…)과 결정 10 의 모든 구문(동적 `import()`·`typeof import()`·모킹·`require` 계열)은 정상 표기의 정적 import 와 같은 판정을 받는다 — `check-arch.sh` 의 표기·구문 픽스처가 고정한다(라운드 3·4 우회 재발 방지).
 6. 예외 블록(`meta.ts`, `app/providers.tsx`, `layout.tsx`)은 `files` 에 `src/<layer>/__arch__/<이름>.ts` 픽스처 경로를 함께 적는다. 예외가 **무엇을 지우고 무엇을 남기는지** check-arch.sh 가 실제로 판정하게 하기 위해서다(`__arch__` 는 레포에 존재하지 않는다).
 

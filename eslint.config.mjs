@@ -15,7 +15,9 @@
 //   문자열 패턴(allowPattern)도 만들어 함께 건다. 두 표현은 layerRules() 한 곳에서 나오고 가드 3 이 대조한다.
 // - require 계열: require()·require.resolve()·import x = require()·createRequire()·import.meta.resolve 는 경로 판정을
 //   받을 수 없으므로 구문 자체를 금지한다(NO_REQUIRE·NO_IMPORT_EQUALS).
-// - eslint-disable 우회: scripts/check-eslint-disable.sh 가 거부(ESLint 는 "쓰인" disable 을 조용히 통과시킨다).
+// - eslint-disable 우회: 이 설정(1차 패스)은 스타일 규칙의 정당한 disable 을 허용한다. 아키텍처 규칙(arch-layers.mjs 의
+//   ARCH_RULES)은 eslint.arch.config.mjs 로 도는 2차 패스가 --no-inline-config 로 다시 검사하므로, 어떤 지시자 문법을
+//   써도 판정이 남는다(ADR-0008). 두 목록이 갈라지지 않게 파일 끝 가드 4 와 2차 설정의 가드 5 가 맞물린다.
 import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 import { FlatCompat } from '@eslint/eslintrc';
 import eslintConfigPrettier from 'eslint-config-prettier';
 
-import { ALLOW, FEATURE_ALLOW, LAYERS, LAYERS_WITHOUT_ALLOW, PACKAGES, SRC_EXT, SRC_ROOT_FILES } from './scripts/arch-layers.mjs';
+import { ALLOW, ARCH_RULES, ARCH_RULES_COMMON, FEATURE_ALLOW, LAYERS, LAYERS_WITHOUT_ALLOW, PACKAGES, SRC_EXT, SRC_ROOT_FILES } from './scripts/arch-layers.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const compat = new FlatCompat({ baseDirectory: ROOT });
@@ -136,18 +138,20 @@ const NO_REEXPORT = { selector: 'ExportNamedDeclaration[source]', message: "[app
  * 거울 대상: no-restricted-imports 가 보지 않는 "문자열로 모듈 경로를 쓰는 구문" 전부(라운드 4 전수 실측).
  * 여기에서 빠진 구문이 곧 다음 우회 구멍이다 — 구문을 추가하면 check-arch.sh 픽스처도 같이 추가한다.
  * (import·export … from·import type·export type … from 은 no-restricted-imports 가 직접 본다.
- *  require 계열은 NO_REQUIRE·NO_IMPORT_EQUALS 가 구문째 금지한다. `/// <reference path>` 는 주석이라
- *  셀렉터가 닿지 않고 @typescript-eslint/triple-slash-reference(기본 error)가 막는다.)
+ *  require 계열은 NO_REQUIRE·NO_IMPORT_EQUALS 가 구문째 금지한다. `/// <reference path|types|lib>` 는 주석이라
+ *  셀렉터가 닿지 않고 @typescript-eslint/triple-slash-reference(ARCH_RULES_COMMON 이 셋 다 'never')가 막는다.
+ *  JSDoc `@type {import('@/…')}` 도 주석이지만 src/ 는 .ts/.tsx 만 허용되므로 타입이 적용되지 않는다 — 대상 아님.)
  */
 const MIRROR_NODES = [
   (re) => `ImportExpression[source.value=${re}]`, // 동적 import('…')
   (re) => `TSImportType[source.value=${re}]`, // typeof import('…') · import('…').Q — 타입 경유
+  (re) => `NewExpression[callee.name='URL'][arguments.1.object.type='MetaProperty'][arguments.1.property.name='url'] > Literal[value=${re}]`, // new URL('…', import.meta.url) — 워커·자산 모듈 참조
   (re) =>
     `CallExpression[callee.object.name=/^(vi|jest)$/][callee.property.name=/^(mock|doMock|unmock|doUnmock|importActual|importMock|requireActual|requireMock)$/] > Literal[value=${re}]`, // 모듈 모킹
 ];
 // --- 설정 자체의 가드 0: 거울 목록에서 노드 종류가 사라지면 그 구문이 즉시 우회로가 된다(TSImportType 이 그렇게 뚫렸다).
 //     목록을 줄이려면 이 이름도 같이 지워야 한다 — 두 곳을 고치게 해서 "모르고 빠뜨리는" 경우를 없앤다.
-const REQUIRED_MIRROR_NODES = ['ImportExpression', 'TSImportType', 'CallExpression'];
+const REQUIRED_MIRROR_NODES = ['ImportExpression', 'TSImportType', 'NewExpression', 'CallExpression'];
 const MIRROR_SELECTORS = MIRROR_NODES.map((node) => node('/x/'));
 const missingNodes = REQUIRED_MIRROR_NODES.filter((name) => !MIRROR_SELECTORS.some((sel) => sel.startsWith(name)));
 if (missingNodes.length) {
@@ -201,14 +205,9 @@ const config = [
     files: [LINTED],
     linterOptions: { reportUnusedDisableDirectives: 'error' },
     rules: {
-      '@typescript-eslint/no-explicit-any': 'error',
+      ...ARCH_RULES_COMMON, // 아키텍처 규칙(2차 패스가 다시 검사) — 설정의 단일 소스는 scripts/arch-layers.mjs
       '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports', fixStyle: 'inline-type-imports' }],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      'import/no-default-export': 'error',
-      'import/no-cycle': ['error', { maxDepth: 4 }],
-      // @/ 별칭이 해석되지 않으면 no-restricted-paths 가 조용히 무력화된다 — @/ import 만 반드시 해석되게 강제(카나리).
-      // caseSensitive: 대소문자만 다른 표기('@/app/Providers')는 대소문자 무시 파일시스템(macOS/Windows)에서도 여기서 막힌다.
-      'import/no-unresolved': ['error', { ignore: ['^(?!@/)'], caseSensitive: true }],
       'import/order': [
         'error',
         {
@@ -425,6 +424,15 @@ for (const block of config) {
       throw new Error(`eslint.config.mjs: [${where}] zone 의 허용 목록에 대응하는 문자열 패턴 ${missingAllow.join(' , ')} 이 없습니다 — layerRules() 헬퍼를 쓰세요 (ADR-0006 결정 9).`);
     }
   }
+}
+
+// --- 설정 자체의 가드 4: 경계 강제에 쓰는 규칙이 전부 ARCH_RULES 안에 있는지 ---
+// 새 경계 규칙을 헬퍼에 추가하고 ARCH_RULES 에 넣지 않으면 2차 패스가 그 규칙을 검사하지 않는다 = 지시자 한 줄로 다시 꺼진다.
+// 목록을 줄이려면 ARCH_RULES 와 헬퍼 양쪽을 고쳐야 한다(가드 0 과 같은 "두 곳" 패턴).
+const HELPER_RULES = [...Object.keys(importRules([], [])), ...Object.keys(allowZone('./src', '', [])), 'no-restricted-globals'];
+const notArch = HELPER_RULES.filter((id) => !ARCH_RULES.includes(id));
+if (notArch.length) {
+  throw new Error(`eslint.config.mjs: 경계 규칙 ${notArch.join(', ')} 가 scripts/arch-layers.mjs 의 ARCH_RULES 에 없습니다 — 2차 패스가 검사하지 않아 eslint-disable 로 꺼집니다 (ADR-0008).`);
 }
 
 export default config;

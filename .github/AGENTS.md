@@ -6,7 +6,7 @@
 GitHub 자동화와 양식. 규칙을 사람이 기억하지 않아도 되게 만드는 곳.
 
 ## 여기 있는 것
-- `workflows/ci.yml`: `guard`(금지어·author·AGENTS.md 구조·eslint-disable 정책, 항상) + `build`(lint·typecheck·test·build, `package.json` 있을 때만)
+- `workflows/ci.yml`: `guard`(금지어·author·AGENTS.md 구조·브랜치명·PR 제목/본문, 항상) + `build`(레이어 경계 린트 + 아키텍처 2차 패스·lint·typecheck·format·test·build, `package.json` 있을 때만)
 - `pull_request_template.md`, `ISSUE_TEMPLATE/{feature_request,bug_report}.md`, `ISSUE_TEMPLATE/config.yml`
 - `CODEOWNERS`: 전 경로 `@alfks`
 - `labels.yml`: 라벨 정의(`type:*`, `area:*`, `review:round-N`, `status:*`, `size:large`, `phase:2`, `adr`)

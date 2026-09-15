@@ -5,6 +5,8 @@
 #       확장자 목록(SRC_EXT)을 검사한다 — 목록의 단일 소스는 scripts/arch-layers.mjs.
 #       임시 파일은 src/<layer>/__arch__/ 에 만들었다가 trap 으로 반드시 지운다. 잔여물은 .gitignore(커밋 불가)와
 #       eslint.config.mjs 의 ignores(pnpm lint 무해)가 막고, 여기서는 --no-ignore 로 그 ignores 를 뚫고 검사한다.
+#       또한 **2차 패스**(eslint.arch.config.mjs + --no-inline-config)를 실제 src/ 에 한 번 돌린다 — 아키텍처 규칙은
+#       인라인 지시자로 끌 수 없다는 보장이 여기서 강제된다(ADR-0008). (g) 가 그 패스가 살아 있는지 픽스처로 확인한다.
 #       비정상 종료로 남았으면: rm -rf src/**/__arch__
 # 사용법: bash scripts/check-arch.sh   (package.json 이 없으면 SKIP)
 set -euo pipefail
@@ -47,12 +49,13 @@ for f in src/features/*/; do
   case "$(basename "$f")" in __*) continue ;; esac
   [ -f "$f/index.ts" ] || { echo "FAIL: $f 에 index.ts(공개 API 배럴)가 없습니다."; bad=1; }
 done
-# 삼중슬래시 지시자(`/// <reference path|types`)는 주석이라 ESLint 셀렉터가 닿지 않는다(문법 규칙으로 못 막는다).
-# @typescript-eslint/triple-slash-reference 가 잡지만 그 규칙은 disable 가능 목록에 있으므로, 여기서 한 번 더 본다.
+# 삼중슬래시 지시자(`/// <reference path|types|lib`)는 주석이라 ESLint 셀렉터가 닿지 않는다(문법 규칙으로 못 막는다).
+# 주 방어선은 @typescript-eslint/triple-slash-reference(ARCH_RULES_COMMON 이 셋 다 'never' → 2차 패스가 강제)이고,
+# 이 grep 은 그 규칙이 꺼지거나 옵션이 되돌아간 경우를 위한 보조다. '=' 양옆 공백 변형까지 본다(라운드 3 우회 m14·m17).
 while IFS= read -r f; do
   [ -n "$f" ] || continue
-  if grep -qE '^[[:space:]]*///[[:space:]]*<reference[[:space:]]+(path|types)=' "$f" 2>/dev/null; then
-    echo "FAIL: $f — 삼중슬래시 지시자(/// <reference path|types) 금지: 레이어 경계·패키지 허용 목록을 우회하는 의존 간선입니다. import 를 쓰세요."
+  if grep -qE '^[[:space:]]*///[[:space:]]*<reference[[:space:]]+(path|types|lib)[[:space:]]*=' "$f" 2>/dev/null; then
+    echo "FAIL: $f — 삼중슬래시 지시자(/// <reference path|types|lib) 금지: 레이어 경계·패키지 허용 목록을 우회하는 의존 간선입니다. import 를 쓰세요."
     bad=1
   fi
 done <<EOF
@@ -60,6 +63,17 @@ $(git ls-files 'src/*.ts' 'src/*.tsx' 'src/**/*.ts' 'src/**/*.tsx')
 EOF
 [ "$bad" -eq 0 ] || { echo "FAIL: src/** 전수 분류 실패 — 위 파일을 옮기거나 ADR 로 레이어를 추가하세요."; exit 1; }
 echo "PASS: src/** 전수 분류(레이어 $(git ls-files src | wc -l | tr -d ' ')개 파일, 확장자 $SRC_EXT)"
+
+# --- 1.5. 2차 패스: 아키텍처 규칙만 남긴 설정으로 인라인 지시자를 전부 무시하고 실제 src/ 를 다시 검사한다(ADR-0008).
+#      1차 패스(pnpm lint)는 스타일 규칙의 정당한 disable 을 허용하므로 그것만으로는 아키텍처 판정이 남지 않는다.
+if [ -d src ]; then
+  if ! "$ESLINT" --no-inline-config --config eslint.arch.config.mjs src; then
+    echo "FAIL: 아키텍처 규칙 위반(2차 패스). 이 패스는 eslint-disable·/* eslint … */ 등 인라인 지시자를 전부 무시합니다"
+    echo "      — 지시자로는 끌 수 없습니다. 경계를 지키도록 코드를 옮기거나 ADR 로 경계를 바꾸세요(docs/ARCHITECTURE.md §1)."
+    exit 1
+  fi
+  echo "PASS: 2차 패스(--no-inline-config) — 아키텍처 규칙 위반 없음"
+fi
 
 # --- 2. 린트 픽스처 ---
 features=""
@@ -165,6 +179,8 @@ add "$FT/typeof-ok-self.ts"    '!no-restricted-syntax' "export type T = typeof i
 add "$FT/import-equals.ts"     no-restricted-syntax "import a = require('@/infra/__arch__/a'); export const x = a;"
 add "$FT/create-require.ts"    no-restricted-syntax "export const x = createRequire(import.meta.url)('@/infra/__arch__/a');"
 add "$FT/meta-resolve.ts"      no-restricted-syntax "export const x = import.meta.resolve('@/infra/__arch__/a');"
+add "$FT/new-url.ts"           no-restricted-syntax "export const w = new URL('@/infra/__arch__/a', import.meta.url);"   # 워커·자산 모듈 참조 구문
+add "$FT/new-url-ok.ts"        -                    "export const w = new URL('https://example.com/a?b=1');"              # 긍정: 진짜 URL 은 모듈 참조가 아니다
 add "$FT/mock-infra.ts"        no-restricted-syntax "declare const vi: { mock: (p: string) => void }; vi.mock('@/infra/__arch__/a'); export const x = 1;"
 add src/test/__arch__/mock-note.ts no-restricted-syntax "declare const vi: { mock: (p: string) => void }; vi.mock('@/infra/__arch__/./a'); export const x = 1;" # 테스트도 표기 규칙은 받는다
 # (d) 미분류 파일·잘못된 확장자·배럴 위치 — 파일 자체가 에러
@@ -236,14 +252,49 @@ console.log(`픽스처 ${n}건`);
 if (fail) { console.log("FAIL: 레이어 경계 린트가 위와 다르게 판정합니다 — eslint.config.mjs 의 해당 레이어 블록을 확인하세요."); process.exit(1); }
 ' "$json" $CASES
 
-# (g) eslint-disable 우회 — 린트가 아니라 check-eslint-disable.sh 가 잡아야 한다(일반 공백 + NBSP 구분자)
-printf '%s\n' "// eslint-disable-next-line import/no-restricted-paths" "$I '@/infra/__arch__/a'; export const x = a;" > "$FT/disable.ts"
-printf '// eslint-disable-next-line\xc2\xa0import/no-restricted-paths -- x\n%s\n' "$I '@/infra/__arch__/a'; export const x = a;" > "$FT/disable-nbsp.ts"
-for f in "$FT/disable.ts" "$FT/disable-nbsp.ts"; do
-  if bash scripts/check-eslint-disable.sh "$f" >/dev/null 2>&1; then
-    echo "FAIL: check-eslint-disable.sh 가 $f 의 'eslint-disable-next-line import/no-restricted-paths' 를 통과시켰습니다."
-    exit 1
+# (g) 인라인 지시자 우회 — 1차 패스에서는 지시자가 실제로 먹히지만(음성 대조), 2차 패스가 그대로 잡는다.
+#     여기 있는 문법은 라운드 3 검증이 셸 검사기를 뚫었던 계열이다: 빈 규칙 목록(`,` 한 글자 = ESLint 에겐 "전부 끄기"),
+#     규칙명 없는 disable, 제한 규칙 명시 disable, NBSP 를 구분자로 쓴 인라인 설정 주석, 삼중슬래시 + 그 규칙의 disable.
+#     문법을 다시 구현하지 않고 ESLint 두 번으로 판정하므로 새 변형이 나와도 같은 결과다.
+DIS="$FT/dis-empty.ts"
+printf '/* eslint-disable , -- 사유 */\n%s\n' "$I '@/infra/__arch__/a'; export const x = a;" > "$DIS"
+DIS2="$FT/dis-bare.ts"
+printf '/* eslint-disable */\n%s\n' "$I '@/infra/__arch__/a'; export const x = a;" > "$DIS2"
+DIS3="$FT/dis-named.ts"
+printf '// eslint-disable-next-line import/no-restricted-paths, no-restricted-imports -- 사유\n%s\n' "$I '@/infra/__arch__/a'; export const x = a;" > "$DIS3"
+DIS4="$FT/dis-conf-nbsp.ts"
+printf '/*eslint\xc2\xa0import/no-restricted-paths: off, no-restricted-imports: off*/\n%s\n' "$I '@/infra/__arch__/a'; export const x = a;" > "$DIS4"
+DIS5="$FT/dis-triple-slash.ts"
+printf '// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- 사유\n/// <reference types = "node" />\nexport const x = 1;\n' > "$DIS5"
+DISABLES="$DIS $DIS2 $DIS3 $DIS4 $DIS5"
+
+count_errors() { # $1.. 파일 → "파일:에러수" 줄 (추가 인자 없이 1차, ARCHCFG 가 있으면 2차)
+  "$ESLINT" --no-ignore $ARCHFLAGS --format json "$@" 2>/dev/null > "$json" || true
+  node -e '
+const fs = require("fs"), path = require("path");
+for (const r of JSON.parse(fs.readFileSync(process.argv[1], "utf8"))) {
+  console.log(path.relative(process.cwd(), r.filePath) + " " + r.messages.filter((m) => m.severity === 2).length);
+}' "$json"
+}
+ARCHFLAGS=""
+first="$(count_errors $DISABLES)"
+ARCHFLAGS="--no-inline-config --config eslint.arch.config.mjs"
+second="$(count_errors $DISABLES)"
+ARCHFLAGS=""
+gfail=0
+for f in $DISABLES; do
+  n1="$(printf '%s\n' "$first"  | awk -v f="$f" '$1 == f { print $2 }')"
+  n2="$(printf '%s\n' "$second" | awk -v f="$f" '$1 == f { print $2 }')"
+  [ -n "$n1" ] && [ -n "$n2" ] || { echo "FAIL: $f — eslint 결과에 이 파일이 없습니다(설정 오류?)."; gfail=1; continue; }
+  if [ "$n1" -ne 0 ]; then
+    echo "FAIL: $f — 1차 패스가 이미 잡았습니다(음성 대조 실패: 이 픽스처는 지시자가 먹히는 문법이어야 2차 패스를 검증한다)."
+    gfail=1
+  elif [ "$n2" -eq 0 ]; then
+    echo "FAIL: $f — 2차 패스(--no-inline-config)가 아키텍처 위반을 잡지 못했습니다. eslint.arch.config.mjs 와 ARCH_RULES 를 확인하세요."
+    gfail=1
+  else
+    echo "PASS: $f → 1차 0건(지시자가 먹힘) / 2차 ${n2}건(지시자 무시)"
   fi
-  echo "PASS: $f → check-eslint-disable.sh 가 거부"
 done
+[ "$gfail" -eq 0 ] || { echo "FAIL: 인라인 지시자 우회 검증 실패 (ADR-0008)."; exit 1; }
 echo "OK: 레이어 경계 린트 검증 통과"
