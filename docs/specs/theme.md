@@ -40,7 +40,7 @@
 | `--color-accent`                      | 사용자 선택(기본 `#7CC6FF`) | 동일 프리셋의 다크 값 | 선택·링·주 버튼                              |
 | `--color-on-accent`                   | `#1F1F26`                   | `#1F1F26`             | 강조색 위 글자(모든 프리셋에서 대비 ≥ 4.5:1) |
 | `--color-focus`                       | `#4A7BD0`                   | `#8FB6FF`             | 포커스 링(강조색과 무관, 대비 ≥ 3:1)         |
-| `--color-danger`                      | `#E05A6B`                   | `#F0808E`             | 삭제·에러                                    |
+| `--color-danger`                      | `#E05A6B`                   | `#F0808E`             | 삭제·에러 — 배경·아이콘·테두리 전용(R9)      |
 | `--color-saturday` / `--color-sunday` | `#5B8DEF` / `#E06B7D`       | `#8FB6FF` / `#F08A9A` | 요일                                         |
 
 - R1. 컴포넌트는 위 토큰과 `--cat-color`만 쓴다. HEX 직접 사용은 리뷰 Blocker(ADR-0003).
@@ -65,17 +65,17 @@
 
 ### 3-D. 형태·타이포·간격·모션
 
-| 종류      | 토큰 → 값                                                                                                                                              |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 라운드    | `--radius-sm` 8 · `--radius-md` 12 · `--radius-lg` 16 · `--radius-xl` 20(카드·다이얼로그) · `--radius-full` 9999                                       |
-| 간격      | `--space-1..8` = 4 · 8 · 12 · 16 · 20 · 24 · 32 · 48 px                                                                                                |
-| 글자 크기 | `--text-xs` 12 · `--text-sm` 13 · `--text-base` 14 · `--text-md` 15 · `--text-lg` 17 · `--text-xl` 20 · `--text-2xl` 24 · `--text-3xl` 30 px, 행간 1.5 |
-| 굵기      | §3-F: `--font-weight-regular` 400 · `--font-weight-semibold` 600 · `--font-weight-bold` 700                                                            |
-| 폰트      | `--font-sans` — 스택·서브셋·로딩 규칙은 §3-F                                                                                                           |
-| 그림자    | `--shadow-sm` `0 1px 2px rgb(0 0 0 / .06)` · `--shadow-md` `0 6px 20px rgb(0 0 0 / .08)`(다크: `.30`/`.45`)                                            |
-| 모션      | `--motion-fast` 150ms · `--motion-base` 200ms · `--motion-slow` 300ms · 이징 `cubic-bezier(.2,.8,.2,1)`                                                |
-| z-index   | `--z-base` 0 · `--z-sticky` 10 · `--z-popover` 20 · `--z-modal` 30 · `--z-toast` 40                                                                    |
-| 컨트롤    | 체크박스 22px 원형·테두리 2px `--color-border`(hover: 카테고리 색) · 버튼 높이 36px · 입력 높이 36px · 최소 클릭 영역 32×32                            |
+| 종류      | 토큰 → 값                                                                                                                                                                                                     |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 라운드    | `--radius-sm` 8 · `--radius-md` 12 · `--radius-lg` 16 · `--radius-xl` 20(카드·다이얼로그) · `--radius-full` 9999                                                                                              |
+| 간격      | `--space-1..8` = 4 · 8 · 12 · 16 · 20 · 24 · 32 · 48 px                                                                                                                                                       |
+| 글자 크기 | `--text-xs` 12 · `--text-sm` 13 · `--text-base` 14 · `--text-md` 15 · `--text-lg` 17 · `--text-xl` 20 · `--text-2xl` 24 · `--text-3xl` 30 px, 행간 1.5                                                        |
+| 굵기      | §3-F: `--font-weight-regular` 400 · `--font-weight-semibold` 600 · `--font-weight-bold` 700                                                                                                                   |
+| 폰트      | `--font-sans` — 스택·서브셋·로딩 규칙은 §3-F                                                                                                                                                                  |
+| 그림자    | `--shadow-sm` `0 1px 2px rgb(0 0 0 / .06)` · `--shadow-md` `0 6px 20px rgb(0 0 0 / .08)`(다크: `.30`/`.45`)                                                                                                   |
+| 모션      | `--motion-fast` 150ms · `--motion-base` 200ms · `--motion-slow` 300ms · 이징 `cubic-bezier(.2,.8,.2,1)`                                                                                                       |
+| z-index   | `--z-base` 0 · `--z-sticky` 10 · `--z-popover` 20 · `--z-modal` 30 · `--z-toast` 40                                                                                                                           |
+| 컨트롤    | 체크박스 22px 원형·테두리 2px `--color-muted`(미체크 상태의 유일한 식별선이라 R9 의 3:1 대상 — `--color-border` 는 1.24 로 미달, hover: 카테고리 색) · 버튼 높이 36px · 입력 높이 36px · 최소 클릭 영역 32×32 |
 
 - R5. `prefers-reduced-motion: reduce`에서 모든 `--motion-*`는 0ms.
 
@@ -84,15 +84,15 @@
 - R6. 테마 모드 ∈ `system | light | dark`, 기본 `system`. 적용은 `<html data-theme="light|dark">`. 첫 페인트 전에 적용되어 깜빡임이 없어야 한다(저장소가 비동기이므로 localStorage 미러 `tasky.theme.v1`을 첫 페인트 전 스크립트가 읽는다).
 - R7. `system` 모드는 OS 변경(`prefers-color-scheme`)을 실시간 따른다.
 - R8. 테마·강조색은 저장소 `Settings`에 저장되며 백업에 포함된다. localStorage 미러는 캐시일 뿐이며, 저장소 값이 우선한다.
-- R9. 텍스트 대비: 본문·보조 텍스트 ≥ 4.5:1, 아이콘·테두리·포커스 링 ≥ 3:1(배경 `--color-bg`/`--color-surface` 기준). 카테고리 색은 배경·점·막대에만 쓰고 글자색으로 쓰지 않는다.
+- R9. 대비(배경 `--color-bg`/`--color-surface` 기준): 본문·보조 텍스트 ≥ 4.5:1. 비텍스트는 WCAG 2.1 SC 1.4.11 의 범위 그대로 — **컨트롤·상태를 식별하는 데 필요한** 시각 요소(포커스 링, 미체크 체크박스 테두리, 의미를 가진 아이콘)만 ≥ 3:1이고, **순수 장식 경계선·구분선은 대상이 아니다**. 그래서 `--color-border`(라이트 1.24 / 다크 1.26)와 `--color-faint`(1.97 / 2.49)는 카드·패널 윤곽과 비활성 표시에만 쓰며 3:1 을 요구하지 않는다(그 선이 사라져도 컨트롤을 식별할 수 있다). 테두리가 컨트롤의 유일한 식별 수단인 곳에는 3:1 을 넘는 색을 쓴다(`--color-muted` 4.76 / 6.54). `--color-danger`(라이트 3.59 / 다크 6.61)는 3:1 은 넘고 4.5:1 에는 못 미치므로 **파괴 버튼 배경·아이콘·테두리 전용**이고 본문 글자색으로 쓰지 않는다 — 그 위 글자는 `--color-on-accent`(4.56 / 6.38). 카테고리 색은 배경·점·막대에만 쓰고 글자색으로 쓰지 않는다.
 
 ### 3-F. 타이포그래피 — Pretendard 셀프 호스팅(확정)
 
 - R10. `--font-sans` = `"Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif`. Pretendard는 **앱과 같은 출처에서 셀프 호스팅**(가변 폰트 woff2 서브셋 1파일). 외부 폰트 요청(Google Fonts·CDN) 0건.
 - R11. 굵기는 3단계만: 400(본문·입력·메모), 600(카테고리명·날짜·버튼·다이얼로그 제목), 700(달성률 숫자·오늘 날짜). 가변 폰트라 굵기 수는 용량과 무관하지만, 단계가 늘면 감성 톤이 흐트러지므로 토큰 밖 `font-weight` 사용은 리뷰 Major.
 - R12. 서브셋 범위: ASCII(U+0020–007E) · Latin-1 보충(U+00A0–00FF) · 일반 구두점(U+2000–206F) · ₩(U+20A9) · 한글 호환 자모(U+3131–318E) · KS X 1001 한글 2,350자. 범위 밖 글자(희귀 음절·한자·이모지)는 폴백 폰트로 렌더되며 **오류가 아니다**. 이모지는 OS 이모지 폰트에 맡긴다.
-- R13. 로딩: `font-display: swap` + 문서 `<head>`에 preload 1건. 폰트 도착 전에는 폴백 스택으로 즉시 텍스트를 그린다(보이지 않는 텍스트 FOIT 금지). 로드 실패(404·차단)여도 앱은 폴백으로 정상 동작하고 콘솔 오류 외 사용자 알림 없음. 교체로 인한 레이아웃 이동은 페이지 CLS 예산(≤ 0.05) 안이어야 한다.
-- R14. 파일: 가변 폰트 woff2 1개, ≤ 600KB(예상 450KB), 해시 파일명 + 1년 immutable 캐시. woff/ttf/otf는 제공하지 않는다.
+- R13. 선언과 로딩: `@font-face`는 `src/styles/fonts.css` 한 곳에만 두고 `globals.css`가 import한다(`tokens.css`는 `--font-sans` 값만 갖는다). `next/font`는 쓰지 않는다 — 빌드 스택이 Vinext라 그 경로가 없다(ADR-0010). `font-display: swap` + 문서 `<head>`에 preload 1건. 폰트 도착 전에는 폴백 스택으로 즉시 텍스트를 그린다(보이지 않는 텍스트 FOIT 금지). 로드 실패(404·차단)여도 앱은 폴백으로 정상 동작하고 콘솔 오류 외 사용자 알림 없음. 교체로 인한 레이아웃 이동은 페이지 CLS 예산(≤ 0.05) 안이어야 한다.
+- R14. 파일: 가변 폰트 woff2 1개, ≤ 600KB(실측 443KB). 위치는 `public/fonts/`이고 파일명에 내용 해시가 붙는다(`PretendardVariable.subset-<sha256 8자리>.woff2`) — `public/` 자산은 번들러를 거치지 않아 해시가 자동으로 붙지 않으므로 `scripts/subset-font.sh`가 넣고 `fonts.css`의 `url()`까지 맞춘다. 1년 immutable 캐시는 `public/_headers`의 `/fonts/*` 규칙이 준다. **해시 파일명과 immutable 은 한 쌍**이다 — 해시 없는 이름으로 되돌리면 1년 동안 낡은 폰트가 나간다. woff/ttf/otf는 제공하지 않는다.
 - R15. 폰트는 서비스워커 프리캐시 대상(pwa.md R3)이다 — 오프라인 첫 실행에서도 R10 스택의 첫 항목으로 렌더된다.
 - R16. 라이선스: SIL OFL 1.1. `OFL.txt`를 폰트 파일과 같은 디렉토리에 두고, `README.md` "서드파티 고지"에 폰트 이름·라이선스·출처(공식 배포 릴리스)를 1줄 기재. 폰트 자체를 수정하지 않는다(서브셋은 OFL이 허용하는 재배포 형태).
 
