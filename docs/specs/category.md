@@ -58,7 +58,7 @@
 - R13. **원자성**: 삭제 + 미완료 이동 + (즉석 생성)은 **단일 트랜잭션**이다 — 도메인 `planCategoryRemoval`이 쓸 값 전부를 만들고 저장소가 `DatasetRepository.write(writes)` 한 번으로 적용한다(TECH_PLAN §6). 중간 실패 시 아무것도 바뀌지 않는다(생성만 되고 이동이 안 되는 상태 없음).
 - R14. 실행 결과: 카테고리 소프트 삭제(tombstone) · **완료 투두는 그대로**(한 필드도 쓰지 않는다 — 삭제된 카테고리를 계속 가리킴) · 미완료(`done === false`)는 ①②면 `categoryId` 변경 + `order` = 대상 그룹 끝(**날짜별**), ③이면 카테고리와 **같은 `deletedAt`**으로 소프트 삭제. 물리 삭제 없음(ADR-0002·ADR-0005).
 - R14-a. **옮겨진 투두의 순서**: 날짜 `d`의 시작값은 `대상 카테고리의 그 날짜 최대 order + 1`(그 날짜에 투두가 없으면 0)이고, 옮기는 투두는 **원래 카테고리에서의 순서**(`order` 오름차순 → 같으면 `createdAt` 오름차순 → 같으면 `id` 오름차순)를 유지한 채 그 날짜 안에서 연속 번호를 받는다. 동률이 남지 않으므로 어떤 저장소 구현에서도 결과가 같다(계약 테스트가 이 문장을 단언 — TECH_PLAN §6).
-- R15. **되돌리기 6초**(토스트 "'공부'를 삭제했어요 [되돌리기]"): 카테고리 복구 + ③으로 지운 투두 복구 + 옮긴 투두를 원래 카테고리·원래 `order`로 복귀 + 즉석 생성 카테고리 소프트 삭제 — 즉 실행 결과 전체를 단일 트랜잭션으로 되감는다(`planCategoryRemovalUndo` → `DatasetRepository.write` 한 번, TECH_PLAN §6). 확인을 거쳤어도 유지하는 근거: 여러 투두를 옮기거나 지우는 **복합 작업**이라 "대상을 잘못 고름"이 단일 항목 삭제보다 흔하고, 되감기 비용이 결과 객체 하나로 싸다. 단일 항목 삭제(todo R13)는 확인만.
+- R15. **되돌리기 6초**(토스트 "'공부'를 삭제했어요 [되돌리기]"): 카테고리 복구 + ③으로 지운 투두 복구 + 옮긴 투두를 원래 카테고리·원래 `order`로 복귀 + 즉석 생성 카테고리 소프트 삭제 — 즉 실행 결과 전체를 단일 트랜잭션으로 되감는다(`planCategoryRemovalUndo` → `DatasetRepository.write` 한 번, TECH_PLAN §6). 되감을 값(삭제 직전 카테고리·투두)은 **스토어가 6초 창 동안 메모리에 들고 있는다** — 소프트 삭제된 뒤라 엔티티 조회로는 다시 읽히지 않는다(ADR-0007 결정 4). 확인을 거쳤어도 유지하는 근거: 여러 투두를 옮기거나 지우는 **복합 작업**이라 "대상을 잘못 고름"이 단일 항목 삭제보다 흔하고, 되감기 비용이 결과 객체 하나로 싸다. 단일 항목 삭제(todo R13)는 확인만.
 - R16. **종료 제안**: N>0(남길 기록이 있음)이고 M>0인 경우에만 대화상자 하단에 한 줄 "기록만 정리하려면 삭제 대신 [완료로 종료]" 링크 버튼. 누르면 대화상자를 닫고 R7 `active→completed`. 근거: 기록이 걸린 상황에서만 "종료면 충분한데 삭제를 누르는" 혼동을 막고, 그 외에는 소음이라 숨긴다.
 - R17. **삭제된 카테고리의 남은 투두**: 날짜 화면에서 그날 완료 투두가 있을 때만 맨 아래 "이름 (삭제됨)" 그룹(흐림, tombstone 색). 읽기 전용(체크 해제·편집·순서 불가), 메뉴 `다른 카테고리로 옮기기`·`삭제`. 사이드바·선택지·팔레트에 없음. 날짜 점·달성률에는 포함.
 - R18. **첫 실행 시드**: 카테고리 테이블이 비어 있고 `seededAt`이 없으면 `📝 todo`(스카이 `#7CC6FF`, active) 1개 생성 후 `seededAt` 기록. 지워도 재생성 없음. 근거: 이름은 사용자 지정, 색은 기본 강조색과 같아 첫 화면이 한 톤이고 색 바꾸기가 곧 첫 꾸미기, 📝는 특정 활동을 전제하지 않음.
@@ -66,7 +66,7 @@
 
 ## 4. 데이터
 
-- domain `Category = { id, name, color, emoji?, order, status, closedAt?, createdAt, updatedAt, deletedAt? }`(초안의 `archivedAt` 대체). 전이 검증·재매김·시드·삭제 계획(`CategoryRemovalPlan`)·되감기 계획은 순수 함수. `Settings.seededAt?`.
+- domain `Category = { id, name, color, emoji?, order, status, closedAt?, createdAt, updatedAt, deletedAt? }`(초안의 `archivedAt` 대체). 전이 검증·재매김·시드·삭제 계획(`planCategoryRemoval` → `{ writes, result }`)·되감기 계획(`planCategoryRemovalUndo`)은 순수 함수(타입은 `CategoryRemovalChoice`·`CategoryRemovalResult`, 시그니처 TECH_PLAN §6). `Settings.seededAt?`.
 - 레포지토리: `CategoryRepository.list({ includeClosed })`·`getById`·`upsert(Persistable<Category>)`(쓰기는 `upsert` 하나 — 삭제도 `upsert(markDeleted(…))`, ADR-0007); `TodoRepository.listByCategory`(N·M 계산). R13·R15의 두 테이블 단일 트랜잭션은 `DatasetRepository.write(writes)`가 맡고, 무엇을 쓸지는 도메인 `planCategoryRemoval`/`planCategoryRemovalUndo`가 정한다. R17의 삭제됨 그룹이 tombstone 이름·색을 읽는 경로는 `DatasetRepository.readAll()` 하나다(엔티티 조회는 tombstone을 반환하지 않는다). 시그니처 TECH_PLAN §6.
 
 ## 5. 접근성

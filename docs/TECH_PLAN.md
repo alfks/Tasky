@@ -4,8 +4,8 @@
 
 레이어·의존 방향·조립 지점은 [ARCHITECTURE.md](./ARCHITECTURE.md), 결정 근거는 [DECISIONS.md](./DECISIONS.md), 요구사항은 [specs/](./specs/AGENTS.md). 이 문서는 **무엇을 어떤 순서로 누가 만드는가**와 **수치 예산**만 다룬다.
 
-§5·§6(스키마·레포지토리 계약)은 아래 네 ADR의 **종속 문서**다 — 충돌하면 ADR이 이긴다.
-[ADR-0005](./decisions/ADR-0005-entity-meta-and-sync-readiness.md) `Meta`·UUID v4·ISO UTC·`rev`·소프트 삭제 · [ADR-0006](./decisions/ADR-0006-layer-boundary-allow-list.md) 레이어 허용 목록·배럴(`repositories/container.ts`) · [ADR-0007](./decisions/ADR-0007-persistable-write-path-and-tombstone-reads.md) `Persistable<T>`·`upsert` 단일 쓰기·툼스톤 조회 금지·계약 테스트 · [ADR-0008](./decisions/ADR-0008-arch-rules-second-pass.md) 아키텍처 규칙 2차 패스(`eslint.arch.config.mjs`).
+§5·§6(스키마·레포지토리 계약)은 아래 다섯 ADR의 **종속 문서**다 — 충돌하면 ADR이 이긴다. 예외가 필요하면 이 문서가 선언하지 않고 ADR을 쓴다(ADR-0009가 그렇게 나왔다).
+[ADR-0005](./decisions/ADR-0005-entity-meta-and-sync-readiness.md) `Meta`·UUID v4·ISO UTC·`rev`·소프트 삭제 · [ADR-0006](./decisions/ADR-0006-layer-boundary-allow-list.md) 레이어 허용 목록·배럴(`repositories/container.ts`) · [ADR-0007](./decisions/ADR-0007-persistable-write-path-and-tombstone-reads.md) `Persistable<T>`·`upsert` 단일 쓰기·툼스톤 조회 금지·계약 테스트 · [ADR-0008](./decisions/ADR-0008-arch-rules-second-pass.md) 아키텍처 규칙 2차 패스(`eslint.arch.config.mjs`) · [ADR-0009](./decisions/ADR-0009-dataset-operations-and-adopt-write-path.md) 데이터셋 단위 연산(`DatasetRepository`)·`adopt` 채택 쓰기 경로·`readAll` 호출처.
 
 ## 1. 기술 스택 확정표와 버전 정책
 
@@ -49,12 +49,12 @@
 | T-05 | 도메인 코어(`meta.ts` `Persistable`·엔티티·규칙·팔레트·에러·집중 세션·삭제 계획) | `feature/domain-core` | todo §4, category §4, completion-rate §4, theme §4, timer §4 | T-02 | M | W2 | `src/domain/**`(단, `src/domain/backup/**` 제외) `src/test/fixtures/**` `docs/ARCHITECTURE.md`(§4 데이터 모델) |
 | T-06 | UI 프리미티브 A | `feature/ui-primitives-core` | theme §3-D | T-03 | M | W2 | `src/components/ui/{Button,IconButton,Checkbox,ProgressRing,Kbd,Skeleton}.tsx`(+`.test.tsx`) |
 | T-07 | UI 프리미티브 B(오버레이) | `feature/ui-primitives-overlay` | app-shell R7·R8 | T-03 | M | W2 | `src/components/ui/{Popover,Dialog,ConfirmDialog,Menu,Toast,ColorSwatchGroup}.tsx`(+`.test.tsx`) — `ConfirmDialog`는 app-shell R14 단순형 |
-| T-08 | 레포지토리 인터페이스(엔티티 4종 + `DatasetRepository`) + memory + 계약 테스트 | `feature/repositories` | §6 | T-05 | M | W3 | `src/repositories/**` `src/test/setup.ts` |
+| T-08 | 레포지토리 인터페이스(엔티티 4종 + `DatasetRepository`) + memory + 계약 테스트 | `feature/repositories` | §6, ADR-0009 | T-05 | L | W3 | `src/repositories/**` `src/test/setup.ts` `docs/conventions/code-style.md`(§5 레포지토리 절) |
 | T-09 | 날짜 스트립 | `feature/date-strip` | date-strip | T-05, T-06 | M | W3 | `src/features/date-strip/**` |
 | T-10 | IndexedDB 구현(4테이블, `DatasetRepository` 교차 테이블 트랜잭션) + 조립 | `feature/infra-indexeddb` | §5 | T-08 | L | W4 | `src/infra/**` `src/app/providers.tsx` |
 | T-11 | 테마(모드·강조색·첫 페인트 적용·폰트 로드) | `feature/theme` | theme(§3-E·§3-F R10·R11·R13) | T-07, T-08, T-22 | M | W4 | `src/features/theme/**` `src/app/layout.tsx` |
 | T-12a | 카테고리(목록·생성/수정 다이얼로그·정렬·종료/재개·시드) | `feature/category` | category R1~R9·R18~R20 | T-06, T-07, T-08 | M | W4 | `src/features/category/**`(단, `components/CategoryRemoveDialog*.tsx`·`hooks/useCategoryRemoval.ts` 제외) |
-| T-12b | 카테고리 삭제 대화상자(3선택지·즉석 생성·축약)·되돌리기 | `feature/category-remove` | category R10~R17 | T-12a | M | W5 | `src/features/category/components/CategoryRemoveDialog*.tsx` `src/features/category/hooks/useCategoryRemoval.ts` `src/features/category/store/category-store.ts` `src/features/category/index.ts` |
+| T-12b | 카테고리 삭제 대화상자(3선택지·즉석 생성·축약)·되돌리기 | `feature/category-remove` | category R10~R16 | T-12a | M | W5 | `src/features/category/components/CategoryRemoveDialog*.tsx` `src/features/category/hooks/useCategoryRemoval.ts` `src/features/category/store/category-store.ts` `src/features/category/index.ts` |
 | T-13 | 투두 스토어·훅(정렬·재매김·하단 이동 상태) | `feature/todo-store` | todo §3 R5~R7·R10~R12·R15·R17·R18 | T-08 | M | W4 | `src/features/todo/store/**` `src/features/todo/hooks/**` `src/features/todo/index.ts` |
 | T-14 | 백업/복원 | `feature/backup` | backup | T-07, T-08 | M | W4 | `src/domain/backup/**` `src/features/backup/**` |
 | T-15 | 투두 UI(그룹·완료 블록 이동 모션·입력·편집·메뉴·삭제 확인·DnD·삭제됨 그룹) | `feature/todo-ui` | todo | T-06, T-07, T-12a, T-13 | L | W5 | `src/features/todo/components/**` `src/features/todo/messages.ts` `src/features/todo/index.ts` |
@@ -68,6 +68,7 @@
 | T-23 | 포커스 타이머(패널 슬롯·헤더 칩·세션 영속·완료 신호·소리) | `feature/timer` | timer | T-06, T-07, T-08, T-13 | M | W5 | `src/features/timer/**` |
 
 웨이브별 동시 실행 수: W1 4 · W2 3 · W3 2 · W4 5 · W5 6 · W6 2 · W7 1. 임계 경로(spine): T-01 → T-02 → T-05 → T-08 → T-10/T-13 → T-15 → T-20 → T-21(변경 없음 — T-12b·T-23은 W5에서 T-15와 병렬, 임계 경로 밖).
+T-08은 `DatasetRepository`(인터페이스+memory+전용 계약 테스트 4종)가 얹혀 **L**(`size:large` 라벨)이다 — 임계 경로 위라 착수 후 분할이 가장 비싸므로 크기를 미리 올린다. 선행(T-05)·후행(T-10·T-13)·웨이브(W3, 동시 2)는 그대로이고, 300줄을 넘겨도 한 티켓·한 PR로 간다(인터페이스와 그 계약 테스트를 쪼개면 리뷰가 반쪽이 된다).
 T-23(타이머)은 T-17(단축키 레지스트리)과 같은 W5라 명령을 직접 등록할 수 없다 → 타이머 명령 3개는 T-19가 `@/features/timer` index를 import해 등록한다(팔레트가 컷되면 타이머 명령도 함께 1.5로; 패널·칩 UI는 영향 없음). T-20은 `<TimerChip/>`·`<TimerPanelSection/>`을 슬롯에 마운트만 한다.
 T-17이 만드는 `<CommandLayer/>`(도움말 + 팔레트 슬롯)를 T-20이 1회 마운트하므로, T-19가 뒤에 머지돼도 셸을 다시 건드리지 않는다.
 폰트 책임 분담: **T-22** = 파일·라이선스·서브셋 스크립트(W1, 파일만 두고 아무 코드도 참조하지 않음) → **T-11** = `layout.tsx`에서 `next/font/local`로 로드(`@font-face`·preload·`--font-sans` 변수는 next/font가 생성, 수동 `@font-face` 금지) → **T-03** = `tokens.css`가 `var(--font-sans, <R10 폴백 스택>)`만 참조 → **T-04** = 프리캐시 상한 2.5MB 검사. `src/app/fonts/`는 T-22만, `layout.tsx`는 T-11만 만지므로 소유권 교집합 없음.
@@ -83,10 +84,11 @@ T-17이 만드는 `<CommandLayer/>`(도움말 + 팔레트 슬롯)를 T-20이 1�
 | `src/app/providers.tsx` | T-01 → T-10 | 조립 지점(ARCHITECTURE §6) |
 | `src/styles/tokens.css`, `globals.css` | T-01(골격) → T-03 | 이후 변경은 `docs(specs): theme` 선행 |
 | `src/test/setup.ts` | T-01 → T-08 | memory 주입 |
+| `docs/conventions/code-style.md` | T-08만 | §5 레포지토리 절이 `upsert` 만 알고 `DatasetRepository`(`readAll`/`write`/`restore`)를 모른다 — ADR-0009에 맞춰 T-08이 같은 PR에서 고친다 |
 | `src/features/todo/index.ts` | T-13 → T-15 | 배럴에 컴포넌트 export 추가 |
 | `src/features/command/index.ts` | T-17 → T-19 | 팔레트 export 추가 |
 | `src/features/category/store/category-store.ts`, `src/features/category/index.ts` | T-12a → T-12b | 삭제 액션·대화상자 export 추가 |
-| `docs/ARCHITECTURE.md` | T-01(§2) → T-05(§4) | 같은 PR에서 구조 변경과 함께 |
+| `docs/ARCHITECTURE.md` | T-01(§2 트리 골격) → T-05(§1 노드·§2 레포지토리 줄·§4) | 같은 PR에서 구조 변경과 함께. T-05가 만질 §1·§2 범위는 §5의 갱신 목록 5번 한 줄뿐 |
 | `src/features/AGENTS.md` | T-01만 | feature 목록 10개(shell·date-strip·category·todo·stats·theme·backup·command·pwa·timer)를 처음부터 기재 |
 | `src/app/AGENTS.md` | T-01 → T-04 | T-01이 만들고, T-04가 `manifest.ts`·`sw.ts` 추가에 맞춰 갱신 |
 | `.github/workflows/ci.yml` | T-01 → T-21 | guard/build 잡은 T-01, e2e 잡 추가는 T-21 |
@@ -115,29 +117,30 @@ ARCHITECTURE §4 대비 **MVP 타입 확정(델타)**:
 | `FocusSession`(신규) | timer.md §4 전체(`todoId?`, `categoryId?` 스냅샷, `date`, `plannedSeconds`, `startedAt`, `pausedAt?`, `pausedTotalSeconds`, `endedAt?`, `elapsedSeconds`, `status`) + `Meta` 공통 필드(`rev` 포함 — ADR-0005 규칙 1) | timer R2~R8. 통계에서 재구성 불가 → MVP부터 기록 |
 | `Settings` | `seededAt?: string`, `lastBackupAt?: string` | category R18(첫 실행 시드), backup R10. `id: 'default'`·`Meta`는 ARCHITECTURE §4에 이미 있음 |
 
-**T-05가 ARCHITECTURE §4에서 갱신할 것**(필드 델타만 반영하면 §4가 여전히 "3테이블"이라고 말한다 — 넷을 같은 PR에서):
+**T-05가 ARCHITECTURE에서 갱신할 것**(필드 델타만 반영하면 §4가 여전히 "3테이블"이라고, §1·§2가 "레포지토리 3개"라고 말한다 — 다섯을 같은 PR에서):
 1. 위 표의 `Todo`·`Category`·`Settings` 추가 필드.
 2. `FocusSession` 타입 **신규 추가**(§4 타입 블록에 한 줄).
 3. IndexedDB 인덱스 줄: `categories: id, order` → `id, order, status, updatedAt`, **`focusSessions: id, todoId, date, status, updatedAt` 줄 신설**(위 `db.version(1)` 블록과 문자열이 같아야 한다).
-4. §4 본문의 "소프트 삭제 필터는 `query.ts`·`memory/live.ts` 한 곳씩" 문장에 **툼스톤을 읽는 유일한 경로가 `DatasetRepository.readAll()`**(§6)이라는 한 줄 추가.
+4. §4 본문의 "소프트 삭제 필터는 `query.ts`·`memory/live.ts` 한 곳씩" 문장에 **툼스톤을 읽는 유일한 경로가 `DatasetRepository.readAll()`**(§6, ADR-0009 규칙 4)이라는 한 줄 추가.
+5. **§1 다이어그램의 `RI` 노드와 §2 트리의 레포지토리 파일 줄**(둘 다 지금 레포지토리 3개다): `FocusSessionRepository`·`DatasetRepository`를 더해 §6의 다섯과 맞춘다 — §2는 `focus-session-repository.ts`·`dataset-repository.ts` 두 파일명을 같은 줄에 추가하고, §1 `RI` 노드 라벨에 두 이름을 넣는다. 이 두 줄 외의 §1·§2 변경은 T-05 범위 밖이다(§4 소유권 표).
 
 `Meta`·`Persistable`·`id`/시각/`rev` 규칙 줄은 **바꾸지 않는다**(ADR-0005·0007 소관).
 
 마이그레이션 규칙(ADR-0002 §규칙 3 구체화):
 1. 기존 `version(n)` 블록은 절대 수정하지 않는다. 변경은 `version(n+1).stores({...}).upgrade(tx => …)` 추가로만.
-2. 삭제된 카테고리는 tombstone(`deletedAt`)으로 남아 완료 투두가 계속 가리킨다(category R14·R17). 이는 ADR-0002·ADR-0005의 소프트 삭제 결정에 **의존한다** — 엔티티 레포지토리의 조회는 툼스톤을 절대 반환하지 않으므로(ADR-0007 결정 4·규칙 2) tombstone 색·이름이 필요한 곳(category R17 "삭제됨" 그룹, backup R2 내보내기)은 `DatasetRepository.readAll()`을 쓴다. `includeDeleted` 옵션은 만들지 않는다.
+2. 삭제된 카테고리는 tombstone(`deletedAt`)으로 남아 완료 투두가 계속 가리킨다(category R14·R17). 이는 ADR-0002·ADR-0005의 소프트 삭제 결정에 **의존한다** — 엔티티 레포지토리의 조회는 툼스톤을 절대 반환하지 않으므로(ADR-0007 결정 4·규칙 2) tombstone 색·이름이 필요한 곳(category R17 "삭제됨" 그룹, backup R2 내보내기, backup R6 병합의 현재 스냅샷)은 `DatasetRepository.readAll()`을 쓴다(ADR-0009 규칙 4). `includeDeleted` 옵션은 만들지 않는다.
 3. **인덱스가 바뀌지 않는 선택 필드 추가**는 버전업 없이 허용하되, 읽기 경계의 정규화 함수(`normalizeTodo` 등)가 기본값을 채운다. 인덱스 추가/삭제·필수 필드 추가·타입 변경은 버전업.
 4. `upgrade`는 멱등·순수(외부 I/O 없음). 실패 시 `RepositoryError('SCHEMA_UPGRADE_FAILED')` → 앱 셸이 "백업 내보내기만 가능한 모드" 안내(app-shell §2-C 에러 카드 재사용).
 5. 버전업 PR = ADR + `db.ts` + 마이그레이션 테스트(`fake-indexeddb`로 v_n 픽스처 생성 → v_{n+1} 열기 → 단언) + `specs/backup.md` R3의 변환 함수 추가. 넷이 한 PR.
 6. 백업 파일 `schemaVersion` = `DB_VERSION` 상수 하나에서 파생. 가져오기는 `migrateBackup(v_k → v_{k+1})` 체인을 도메인에서 순수 함수로 유지.
-7. 물리 삭제는 `DatasetRepository.restore(snapshot)`(백업 가져오기) **하나뿐**이고, 그 외 모든 삭제는 `upsert(markDeleted(e, now))`다(ADR-0005 규칙 5). 이 한 곳이 예외인 근거: 사용자가 "지금 데이터를 모두 지우고 파일로 바꿔요"를 체크박스로 명시 확인하며(backup R7), 엔티티 단위 삭제가 아니라 **데이터셋 전체 교체**라 툼스톤으로 표현할 대상 자체가 사라진다. 동기화(Phase 2)에서 이 경로는 "기기 데이터셋 리셋"으로 재검토 대상이며, 그때 ADR이 정한다.
+7. 물리 삭제는 `DatasetRepository.restore(snapshot)`(백업 가져오기) **하나뿐**이고, 그 외 모든 삭제는 `upsert(markDeleted(e, now))`다. 이 예외의 근거는 **ADR-0009 결정 4**이며 ADR-0005 규칙 5는 같은 PR에서 적용 범위를 엔티티 레포지토리로 한정했다 — 종속 문서인 이 절이 만든 예외가 아니다. 안전한 이유: **`restore`의 인자 스냅샷은 툼스톤을 포함한 최종 전량**이라 사라지는 것은 로우의 물리적 자리뿐이고 삭제 사실(tombstone)은 그대로 다시 들어간다. 병합·교체 **둘 다** 도메인이 `readAll()` 결과와 파일을 합쳐 그 스냅샷을 만든다(backup R6·R7). 교체 모드에는 사용자 확인 체크박스가 더해지지만(backup R7), 근거는 체크박스가 아니라 위 불변식이므로 체크박스가 없는 병합에서도 성립한다. 동기화(Phase 2)에서 이 경로는 "기기 데이터셋 리셋"으로 재검토 대상이며, 그때 ADR이 정한다.
 
 ## 6. 레포지토리 인터페이스 확정 (병렬 티켓이 이 시그니처에 맞춰 작성)
 
-**이 절은 ADR-0005·ADR-0007의 종속 문서다.** 세 문장이 전부를 규정하고, 아래 시그니처는 그 결과일 뿐이다:
-1. 엔티티 레포지토리의 **쓰기 메서드는 `upsert(entity: Persistable<T>)` 하나**다. `remove`·`delete`·`softDelete`·`restore`·`bulkUpsert`·`replaceAll`은 없다(ADR-0007 규칙 2). 삭제는 `upsert(markDeleted(e, now))`.
+**이 절은 ADR-0005·ADR-0007·ADR-0009의 종속 문서다.** 세 문장이 전부를 규정하고, 아래 시그니처는 그 결과일 뿐이다:
+1. 엔티티 레포지토리의 **쓰기 메서드는 `upsert(entity: Persistable<T>)` 하나**다. `remove`·`delete`·`softDelete`·`restore`·`bulkUpsert`·`replaceAll`은 없다(ADR-0007 규칙 2 — 그 규칙의 적용 범위가 엔티티 레포지토리라는 한정도 ADR 본문에 있다). 삭제는 `upsert(markDeleted(e, now))`. **데이터셋 단위 계약(`DatasetRepository`)은 ADR-0009가 정한 별개 계약**이며, 거기서도 저장되는 값은 전부 `Persistable`이다.
 2. **레포지토리는 시각도 `rev`도 만들지 않는다**(ADR-0005 갱신 규칙, ADR-0007 규칙 3). `updatedAt`·`createdAt`·`rev`·`deletedAt`를 쓰는 코드는 `src/domain/meta.ts` 밖에서 ESLint 에러이며 2차 패스(ADR-0008)라 `eslint-disable`로도 못 끈다 — `at: string` 인자를 받는 메서드를 두면 `bash scripts/check-arch.sh`가 실패한다.
-3. **조회는 툼스톤을 반환하지 않는다**(ADR-0007 결정 4): `getById` → `undefined`, `list*`/`search`는 제외. `includeDeleted` 옵션은 없다. 툼스톤을 읽는 유일한 경로는 `DatasetRepository.readAll()`이다(ADR-0007 결정 4가 예고한 "별도 인터페이스" 자리).
+3. **조회는 툼스톤을 반환하지 않는다**(ADR-0007 결정 4): `getById` → `undefined`, `list*`/`search`는 제외. `includeDeleted` 옵션은 없다. 툼스톤을 읽는 유일한 경로는 `DatasetRepository.readAll()`이고 그 근거는 **ADR-0009**다 — ADR-0007 결정 4의 "별도 인터페이스"는 Phase 2 `SyncRepository`를 가리키는 문장이라 이 경로의 근거가 아니다.
 
 ```ts
 // src/repositories/todo-repository.ts — 목록은 order asc(동률 createdAt asc, 동률 id asc), 툼스톤 제외
@@ -171,22 +174,32 @@ export interface SettingsRepository {
   upsert(settings: Persistable<Settings>): Promise<void>;
 }
 // src/repositories/dataset-repository.ts
-// 엔티티 레포지토리가 아니다(ADR-0007 규칙 2의 대상 밖). 교차 테이블·전량 작업만 담당하며 remove/delete 메서드는 여기에도 없다.
+// 엔티티 레포지토리가 아닌 별개 계약이다(ADR-0009 결정 1·2 — ADR-0005 규칙 5·ADR-0007 규칙 2의 적용 범위 한정은 그 ADR 본문에 있다).
+// 교차 테이블·전량 작업만 담당하며 엔티티 단위 remove/delete 는 여기에도 없다.
 export type DatasetWrite =
   | { table: 'todos';         entity: Persistable<Todo> }
   | { table: 'categories';    entity: Persistable<Category> }
   | { table: 'focusSessions'; entity: Persistable<FocusSession> }
   | { table: 'settings';      entity: Persistable<Settings> };
 export type DatasetSnapshot = { todos: Todo[]; categories: Category[]; focusSessions: FocusSession[]; settings: Settings };
+// 쓰기용 스냅샷은 브랜드가 붙은 것만 받는다 — readAll 결과를 그대로 restore 에 넘기면 컴파일 에러다(ADR-0009 규칙 2).
+export type PersistableSnapshot = {
+  todos: readonly Persistable<Todo>[]; categories: readonly Persistable<Category>[];
+  focusSessions: readonly Persistable<FocusSession>[]; settings: Persistable<Settings>;
+};
 
 export interface DatasetRepository {
-  /** 툼스톤 포함 전량 읽기. 호출처는 백업 내보내기(backup R2)와 "삭제됨" 그룹 표시(category R17) 둘뿐. */
+  /** 툼스톤 포함 전량 읽기. 호출처는 셋 — 백업 내보내기(backup R2), 병합 가져오기의 현재 스냅샷(backup R6), "삭제됨" 그룹 표시(category R17).
+   *  넷째가 생기면 ADR-0009 규칙 4에 따라 그 ADR을 다시 본다. */
   readAll(): Promise<DatasetSnapshot>;
   /** 여러 테이블에 걸친 upsert 를 단일 트랜잭션으로. 중간 실패 시 아무것도 쓰지 않는다. 콜백이 아니라 값 목록이다. */
   write(writes: readonly DatasetWrite[]): Promise<void>;
-  /** 백업 가져오기 전용: 네 테이블을 물리적으로 비우고 스냅샷을 넣는 단일 트랜잭션(청크 500). 병합·교체 둘 다 도메인이 최종 스냅샷을 만들어 이 한 메서드로 적용한다. */
-  restore(snapshot: DatasetSnapshot): Promise<void>;
+  /** 백업 가져오기 전용: 네 테이블을 물리적으로 비우고 스냅샷을 넣는 단일 트랜잭션(청크 500). 병합·교체 둘 다 도메인이 readAll() 결과와 파일을 합쳐
+   *  "툼스톤을 포함한 최종 전량"을 만들어 이 한 메서드로 적용한다 — 그래서 물리 삭제가 정보를 지우지 않는다(ADR-0009 결정 4). */
+  restore(snapshot: PersistableSnapshot): Promise<void>;
 }
+// src/domain/meta.ts (T-05) — 파일에서 온 행에 시각·rev 를 새로 찍지 않고 브랜드만 붙이는 네 번째 생성 함수(ADR-0009 결정 3).
+export function adopt<T extends Meta>(e: T): Persistable<T>;   // Meta 형식 검증 실패는 backup R4 형식 오류. 호출처는 src/domain/backup/** 하나
 // src/repositories/container.ts
 export type Repositories = { todos: TodoRepository; categories: CategoryRepository; settings: SettingsRepository; focusSessions: FocusSessionRepository; dataset: DatasetRepository };
 export function getRepositories(): Repositories;   // 미설정 시 throw
@@ -211,7 +224,8 @@ export function planCategoryRemoval(input: {
   choice: CategoryRemovalChoice;
   deps: { now: () => string; id: () => string };
 }): { writes: DatasetWrite[]; result: CategoryRemovalResult };
-/** R15 되돌리기. result + 현재 엔티티를 받아 되감을 writes 를 만든다. 역시 dataset.write 한 번. */
+/** R15 되돌리기. result + 삭제 직전 엔티티를 받아 되감을 writes 를 만든다. 역시 dataset.write 한 번.
+ *  category·todos 는 삭제 직전 값을 **호출자(스토어)가 6초 창 동안 메모리에 들고 있는 것**이다 — markDeleted 된 뒤라 엔티티 조회로는 다시 읽히지 않고(규칙 3), 이 경로는 readAll 을 쓰지 않는다(category R15). */
 export function planCategoryRemovalUndo(input: {
   result: CategoryRemovalResult; category: Category; todos: readonly Todo[];
   createdCategory?: Category; deps: { now: () => string };
@@ -220,12 +234,12 @@ export function planCategoryRemovalUndo(input: {
 **`planCategoryRemoval`이 계약 수준에서 고정하는 것**(memory·indexeddb가 갈릴 여지를 남기지 않기 위한 것 — 계약 테스트는 이 문장들을 그대로 단언한다):
 - `at = deps.now()`를 **한 번만** 호출해 카테고리 tombstone·이동·삭제 투두 전부에 같은 값을 쓴다(category R14의 "같은 `deletedAt`").
 - "미완료" = `done === false`. 조회가 이미 툼스톤을 제외하므로 `deletedAt` 재판정은 하지 않는다. 완료 투두는 `writes`에 **들어가지 않는다**(한 글자도 건드리지 않음 = R14).
-- 이동 `order`(R14 "대상 그룹 끝, 날짜별"): 날짜 `d`마다 `base(d) = max(targetTodos 중 date===d 인 것의 order, -1) + 1`. 옮기는 투두는 **원래 카테고리에서의 정렬 순서(order asc → createdAt asc → id asc)** 를 유지한 채 같은 날짜끼리 `base(d), base(d)+1, …` 를 받는다. 동률이 남지 않으므로 두 구현의 결과가 같다.
+- 이동 `order`(R14-a "대상 그룹 끝, 날짜별"): 날짜 `d`마다 `base(d) = max(targetTodos 중 date===d 인 것의 order, -1) + 1`. 옮기는 투두는 **원래 카테고리에서의 정렬 순서(order asc → createdAt asc → id asc)** 를 유지한 채 같은 날짜끼리 `base(d), base(d)+1, …` 를 받는다. 동률이 남지 않으므로 두 구현의 결과가 같다.
 - 모든 `writes` 원소는 `touch`/`markDeleted`/`createMeta`를 거친 `Persistable`이다(그래야 타입이 통과한다). ②의 새 카테고리는 `order` = 활성 최대 + 1(R5).
 
 **교차 테이블 트랜잭션은 `DatasetRepository.write`·`restore` 두 메서드에만 있다.** 일반 `transaction(fn)` API는 여전히 두지 않는다 — 기각 근거였던 "Dexie 트랜잭션 존 안에서 비-Dexie `await`가 섞이면 조용히 깨진다"는 **사용자 콜백이 있을 때만** 성립하고, 위 둘은 콜백 없이 값 목록만 받으므로 그 위험이 없다. 이것이 backup R7("교체 = 단일 트랜잭션, 실패 시 전부 롤백")과 category R13·R15(2테이블 원자성)를 같은 하나의 예외로 만족시키는 방식이다. 타이머의 세션 종료 + `Todo.focusSeconds` 갱신은 원자성이 필요 없어 `upsert` 두 번으로 하고, 실패 시 세션 레코드(원천)에서 재계산한다(캐시라 정합 회복 가능).
 
-**계약 테스트**(`src/repositories/*.contract.test.ts`, 팩토리를 인자로 받아 memory(T-08)·indexeddb(T-10) 둘 다 실행) — ADR-0007 규칙 3의 (a)~(e)가 필수 케이스다. `READS`는 `Exclude<keyof TodoRepository, 'upsert'>`에 대한 `satisfies Record<ReadName, ReadCall>` 매핑 타입으로 쓴다(배열 금지). `DatasetRepository`는 엔티티 레포지토리가 아니므로 이 대조 대상이 아니고, 전용 계약 테스트가 ①`write`의 원자성(중간 실패 주입 → 변화 0) ②`restore` 왕복 ③`readAll`이 툼스톤을 **포함**하는지를 단언한다.
+**계약 테스트**(`src/repositories/*.contract.test.ts`, 팩토리를 인자로 받아 memory(T-08)·indexeddb(T-10) 둘 다 실행) — ADR-0007 규칙 3의 (a)~(e)가 필수 케이스다. `READS`는 `Exclude<keyof TodoRepository, 'upsert'>`에 대한 `satisfies Record<ReadName, ReadCall>` 매핑 타입으로 쓴다(배열 금지). `DatasetRepository`는 엔티티 레포지토리가 아니므로 이 대조 대상이 아니고, 전용 계약 테스트가 ①`write`의 원자성(중간 실패 주입 → 변화 0) ②`restore` 왕복 ③`readAll`이 툼스톤을 **포함**하는지 ④**병합 데이터 손실 0**(로컬 툼스톤 + 파일의 더 오래된 비삭제 같은 `id` → 적용 후에도 툼스톤이 남고 부활 0, ADR-0009 규칙 3) ⑤`// @ts-expect-error`로 `restore(readAll 결과)`가 컴파일 실패(ADR-0009 규칙 2)를 단언한다.
 **ADR-0007 재검토 트리거 확인**: `ReadName`이 `TodoRepository`에서 6개(5개 초과)다. 조회 API가 넓어졌지만 소프트 삭제 필터 진입점은 여전히 1개(`query.ts` / `memory/live.ts`)이고 추가된 것은 범위 조회·검색뿐이라 결정 4·5를 다시 열지 않는다 — T-08 PR에 이 문장을 근거로 적는다.
 
 ## 7. 테스트 전략
@@ -233,7 +247,7 @@ export function planCategoryRemovalUndo(input: {
 | 층 | 도구 | 범위(필수) | 하지 않는 것 |
 |----|------|-----------|-------------|
 | 도메인 | Vitest | `src/domain/**` 모든 export 함수, 커버리지 100%(`--coverage` 게이트 95% 미만 실패), 스펙 R-번호 = 테스트명. 타이머 경과·완료 판정은 `now` 주입, 카테고리 전이 표 전수 | 타입만 있는 파일 |
-| 저장소 | Vitest + fake-indexeddb | 계약 테스트를 memory·indexeddb 동일 실행(ADR-0007 규칙 3 (a)~(e) 필수 — `Meta` 왕복·`rev` +1·툼스톤 전수 제외·`upsert(plain)` `@ts-expect-error`·`READS` 전수 대조), 마이그레이션 테스트(v_n→v_{n+1}), 정렬, `DatasetRepository` 원자성(중간 실패 주입 → 변화 0)·`restore` 왕복·`readAll` 툼스톤 포함 | Dexie 내부 동작 |
+| 저장소 | Vitest + fake-indexeddb | 계약 테스트를 memory·indexeddb 동일 실행(ADR-0007 규칙 3 (a)~(e) 필수 — `Meta` 왕복·`rev` +1·툼스톤 전수 제외·`upsert(plain)` `@ts-expect-error`·`READS` 전수 대조), 마이그레이션 테스트(v_n→v_{n+1}), 정렬, `DatasetRepository` 원자성(중간 실패 주입 → 변화 0)·`restore` 왕복·`readAll` 툼스톤 포함·**병합 손실 0**·`restore(plain)` `@ts-expect-error`(§6 ④⑤) | Dexie 내부 동작 |
 | 스토어 | Vitest + memory 저장소 | 액션별 성공·실패(롤백)·낙관적 갱신 | 렌더 |
 | 컴포넌트 | Testing Library(`getByRole`) | 기능당 핵심 행동 1~3개(추가·토글·삭제·키보드), IME 조합, 포커스 이동, `aria-*` | 스냅샷, 픽셀, 애니메이션 타이밍 |
 | 토큰 | Vitest | `tokens.css` 파싱 → theme.md 표와 값 일치, 대비 계산(≥ 4.5:1 / 3:1) | 브라우저 렌더 |
@@ -307,7 +321,7 @@ export function planCategoryRemovalUndo(input: {
 
 | # | MVP에서 지킬 것 | 나중에 열리는 것 | 확인 방법 |
 |---|----------------|-----------------|----------|
-| 1 | 모든 엔티티가 `Meta`(`id` UUID v4 · `createdAt`·`updatedAt` ISO UTC · `rev` · `deletedAt?`)를 예외 없이 갖는다(ADR-0005). 물리 삭제는 `DatasetRepository.restore`뿐 | 동기화 충돌 해결(LWW), 서버 병합, `listChangedSince` | 계약 테스트(ADR-0007 규칙 3 (a)) |
+| 1 | 모든 엔티티가 `Meta`(`id` UUID v4 · `createdAt`·`updatedAt` ISO UTC · `rev` · `deletedAt?`)를 예외 없이 갖는다(ADR-0005). 물리 삭제는 `DatasetRepository.restore`뿐이고 그 인자는 툼스톤을 포함한 최종 전량이다(ADR-0009) | 동기화 충돌 해결(LWW), 서버 병합, `listChangedSince` | 계약 테스트(ADR-0007 규칙 3 (a)) |
 | 1-b | `Meta` 쓰기는 도메인 `touch`/`markDeleted`/`createMeta`만, 저장은 `upsert(Persistable<T>)`만(ADR-0007). 우회는 타입·2차 패스 린트가 막는다(ADR-0008) | 원격 구현으로 바꿔도 `rev`·`updatedAt` 규율이 그대로 | `pnpm check` + `bash scripts/check-arch.sh` |
 | 2 | `updatedAt` 인덱스 존재 | `listChangedSince(ts)` 추가 시 버전업 불필요 | `db.ts` v1 |
 | 3 | `Todo.doneAt` 기록, `FocusSession` 레코드(카테고리 스냅샷 포함) | 통계(시간대별·스트릭·집중 시간·카테고리별), 피드("방금 완료") | todo R6, timer R8·R13 테스트 |
@@ -321,12 +335,13 @@ export function planCategoryRemovalUndo(input: {
 | 11 | 명령 레지스트리(`registerCommands`) | Phase 2 기능이 메뉴 대신 명령으로 진입 | shortcuts R7 |
 | 12 | 백업 `schemaVersion` + 변환 체인 | 새 엔티티(diary·routine) 포함 시 버전 n+1 | backup R3 |
 | 13 | `infra`를 import하는 곳은 `providers.tsx`·`test/setup.ts`뿐 | `infra/sync/` 어댑터를 같은 컨테이너로 주입 | ESLint 규칙 + Grep |
-| 14 | 레포지토리는 `Promise` + 도메인 타입만, 교차 테이블 트랜잭션은 `DatasetRepository` 두 메서드에만 | 원격 구현(REST/WebSocket)으로 교체 가능, 툼스톤 읽기는 `SyncRepository.listChangedSince`가 `readAll` 자리를 잇는다(ADR-0007 결정 4) | 계약 테스트 재사용 |
+| 14 | 레포지토리는 `Promise` + 도메인 타입만, 교차 테이블 트랜잭션은 `DatasetRepository` 두 메서드에만(ADR-0009) | 원격 구현(REST/WebSocket)으로 교체 가능, 툼스톤 읽기는 `SyncRepository.listChangedSince`가 `readAll` 자리를 잇는다(ADR-0007 결정 4 · ADR-0009 재검토 트리거) | 계약 테스트 재사용 |
 | 15 | UI 선호(접힘·최근 명령)는 localStorage, 데이터는 저장소 | 동기화 범위 = 저장소만 | 코드 리뷰 |
 
 ## 13. 문서 갱신 의무 (구현과 같은 PR)
 
 - 구조 변경: `ARCHITECTURE.md`(§2 트리·§4 모델·§6 조립) + `DIRECTORY_MAP.md`.
-- 스키마 변경: ADR + `DECISIONS.md` 행 + §5 규칙 4.
+- 스키마 변경: ADR + `DECISIONS.md` 행 + §5 규칙 4. **저장소 구조 변경(레포지토리 계약 추가·삭제, 삭제 불변식 예외)도 같다** — 종속 문서(§5·§6)만 고치지 않는다(CLAUDE.md §7-9, ADR-0009가 그 예).
+- 계약이 바뀌면 `docs/conventions/code-style.md` §5(레포지토리 절)도 같은 PR에서 — "코드 작성 시작" 필독 문서라 여기가 낡으면 구현자가 상충하는 지시를 먼저 읽는다.
 - 스펙과 다르게 구현: 핸드오프 `decisions:` → 후속 `docs(specs)` PR(스펙 AGENTS.md 규칙 2).
 - 이 문서의 티켓 표(§3)는 오케스트레이터가 발행 시점에 BOARD.md로 옮기고, 표 자체는 회고 때만 갱신한다.
