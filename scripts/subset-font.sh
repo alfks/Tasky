@@ -3,7 +3,12 @@
 #
 # Pretendard 가변 폰트(woff2, R14) 서브셋 생성 스크립트. docs/specs/theme.md §3-F(R12) 의
 # 서브셋 범위를 원본 가변 폰트(PretendardVariable.ttf)에 적용해
-# public/fonts/PretendardVariable.subset.woff2 를 만든다.
+# public/fonts/PretendardVariable.subset-<내용해시>.woff2 를 만든다.
+#
+# 파일명에 내용 해시가 들어가는 이유(R14): public/ 자산은 번들러를 거치지 않아 해시가 자동으로
+# 붙지 않는데, public/_headers 의 `/fonts/*` 가 1년 immutable 캐시를 건다. 해시가 없으면 폰트를
+# 바꿔도 1년 동안 낡은 파일이 나간다 — 해시와 immutable 은 한 쌍이다. 이 스크립트가 해시를 붙이고,
+# 낡은 해시 파일을 지우고, src/styles/fonts.css 의 url() 까지 함께 갱신한다(손으로 고치지 않는다).
 #
 # 서브셋 범위(R12):
 #   - ASCII                    U+0020-007E
@@ -33,7 +38,8 @@ set -euo pipefail
 SRC="${1:-${PRETENDARD_SRC:-}}"
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="$ROOT_DIR/public/fonts"
-OUT_FILE="$OUT_DIR/PretendardVariable.subset.woff2"
+BASENAME="PretendardVariable.subset"
+FONTS_CSS="$ROOT_DIR/src/styles/fonts.css"
 
 if [ -z "$SRC" ]; then
   echo "사용법: bash scripts/subset-font.sh <PretendardVariable.ttf 경로>" >&2
@@ -100,8 +106,10 @@ with open(out_path, "w", encoding="utf-8") as f:
     f.write("\n")
 PY
 
+TMP_OUT="$WORK_DIR/subset.woff2"
+
 pyftsubset "$SRC" \
-  --output-file="$OUT_FILE" \
+  --output-file="$TMP_OUT" \
   --flavor=woff2 \
   --unicodes-file="$UNICODES_FILE" \
   --glyph-names \
@@ -114,19 +122,82 @@ pyftsubset "$SRC" \
   --name-legacy \
   --drop-tables+=DSIG
 
-SIZE_BYTES="$(wc -c < "$OUT_FILE" | tr -d ' ')"
-echo "생성됨: $OUT_FILE (${SIZE_BYTES} bytes)"
+# 내용 해시(sha256 앞 8자리)를 파일명에 넣는다. python3 는 위에서 이미 필수 의존이라
+# sha256sum/shasum 의 플랫폼 차이를 피해 hashlib 로 계산한다(scripts/AGENTS.md 규칙 1·4).
+HASH="$(python3 -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest()[:8])" "$TMP_OUT")"
+OUT_FILE="$OUT_DIR/${BASENAME}-${HASH}.woff2"
 
-python3 - "$OUT_FILE" <<'PY'
+# 산출물 검증(R12·R14). 하나라도 어긋나면 낡은 파일을 남긴 채 실패한다 — 조용한 성공 금지.
+python3 - "$TMP_OUT" "$SRC" <<'VERIFY'
+import hashlib
 import sys
+
 from fontTools.ttLib import TTFont
 
-path = sys.argv[1]
-font = TTFont(path)
-print("glyf 글리프 수:", font["maxp"].numGlyphs)
-if "fvar" in font:
-    axes = ", ".join(f"{a.axisTag} {a.minValue}-{a.maxValue} (기본 {a.defaultValue})" for a in font["fvar"].axes)
-    print("가변 축:", axes)
-else:
-    print("경고: fvar 테이블이 없습니다(가변 폰트가 아님)")
-PY
+out_path, src_path = sys.argv[1], sys.argv[2]
+font = TTFont(out_path)
+cmap = set(font.getBestCmap())
+
+ks = set()
+for hi in range(0xB0, 0xC9):
+    for lo in range(0xA1, 0xFF):
+        try:
+            ch = bytes([hi, lo]).decode("euc-kr")
+        except UnicodeDecodeError:
+            continue
+        if len(ch) == 1 and 0xAC00 <= ord(ch) <= 0xD7A3:
+            ks.add(ord(ch))
+assert len(ks) == 2350, f"KS X 1001 한글은 2350자여야 하는데 {len(ks)}자 계산됨"
+
+missing = sorted(ks - cmap)
+assert not missing, f"KS X 1001 한글 {len(missing)}자가 서브셋에 없습니다: {[hex(c) for c in missing[:5]]}"
+
+assert "fvar" in font, "fvar 테이블이 없습니다 — 가변 폰트가 아닙니다(R10)"
+axes = {a.axisTag: (a.minValue, a.maxValue) for a in font["fvar"].axes}
+assert "wght" in axes, f"wght 축이 없습니다: {sorted(axes)}"
+
+with open(out_path, "rb") as f:
+    size = len(f.read())
+limit = 600 * 1024
+assert size <= limit, f"{size}B > {limit}B — R14 용량 상한 초과"
+
+with open(src_path, "rb") as f:
+    src_md5 = hashlib.md5(f.read()).hexdigest()
+src_ver = TTFont(src_path)["name"].getDebugName(5)
+print(f"원본: {src_path}")
+print(f"  md5 {src_md5} · 버전 {src_ver}")
+print(f"글리프 {font['maxp'].numGlyphs}개 · cmap {len(cmap)}자 · KS X 1001 2350/2350")
+print("가변 축: " + ", ".join(f"{t} {lo}-{hi}" for t, (lo, hi) in sorted(axes.items())))
+print(f"용량 {size}B <= {limit}B")
+VERIFY
+
+# 낡은 해시본(과 해시 이전 이름)을 지운다 — 남겨 두면 1년 immutable 캐시에 유령 파일이 쌓인다.
+for old in "$OUT_DIR/$BASENAME".woff2 "$OUT_DIR/$BASENAME"-*.woff2; do
+  if [ -f "$old" ] && [ "$old" != "$OUT_FILE" ]; then
+    rm -f "$old"
+    echo "낡은 산출물 삭제: $old"
+  fi
+done
+
+mv "$TMP_OUT" "$OUT_FILE"
+echo "생성됨: $OUT_FILE"
+
+# @font-face 의 url() 을 새 파일명으로 맞춘다. 둘이 어긋나면 폰트가 404 로 조용히 폴백된다.
+if [ ! -f "$FONTS_CSS" ]; then
+  echo "$FONTS_CSS 가 없습니다 — @font-face 선언이 있어야 폰트가 적용됩니다." >&2
+  exit 1
+fi
+
+python3 - "$FONTS_CSS" "$HASH" "$BASENAME" <<'SYNC'
+import re
+import sys
+
+path, new_hash, basename = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path, encoding="utf-8") as f:
+    css = f.read()
+pattern = re.compile(re.escape(basename) + r"(?:-[0-9a-f]{8})?\.woff2")
+assert pattern.search(css), f"{path} 에서 {basename}*.woff2 url 을 찾지 못했습니다"
+with open(path, "w", encoding="utf-8") as f:
+    f.write(pattern.sub(f"{basename}-{new_hash}.woff2", css))
+print(f"갱신됨: {path} -> {basename}-{new_hash}.woff2")
+SYNC

@@ -1,0 +1,20 @@
+/* 폰트 파일 선언(@font-face)의 유일한 자리. globals.css 가 import 한다(tokens.css 는 값만 갖는다).
+   next/font 는 쓰지 않는다 — 빌드 스택이 Vinext 라 그 경로가 없다(ADR-0010).
+   docs/specs/theme.md §3-F: R10 셀프 호스팅 · R12 서브셋 범위 · R13 swap · R14 해시 파일명.
+
+   파일명의 `-74f8c71d` 는 내용 해시다(scripts/subset-font.sh 가 붙인다). public/ 은 번들러를
+   거치지 않아 해시가 자동으로 안 붙는데, public/_headers 의 `/fonts/*` 가 1년 immutable 을
+   걸기 때문에 해시가 없으면 폰트를 바꿔도 1년간 낡은 파일이 나간다 — 해시와 immutable 은 한 쌍이다.
+   서브셋을 다시 뽑으면 스크립트가 파일명과 아래 url() 을 함께 갱신한다. 손으로 고치지 않는다. */
+@font-face {
+  font-family: 'Pretendard Variable';
+  /* format("woff2") 가 표준 — 폐기된 "woff2-variations" 를 쓰면 그 키워드를 모르는 엔진이
+     이 src 를 조용히 건너뛰고 폴백으로 샌다. 가변 축은 아래 font-weight 범위로 알린다. */
+  src: url('/fonts/PretendardVariable.subset-74f8c71d.woff2') format('woff2');
+  font-weight: 45 930; /* 원본 가변 축 wght 의 실제 범위 */
+  font-style: normal;
+  font-display: swap; /* R13: FOIT 금지 — 도착 전에는 폴백 스택으로 즉시 그린다 */
+  /* R12 서브셋 범위. KS X 1001 한글 2,350자는 U+AC00-D7A3 안에 흩어져 있어 범위로만 적는다 —
+     범위 안이지만 서브셋에 없는 음절은 스택 다음 폰트로 문자 단위 폴백된다(오류 아님). */
+  unicode-range: U+0020-007E, U+00A0-00FF, U+2000-206F, U+20A9, U+3131-318E, U+AC00-D7A3;
+}
