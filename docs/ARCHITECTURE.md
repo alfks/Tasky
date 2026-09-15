@@ -42,12 +42,12 @@ flowchart TB
   classDef ext stroke-dasharray: 5 5,stroke:#888;
 ```
 
-**의존 규칙 — 허용 목록(allow-list)이다(ADR-0006).** 아래 표에 적힌 것만 import 할 수 있고 **그 외 `src/**` 는 전부 금지**다. 표의 단일 소스는 `scripts/arch-layers.mjs`(`ALLOW`)이며 `eslint.config.mjs` 가 그것으로 `import/no-restricted-paths` 규칙을 만든다(해석된 실제 경로 기준 — 별칭·배럴로 우회 불가, 상대 경로는 아예 금지. 동적 `import()` 는 인자가 문자열 리터럴일 때만 해석되므로 리터럴이 아닌 인자는 문법 단계에서 금지한다). 문자열로 경로를 판정하는 나머지 규칙(조립 지점·`lib/date`·`db.ts`·자기 배럴·패키지 목록)은 **표기 정규형 강제**가 전제다 — 확장자·`/index`·`./`·중복 슬래시 같은 다른 표기는 그 자체가 에러이고, 같은 패턴이 동적 `import()` 에도 복제된다(ADR-0006 결정 9). `src/**` 의 모든 파일은 정확히 하나의 레이어에 속하며, 어느 레이어에도 없는 파일은 파일 자체가 린트 에러다. 규칙이 실제로 잡는지는 `scripts/check-arch.sh`가 위반·허용 픽스처로 검증하고, 아키텍처 규칙의 `eslint-disable`은 `scripts/check-eslint-disable.sh`가 거부한다(그 검사기가 실제로 막는 우회 표기의 단일 소스는 그 스크립트다).
+**의존 규칙 — 허용 목록(allow-list)이다(ADR-0006).** 아래 표에 적힌 것만 import 할 수 있고 **그 외 `src/**` 는 전부 금지**다. 표의 단일 소스는 `scripts/arch-layers.mjs`(`ALLOW`)이며, `eslint.config.mjs` 가 그 한 목록에서 허용 목록의 **두 표현**을 만든다 — `import/no-restricted-paths`(해석된 실제 경로로 판정하므로 별칭·배럴은 풀어서 본다. 상대 경로는 아예 금지)와, 그 규칙이 보지 못하는 구문에 같은 판정을 거는 문자열 패턴(**표기 정규형 강제**가 전제다 — 확장자·`/index`·`./`·중복 슬래시 같은 다른 표기는 그 자체가 에러). 문자열로 경로를 판정하는 나머지 규칙(조립 지점·`lib/date`·`db.ts`·자기 배럴·패키지 목록)도 같은 전제 위에 있다. **모듈 경로를 문자열로 쓰는 구문은 전수 점검해 각각 어느 규칙이 받는지 고정했다** — 목록과 실측 결과는 ADR-0006 결정 9(라운드 4: `typeof import()` 가 두 표현을 모두 빠져나가던 구멍을 그때 닫았다). 예외 하나는 삼중슬래시 지시자(`/// <reference path|types>`)로, 주석이라 ESLint 셀렉터가 닿지 않아 `@typescript-eslint/triple-slash-reference` 와 `scripts/check-arch.sh` 의 grep 이 대신 막는다. `src/**` 의 모든 파일은 정확히 하나의 레이어에 속하며, 어느 레이어에도 없는 파일은 파일 자체가 린트 에러다. 규칙이 실제로 잡는지는 `scripts/check-arch.sh`가 위반·허용 픽스처(feature 2개 기준 100건)로 검증하고, 아키텍처 규칙의 `eslint-disable`은 `scripts/check-eslint-disable.sh`가 거부한다(무엇을 거부하고 어디까지가 그 검사기의 한계인지는 그 스크립트가 단일 소스다).
 **스캐폴딩 전(`package.json` 없음)에는 린트가 존재하지 않는다** — 그때까지 이 표는 문서일 뿐이므로 `src/` 코드 티켓은 스캐폴딩 PR 머지 후에만 발행한다.
 
 | 레이어 | import 허용 — **이것만**(자기 레이어 포함) | 외부 패키지 |
 |--------|------------------------------------------|------------|
-| `src/app` | `app`, `components`, `lib`, `styles`, `features/<f>/index.ts`(feature 내부 경로 금지). `@/app/providers` 는 `layout.tsx` 만 import(표기 정규형 + 동적 import 거울로 강제 — ADR-0006 결정 9). 예외 `app/providers.tsx`(조립 지점): + `repositories`, `infra`, `features`, 재export 금지 | `dexie`·`zustand` 금지 |
+| `src/app` | `app`, `components`, `lib`, `styles`, `features/<f>/index.ts`(feature 내부 경로 금지). `@/app/providers` 는 `layout.tsx` 만 import(표기 정규형 + 구문 거울로 강제 — ADR-0006 결정 9). 예외 `app/providers.tsx`(조립 지점): + `repositories`, `infra`, `features`, 재export 금지 | `dexie`·`zustand` 금지 |
 | `src/components` | `components`, `lib`, `styles` (무상태 프리미티브) | `dexie`·`zustand` 금지 |
 | `src/features/<f>` | 자기 feature, `domain`, `repositories`, `components`, `lib`, `styles`, 다른 feature 의 `index.ts` 만 | `dexie` 금지 |
 | `src/domain` | `domain`, `lib` | **0개**(허용 목록) + 브라우저 전역·`Date`·`crypto`·`Math.random` 금지 |
@@ -61,7 +61,7 @@ flowchart TB
 원칙: **UI → 상태 → 도메인 → 인터페이스 ← 인프라**. 인프라는 인터페이스를 구현할 뿐이다. 경로 표기는 항상 `@/…`(code-style.md §7 표).
 
 **보장되는 것과 보장되지 않는 것**(린트는 *import 간선*만 본다 — 값의 흐름은 보지 못한다. 실측 근거: ADR-0006):
-- 보장: 테스트 계층(`src/test/**`, `*.test.*` — 경계 규칙 면제)과 `infra` 자신을 빼면, `infra` 를 **import** 하는 파일은 `app/providers.tsx` 하나다. 그 파일을 import 할 수 있는 파일도 `layout.tsx` 하나이며(표기 변형·동적 `import()` 포함 — 실측), `providers.tsx` 의 재export(`export … from`)는 금지된다 — 재export 한 줄로 조립 지점을 경유지 삼는 2홉은 막힌다.
+- 보장: 테스트 계층(`src/test/**`, `*.test.*` — 경계 규칙 면제)과 `infra` 자신을 빼면, `infra` 를 **import** 하는 파일은 `app/providers.tsx` 하나다. 그 파일을 import 할 수 있는 파일도 `layout.tsx` 하나다 — 표기 변형과 ADR-0006 결정 9 가 열거한 모듈 경로 구문 전수(정적·`import type`·동적 `import()`·`typeof import()`·모킹·`require` 계열)에 대해 실측했고 `check-arch.sh` 픽스처가 고정한다(주석인 삼중슬래시 지시자는 §1 의 grep 이 별도로 막는다). `providers.tsx` 의 재export(`export … from`)는 금지된다 — 재export 한 줄로 조립 지점을 경유지 삼는 2홉은 막힌다.
 - 보장 안 됨: `providers.tsx` 가 `export const getDb = () => db` 처럼 **직접 래퍼를 써서** infra 값을 내보내는 것. import 간선 규칙으로는 잡을 수 없다. 이 한 파일(`providers.tsx`)이 그래서 아키텍처 리뷰 대상이고(agent-collaboration.md 페르소나 표), 그 파일이 커지면 레포지토리 주입 외의 일을 하고 있다는 신호다.
 
 ## 2. 디렉토리 트리 (각 노드 → 그 디렉토리의 `AGENTS.md`)
@@ -142,7 +142,7 @@ type Settings = Meta & { id: 'default'; theme: 'light' | 'dark' | 'system'; acce
 
 ## 6. 조립 지점
 
-`src/app/providers.tsx`(client): 앱 시작 시 `setRepositories(createIndexedDbRepositories())` → 각 feature store가 `getRepositories()`로 사용. 테스트는 `src/test/setup.ts`에서 `setRepositories(createMemoryRepositories())`. 이 두 파일과 테스트 계층(`src/test/**`, `*.test.*`), `infra` 자신 외에 `infra`를 import하면 `pnpm lint`가 실패한다(§1 허용 목록 — 어느 경유지를 거쳐도, 어떤 경로 표기로 써도 마찬가지).
+`src/app/providers.tsx`(client): 앱 시작 시 `setRepositories(createIndexedDbRepositories())` → 각 feature store가 `getRepositories()`로 사용. 테스트는 `src/test/setup.ts`에서 `setRepositories(createMemoryRepositories())`. 이 두 파일과 테스트 계층(`src/test/**`, `*.test.*`), `infra` 자신 외에 `infra`를 import하면 `pnpm lint`가 실패한다(§1 허용 목록 — 어느 경유지를 거쳐도, 어떤 경로 표기·import 구문으로 써도 마찬가지다. 한계는 §1 의 "보장 안 됨" 과 삼중슬래시 지시자뿐).
 
 ## 7. 관련 ADR
 

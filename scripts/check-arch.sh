@@ -47,6 +47,17 @@ for f in src/features/*/; do
   case "$(basename "$f")" in __*) continue ;; esac
   [ -f "$f/index.ts" ] || { echo "FAIL: $f 에 index.ts(공개 API 배럴)가 없습니다."; bad=1; }
 done
+# 삼중슬래시 지시자(`/// <reference path|types`)는 주석이라 ESLint 셀렉터가 닿지 않는다(문법 규칙으로 못 막는다).
+# @typescript-eslint/triple-slash-reference 가 잡지만 그 규칙은 disable 가능 목록에 있으므로, 여기서 한 번 더 본다.
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  if grep -qE '^[[:space:]]*///[[:space:]]*<reference[[:space:]]+(path|types)=' "$f" 2>/dev/null; then
+    echo "FAIL: $f — 삼중슬래시 지시자(/// <reference path|types) 금지: 레이어 경계·패키지 허용 목록을 우회하는 의존 간선입니다. import 를 쓰세요."
+    bad=1
+  fi
+done <<EOF
+$(git ls-files 'src/*.ts' 'src/*.tsx' 'src/**/*.ts' 'src/**/*.tsx')
+EOF
 [ "$bad" -eq 0 ] || { echo "FAIL: src/** 전수 분류 실패 — 위 파일을 옮기거나 ADR 로 레이어를 추가하세요."; exit 1; }
 echo "PASS: src/** 전수 분류(레이어 $(git ls-files src | wc -l | tr -d ' ')개 파일, 확장자 $SRC_EXT)"
 
@@ -78,7 +89,7 @@ for d in src src/styles src/test src/lib; do printf '%s\n' "$LAUNDER" > "$d/__ar
 printf '%s\n' "$LAUNDER" > "src/features/$FA/__arch__/launder.test.ts"
 
 CASES=""; FILES=""
-add() { # $1 파일  $2 기대 ruleId('-' = 위반 0건이어야 함)  $3 본문
+add() { # $1 파일  $2 기대 ruleId('-' = 위반 0건, '!<rule>' = 그 규칙은 보고되지 않아야 함)  $3 본문
   printf '%s\n' "$3" > "$1"
   CASES="$CASES $1|$2"
   FILES="$FILES $1"
@@ -143,6 +154,19 @@ add "$FT/dyn-self-barrel.ts"           no-restricted-syntax "export const x = im
 add "$FT/dyn-rel.ts"                   no-restricted-syntax "export const x = import('./a');"
 add src/test/__arch__/dyn-note.ts      no-restricted-syntax "export const x = import('@/infra/__arch__/./a');" # 테스트도 표기 규칙은 받는다
 add src/domain/__arch__/meta-dyn.ts     no-restricted-syntax "export const x = import('@/lib/date');"            # meta.ts 예외 블록도 거울을 갖는다
+# (c4) 타입 경유·require 계열·모킹 거울 — no-restricted-imports 도 import/no-restricted-paths 도 보지 못하는 구문들.
+#      하나라도 거울이 빠지면 그 구문 한 줄로 허용 목록 자체가 뚫린다(라운드 4 실측: typeof import() 가 그랬다).
+add "$FT/typeof-infra.ts"      no-restricted-syntax "export type T = typeof import('@/infra/__arch__/a');"      # 허용 목록 밖 — 타입 경유
+add "$FT/typeof-qualifier.ts"  no-restricted-syntax "export type T = import('@/infra/__arch__/a').a;"           # typeof 없는 형태도 같은 노드
+add "$FT/typeof-note.ts"       no-restricted-syntax "export type T = typeof import('@/domain/__arch__/./a');"   # 표기 정규형도 그대로
+add src/app/__arch__/typeof-providers.ts no-restricted-syntax "export type T = typeof import('@/app/__arch__/providers');"
+add src/domain/__arch__/typeof-lib-clock.ts no-restricted-syntax "export type T = typeof import('@/lib/date');"
+add "$FT/typeof-ok-self.ts"    '!no-restricted-syntax' "export type T = typeof import('@/domain/__arch__/a');" # 긍정: 허용 목록 안이면 경계 규칙은 침묵한다
+add "$FT/import-equals.ts"     no-restricted-syntax "import a = require('@/infra/__arch__/a'); export const x = a;"
+add "$FT/create-require.ts"    no-restricted-syntax "export const x = createRequire(import.meta.url)('@/infra/__arch__/a');"
+add "$FT/meta-resolve.ts"      no-restricted-syntax "export const x = import.meta.resolve('@/infra/__arch__/a');"
+add "$FT/mock-infra.ts"        no-restricted-syntax "declare const vi: { mock: (p: string) => void }; vi.mock('@/infra/__arch__/a'); export const x = 1;"
+add src/test/__arch__/mock-note.ts no-restricted-syntax "declare const vi: { mock: (p: string) => void }; vi.mock('@/infra/__arch__/./a'); export const x = 1;" # 테스트도 표기 규칙은 받는다
 # (d) 미분류 파일·잘못된 확장자·배럴 위치 — 파일 자체가 에러
 add src/__arch__/stray.ts              no-restricted-syntax       "export const x = 1;"
 add src/features/__arch__/stray.ts     no-restricted-syntax       "export const x = 1;"
@@ -203,9 +227,10 @@ let fail = 0, n = 0;
 for (const c of cases) {
   const [file, rule] = c.split("|");
   const got = byFile.get(file) || [];
-  const ok = rule === "-" ? got.length === 0 : got.includes(rule);
+  const ok = rule === "-" ? got.length === 0 : rule.startsWith("!") ? !got.includes(rule.slice(1)) : got.includes(rule);
   if (!ok) fail = 1; n++;
-  console.log(`${ok ? "PASS" : "FAIL"}: ${file} → ${rule === "-" ? "허용" : rule}${ok ? "" : ` (실제: ${got.join(", ") || "보고 없음"})`}`);
+  const want = rule === "-" ? "허용" : rule.startsWith("!") ? `${rule.slice(1)} 보고 없음` : rule;
+  console.log(`${ok ? "PASS" : "FAIL"}: ${file} → ${want}${ok ? "" : ` (실제: ${got.join(", ") || "보고 없음"})`}`);
 }
 console.log(`픽스처 ${n}건`);
 if (fail) { console.log("FAIL: 레이어 경계 린트가 위와 다르게 판정합니다 — eslint.config.mjs 의 해당 레이어 블록을 확인하세요."); process.exit(1); }

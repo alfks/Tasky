@@ -93,7 +93,7 @@ src/infra/indexeddb/
 
 ## 7. import 경로 · 순서 · disable 정책
 
-**경로 규칙 — 표 하나로 판단한다.** `src/` 안의 import 는 **항상 `@/…` 절대 경로**이고 상대 경로(`./`, `../`)는 전부 린트 에러다. 레이어 경계는 `import/no-restricted-paths` 가 **해석된 실제 경로**로 검사하므로 표기와 무관하게 판정이 같다. 아래 표는 가능한 출발·대상 조합 전부이며, 각 조합의 합법 표기는 정확히 하나다(빈칸 없음). **표기는 정규형 하나로 강제된다**(`no-restricted-imports` 의 CANONICAL 패턴): 확장자(`.ts`·`.tsx`·`.js`…), `/index`, `./`·`../` 세그먼트, 중복·후행 슬래시, 백슬래시·`%` 인코딩·공백·비ASCII 는 전부 에러다. 같은 파일을 다른 문자열로 가리켜 문자열 기반 규칙(조립 지점·`lib/date`·`db.ts`·자기 배럴·패키지 목록)을 우회하는 길을 막는 전제다.
+**경로 규칙 — 표 하나로 판단한다.** `src/` 안의 import 는 **항상 `@/…` 절대 경로**이고 상대 경로(`./`, `../`)는 전부 린트 에러다. 레이어 경계는 `import/no-restricted-paths`(**해석된 실제 경로**)와 같은 허용 목록에서 만든 문자열 패턴(그 규칙이 보지 못하는 `typeof import()`·모킹용)이 함께 검사하므로 표기·구문과 무관하게 판정이 같다(ADR-0006 결정 10·11). 아래 표는 가능한 출발·대상 조합 전부이며, 각 조합의 합법 표기는 정확히 하나다(빈칸 없음). 단, 파일 단위 예외(`domain` → `@/lib/date`·`@/lib/id`, `layout.tsx` 밖의 `@/app/providers`, `query.ts` 밖의 `@/infra/indexeddb/db`)는 표기가 아니라 import 자체가 금지다 — 단일 소스는 ARCHITECTURE.md §1. **표기는 정규형 하나로 강제된다**(`no-restricted-imports` 의 CANONICAL 패턴): 확장자(`.ts`·`.tsx`·`.js`…), `/index`, `./`·`../` 세그먼트, 중복·후행 슬래시, 백슬래시·`%` 인코딩·공백·비ASCII 는 전부 에러다. 같은 파일을 다른 문자열로 가리켜 문자열 기반 규칙(조립 지점·`lib/date`·`db.ts`·자기 배럴·패키지 목록)을 우회하는 길을 막는 전제다.
 
 | # | 출발 파일 | 대상 | 합법 표기(유일) | 예 |
 |---|----------|------|----------------|----|
@@ -110,11 +110,11 @@ src/infra/indexeddb/
 | 11 | `*.test.*`, `src/test/**` | 무엇이든 | `@/<layer>/<경로>` (경계 제한 없음, 상대 경로는 여기서도 금지) | `'@/infra/indexeddb/todo-indexeddb-repository'` |
 | 12 | `src/middleware.ts`·`src/instrumentation.ts` | `lib` 만 | `@/lib/<경로>` | `'@/lib/date'` |
 
-- **테스트 계층 단서**: 이 문서에서 "린트가 막는다" 는 서술은 전부 **비테스트 파일 기준**이다. 테스트 계층(`src/test/**`, `*.test.*`)은 레이어 경계·브라우저 전역·패키지 허용 목록·`Meta` 쓰기·`as Persistable` 이 면제되고 표기 규칙(상대 경로 금지 + 정규형)만 받는다(§11, 실측).
+- **테스트 계층 단서**: 이 문서에서 "린트가 막는다" 는 서술은 전부 **비테스트 파일 기준**이다. 테스트 계층(`src/test/**`, `*.test.*`)은 레이어 경계·브라우저 전역·패키지 허용 목록·`Meta` 쓰기·`as Persistable` 이 면제되고, 표기 규칙(상대 경로 금지 + 정규형)과 공통 문법 규칙(`export *`·`require` 계열·리터럴 아닌 `import()` 금지)은 그대로 받는다(§11, 실측).
 - `@/` import는 반드시 해석되어야 한다(`import/no-unresolved`, `caseSensitive`) — 별칭이 깨지면 경계 검사가 조용히 무력화되므로 카나리로 둔다. 대소문자만 다른 표기(`@/app/Providers`)도 여기서 걸린다.
-- `require()`·`require.resolve()`·`export *` 는 `src/` 전체에서 금지(린트). 동적 `import()` 는 **인자가 문자열 리터럴일 때만** 같은 경계 판정을 받으므로, 리터럴이 아닌 인자(변수·템플릿 리터럴)는 그 자체가 린트 에러다.
-- 동적 `import()` 도 위의 문자열 규칙을 똑같이 받는다: ESLint 의 `no-restricted-imports` 는 `import()` 를 검사하지 않으므로 `eslint.config.mjs` 가 같은 패턴을 `ImportExpression` 셀렉터로 복제하고(거울), 복제 누락은 설정 로드 시점에 throw 한다(ADR-0006 결정 9).
-- `@/app/providers`(조립 지점)를 import 할 수 있는 파일은 `src/app/layout.tsx` 하나이고, `providers.tsx` 는 재export(`export … from`)를 할 수 없다 — 조립 지점을 경유지로 쓰지 못하게 한다(ADR-0006 규칙 6, 한계는 ARCHITECTURE.md §1).
+- `export *` 와 `require` 계열(`require()`·`require.resolve()`·`createRequire()`·`import.meta.resolve`·`import x = require()`)은 `src/` 전체에서 금지(린트) — 경로 판정을 받을 수 없는 구문이다. 동적 `import()` 는 **인자가 문자열 리터럴일 때만** 경계 판정을 받으므로, 리터럴이 아닌 인자(변수·템플릿 리터럴)는 그 자체가 린트 에러다. 삼중슬래시 지시자(`/// <reference path|types>`)도 금지(`@typescript-eslint/triple-slash-reference` + `scripts/check-arch.sh`).
+- 동적 `import()`·`typeof import()`(및 `import('…').Q`)·`vi`/`jest` 모킹의 경로 인자도 위의 문자열 규칙과 **레이어 허용 목록을 똑같이 받는다**: `no-restricted-imports` 와 `import/no-restricted-paths` 는 이 구문들을 보지 않으므로 `eslint.config.mjs` 가 같은 패턴을 셀렉터로 복제하고(거울), 복제 누락은 설정 로드 시점에 throw 한다(ADR-0006 결정 9~11). 모듈 경로를 쓰는 구문이 각각 어느 규칙을 받는지는 결정 10 의 전수 목록이 단일 소스다. `typeof import()` 는 이와 별개로 `@typescript-eslint/consistent-type-imports` 가 표기 자체를 막는다(`import type * as X` 를 쓴다) — 그 규칙을 사유와 함께 disable 해도 위 경계 판정은 그대로 남는다.
+- `@/app/providers`(조립 지점)를 import 할 수 있는 파일은 `src/app/layout.tsx` 하나이며(결정 10 의 구문 전수에 대해 실측), `providers.tsx` 는 재export(`export … from`)를 할 수 없다 — 조립 지점을 경유지로 쓰지 못하게 한다(ADR-0006 규칙 6, 한계는 ARCHITECTURE.md §1).
 
 **순서** (`import/order`가 정렬, 여기선 그룹 정의)
 1. `react`, `next/*` · 2. 외부 패키지 · 3. `@/domain/*` · 4. `@/repositories/*`, `@/infra/*` · 5. `@/features/*` · 6. `@/components/*` · 7. `@/lib/*`, `@/styles/*` · 8. `import type`은 각 그룹 마지막.
@@ -165,4 +165,4 @@ src/infra/indexeddb/
 
 ## 12. 금지 목록 (요약)
 
-`any` · `React.FC` · index key · `div onClick` · 하드코딩 색상 · `export *` · `require()` · 상대 경로 import · `features/*` 밖의 `index.ts` · `.js/.jsx` · 빈 catch · 티켓 없는 TODO · 컴포넌트 내 Dexie · `domain`의 외부 패키지 import · `domain`의 `Date`/`crypto` 직접 호출 · `touch()` 없는 엔티티 저장(컴파일 에러) · `meta.ts` 밖 `Meta` 필드 쓰기 · 테스트 계층 밖 `as Persistable` · 비정규형 import 표기(확장자·`/index`·`./`) · 레포지토리 `remove` · 리터럴 아닌 동적 `import()` · `layout.tsx` 밖에서 `@/app/providers` import · `providers.tsx` 의 재export · 아키텍처 규칙 `eslint-disable` · 사유 없는 `eslint-disable` · `useEffect` 상태 동기화 · 스냅샷 테스트 · 300줄 초과 파일 · 레퍼런스 앱 제품명
+`any` · `React.FC` · index key · `div onClick` · 하드코딩 색상 · `export *` · `require` 계열(`require()`·`createRequire()`·`import x = require()`·`import.meta.resolve`) · 삼중슬래시 지시자 · 상대 경로 import · `features/*` 밖의 `index.ts` · `.js/.jsx` · 빈 catch · 티켓 없는 TODO · 컴포넌트 내 Dexie · `domain`의 외부 패키지 import · `domain`의 `Date`/`crypto` 직접 호출 · `touch()` 없는 엔티티 저장(컴파일 에러) · `meta.ts` 밖 `Meta` 필드 쓰기 · 테스트 계층 밖 `as Persistable` · 비정규형 import 표기(확장자·`/index`·`./`) · 레포지토리 `remove` · 리터럴 아닌 동적 `import()` · `layout.tsx` 밖에서 `@/app/providers` import · `providers.tsx` 의 재export · 아키텍처 규칙 `eslint-disable` · 사유 없는 `eslint-disable` · `useEffect` 상태 동기화 · 스냅샷 테스트 · 300줄 초과 파일 · 레퍼런스 앱 제품명
