@@ -53,12 +53,12 @@
 - R15. 그룹 정렬: 활성 카테고리 `order` 오름차순 → 종료 카테고리(그날 투두 있을 때, category R8) → 삭제된 카테고리의 남은 완료 투두(category R12). 항목 정렬은 R7, 동률은 `createdAt` 오름차순.
 - R16. 삭제된 카테고리의 투두는 읽기 전용(체크 해제·편집·순서·드래그 불가), 메뉴 `다른 카테고리로 옮기기`·`삭제`만.
 - R17. 목록은 선택 날짜의 투두만 메모리에 둔다. 한 날짜 200개(완료 100 포함)에서 토글→이동 시작 50ms, 재정렬 계산 ≤ 5ms(TECH_PLAN §8).
-- R18. 모든 쓰기는 `updatedAt` 갱신, 물리 삭제 없음. R19. 메모가 있으면 메모 아이콘(`aria-label="메모 있음"`), `focusSeconds > 0`이면 `⏱ n분` 칩(timer.md).
+- R18. 모든 쓰기는 도메인 `touch()`를 거쳐 `updatedAt`·`rev`를 함께 갱신하고(ADR-0005), 물리 삭제는 없다. R19. 메모가 있으면 메모 아이콘(`aria-label="메모 있음"`), `focusSeconds > 0`이면 `⏱ n분` 칩(timer.md).
 
 ## 4. 데이터
 
 - domain `Todo`에 `memo?: string`, `doneAt?: string`, `focusSeconds?: number` 추가(TECH_PLAN §5). 검증·생성·토글·그룹 정렬(R7)·재매김(R11)은 순수 함수.
-- 레포지토리 `TodoRepository`: `getById`, `listByDate`, `listByDateRange`, `listByCategory`, `upsert`, `bulkUpsert`, `softDelete(id, at)`, `restore(id, at)`. 시그니처 TECH_PLAN §6.
+- 레포지토리 `TodoRepository`: `getById`, `listByDate`, `listByDateRange`, `listByCategory`, `listAll`, `search`, `upsert(Persistable<Todo>)`. **쓰기 메서드는 `upsert` 하나**이고 삭제(R13)·복구는 도메인 `markDeleted`/`touch` 결과를 `upsert` 하는 것으로 한다(ADR-0007). 시그니처 TECH_PLAN §6.
 
 ## 5. 접근성
 

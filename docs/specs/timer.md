@@ -31,12 +31,13 @@
 - R1. 모드: 카운트다운만. 길이 프리셋 25·50분 + 직접 입력 1~180분(정수). 기본 25분. 마지막 사용 길이를 기기별로 기억(localStorage `tasky.timer.v1`).
 - R2. 세션은 **저장소 레코드**로 즉시 생성된다(`status=running`). 실행 중 상태는 메모리가 아니라 이 레코드가 원천이며, 새로고침·탭 닫기 후 앱을 열면 레코드를 읽어 **이어서** 표시한다.
 - R3. **시간은 항상 시각 기준으로 계산**: `elapsed = min(planned, now − startedAt − pausedTotal − (pausedAt ? now − pausedAt : 0))`. 틱을 누적하지 않는다. 화면 갱신용 1초 인터벌은 표시만 담당하며, 백그라운드 탭에서 인터벌이 지연돼도 값은 어긋나지 않는다(60분 후 오차 ≤ 1초).
-- R4. 완료 판정은 매 표시 갱신·`visibilitychange`·앱 시작 시 수행. `elapsed ≥ planned`이면 `status=completed`, `endedAt = startedAt + planned + pausedTotal`(현재 시각이 아님 — 백그라운드에서 지나간 시간이 기록을 부풀리지 않음), `elapsedSeconds = planned`.
+- R4. 완료 판정은 매 표시 갱신·`visibilitychange`·앱 시작 시 수행. `elapsed ≥ planned`이면 `status=completed`, `endedAt = startedAt + planned + pausedTotal`(현재 시각이 아님 — 백그라운드에서 지나간 시간이 기록을 부풀리지 않음), `elapsedSeconds = planned`. 이때 주는 신호는 R9(막 끝난 경우)·R9-a(오래 지난 경우)가 나눈다.
 - R5. 동시에 실행 중인 세션은 1개. 시작 시 저장소에 `running/paused` 세션이 있으면(다른 탭 포함) 시작을 거부하고 그 세션을 보여 준다.
-- R6. 일시정지: `pausedAt` 기록. 재개: `pausedTotal += now − pausedAt`, `pausedAt` 제거. 일시정지 상태로 24시간이 지나면 앱 시작 시 자동 취소(`canceled`, 경과 기록).
+- R6. 일시정지: `pausedAt` 기록. 재개: `pausedTotal += now − pausedAt`, `pausedAt` 제거. 일시정지 상태로 24시간이 지나면 앱 시작 시 자동 취소(`canceled`, 경과 기록). 이때 패널에 **정리 카드**를 띄운다(`role=status`, 소리·탭 제목 없음): "일시정지한 집중이 24시간이 지나 정리됐어요 · 장보기에 12분을 기록했어요 [닫기]". 사용자가 요청하지 않은 상태 변화이고 경과가 `focusSeconds`에 더해지므로(R8), 숫자가 변한 이유를 설명하지 않고 넘어가지 않는다.
 - R7. 중지(취소): `status=canceled`, `endedAt=now`, `elapsedSeconds`는 R3 값. 확인 대화상자 없음(경과가 기록되므로 파괴적이지 않음).
 - R8. 완료·취소 시 연결된 투두가 있으면 `Todo.focusSeconds += elapsedSeconds`(캐시). 세션 레코드가 원천이고 `focusSeconds`는 표시용 합계다. 투두가 그 사이 삭제됐으면 세션만 남긴다.
-- R9. 완료 신호 세 가지를 모두 준다: (a) 패널 카드(닫을 때까지 유지) (b) 차임 2회(Web Audio 합성, 볼륨 토큰 없음·고정, 브라우저 자동재생 정책으로 실패하면 무시) (c) 탭 제목 깜빡임. 소리 끄기 토글은 패널에(기기별 기억).
+- R9. 완료 신호 세 가지: (a) 패널 카드(닫을 때까지 유지) (b) 차임 2회(Web Audio 합성 — 880Hz·1175Hz 각 120ms, 사이 80ms, gain 0.2 고정. 브라우저 자동재생 정책으로 실패하면 무시) (c) 탭 제목 깜빡임. 소리 끄기 토글은 패널에 두고 R1과 **같은 키** `tasky.timer.v1`에 함께 저장한다(기기별).
+- R9-a. **지연 완료**: R4가 앱 시작·재활성화 시점에 완료를 판정했고 `now − endedAt > 2분`이면 (a)만 준다 — 차임도 탭 제목 깜빡임도 없고, 카드 문구는 과거형이다("집중 25분이 끝나 있었어요 · 장보기에 25분을 기록했어요"). 2분 이내면 실행 중 완료와 똑같이 (a)(b)(c) 전부. 근거: (b)(c)는 "지금 막 끝났다"는 **주의 전환** 신호다. 사흘 전 끝난 세션에 소리가 울리면 사용자는 원인을 알 수 없는 소리를 듣게 되고(예측 가능성), 사용자 제스처 없이 앱을 연 직후라 자동재생도 대개 막힌다. 반면 기록(a)은 `focusSeconds`가 늘어난 이유이므로 아무리 오래됐어도 보여 준다. 2분인 이유: 새로고침 왕복(수 초)과 잠깐의 탭 이동(수십 초)은 "지금 끝났다"로 취급해야 실행 중과 동작이 같고, 자리를 비운 사용자에게 뒤늦게 울릴 만큼 길지는 않다.
 - R10. `[5분 더]`: 같은 투두로 5분 세션을 새로 시작. `[다음 할 일 고르기]`: 선택 UI로. 완료 카드는 `Esc`로도 닫힌다.
 - R11. 헤더 칩은 실행·일시정지 중 항상 보이며(app-shell R15), 클릭 시 패널을 연다. 탭 제목은 실행 중 `"18:42 · 장보기 · Tasky"`(app-shell R9보다 우선).
 - R12. 타이머는 달성률·완료 여부에 영향을 주지 않는다(투두 완료는 사용자가 체크). 세션 기록은 백업 파일에 포함(backup.md R2).
@@ -44,8 +45,8 @@
 
 ## 4. 데이터
 
-- domain 신규 `FocusSession = { id, todoId?: TodoId, categoryId?: CategoryId(시작 시점 스냅샷), date: DateKey(시작 날짜), plannedSeconds, startedAt, pausedAt?, pausedTotalSeconds, endedAt?, elapsedSeconds, status: 'running'|'paused'|'completed'|'canceled', createdAt, updatedAt, deletedAt? }`. `Todo.focusSeconds?: number`. 경과·완료 판정(R3·R4)은 `now`를 주입받는 순수 함수. Phase 2 통계(집중 시간 합계·투두별·카테고리별)는 이 레코드만으로 재구성 가능 — `categoryId` 스냅샷은 투두 삭제·카테고리 변경 후에도 집계를 보장한다.
-- 레포지토리 `FocusSessionRepository`: `getActive()`(running/paused 1개 또는 null), `getById`, `listByDate`, `listByTodo`, `listAll`, `upsert`, `bulkUpsert`, `replaceAll`. 시그니처 TECH_PLAN §6.
+- domain 신규 `FocusSession = Meta & { todoId?: TodoId, categoryId?: CategoryId(시작 시점 스냅샷), date: DateKey(시작 날짜), plannedSeconds, startedAt, pausedAt?, pausedTotalSeconds, endedAt?, elapsedSeconds, status: 'running'|'paused'|'completed'|'canceled' }` — `Meta`(`id`·`createdAt`·`updatedAt`·`rev`·`deletedAt?`)를 예외 없이 갖는다(ADR-0005). R9-a의 신호 등급 판정도 `now` 주입 순수 함수. `Todo.focusSeconds?: number`. 경과·완료 판정(R3·R4)은 `now`를 주입받는 순수 함수. Phase 2 통계(집중 시간 합계·투두별·카테고리별)는 이 레코드만으로 재구성 가능 — `categoryId` 스냅샷은 투두 삭제·카테고리 변경 후에도 집계를 보장한다.
+- 레포지토리 `FocusSessionRepository`: `getActive()`(running/paused 1개 또는 `undefined`), `getById`, `listByDate`, `listByTodo`, `listAll`, `upsert(Persistable<FocusSession>)`. 쓰기 메서드는 `upsert` 하나이고 세션 상태 변경은 전부 도메인 `touch`를 거친다(ADR-0007). 백업 경로는 `DatasetRepository`(backup.md §4). 시그니처 TECH_PLAN §6.
 
 ## 5. 접근성
 
@@ -60,7 +61,7 @@
 
 ## 7. 완료 조건
 
-- [ ] R1~R13 테스트. R3·R4는 `now` 주입 단위 테스트(백그라운드 30분 경과 시나리오 포함), R5 다중 탭은 계약 테스트 + 수동 절차, R6 24시간 자동 취소.
+- [ ] R1~R13 테스트. R3·R4는 `now` 주입 단위 테스트(백그라운드 30분 경과 시나리오 포함), R5 다중 탭은 계약 테스트 + 수동 절차, R6 24시간 자동 취소 + 정리 카드, R9-a는 `now − endedAt` 경계(2분 직전/직후) 단위 테스트.
 - [ ] 새로고침 후 남은 시간이 이어지는 E2E 1개, 완료 시 카드·탭 제목 변화 E2E 1개(소리는 모킹).
 - [ ] 키보드만으로 투두 선택 → 시작 → 일시정지 → 완료 카드 닫기.
 - [ ] 라이트/다크 스크린샷(대기·실행·완료 카드), 헤더 칩 1장.

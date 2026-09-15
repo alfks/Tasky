@@ -4,6 +4,9 @@
 
 레이어·의존 방향·조립 지점은 [ARCHITECTURE.md](./ARCHITECTURE.md), 결정 근거는 [DECISIONS.md](./DECISIONS.md), 요구사항은 [specs/](./specs/AGENTS.md). 이 문서는 **무엇을 어떤 순서로 누가 만드는가**와 **수치 예산**만 다룬다.
 
+§5·§6(스키마·레포지토리 계약)은 아래 네 ADR의 **종속 문서**다 — 충돌하면 ADR이 이긴다.
+[ADR-0005](./decisions/ADR-0005-entity-meta-and-sync-readiness.md) `Meta`·UUID v4·ISO UTC·`rev`·소프트 삭제 · [ADR-0006](./decisions/ADR-0006-layer-boundary-allow-list.md) 레이어 허용 목록·배럴(`repositories/container.ts`) · [ADR-0007](./decisions/ADR-0007-persistable-write-path-and-tombstone-reads.md) `Persistable<T>`·`upsert` 단일 쓰기·툼스톤 조회 금지·계약 테스트 · [ADR-0008](./decisions/ADR-0008-arch-rules-second-pass.md) 아키텍처 규칙 2차 패스(`eslint.arch.config.mjs`).
+
 ## 1. 기술 스택 확정표와 버전 정책
 
 | 영역 | 선택 | 메이저 고정 | 근거 |
@@ -12,12 +15,12 @@
 | 프레임워크 | Next.js 15 App Router, React 19, TypeScript 5 strict | 15 / 19 / 5 | ADR-0001 |
 | 스타일 | Tailwind CSS 4 + `src/styles/tokens.css` CSS 변수 | 4 | ADR-0003, specs/theme.md |
 | 상태 | Zustand 5 (feature별 스토어) | 5 | ADR-0003 |
-| 저장 | Dexie 4 (IndexedDB), nanoid 5 | 4 / 5 | ADR-0002 |
+| 저장 | Dexie 4 (IndexedDB) | 4 | ADR-0002. **ID 생성 라이브러리를 쓰지 않는다** — `id`는 UUID v4(`crypto.randomUUID()`)를 `src/lib/id.ts#newId()`로만 만든다(ADR-0005가 별도 ID 라이브러리를 기각했다) |
 | PWA | `@serwist/next` 9 + `serwist` 9 | 9 | ADR-0001, specs/pwa.md |
 | 테스트 | Vitest 3 + jsdom + Testing Library, `fake-indexeddb` 6, Playwright 1.x(스모크) | 3 / 6 / 1 | code-style §11 |
 | 유틸 | clsx 2 + tailwind-merge 3 (`cn`) | — | code-style §3 |
 | 폰트 | **Pretendard 가변 폰트 셀프 호스팅**(woff2 서브셋 1파일, `next/font/local`로 로드). npm 패키지 없음 — 공식 릴리스에서 받아 `scripts/subset-font.sh`(fonttools `pyftsubset`, 로컬 1회)로 서브셋한 파일을 레포에 커밋 | 폰트 v1.3.x | 사용자 결정(theme.md §3-F): 외부 요청 0·오프라인 동일 룩·OS별 생김새 일치 |
-| 쓰지 않음 | 아이콘 라이브러리(인라인 SVG ≤ 24개), 날짜 라이브러리(`Intl` + `lib/date.ts`), DnD 라이브러리(포인터 이벤트 직접), 서버 상태 라이브러리, UI 키트 | — | 번들 예산 §8, ADR-0003 |
+| 쓰지 않음 | ID 라이브러리(`crypto.randomUUID()`), 아이콘 라이브러리(인라인 SVG ≤ 24개), 날짜 라이브러리(`Intl` + `lib/date.ts`), DnD 라이브러리(포인터 이벤트 직접), 서버 상태 라이브러리, UI 키트 | — | 번들 예산 §8, ADR-0003 |
 
 버전 정책: `package.json`은 캐럿(`^`)으로 메이저 고정, 실제 버전은 `pnpm-lock.yaml`이 고정. 메이저 업그레이드는 `chore/deps-*` 티켓 + `pnpm check` + 라이트/다크 스크린샷. Next/React 메이저 변경은 ADR. 의존성 추가는 사용자 확인 필수(CLAUDE.md §7-9) — 위 표에 없는 패키지는 없는 것으로 간주한다.
 
@@ -39,16 +42,16 @@
 
 | ID | 제목 | 브랜치 | spec | 선행 | 크기 | 웨이브 | owns (파일 소유권) |
 |----|------|--------|------|------|------|-------|-------------------|
-| T-01 | Next.js 스캐폴딩 + src 골격 + AGENTS.md 9개 | `chore/scaffold-nextjs` | TECH_PLAN §2 | — | L | W0 | `package.json` `pnpm-lock.yaml` `next.config.ts` `tsconfig.json` `postcss.config.mjs` `eslint.config.mjs` `.prettierrc` `vitest.config.ts` `.gitignore` `src/AGENTS.md` `src/*/AGENTS.md`(app·components·features·domain·repositories·infra·lib·styles·test) `src/app/{layout,page,providers,error}.tsx` `src/styles/{globals,tokens}.css`(골격) `src/lib/cn.ts`(+test) `src/test/setup.ts` `src/features/shell/**`(플레이스홀더) `docs/ARCHITECTURE.md`(§2 트리) `docs/DIRECTORY_MAP.md` `.github/workflows/ci.yml` |
+| T-01 | Next.js 스캐폴딩 + src 골격 + AGENTS.md 9개 | `chore/scaffold-nextjs` | TECH_PLAN §2 | — | L | W0 | `package.json` `pnpm-lock.yaml` `next.config.ts` `tsconfig.json` `postcss.config.mjs` `eslint.config.mjs` `eslint.arch.config.mjs` `scripts/arch-layers.mjs` `.prettierrc` `vitest.config.ts` `.gitignore` `src/AGENTS.md` `src/*/AGENTS.md`(app·components·features·domain·repositories·infra·lib·styles·test) `src/app/{layout,page,providers,error}.tsx` `src/styles/{globals,tokens}.css`(골격) `src/lib/cn.ts`(+test) `src/test/setup.ts` `src/features/shell/**`(플레이스홀더) `docs/ARCHITECTURE.md`(§2 트리) `docs/DIRECTORY_MAP.md` `.github/workflows/ci.yml` |
 | T-02 | 날짜·ID 유틸 | `feature/lib-date-id` | date-strip §4 | T-01 | S | W1 | `src/lib/date.ts` `src/lib/date.test.ts` `src/lib/id.ts` `src/lib/id.test.ts` |
 | T-03 | 디자인 토큰·전역 CSS | `feature/design-tokens` | theme §3 | T-01 | S | W1 | `src/styles/tokens.css` `src/styles/globals.css` `src/styles/tokens.test.ts` |
 | T-04 | PWA 설정(manifest·SW·아이콘) | `chore/pwa-setup` | pwa R1·R2·R3·R5·R10 | T-01 | M | W1 | `next.config.ts` `src/app/manifest.ts` `src/app/sw.ts` `public/**` `src/app/AGENTS.md` |
-| T-05 | 도메인 코어(엔티티·규칙·팔레트·에러·집중 세션·삭제 계획) | `feature/domain-core` | todo §4, category §4, completion-rate §4, theme §4, timer §4 | T-02 | M | W2 | `src/domain/**`(단, `src/domain/backup/**` 제외) `src/test/fixtures/**` `docs/ARCHITECTURE.md`(§4 데이터 모델) |
+| T-05 | 도메인 코어(`meta.ts` `Persistable`·엔티티·규칙·팔레트·에러·집중 세션·삭제 계획) | `feature/domain-core` | todo §4, category §4, completion-rate §4, theme §4, timer §4 | T-02 | M | W2 | `src/domain/**`(단, `src/domain/backup/**` 제외) `src/test/fixtures/**` `docs/ARCHITECTURE.md`(§4 데이터 모델) |
 | T-06 | UI 프리미티브 A | `feature/ui-primitives-core` | theme §3-D | T-03 | M | W2 | `src/components/ui/{Button,IconButton,Checkbox,ProgressRing,Kbd,Skeleton}.tsx`(+`.test.tsx`) |
 | T-07 | UI 프리미티브 B(오버레이) | `feature/ui-primitives-overlay` | app-shell R7·R8 | T-03 | M | W2 | `src/components/ui/{Popover,Dialog,ConfirmDialog,Menu,Toast,ColorSwatchGroup}.tsx`(+`.test.tsx`) — `ConfirmDialog`는 app-shell R14 단순형 |
-| T-08 | 레포지토리 인터페이스(4종, `remove/undoRemove` 포함) + memory + 계약 테스트 | `feature/repositories` | §6 | T-05 | M | W3 | `src/repositories/**` `src/test/setup.ts` |
+| T-08 | 레포지토리 인터페이스(엔티티 4종 + `DatasetRepository`) + memory + 계약 테스트 | `feature/repositories` | §6 | T-05 | M | W3 | `src/repositories/**` `src/test/setup.ts` |
 | T-09 | 날짜 스트립 | `feature/date-strip` | date-strip | T-05, T-06 | M | W3 | `src/features/date-strip/**` |
-| T-10 | IndexedDB 구현(4테이블, `remove/undoRemove` 2테이블 트랜잭션) + 조립 | `feature/infra-indexeddb` | §5 | T-08 | L | W4 | `src/infra/**` `src/app/providers.tsx` |
+| T-10 | IndexedDB 구현(4테이블, `DatasetRepository` 교차 테이블 트랜잭션) + 조립 | `feature/infra-indexeddb` | §5 | T-08 | L | W4 | `src/infra/**` `src/app/providers.tsx` |
 | T-11 | 테마(모드·강조색·첫 페인트 적용·폰트 로드) | `feature/theme` | theme(§3-E·§3-F R10·R11·R13) | T-07, T-08, T-22 | M | W4 | `src/features/theme/**` `src/app/layout.tsx` |
 | T-12a | 카테고리(목록·생성/수정 다이얼로그·정렬·종료/재개·시드) | `feature/category` | category R1~R9·R18~R20 | T-06, T-07, T-08 | M | W4 | `src/features/category/**`(단, `components/CategoryRemoveDialog*.tsx`·`hooks/useCategoryRemoval.ts` 제외) |
 | T-12b | 카테고리 삭제 대화상자(3선택지·즉석 생성·축약)·되돌리기 | `feature/category-remove` | category R10~R17 | T-12a | M | W5 | `src/features/category/components/CategoryRemoveDialog*.tsx` `src/features/category/hooks/useCategoryRemoval.ts` `src/features/category/store/category-store.ts` `src/features/category/index.ts` |
@@ -85,6 +88,10 @@ T-17이 만드는 `<CommandLayer/>`(도움말 + 팔레트 슬롯)를 T-20이 1�
 | `src/features/category/store/category-store.ts`, `src/features/category/index.ts` | T-12a → T-12b | 삭제 액션·대화상자 export 추가 |
 | `docs/ARCHITECTURE.md` | T-01(§2) → T-05(§4) | 같은 PR에서 구조 변경과 함께 |
 | `src/features/AGENTS.md` | T-01만 | feature 목록 10개(shell·date-strip·category·todo·stats·theme·backup·command·pwa·timer)를 처음부터 기재 |
+| `src/app/AGENTS.md` | T-01 → T-04 | T-01이 만들고, T-04가 `manifest.ts`·`sw.ts` 추가에 맞춰 갱신 |
+| `.github/workflows/ci.yml` | T-01 → T-21 | guard/build 잡은 T-01, e2e 잡 추가는 T-21 |
+| `src/features/shell/**` | T-01(플레이스홀더) → T-20 | T-01은 빈 셸 + `AGENTS.md`만, 실제 3컬럼 구현은 T-20 |
+| `eslint.config.mjs`, `eslint.arch.config.mjs`, `scripts/arch-layers.mjs` | T-01만 | 셋은 로드 시점에 서로를 검증한다(ADR-0008 결정 6, 가드 4~6) — 레이어·규칙 목록이 갈라지면 `pnpm lint`와 2차 패스가 즉시 죽는다. T-01은 Next/React/TS 규칙만 1차 설정(`eslint.config.mjs`)에 넣고 **레이어 목록은 바꾸지 않는다**(ADR-0006의 `ALLOW`는 이미 확정). 레이어·`ARCH_RULES` 변경은 ADR + `check-arch.sh` 케이스와 함께 별도 `chore/arch-*` 티켓으로만 |
 
 ## 5. 데이터 스키마와 마이그레이션 전략
 
@@ -97,96 +104,136 @@ db.version(1).stores({
   focusSessions: 'id, todoId, date, status, updatedAt',
 });
 ```
-ARCHITECTURE §4 대비 **MVP 타입 확정(델타)** — T-05가 §4를 이 표대로 갱신한다:
+공통 필드 `Meta = { id, createdAt, updatedAt, rev, deletedAt? }`와 저장 가능 브랜드 `Persistable<T>`는 **ADR-0005·ADR-0007이 이미 확정**했고 ARCHITECTURE §4에 반영돼 있다 — 아래 델타는 그 위에 얹는 MVP 필드뿐이며 `Meta`를 바꾸지 않는다. `id`는 UUID v4(`newId()`), 시각은 ISO UTC, `rev`는 쓰기마다 +1이고 그 갱신은 도메인 `touch()`만 한다.
+
+ARCHITECTURE §4 대비 **MVP 타입 확정(델타)**:
 
 | 타입 | 추가 필드 | 이유(스펙) |
 |------|----------|-----------|
 | `Todo` | `memo?: string`, `doneAt?: string`, `focusSeconds?: number` | todo R2, R6, R19. `doneAt`은 Phase 2 통계·피드에서 재구성 불가하므로 MVP부터 기록. `focusSeconds`는 세션 합계 캐시(원천은 `FocusSession`) |
 | `Category` | `status: 'active'\|'completed'\|'paused'`, `closedAt?: string` | category R7. 초안의 `archivedAt`(보관)은 폐기 — 종료 상태로 흡수 |
-| `FocusSession`(신규) | timer.md §4 전체(`todoId?`, `categoryId?` 스냅샷, `date`, `plannedSeconds`, `startedAt`, `pausedAt?`, `pausedTotalSeconds`, `endedAt?`, `elapsedSeconds`, `status`, 공통 필드) | timer R2~R8. 통계에서 재구성 불가 → MVP부터 기록 |
-| `Settings` | `id: 'default'`, `seededAt?: string`, `lastBackupAt?: string` | category R12, backup R10 |
+| `FocusSession`(신규) | timer.md §4 전체(`todoId?`, `categoryId?` 스냅샷, `date`, `plannedSeconds`, `startedAt`, `pausedAt?`, `pausedTotalSeconds`, `endedAt?`, `elapsedSeconds`, `status`) + `Meta` 공통 필드(`rev` 포함 — ADR-0005 규칙 1) | timer R2~R8. 통계에서 재구성 불가 → MVP부터 기록 |
+| `Settings` | `seededAt?: string`, `lastBackupAt?: string` | category R18(첫 실행 시드), backup R10. `id: 'default'`·`Meta`는 ARCHITECTURE §4에 이미 있음 |
+
+**T-05가 ARCHITECTURE §4에서 갱신할 것**(필드 델타만 반영하면 §4가 여전히 "3테이블"이라고 말한다 — 넷을 같은 PR에서):
+1. 위 표의 `Todo`·`Category`·`Settings` 추가 필드.
+2. `FocusSession` 타입 **신규 추가**(§4 타입 블록에 한 줄).
+3. IndexedDB 인덱스 줄: `categories: id, order` → `id, order, status, updatedAt`, **`focusSessions: id, todoId, date, status, updatedAt` 줄 신설**(위 `db.version(1)` 블록과 문자열이 같아야 한다).
+4. §4 본문의 "소프트 삭제 필터는 `query.ts`·`memory/live.ts` 한 곳씩" 문장에 **툼스톤을 읽는 유일한 경로가 `DatasetRepository.readAll()`**(§6)이라는 한 줄 추가.
+
+`Meta`·`Persistable`·`id`/시각/`rev` 규칙 줄은 **바꾸지 않는다**(ADR-0005·0007 소관).
 
 마이그레이션 규칙(ADR-0002 §규칙 3 구체화):
 1. 기존 `version(n)` 블록은 절대 수정하지 않는다. 변경은 `version(n+1).stores({...}).upgrade(tx => …)` 추가로만.
-2. 삭제된 카테고리는 tombstone(`deletedAt`)으로 남아 완료 투두가 계속 가리킨다(category R14·R17). 이는 ADR-0002 소프트 삭제 결정과 **충돌하지 않고 그것에 의존한다** — 다만 "목록 조회는 기본적으로 제외" 규칙 때문에 tombstone 색·이름을 그리려면 `list({ includeDeleted: true })`를 명시해야 한다.
+2. 삭제된 카테고리는 tombstone(`deletedAt`)으로 남아 완료 투두가 계속 가리킨다(category R14·R17). 이는 ADR-0002·ADR-0005의 소프트 삭제 결정에 **의존한다** — 엔티티 레포지토리의 조회는 툼스톤을 절대 반환하지 않으므로(ADR-0007 결정 4·규칙 2) tombstone 색·이름이 필요한 곳(category R17 "삭제됨" 그룹, backup R2 내보내기)은 `DatasetRepository.readAll()`을 쓴다. `includeDeleted` 옵션은 만들지 않는다.
 3. **인덱스가 바뀌지 않는 선택 필드 추가**는 버전업 없이 허용하되, 읽기 경계의 정규화 함수(`normalizeTodo` 등)가 기본값을 채운다. 인덱스 추가/삭제·필수 필드 추가·타입 변경은 버전업.
 4. `upgrade`는 멱등·순수(외부 I/O 없음). 실패 시 `RepositoryError('SCHEMA_UPGRADE_FAILED')` → 앱 셸이 "백업 내보내기만 가능한 모드" 안내(app-shell §2-C 에러 카드 재사용).
 5. 버전업 PR = ADR + `db.ts` + 마이그레이션 테스트(`fake-indexeddb`로 v_n 픽스처 생성 → v_{n+1} 열기 → 단언) + `specs/backup.md` R3의 변환 함수 추가. 넷이 한 PR.
 6. 백업 파일 `schemaVersion` = `DB_VERSION` 상수 하나에서 파생. 가져오기는 `migrateBackup(v_k → v_{k+1})` 체인을 도메인에서 순수 함수로 유지.
-7. 물리 삭제는 `replaceAll`(백업 교체)에서만. 그 외 전부 `deletedAt`.
+7. 물리 삭제는 `DatasetRepository.restore(snapshot)`(백업 가져오기) **하나뿐**이고, 그 외 모든 삭제는 `upsert(markDeleted(e, now))`다(ADR-0005 규칙 5). 이 한 곳이 예외인 근거: 사용자가 "지금 데이터를 모두 지우고 파일로 바꿔요"를 체크박스로 명시 확인하며(backup R7), 엔티티 단위 삭제가 아니라 **데이터셋 전체 교체**라 툼스톤으로 표현할 대상 자체가 사라진다. 동기화(Phase 2)에서 이 경로는 "기기 데이터셋 리셋"으로 재검토 대상이며, 그때 ADR이 정한다.
 
 ## 6. 레포지토리 인터페이스 확정 (병렬 티켓이 이 시그니처에 맞춰 작성)
 
+**이 절은 ADR-0005·ADR-0007의 종속 문서다.** 세 문장이 전부를 규정하고, 아래 시그니처는 그 결과일 뿐이다:
+1. 엔티티 레포지토리의 **쓰기 메서드는 `upsert(entity: Persistable<T>)` 하나**다. `remove`·`delete`·`softDelete`·`restore`·`bulkUpsert`·`replaceAll`은 없다(ADR-0007 규칙 2). 삭제는 `upsert(markDeleted(e, now))`.
+2. **레포지토리는 시각도 `rev`도 만들지 않는다**(ADR-0005 갱신 규칙, ADR-0007 규칙 3). `updatedAt`·`createdAt`·`rev`·`deletedAt`를 쓰는 코드는 `src/domain/meta.ts` 밖에서 ESLint 에러이며 2차 패스(ADR-0008)라 `eslint-disable`로도 못 끈다 — `at: string` 인자를 받는 메서드를 두면 `bash scripts/check-arch.sh`가 실패한다.
+3. **조회는 툼스톤을 반환하지 않는다**(ADR-0007 결정 4): `getById` → `undefined`, `list*`/`search`는 제외. `includeDeleted` 옵션은 없다. 툼스톤을 읽는 유일한 경로는 `DatasetRepository.readAll()`이다(ADR-0007 결정 4가 예고한 "별도 인터페이스" 자리).
+
 ```ts
-// src/repositories/todo-repository.ts — 목록 메서드는 deletedAt 없는 것만, order asc(동률 createdAt asc)
+// src/repositories/todo-repository.ts — 목록은 order asc(동률 createdAt asc, 동률 id asc), 툼스톤 제외
 export interface TodoRepository {
-  getById(id: TodoId): Promise<Todo | null>;
+  getById(id: TodoId): Promise<Todo | undefined>;
   listByDate(date: DateKey): Promise<Todo[]>;
   listByDateRange(from: DateKey, to: DateKey): Promise<Todo[]>;      // 양끝 포함
   listByCategory(categoryId: CategoryId): Promise<Todo[]>;
-  listAll(options?: { includeDeleted?: boolean }): Promise<Todo[]>;  // 백업 전용
+  listAll(): Promise<Todo[]>;                                        // 검색·통계용(툼스톤 제외)
   search(query: string, limit: number): Promise<Todo[]>;             // shortcuts R9 정렬
-  upsert(todo: Todo): Promise<void>;
-  bulkUpsert(todos: Todo[]): Promise<void>;                          // 단일 트랜잭션
-  softDelete(id: TodoId, at: string): Promise<void>;                 // deletedAt=at, updatedAt=at
-  restore(id: TodoId, at: string): Promise<void>;                    // deletedAt 제거, updatedAt=at
-  replaceAll(todos: Todo[]): Promise<void>;                          // 물리 삭제 후 삽입, 단일 트랜잭션
+  upsert(todo: Persistable<Todo>): Promise<void>;
 }
 // src/repositories/category-repository.ts — order asc
 export interface CategoryRepository {
-  getById(id: CategoryId): Promise<Category | null>;
-  list(options?: { includeClosed?: boolean; includeDeleted?: boolean }): Promise<Category[]>; // 기본: active만
-  upsert(category: Category): Promise<void>;
-  bulkUpsert(categories: Category[]): Promise<void>;
-  softDelete(id: CategoryId, at: string): Promise<void>;
-  restore(id: CategoryId, at: string): Promise<void>;
-  replaceAll(categories: Category[]): Promise<void>;
-  /** 카테고리 삭제 + 미완료 투두 처리(+즉석 생성)를 categories·todos 두 테이블 단일 트랜잭션으로. 실패 시 아무것도 쓰지 않는다. */
-  remove(id: CategoryId, at: string, plan: CategoryRemovalPlan): Promise<CategoryRemovalResult>;
-  /** remove 결과를 그대로 되감는다(카테고리 복구·삭제 투두 복구·이동 투두 원위치·즉석 카테고리 소프트 삭제). 단일 트랜잭션. */
-  undoRemove(result: CategoryRemovalResult, at: string): Promise<void>;
+  getById(id: CategoryId): Promise<Category | undefined>;
+  list(options?: { includeClosed?: boolean }): Promise<Category[]>;  // 기본: active만. 툼스톤은 어느 옵션으로도 나오지 않는다
+  upsert(category: Persistable<Category>): Promise<void>;
 }
-// src/domain/category/removal.ts (T-05)
-export type CategoryRemovalPlan =
-  | { incomplete: 'delete' }
-  | { incomplete: 'move'; targetId: CategoryId }
-  | { incomplete: 'create'; category: Category };                     // 도메인이 검증·생성한 새 Category
-export type CategoryRemovalResult = {
-  categoryId: CategoryId; deletedAt: string;
-  deletedTodoIds: TodoId[];                                           // incomplete='delete'
-  moved: Array<{ todoId: TodoId; prevCategoryId: CategoryId; prevOrder: number }>;
-  createdCategoryId?: CategoryId;
-};
 // src/repositories/focus-session-repository.ts
 export interface FocusSessionRepository {
-  getActive(): Promise<FocusSession | null>;                          // status ∈ running|paused (최대 1개)
-  getById(id: FocusSessionId): Promise<FocusSession | null>;
+  getActive(): Promise<FocusSession | undefined>;                    // status ∈ running|paused (최대 1개)
+  getById(id: FocusSessionId): Promise<FocusSession | undefined>;
   listByDate(date: DateKey): Promise<FocusSession[]>;
   listByTodo(todoId: TodoId): Promise<FocusSession[]>;
   listAll(): Promise<FocusSession[]>;
-  upsert(session: FocusSession): Promise<void>;
-  bulkUpsert(sessions: FocusSession[]): Promise<void>;
-  replaceAll(sessions: FocusSession[]): Promise<void>;
+  upsert(session: Persistable<FocusSession>): Promise<void>;
 }
-// src/repositories/settings-repository.ts
+// src/repositories/settings-repository.ts — 단일 행. 없으면 도메인 createSettings(deps)로 만들어 upsert 한다(레포지토리가 만들지 않는다)
 export interface SettingsRepository {
-  get(): Promise<Settings>;                                          // 없으면 기본값 생성·저장
-  update(patch: Partial<Omit<Settings, 'id'>>, at: string): Promise<Settings>;
+  get(): Promise<Settings | undefined>;
+  upsert(settings: Persistable<Settings>): Promise<void>;
 }
-// src/repositories/index.ts
-export type Repositories = { todos: TodoRepository; categories: CategoryRepository; settings: SettingsRepository; focusSessions: FocusSessionRepository };
+// src/repositories/dataset-repository.ts
+// 엔티티 레포지토리가 아니다(ADR-0007 규칙 2의 대상 밖). 교차 테이블·전량 작업만 담당하며 remove/delete 메서드는 여기에도 없다.
+export type DatasetWrite =
+  | { table: 'todos';         entity: Persistable<Todo> }
+  | { table: 'categories';    entity: Persistable<Category> }
+  | { table: 'focusSessions'; entity: Persistable<FocusSession> }
+  | { table: 'settings';      entity: Persistable<Settings> };
+export type DatasetSnapshot = { todos: Todo[]; categories: Category[]; focusSessions: FocusSession[]; settings: Settings };
+
+export interface DatasetRepository {
+  /** 툼스톤 포함 전량 읽기. 호출처는 백업 내보내기(backup R2)와 "삭제됨" 그룹 표시(category R17) 둘뿐. */
+  readAll(): Promise<DatasetSnapshot>;
+  /** 여러 테이블에 걸친 upsert 를 단일 트랜잭션으로. 중간 실패 시 아무것도 쓰지 않는다. 콜백이 아니라 값 목록이다. */
+  write(writes: readonly DatasetWrite[]): Promise<void>;
+  /** 백업 가져오기 전용: 네 테이블을 물리적으로 비우고 스냅샷을 넣는 단일 트랜잭션(청크 500). 병합·교체 둘 다 도메인이 최종 스냅샷을 만들어 이 한 메서드로 적용한다. */
+  restore(snapshot: DatasetSnapshot): Promise<void>;
+}
+// src/repositories/container.ts
+export type Repositories = { todos: TodoRepository; categories: CategoryRepository; settings: SettingsRepository; focusSessions: FocusSessionRepository; dataset: DatasetRepository };
 export function getRepositories(): Repositories;   // 미설정 시 throw
 export function setRepositories(r: Repositories): void;
+
+// src/domain/category/removal.ts (T-05) — 카테고리 삭제의 도메인/저장소 분할
+export type CategoryRemovalChoice =
+  | { incomplete: 'delete' }
+  | { incomplete: 'move'; targetId: CategoryId }
+  | { incomplete: 'create'; name: string; color: string };           // 도메인이 검증(category R12)하고 Category 를 만든다
+export type CategoryRemovalResult = {
+  categoryId: CategoryId; deletedAt: string;
+  deletedTodoIds: TodoId[];                                          // incomplete='delete'
+  moved: Array<{ todoId: TodoId; prevCategoryId: CategoryId; prevOrder: number }>;
+  createdCategoryId?: CategoryId;
+};
+/** 저장소가 추측할 것이 남지 않도록, 쓸 값 전부를 도메인이 만든다. 반환한 writes 를 dataset.write(writes) 한 번으로 적용한다. */
+export function planCategoryRemoval(input: {
+  category: Category;
+  todos: readonly Todo[];          // categories.getById + todos.listByCategory(id) 결과(툼스톤 제외)
+  targetTodos: readonly Todo[];    // ①: 대상 카테고리의 투두 전량 / ②③: 빈 배열
+  choice: CategoryRemovalChoice;
+  deps: { now: () => string; id: () => string };
+}): { writes: DatasetWrite[]; result: CategoryRemovalResult };
+/** R15 되돌리기. result + 현재 엔티티를 받아 되감을 writes 를 만든다. 역시 dataset.write 한 번. */
+export function planCategoryRemovalUndo(input: {
+  result: CategoryRemovalResult; category: Category; todos: readonly Todo[];
+  createdCategory?: Category; deps: { now: () => string };
+}): { writes: DatasetWrite[] };
 ```
-- 교차 테이블 트랜잭션은 `remove/undoRemove` 두 메서드 안에만 있다(infra AGENTS 규칙 "트랜잭션은 다중 테이블 쓰기에만 명시적으로"와 일치). 일반 `transaction(fn)` API는 두지 않는다 — Dexie 트랜잭션 존 안에서 비-Dexie `await`가 섞이면 조용히 깨지므로 에이전트가 쓰기 위험하다. 타이머의 세션 종료 + `Todo.focusSeconds` 갱신은 두 호출로 하고 실패 시 세션 상태를 원천으로 재계산한다(캐시라 정합 회복 가능).
-- 계약 테스트 `src/repositories/*.contract.test.ts`는 팩토리를 인자로 받아 memory(T-08)와 indexeddb(T-10) 둘 다 실행한다.
+**`planCategoryRemoval`이 계약 수준에서 고정하는 것**(memory·indexeddb가 갈릴 여지를 남기지 않기 위한 것 — 계약 테스트는 이 문장들을 그대로 단언한다):
+- `at = deps.now()`를 **한 번만** 호출해 카테고리 tombstone·이동·삭제 투두 전부에 같은 값을 쓴다(category R14의 "같은 `deletedAt`").
+- "미완료" = `done === false`. 조회가 이미 툼스톤을 제외하므로 `deletedAt` 재판정은 하지 않는다. 완료 투두는 `writes`에 **들어가지 않는다**(한 글자도 건드리지 않음 = R14).
+- 이동 `order`(R14 "대상 그룹 끝, 날짜별"): 날짜 `d`마다 `base(d) = max(targetTodos 중 date===d 인 것의 order, -1) + 1`. 옮기는 투두는 **원래 카테고리에서의 정렬 순서(order asc → createdAt asc → id asc)** 를 유지한 채 같은 날짜끼리 `base(d), base(d)+1, …` 를 받는다. 동률이 남지 않으므로 두 구현의 결과가 같다.
+- 모든 `writes` 원소는 `touch`/`markDeleted`/`createMeta`를 거친 `Persistable`이다(그래야 타입이 통과한다). ②의 새 카테고리는 `order` = 활성 최대 + 1(R5).
+
+**교차 테이블 트랜잭션은 `DatasetRepository.write`·`restore` 두 메서드에만 있다.** 일반 `transaction(fn)` API는 여전히 두지 않는다 — 기각 근거였던 "Dexie 트랜잭션 존 안에서 비-Dexie `await`가 섞이면 조용히 깨진다"는 **사용자 콜백이 있을 때만** 성립하고, 위 둘은 콜백 없이 값 목록만 받으므로 그 위험이 없다. 이것이 backup R7("교체 = 단일 트랜잭션, 실패 시 전부 롤백")과 category R13·R15(2테이블 원자성)를 같은 하나의 예외로 만족시키는 방식이다. 타이머의 세션 종료 + `Todo.focusSeconds` 갱신은 원자성이 필요 없어 `upsert` 두 번으로 하고, 실패 시 세션 레코드(원천)에서 재계산한다(캐시라 정합 회복 가능).
+
+**계약 테스트**(`src/repositories/*.contract.test.ts`, 팩토리를 인자로 받아 memory(T-08)·indexeddb(T-10) 둘 다 실행) — ADR-0007 규칙 3의 (a)~(e)가 필수 케이스다. `READS`는 `Exclude<keyof TodoRepository, 'upsert'>`에 대한 `satisfies Record<ReadName, ReadCall>` 매핑 타입으로 쓴다(배열 금지). `DatasetRepository`는 엔티티 레포지토리가 아니므로 이 대조 대상이 아니고, 전용 계약 테스트가 ①`write`의 원자성(중간 실패 주입 → 변화 0) ②`restore` 왕복 ③`readAll`이 툼스톤을 **포함**하는지를 단언한다.
+**ADR-0007 재검토 트리거 확인**: `ReadName`이 `TodoRepository`에서 6개(5개 초과)다. 조회 API가 넓어졌지만 소프트 삭제 필터 진입점은 여전히 1개(`query.ts` / `memory/live.ts`)이고 추가된 것은 범위 조회·검색뿐이라 결정 4·5를 다시 열지 않는다 — T-08 PR에 이 문장을 근거로 적는다.
 
 ## 7. 테스트 전략
 
 | 층 | 도구 | 범위(필수) | 하지 않는 것 |
 |----|------|-----------|-------------|
 | 도메인 | Vitest | `src/domain/**` 모든 export 함수, 커버리지 100%(`--coverage` 게이트 95% 미만 실패), 스펙 R-번호 = 테스트명. 타이머 경과·완료 판정은 `now` 주입, 카테고리 전이 표 전수 | 타입만 있는 파일 |
-| 저장소 | Vitest + fake-indexeddb | 계약 테스트를 memory·indexeddb 동일 실행, 마이그레이션 테스트(v_n→v_{n+1}), 정렬·소프트 삭제·`updatedAt` 갱신, `remove/undoRemove` 원자성(중간 실패 주입 → 변화 0) | Dexie 내부 동작 |
+| 저장소 | Vitest + fake-indexeddb | 계약 테스트를 memory·indexeddb 동일 실행(ADR-0007 규칙 3 (a)~(e) 필수 — `Meta` 왕복·`rev` +1·툼스톤 전수 제외·`upsert(plain)` `@ts-expect-error`·`READS` 전수 대조), 마이그레이션 테스트(v_n→v_{n+1}), 정렬, `DatasetRepository` 원자성(중간 실패 주입 → 변화 0)·`restore` 왕복·`readAll` 툼스톤 포함 | Dexie 내부 동작 |
 | 스토어 | Vitest + memory 저장소 | 액션별 성공·실패(롤백)·낙관적 갱신 | 렌더 |
 | 컴포넌트 | Testing Library(`getByRole`) | 기능당 핵심 행동 1~3개(추가·토글·삭제·키보드), IME 조합, 포커스 이동, `aria-*` | 스냅샷, 픽셀, 애니메이션 타이밍 |
 | 토큰 | Vitest | `tokens.css` 파싱 → theme.md 표와 값 일치, 대비 계산(≥ 4.5:1 / 3:1) | 브라우저 렌더 |
@@ -251,7 +298,7 @@ export function setRepositories(r: Repositories): void;
 | 8 | 큰 하루 목록(200+)에서 리렌더 폭증 | 중 | 중 | selector 구독, 항목 메모, 그룹 단위 상태, 벤치 테스트 게이트 | 토글 50ms 초과 |
 | 9 | 팔레트가 일정을 잡아먹음 | 중 | 중 | 컷 라인(§2), T-19는 셸과 독립(CommandLayer 슬롯) | M3가 계획 대비 2 웨이브 이상 지연 |
 | 12 | 타이머 시각 계산 오류·다중 탭 이중 실행 | 중 | 중 | timer R3~R5(시각 기준, 저장소가 원천, `getActive` 1개), `now` 주입 테스트, `visibilitychange` 재판정 | 백그라운드 복귀 시 남은 시간 점프 |
-| 13 | 카테고리 삭제 대화상자 복잡도(3선택지·즉석 생성·원자성)로 T-12b 지연 | 중 | 중 | 도메인이 `CategoryRemovalPlan`을 만들고 저장소가 실행만, 축약형은 공용 ConfirmDialog 재사용, 계약 테스트 선행 | T-12b diff 300줄 초과 |
+| 13 | 카테고리 삭제 대화상자 복잡도(3선택지·즉석 생성·원자성)로 T-12b 지연 | 중 | 중 | `planCategoryRemoval`이 **쓸 값 전부**(`Persistable` writes)를 만들고 저장소는 `dataset.write` 한 번으로 실행만 — 두 구현이 규칙을 복제하지 않는다(§6), 축약형은 공용 ConfirmDialog 재사용, 계약 테스트 선행 | T-12b diff 300줄 초과 |
 | 14 | 완료 항목 하단 이동 모션이 빠른 연속 체크에서 어지러움 | 낮 | 중 | todo R8 400ms 대기·병합, reduced-motion 즉시 | 사용자 관점 리뷰어 지적 |
 | 10 | 서브셋(2,350자) 밖 글자가 폴백 폰트로 섞여 렌더 | 낮 | 중 | theme R12(허용 명시), 폴백 스택을 Pretendard와 골격이 비슷한 OS 고딕으로 고정, 1.5에서 사용 빈도 보고 범위 확장(재서브셋만, 코드 변경 없음) | 사용자 관점 리뷰어가 혼합 글꼴 지적 |
 | 11 | 단일 키 단축키가 보조기기 사용자와 충돌(WCAG 2.1.4) | 중 | 낮 | 포커스 조건 제한(R1), 1.5에서 끄기 설정 | 접근성 리뷰어 지적 |
@@ -260,7 +307,8 @@ export function setRepositories(r: Repositories): void;
 
 | # | MVP에서 지킬 것 | 나중에 열리는 것 | 확인 방법 |
 |---|----------------|-----------------|----------|
-| 1 | 모든 엔티티 `id`(nanoid)·`createdAt`·`updatedAt`·`deletedAt?` 유지, 물리 삭제는 `replaceAll`뿐 | 동기화 충돌 해결(LWW), 서버 병합 | 계약 테스트 |
+| 1 | 모든 엔티티가 `Meta`(`id` UUID v4 · `createdAt`·`updatedAt` ISO UTC · `rev` · `deletedAt?`)를 예외 없이 갖는다(ADR-0005). 물리 삭제는 `DatasetRepository.restore`뿐 | 동기화 충돌 해결(LWW), 서버 병합, `listChangedSince` | 계약 테스트(ADR-0007 규칙 3 (a)) |
+| 1-b | `Meta` 쓰기는 도메인 `touch`/`markDeleted`/`createMeta`만, 저장은 `upsert(Persistable<T>)`만(ADR-0007). 우회는 타입·2차 패스 린트가 막는다(ADR-0008) | 원격 구현으로 바꿔도 `rev`·`updatedAt` 규율이 그대로 | `pnpm check` + `bash scripts/check-arch.sh` |
 | 2 | `updatedAt` 인덱스 존재 | `listChangedSince(ts)` 추가 시 버전업 불필요 | `db.ts` v1 |
 | 3 | `Todo.doneAt` 기록, `FocusSession` 레코드(카테고리 스냅샷 포함) | 통계(시간대별·스트릭·집중 시간·카테고리별), 피드("방금 완료") | todo R6, timer R8·R13 테스트 |
 | 4 | `Todo.date`는 인스턴스 날짜, 템플릿 개념 없음 | 루틴: `routineId?` 추가 + `domain/todo/recurrence.ts` | ARCHITECTURE §5 |
@@ -273,7 +321,7 @@ export function setRepositories(r: Repositories): void;
 | 11 | 명령 레지스트리(`registerCommands`) | Phase 2 기능이 메뉴 대신 명령으로 진입 | shortcuts R7 |
 | 12 | 백업 `schemaVersion` + 변환 체인 | 새 엔티티(diary·routine) 포함 시 버전 n+1 | backup R3 |
 | 13 | `infra`를 import하는 곳은 `providers.tsx`·`test/setup.ts`뿐 | `infra/sync/` 어댑터를 같은 컨테이너로 주입 | ESLint 규칙 + Grep |
-| 14 | 레포지토리는 `Promise` + 도메인 타입만 | 원격 구현(REST/WebSocket)으로 교체 가능 | 계약 테스트 재사용 |
+| 14 | 레포지토리는 `Promise` + 도메인 타입만, 교차 테이블 트랜잭션은 `DatasetRepository` 두 메서드에만 | 원격 구현(REST/WebSocket)으로 교체 가능, 툼스톤 읽기는 `SyncRepository.listChangedSince`가 `readAll` 자리를 잇는다(ADR-0007 결정 4) | 계약 테스트 재사용 |
 | 15 | UI 선호(접힘·최근 명령)는 localStorage, 데이터는 저장소 | 동기화 범위 = 저장소만 | 코드 리뷰 |
 
 ## 13. 문서 갱신 의무 (구현과 같은 PR)

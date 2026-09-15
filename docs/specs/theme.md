@@ -88,8 +88,8 @@
 
 ## 4. 데이터
 
-- domain `Settings = { id: 'default', theme, accentColor, seededAt?, lastBackupAt?, updatedAt }`. 팔레트 프리셋(§3-C)은 도메인 상수 + 조회 함수(HEX → 프리셋, 프리셋 → 다크 값).
-- 레포지토리: `SettingsRepository.get()`(없으면 기본값 생성), `update(patch, at)`.
+- domain `Settings = Meta & { id: 'default', theme, accentColor, seededAt?, lastBackupAt? }` — `Meta`(`createdAt`·`updatedAt`·`rev`·`deletedAt?`)를 공통으로 갖는다(ADR-0005. 단일 행이라 `deletedAt`은 설정되지 않는다). 팔레트 프리셋(§3-C)은 도메인 상수 + 조회 함수(HEX → 프리셋, 프리셋 → 다크 값).
+- 레포지토리: `SettingsRepository.get()`(없으면 `undefined` — 기본값은 도메인 `createSettings(deps)`가 만들고 `upsert` 한다), `upsert(Persistable<Settings>)`. 레포지토리는 시각·`rev`를 만들지 않는다(ADR-0005·0007).
 
 ## 5. 접근성
 
