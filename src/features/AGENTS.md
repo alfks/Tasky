@@ -20,7 +20,7 @@
 ## 검증
 
 ```bash
-pnpm test -- src/features/<f> --reporter=dot 2>&1 | tail -20 && pnpm lint
+pnpm test src/features/<f> --reporter=dot 2>&1 | tail -20 && pnpm lint
 ```
 
 ## 자주 하는 실수

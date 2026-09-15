@@ -21,5 +21,5 @@
 ## 검증
 
 ```bash
-pnpm test -- src/components --reporter=dot 2>&1 | tail -20
+pnpm test src/components --reporter=dot 2>&1 | tail -20
 ```

@@ -22,5 +22,5 @@
 ## 검증
 
 ```bash
-pnpm test -- src/repositories --reporter=dot 2>&1 | tail -20
+pnpm test src/repositories --reporter=dot 2>&1 | tail -20
 ```

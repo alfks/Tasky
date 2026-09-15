@@ -25,5 +25,5 @@
 ## 검증
 
 ```bash
-pnpm test -- src/domain --coverage --reporter=dot 2>&1 | tail -20
+pnpm test src/domain --coverage --reporter=dot 2>&1 | tail -20
 ```

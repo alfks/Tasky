@@ -13,12 +13,19 @@ export type TaskyDb = Dexie & {
   settings: EntityTable<Settings, 'id'>;
 };
 
-// Dexie 는 스토어 선언 후 테이블을 동적으로 붙이므로 타입 단언이 필요하다(역직렬화 경계 — code-style.md §9).
-export const db = new Dexie('tasky') as TaskyDb;
-
-// 인덱스에 없는 필드(rev, deletedAt)는 버전업 없이 추가·변경할 수 있다.
-db.version(1).stores({
+/**
+ * 스토어 선언. 인덱스 이름의 단일 소스다 — query.ts 의 `IndexOf<>` 가 이 문자열에서 조회 가능한 인덱스
+ * 이름을 뽑아 타입으로 만든다. 여기 없는 이름으로 조회하면 컴파일 에러이고, Dexie 가 전수 스캔으로
+ * 조용히 떨어지는 일이 없다(TECH_PLAN §8 성능 예산).
+ * 형식: 항목 구분자는 ', ' 고정(첫 항목은 기본 키). 인덱스에 없는 필드(rev, deletedAt)는 버전업 없이 추가·변경할 수 있다.
+ */
+export const STORES = {
   todos: 'id, date, categoryId, [date+categoryId], updatedAt',
   categories: 'id, order',
   settings: 'id',
-});
+} as const;
+
+// Dexie 는 스토어 선언 후 테이블을 동적으로 붙이므로 타입 단언이 필요하다(역직렬화 경계 — code-style.md §9).
+export const db = new Dexie('tasky') as TaskyDb;
+
+db.version(1).stores(STORES);

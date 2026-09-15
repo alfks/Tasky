@@ -12,6 +12,7 @@
 2. 테마: `:root[data-theme="light"]`, `:root[data-theme="dark"]` 에서 같은 토큰 재정의. 강조색은 `--color-accent`(사용자 선택, 스토어가 inline style로 주입).
 3. Tailwind v4 `@theme`에 토큰을 등록해 `bg-bg`, `text-muted` 등 유틸로 사용. 폰트는 `layout.tsx`의 `next/font`, 여기서는 `--font-sans`만 참조.
 4. 토큰 추가/변경은 스크린샷(라이트/다크) 첨부.
+5. 이 디렉토리에는 테스트도 둘 수 없다(`.ts`는 전부 린트 에러 — 의도된 규칙이다). 토큰 값을 검사하는 테스트는 `src/test/tokens.test.ts`에 둔다.
 
 ## 검증
 

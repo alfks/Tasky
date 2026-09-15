@@ -162,7 +162,27 @@ const NO_BRAND_CAST = {
   selector:
     ":matches(TSAsExpression, TSTypeAssertion) > TSTypeReference[typeName.name='Persistable']",
   message:
-    "'as Persistable<…>' 금지 — 브랜드는 createMeta()/touch()/markDeleted() 만 만든다 (ADR-0007).",
+    "'as Persistable<…>' 금지 — 브랜드는 createMeta()/touch()/markDeleted()(+ADR-0009 adopt()) 만 만든다 (ADR-0007).",
+};
+/**
+ * Object.* 조립·변형 API 금지. 두 가지를 동시에 우회하기 때문이다:
+ * (a) Meta 필드를 리터럴 키 없이 덮어쓰므로 NO_META_WRITE 가 보지 못하고,
+ * (b) `Object.assign(x, y)` 의 반환 타입이 교차 타입 `X & Y` 라 Persistable 브랜드가 다른 엔티티로 옮겨붙는다.
+ * (b) 는 브랜드를 T 에 대해 불변으로 바꿔(ADR-0007 결정 1) 타입 단계에서도 막았지만, 이미 브랜드가 붙은 값을
+ * 출발점으로 삼는 변형(`Object.assign(touch(e, now), stale)`)은 타입으로 구분할 수 없어 여기서 구문째 막는다.
+ * 병합은 스프레드로, 엔티티 생성·변경은 createMeta()/touch()/markDeleted() 로 한다(meta.ts 는 예외 블록).
+ */
+const NO_OBJECT_MUTATE = {
+  selector:
+    "CallExpression[callee.object.name='Object'][callee.property.name=/^(assign|create|defineProperty|defineProperties|setPrototypeOf)$/]",
+  message:
+    'Object.assign()·create()·defineProperty()·defineProperties()·setPrototypeOf() 금지 — Meta 필드를 리터럴 키 없이 덮어써 NO_META_WRITE 를 우회하고, 교차 타입으로 Persistable 브랜드를 위조한다 (ADR-0007). 새 엔티티는 createMeta(), 변경은 touch()/markDeleted(), 그 밖의 병합은 스프레드.',
+};
+/** `as never` 는 어떤 파라미터에도 대입되는 만능 캐스팅이라 브랜드·경계 타입을 통째로 무력화한다 */
+const NO_NEVER_CAST = {
+  selector: ':matches(TSAsExpression, TSTypeAssertion) > TSNeverKeyword',
+  message:
+    "'as never' 금지 — 어떤 타입에도 대입되므로 Persistable 브랜드를 포함한 모든 타입 검사를 우회한다 (ADR-0007).",
 };
 /** 동적 import() 는 인자가 문자열 리터럴일 때만 경계 판정을 받는다 — 변수·템플릿 리터럴은 해석 불가 = 검사 우회 */
 const NO_DYNAMIC_NONLITERAL = {
@@ -178,7 +198,13 @@ const SYNTAX_BASE = [
   NO_IMPORT_EQUALS,
   NO_DYNAMIC_NONLITERAL,
 ];
-const SRC_SYNTAX = [...SYNTAX_BASE, NO_BRAND_CAST, ...NO_META_WRITE];
+const SRC_SYNTAX = [
+  ...SYNTAX_BASE,
+  NO_BRAND_CAST,
+  NO_NEVER_CAST,
+  NO_OBJECT_MUTATE,
+  ...NO_META_WRITE,
+];
 /** 도메인 결정성(ADR-0005 규칙 2). meta.ts 예외 블록도 반드시 이 배열을 그대로 쓴다 — flat config 는 규칙 단위 덮어쓰기라 빠뜨리면 통째로 사라진다 */
 const DOMAIN_DETERMINISM = [
   {
@@ -383,7 +409,7 @@ const config = [
     },
   },
   {
-    // Meta·브랜드를 만드는 유일한 파일 — 해제하는 것은 NO_META_WRITE 와 NO_BRAND_CAST 둘뿐이다.
+    // Meta·브랜드를 만드는 유일한 파일 — 해제하는 것은 NO_META_WRITE·NO_BRAND_CAST·NO_NEVER_CAST·NO_OBJECT_MUTATE 다.
     // 결정성 셀렉터는 그대로 유지한다: meta.ts 도 시각·ID 를 deps 로 받으므로 Date·crypto 가 필요 없고,
     // 여기서 풀리면 시각·ID 진입점이 무검사가 된다. import 규칙은 domain 과 같은 것을 다시 만든다
     // (no-restricted-syntax 를 덮어쓰는 블록은 구문 거울과 허용 목록 문자열 패턴도 같이 만들어야 한다 — 파일 끝 가드 2·3 이 강제).
@@ -393,6 +419,7 @@ const config = [
       'src/domain/__arch__/meta-clock.ts',
       'src/domain/__arch__/meta-write.ts',
       'src/domain/__arch__/meta-dyn.ts',
+      'src/domain/__arch__/meta-assign.ts',
     ],
     rules: layerRules({
       target: './src/domain',
@@ -537,7 +564,8 @@ const config = [
   },
   {
     // 테스트는 경계를 넘어도 된다(계약 테스트가 infra 구현을 직접 돌린다). src/test 는 조립 지점(setup.ts)이자 픽스처.
-    // 표기 규칙(RELATIVE·CANONICAL)만 유지. Meta 필드 리터럴과 'as Persistable' 은 픽스처에 필요하므로 허용.
+    // 표기 규칙(RELATIVE·CANONICAL)만 유지. Meta 필드 리터럴·'as Persistable'·Object.assign 은 픽스처와
+    // 위조 시도 테스트(meta.test.ts)에 필요하므로 허용 — 브랜드 위조는 그 테스트에서 tsc 가 판정한다.
     files: ['**/*.test.{ts,tsx}', 'src/test/**'],
     rules: {
       'max-lines': 'off',
