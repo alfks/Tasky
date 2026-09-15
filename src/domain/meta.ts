@@ -1,5 +1,7 @@
-// 엔티티 공통 필드(Meta)와 저장 가능 브랜드(Persistable)의 유일한 정의·생성 지점 (ADR-0005 · ADR-0007).
+// 엔티티 공통 필드(Meta)와 저장 가능 브랜드(Persistable)의 유일한 정의·생성 지점 (ADR-0005 · ADR-0007 · ADR-0009).
 // 시각과 ID 는 deps 로 주입받는다 — 이 파일도 Date·crypto 를 호출하지 않는다(도메인 결정성).
+import { INSTANT_PATTERN } from '@/domain/date/instant';
+import { DomainError } from '@/domain/errors';
 
 /** 런타임 흔적 없는 브랜드 키. 선언만 존재하므로 직렬화에 들어가지 않는다 (ADR-0007 결정 1). */
 declare const PERSISTABLE: unique symbol;
@@ -68,10 +70,62 @@ export function markDeleted<T extends Meta>(entity: T, now: string): Persistable
   return touch(next, now) as unknown as Persistable<T>;
 }
 
-// 네 번째 브랜드 생성 함수 adopt(e)(백업 가져오기 전용 — ADR-0009 결정 3)는 TECH_PLAN §6 이 T-05 에 배정했다.
-// 호출처(src/domain/backup/**)와 DatasetRepository 가 함께 들어오는 티켓에서 이 파일에 추가한다.
+/** UUID v4 형식(`lib/id.ts#newId()` 출력). `Settings` 의 고정 id `'default'` 는 이 검사에서 제외된다(ADR-0005 규칙 3). */
+const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** `Settings` 단일 행의 고정 id. adopt() 의 id 검사 예외이자 SettingsRepository 의 유일한 키. */
+const SETTINGS_FIXED_ID = 'default';
+
+function assertInstant(value: unknown, field: string): void {
+  if (typeof value !== 'string' || !INSTANT_PATTERN.test(value)) {
+    throw new DomainError('META_FORMAT_INVALID', `${field}=${JSON.stringify(value)}`);
+  }
+}
+
+/**
+ * 네 번째 브랜드 생성 함수 (ADR-0009 결정 3) — **백업 가져오기 전용**(호출처는 `src/domain/backup/**` 하나).
+ *
+ * 시각도 `rev` 도 새로 찍지 않는다. 찍으면 파일과 로컬을 비교하는 병합 기준(backup R6)과
+ * 내보내기 → 가져오기 왕복 동일성(R2)이 무너진다. 하는 일은 `Meta` **형식 검증**뿐이고,
+ * 통과하면 "도메인을 거쳤다"는 증거로 브랜드만 붙인다. 검증 실패는 backup R4 의 형식 오류다.
+ */
+export function adopt<T extends Meta>(entity: T): Persistable<T> {
+  if (typeof entity !== 'object' || entity === null) {
+    throw new DomainError('META_FORMAT_INVALID', String(entity));
+  }
+  if (typeof entity.id !== 'string' || entity.id.length === 0) {
+    throw new DomainError('META_FORMAT_INVALID', `id=${JSON.stringify(entity.id)}`);
+  }
+  if (entity.id !== SETTINGS_FIXED_ID && !UUID_V4_PATTERN.test(entity.id)) {
+    throw new DomainError('META_FORMAT_INVALID', `id=${entity.id}`);
+  }
+  assertInstant(entity.createdAt, 'createdAt');
+  assertInstant(entity.updatedAt, 'updatedAt');
+  if (entity.deletedAt !== undefined) {
+    assertInstant(entity.deletedAt, 'deletedAt');
+  }
+  if (!Number.isInteger(entity.rev) || entity.rev < 1) {
+    throw new DomainError('META_FORMAT_INVALID', `rev=${String(entity.rev)}`);
+  }
+  return entity as unknown as Persistable<T>;
+}
 
 /** 툼스톤(소프트 삭제된 로우) 여부. 조회 필터가 쓰는 유일한 판정 (ADR-0007 결정 5). */
 export function isTombstone(entity: Meta): boolean {
   return entity.deletedAt !== undefined;
+}
+
+/**
+ * 툼스톤의 삭제 시각을 **결과 객체 형태로** 돌려준다.
+ *
+ * `deletedAt` 은 Meta 필드라 객체 리터럴의 키로 쓰는 것이 `meta.ts` 밖에서는 린트 에러다(NO_META_WRITE).
+ * `planCategoryRemoval` 의 `CategoryRemovalResult.deletedAt`(TECH_PLAN §6 이 고정한 계약)처럼
+ * **엔티티가 아닌 결과 객체**가 그 값을 실어야 할 때, 규칙을 우회하지 않고 이 파일을 거쳐 얻는다.
+ * 값의 출처가 실제 툼스톤이므로 "카테고리와 같은 deletedAt"(category R14)이 구조적으로 보장된다.
+ */
+export function deletionStamp(entity: Meta): { deletedAt: string } {
+  if (entity.deletedAt === undefined) {
+    throw new DomainError('META_FORMAT_INVALID', 'deletedAt=undefined');
+  }
+  return { deletedAt: entity.deletedAt };
 }
