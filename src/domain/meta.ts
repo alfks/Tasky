@@ -88,6 +88,11 @@ function assertInstant(value: unknown, field: string): void {
  * 시각도 `rev` 도 새로 찍지 않는다. 찍으면 파일과 로컬을 비교하는 병합 기준(backup R6)과
  * 내보내기 → 가져오기 왕복 동일성(R2)이 무너진다. 하는 일은 `Meta` **형식 검증**뿐이고,
  * 통과하면 "도메인을 거쳤다"는 증거로 브랜드만 붙인다. 검증 실패는 backup R4 의 형식 오류다.
+ *
+ * **호출처 제한은 현재 도구로 강제되지 않는다** — `src/domain/**` 어디서 불러도 lint·tsc 가 통과한다
+ * (ADR-0007 '감수하는 점 4'). 강제 수단은 `eslint.config.mjs` 의 `no-restricted-imports`
+ * (`importNames: ['adopt']`) + `scripts/check-arch.sh` 픽스처이고, 두 파일 모두 T-05 소유 밖이라
+ * 백업 티켓(T-14) 착수 전에 별도로 넣어야 한다. 그 전까지는 리뷰가 유일한 방어선이다.
  */
 export function adopt<T extends Meta>(entity: T): Persistable<T> {
   if (typeof entity !== 'object' || entity === null) {
@@ -122,6 +127,13 @@ export function isTombstone(entity: Meta): boolean {
  * `planCategoryRemoval` 의 `CategoryRemovalResult.deletedAt`(TECH_PLAN §6 이 고정한 계약)처럼
  * **엔티티가 아닌 결과 객체**가 그 값을 실어야 할 때, 규칙을 우회하지 않고 이 파일을 거쳐 얻는다.
  * 값의 출처가 실제 툼스톤이므로 "카테고리와 같은 deletedAt"(category R14)이 구조적으로 보장된다.
+ *
+ * **한계**: 이 함수는 `deletedAt` 리터럴 금지(`NO_META_WRITE`)의 유일한 합법 통로이고, 반환값을
+ * 엔티티에 스프레드로 결합하면(`touch({ ...todo, ...deletionStamp(other) }, now)`) 린트가 잡지 못한다
+ * — 구문이 정당한 `{ ...state, ...patch }` 와 같기 때문이다(ADR-0007 '감수하는 점 1' 과 같은 급).
+ * 브랜드 위조는 아니다(반환값은 평범한 `{ deletedAt: string }` 이라 `Persistable` 이 되지 않는다).
+ * **툼스톤을 만드는 함수는 `markDeleted` 하나**이며, 이 결합은 도구가 아니라 리뷰가 잡는다
+ * (리뷰 체크: `deletionStamp` 의 결과가 엔티티가 아닌 **결과 객체**에만 실렸는가).
  */
 export function deletionStamp(entity: Meta): { deletedAt: string } {
   if (entity.deletedAt === undefined) {

@@ -11,6 +11,7 @@ import {
   planFirstRunSeed,
   reorderCategories,
   SEED_CATEGORY,
+  sortCategoriesForDisplay,
   transitionCategory,
   updateCategory,
   validateCategoryColor,
@@ -193,6 +194,47 @@ describe('목록 정렬·재매김', () => {
       [list[1].id, 2],
     ]);
     expect(reorderCategories(list, list[1].id, 1, laterDeps)).toEqual([]);
+  });
+
+  it('reorderCategories 는 목록에 없는 id 를 삭제 대화상자 문구가 아닌 코드로 거부한다', () => {
+    const list = makeCategories(2, (i) => ({ order: i }));
+    expect(() => reorderCategories(list, 'missing', 0, laterDeps)).toThrow(
+      expect.objectContaining({ code: 'CATEGORY_NOT_IN_LIST' }),
+    );
+  });
+
+  it('sortCategoriesForDisplay 는 활성 order → 종료 closedAt desc → 삭제됨 deletedAt desc 로 한 줄로 세운다 (R15·R5)', () => {
+    const active2 = makeCategory({ seq: 1, order: 1 });
+    const active1 = makeCategory({ seq: 2, order: 0 });
+    const closedOld = makeCategory({
+      seq: 3,
+      status: 'completed',
+      closedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const closedNew = makeCategory({
+      seq: 4,
+      status: 'paused',
+      closedAt: '2026-01-05T00:00:00.000Z',
+    });
+    // 종료한 뒤 삭제한 카테고리 — closedAt 이 아니라 deletedAt 으로 읽는다.
+    const removedLate = makeCategory({
+      seq: 5,
+      status: 'completed',
+      closedAt: '2026-01-01T00:00:00.000Z',
+      deletedAt: '2026-01-20T00:00:00.000Z',
+    });
+    const removedEarly = makeCategory({ seq: 6, deletedAt: '2026-01-10T00:00:00.000Z' });
+    const list = [removedEarly, closedOld, active2, removedLate, closedNew, active1];
+    expect(sortCategoriesForDisplay(list).map((c) => c.id)).toEqual([
+      active1.id,
+      active2.id,
+      closedNew.id,
+      closedOld.id,
+      removedLate.id,
+      removedEarly.id,
+    ]);
+    // 입력 배열을 바꾸지 않는다(호출자가 들고 있는 스냅샷 보호).
+    expect(list[0].id).toBe(removedEarly.id);
   });
 });
 

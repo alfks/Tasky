@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
+import { CATEGORY_MAX_COUNT } from '@/domain/category/category.rules';
 import { planCategoryRemoval, planCategoryRemovalUndo } from '@/domain/category/removal';
 import type { DatasetWrite } from '@/domain/dataset';
 import type { DateKey } from '@/domain/date/date-key';
 import { PALETTE } from '@/domain/theme/palette';
 import type { Todo } from '@/domain/todo/todo';
 
-import { makeCategory } from '@/test/fixtures/category';
+import { makeCategories, makeCategory } from '@/test/fixtures/category';
 import { countingDeps, FIXTURE_INSTANT, fixedDeps } from '@/test/fixtures/deps';
 import { makeTodo } from '@/test/fixtures/todo';
 
@@ -18,6 +19,8 @@ const CORAL = PALETTE[0].light;
 
 const category = makeCategory({ seq: 1, name: '공부', order: 0 });
 const target = makeCategory({ seq: 2, name: '운동', order: 1 });
+/** 삭제 시점의 카테고리 전량(삭제 대상 포함) — `planCategoryRemoval` 의 필수 인자다. */
+const snapshot = [category, target];
 
 /** 미완료 3(두 날짜) + 완료 2. */
 const todos: Todo[] = [
@@ -56,6 +59,7 @@ describe('planCategoryRemoval — 공통 계약 (R13·R14)', () => {
       targetTodos: [],
       choice: { incomplete: 'delete' },
       deps,
+      categories: snapshot,
     });
     expect(deps.nowCalls()).toBe(1);
     expect(result.deletedAt).toBe(AT);
@@ -74,6 +78,7 @@ describe('planCategoryRemoval — 공통 계약 (R13·R14)', () => {
         targetTodos: [],
         choice,
         deps: fixedDeps({ now: AT }),
+        categories: snapshot,
       });
       const writtenIds = todoWrites(writes).map((t) => t.id);
       expect(writtenIds).not.toContain(todos[3].id);
@@ -96,6 +101,7 @@ describe('① 다른 카테고리로 옮기기 (R14-a)', () => {
       targetTodos,
       choice: { incomplete: 'move', targetId: target.id },
       deps: fixedDeps({ now: AT }),
+      categories: snapshot,
     });
     const moved = todoWrites(writes);
     expect(moved.map((t) => [t.id, t.date, t.order])).toEqual([
@@ -123,6 +129,7 @@ describe('① 다른 카테고리로 옮기기 (R14-a)', () => {
       targetTodos: [],
       choice: { incomplete: 'move', targetId: target.id },
       deps: fixedDeps({ now: AT }),
+      categories: snapshot,
     });
     const moved = todoWrites(writes);
     expect(moved[0].id < moved[1].id).toBe(true);
@@ -137,6 +144,7 @@ describe('① 다른 카테고리로 옮기기 (R14-a)', () => {
         targetTodos: [],
         choice: { incomplete: 'move', targetId: category.id },
         deps: fixedDeps({ now: AT }),
+        categories: snapshot,
       }),
     ).toThrow(expect.objectContaining({ code: 'CATEGORY_REMOVAL_TARGET_INVALID' }));
   });
@@ -159,6 +167,61 @@ describe('② 새 카테고리를 만들어 옮기기 (R12)', () => {
     expect(todoWrites(writes).map((t) => t.order)).toEqual([0, 1, 0]);
   });
 
+  it('order 는 categories 모집단의 활성 최대 + 1 이다 (R5)', () => {
+    const late = makeCategory({ seq: 3, name: '독서', order: 4 });
+    const { writes } = planCategoryRemoval({
+      category,
+      todos,
+      targetTodos: [],
+      choice: { incomplete: 'create', name: '새 그룹', color: CORAL },
+      deps: fixedDeps({ now: AT }),
+      categories: [category, target, late],
+    });
+    expect(categoryWrites(writes)[0].order).toBe(5);
+  });
+
+  it('이름이 기존 카테고리와 겹치면 거부한다 (R12 → R2)', () => {
+    expect(() =>
+      planCategoryRemoval({
+        category,
+        todos,
+        targetTodos: [],
+        choice: { incomplete: 'create', name: '운동', color: CORAL },
+        deps: fixedDeps({ now: AT }),
+        categories: snapshot,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'CATEGORY_NAME_DUPLICATE' }));
+  });
+
+  it('개수 상한을 넘기면 거부한다 (R12 → R6)', () => {
+    const full = makeCategories(CATEGORY_MAX_COUNT);
+    expect(() =>
+      planCategoryRemoval({
+        category: full[0],
+        todos: [],
+        targetTodos: [],
+        choice: { incomplete: 'create', name: '새 그룹', color: CORAL },
+        deps: fixedDeps({ now: AT }),
+        categories: full,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'CATEGORY_LIMIT_EXCEEDED' }));
+  });
+
+  it('삭제 대상이 빠진 목록은 모집단이 틀린 것이라 거부한다 (빈 배열 포함)', () => {
+    for (const categories of [[], [target]]) {
+      expect(() =>
+        planCategoryRemoval({
+          category,
+          todos,
+          targetTodos: [],
+          choice: { incomplete: 'create', name: '운동', color: CORAL },
+          deps: fixedDeps({ now: AT }),
+          categories,
+        }),
+      ).toThrow(expect.objectContaining({ code: 'CATEGORY_NOT_IN_LIST' }));
+    }
+  });
+
   it('즉석 생성도 같은 검증 함수를 쓴다', () => {
     expect(() =>
       planCategoryRemoval({
@@ -167,6 +230,7 @@ describe('② 새 카테고리를 만들어 옮기기 (R12)', () => {
         targetTodos: [],
         choice: { incomplete: 'create', name: '  ', color: CORAL },
         deps: fixedDeps({ now: AT }),
+        categories: snapshot,
       }),
     ).toThrow(expect.objectContaining({ code: 'CATEGORY_NAME_REQUIRED' }));
   });
@@ -180,6 +244,7 @@ describe('③ 함께 삭제 (R14)', () => {
       targetTodos: [],
       choice: { incomplete: 'delete' },
       deps: fixedDeps({ now: AT }),
+      categories: snapshot,
     });
     expect(result.deletedTodoIds).toEqual([todos[1].id, todos[0].id, todos[2].id]);
     expect(result.moved).toEqual([]);
@@ -195,6 +260,7 @@ describe('planCategoryRemovalUndo (R15)', () => {
       targetTodos: [],
       choice: { incomplete: 'move', targetId: target.id },
       deps: fixedDeps({ now: AT }),
+      categories: snapshot,
     });
     const { writes } = planCategoryRemovalUndo({
       result,
@@ -222,6 +288,7 @@ describe('planCategoryRemovalUndo (R15)', () => {
       targetTodos: [],
       choice: { incomplete: 'delete' },
       deps: fixedDeps({ now: AT }),
+      categories: snapshot,
     });
     const { writes } = planCategoryRemovalUndo({
       result,

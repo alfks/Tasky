@@ -91,7 +91,7 @@ Tasky/
     │   ├── stats/        달성률 표시(도메인 계산 결과 렌더)
     │   └── theme/        테마 토글·강조색, theme-store
     ├── domain/         → src/domain/AGENTS.md         (배럴 없음)
-    │   ├── todo/  category/  date/  theme/  meta.ts(Meta, Persistable, createMeta/touch/markDeleted)  errors.ts
+    │   ├── todo/  category/  date/  theme/  focus/  meta.ts(Meta, Persistable, createMeta/touch/markDeleted/adopt)  ids.ts  dataset.ts  errors.ts
     ├── repositories/   → src/repositories/AGENTS.md
     │   ├── todo-repository.ts  category-repository.ts  settings-repository.ts  focus-session-repository.ts  dataset-repository.ts
     │   ├── memory/           in-memory 구현(테스트) + live.ts(툼스톤 필터 헬퍼)
@@ -121,7 +121,7 @@ Tasky/
 ```ts
 type DateKey = `${number}-${number}-${number}`; // 'YYYY-MM-DD'
 type Meta = { id: string; createdAt: string; updatedAt: string; rev: number; deletedAt?: string }; // 공통 필드 — 의미·규칙은 ADR-0005
-type Persistable<T extends Meta> = T & { readonly [PERSISTABLE]: true }; // 저장 가능 브랜드 — ADR-0007
+type Persistable<T extends Meta> = T & { readonly [PERSISTABLE]: T }; // 저장 가능 브랜드(값은 true 가 아니라 T — 위조 방지, ADR-0007 결정 1)
 type Todo = Meta & {
   categoryId: string;
   date: DateKey;

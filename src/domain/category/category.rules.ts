@@ -101,17 +101,7 @@ export function nextCategoryOrder(categories: readonly Category[]): number {
 export function activeCategories(categories: readonly Category[]): Category[] {
   return categories
     .filter((c) => !isTombstone(c) && c.status === 'active')
-    .sort((a, b) =>
-      a.order !== b.order
-        ? a.order - b.order
-        : a.createdAt !== b.createdAt
-          ? a.createdAt < b.createdAt
-            ? -1
-            : 1
-          : a.id < b.id
-            ? -1
-            : 1,
-    );
+    .sort((a, b) => (a.order !== b.order ? a.order - b.order : compareCreated(a, b)));
 }
 
 /** 종료된 카테고리를 `closedAt` 내림차순으로 (category R8 "종료됨 (n)" 섹션). */
@@ -123,6 +113,40 @@ export function closedCategories(categories: readonly Category[]): Category[] {
       const bt = b.closedAt ?? b.updatedAt;
       return at === bt ? (a.id < b.id ? -1 : 1) : at < bt ? 1 : -1;
     });
+}
+
+/**
+ * 화면 표시 순서 (todo R15 · completion-rate R5): 활성(`order`) → 종료(`closedAt` 내림차순) → 삭제됨.
+ * 본문 그룹 목록과 달성률 막대가 **같은 함수**를 쓰게 하는 단일 소스다 — 규칙을 복제하면 두 순서가
+ * 조용히 갈린다. 삭제됨 그룹은 `deletedAt` 으로 읽는다(종료한 뒤 삭제한 카테고리도 삭제 시각 기준).
+ * 정렬은 전부 동률에서 `id` 로 끝나므로 memory·indexeddb 가 같은 순서를 낸다.
+ */
+export function sortCategoriesForDisplay(categories: readonly Category[]): Category[] {
+  return [...categories].sort(compareForDisplay);
+}
+
+/** `sortCategoriesForDisplay` 의 비교자. 활성 0 → 종료 1 → 삭제됨 2 순. */
+function compareForDisplay(a: Category, b: Category): number {
+  const rank = (c: Category): number => (isTombstone(c) ? 2 : c.status === 'active' ? 0 : 1);
+  if (rank(a) !== rank(b)) {
+    return rank(a) - rank(b);
+  }
+  if (rank(a) === 0) {
+    return a.order !== b.order ? a.order - b.order : compareCreated(a, b);
+  }
+  const at =
+    rank(a) === 2 ? (a.deletedAt ?? a.closedAt ?? a.updatedAt) : (a.closedAt ?? a.updatedAt);
+  const bt =
+    rank(b) === 2 ? (b.deletedAt ?? b.closedAt ?? b.updatedAt) : (b.closedAt ?? b.updatedAt);
+  return at === bt ? (a.id < b.id ? -1 : 1) : at < bt ? 1 : -1;
+}
+
+/** 생성 시각 오름차순, 동률은 `id` — 활성 `order` 동률의 결정적 타이브레이커. */
+function compareCreated(a: Category, b: Category): number {
+  if (a.createdAt !== b.createdAt) {
+    return a.createdAt < b.createdAt ? -1 : 1;
+  }
+  return a.id < b.id ? -1 : 1;
 }
 
 /** 새 카테고리 (category R1~R6). `order` 는 활성 목록 끝이고 상태는 항상 `active` 로 시작한다. */
@@ -199,7 +223,9 @@ export function reorderCategories(
   const sequence = activeCategories(categories);
   const from = sequence.findIndex((c) => c.id === categoryId);
   if (from === -1) {
-    throw new DomainError('CATEGORY_REMOVAL_TARGET_INVALID', categoryId);
+    // 삭제 대화상자 전용 문구(`CATEGORY_REMOVAL_TARGET_INVALID` = '옮길 카테고리를 골라 주세요')를
+    // 순서 변경 실패에 쓰면 엉뚱한 안내가 된다 — 목록에 없다는 사실만 말하는 코드를 쓴다.
+    throw new DomainError('CATEGORY_NOT_IN_LIST', categoryId);
   }
   const to = Math.min(Math.max(targetIndex, 0), sequence.length - 1);
   const [moved] = sequence.splice(from, 1);

@@ -18,6 +18,7 @@ export type DomainErrorCode =
   | 'CATEGORY_EMOJI_INVALID'
   | 'CATEGORY_TRANSITION_INVALID'
   | 'CATEGORY_REMOVAL_TARGET_INVALID'
+  | 'CATEGORY_NOT_IN_LIST'
   | 'FOCUS_MINUTES_INVALID'
   | 'FOCUS_SESSION_ACTIVE_EXISTS'
   | 'FOCUS_SESSION_NOT_RUNNING'
@@ -41,6 +42,7 @@ const MESSAGES: Record<DomainErrorCode, string> = {
   CATEGORY_EMOJI_INVALID: '이모지는 하나만 쓸 수 있어요',
   CATEGORY_TRANSITION_INVALID: '지금 상태에서는 바꿀 수 없어요',
   CATEGORY_REMOVAL_TARGET_INVALID: '옮길 카테고리를 골라 주세요',
+  CATEGORY_NOT_IN_LIST: '카테고리를 찾을 수 없어요',
   FOCUS_MINUTES_INVALID: '집중 시간은 1분부터 180분까지예요',
   FOCUS_SESSION_ACTIVE_EXISTS: '이미 집중 중인 세션이 있어요',
   FOCUS_SESSION_NOT_RUNNING: '실행 중인 집중 세션이 아니에요',

@@ -6,6 +6,8 @@
 //  · **완료 투두는 writes 에 들어가지 않는다** — 한 필드도 건드리지 않는다(R14).
 //  · 이동 `order` 는 날짜별 `base(d) = max(대상 그룹의 그 날짜 order, -1) + 1` 부터, 원래 정렬 순서
 //    (`order` → `createdAt` → `id`)를 유지한 채 연속 번호. 동률이 남지 않아 memory·indexeddb 결과가 같다(R14-a).
+//  · `categories`(삭제 시점 전량)는 **필수**다 — ② 가 그 목록 없이는 R5(order)·R12(이름 유일성·개수)를
+//    지킬 수 없고, 선택 인자로 두면 누락이 조용한 오답이 되기 때문이다(리뷰 라운드 1 Blocker).
 import type { Category } from '@/domain/category/category';
 import { createCategory } from '@/domain/category/category.rules';
 import type { DatasetWrite } from '@/domain/dataset';
@@ -52,7 +54,12 @@ function orderAllocator(targetTodos: readonly Todo[]): (date: DateKey) => number
   };
 }
 
-/** ② 즉석 생성. 이름 유일성·개수 제한은 같은 검증 함수를 쓰는 `createCategory` 가 본다 (R12). */
+/**
+ * ② 즉석 생성. 이름 유일성·개수 제한은 같은 검증 함수를 쓰는 `createCategory` 가 본다 (R12 → R2·R6).
+ * `existing` 은 **삭제될 카테고리를 포함한** 삭제 시점 목록이다 — 새 카테고리의 `order` 는 그 목록의
+ * 활성 최대 + 1 이라(R5 문면) 트랜잭션 직후 활성 `order` 에 구멍이 하나 생긴다(예: `운동:1, 새 그룹:2`).
+ * 순서는 유일하고 `reorderCategories` 가 다음 재배치 때 0..n-1 로 메우므로 의도된 동작이다.
+ */
 function createInstantCategory(
   choice: Extract<CategoryRemovalChoice, { incomplete: 'create' }>,
   existing: readonly Category[],
@@ -74,12 +81,19 @@ export function planCategoryRemoval(input: {
   choice: CategoryRemovalChoice;
   deps: MetaDeps;
   /**
-   * 삭제 시점의 카테고리 전량. ② 새 카테고리의 `order`(활성 최대 + 1, R5)와 이름 유일성 검증(R12)에만 쓴다.
-   * ①③ 에서는 필요 없으므로 선택 인자다.
+   * 삭제 시점의 카테고리 **전량** — `categories.list()` 결과 그대로이며 삭제 대상 자신을 포함한다.
+   * ② 새 카테고리의 `order`(활성 최대 + 1, R5)와 이름 유일성·개수 제한(R12 → R2·R6)의 **모집단**이다.
+   * 선택 인자였을 때는 빠뜨려도 타입·테스트가 잡지 못해 ② 가 빈 모집단으로 돌아갔다(중복 이름·`order 0`
+   * 이 그대로 단일 트랜잭션에 실린다). 그래서 **①③ 에서도 필수**다 — 빠뜨리면 컴파일 에러다.
    */
-  categories?: readonly Category[];
+  categories: readonly Category[];
 }): { writes: DatasetWrite[]; result: CategoryRemovalResult } {
-  const { category, todos, targetTodos, choice, deps } = input;
+  const { category, todos, targetTodos, choice, deps, categories } = input;
+  // 타입이 "인자 누락" 을 막고, 이 검사가 "타입만 맞춘 빈/엉뚱한 목록" 을 막는다. 삭제 대상은 아직
+  // 툼스톤이 아니므로 올바른 스냅샷이면 반드시 들어 있다 — 없으면 R5·R12 의 모집단이 틀린 것이다.
+  if (!categories.some((c) => c.id === category.id)) {
+    throw new DomainError('CATEGORY_NOT_IN_LIST', category.id);
+  }
   const at = deps.now();
   const tombstone = markDeleted(category, at);
   const incomplete = sortTodos(todos.filter((t) => !t.done));
@@ -97,7 +111,7 @@ export function planCategoryRemoval(input: {
   } else {
     let targetId: CategoryId;
     if (choice.incomplete === 'create') {
-      const created = createInstantCategory(choice, input.categories ?? [], deps);
+      const created = createInstantCategory(choice, categories, deps);
       writes.push({ table: 'categories', entity: created });
       createdCategoryId = created.id;
       targetId = created.id;
