@@ -5,7 +5,9 @@
 **Tasky**: 레퍼런스 앱(국내 인기 감성 투두 앱)의 GUI/UX/기능을 매우 흡사하게 재현하는 **감성 투두/일정 관리 데스크탑 웹앱**. Next.js(App Router) + TypeScript + PWA, **로컬 우선(IndexedDB, repository 패턴)**. SNS(친구·피드·반응)는 Phase 2.
 1차 MVP: 날짜 스트립 + 카테고리별 투두 CRUD + 체크/달성률 + 테마/색상.
 
-> **현재 상태(단일 소스 — 상태가 바뀌면 이 줄만 고친다)**: 스캐폴딩 이전. `package.json`/`src/` 없음. `chore/scaffold-nextjs` 티켓이 머지되기 전에는 기능 티켓을 시작할 수 없다. 지금 쓸 수 있는 검증: `bash scripts/check-forbidden-words.sh`, `bash scripts/check-agents-md.sh`, `bash scripts/check.sh`(스캐폴딩 전 대체 체크 — 스캐폴딩 후엔 `pnpm check`).
+> **현재 상태(단일 소스 — 상태가 바뀌면 여기만 고친다)**
+> - 스캐폴딩 이전. `package.json`/`src/` 없음. `chore/scaffold-nextjs` 티켓 머지 전엔 기능 티켓 시작 불가. 지금 쓸 수 있는 검증은 §5 명령어 목록 참고.
+> - **CI 임시 미작동**: 계정/레포 차원의 Actions 실행 불가로 추정(워크플로 자체는 정상 — PR의 빨간 X는 코드 문제가 아니다). **`bash scripts/check.sh` 통과가 PR 전 실질 게이트**이며, CI 초록불을 머지 조건으로 삼지 않는다. 복구되면 이 항목을 지운다.
 
 ## 0. 절대 금지어 (최우선 규칙)
 

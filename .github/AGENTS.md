@@ -35,3 +35,4 @@ act -j guard 2>/dev/null || echo "act 미설치: bash scripts/check-forbidden-wo
 ## 자주 하는 실수
 - `fetch-depth: 0` 없이 author 검사 → 커밋 범위가 비어 통과처럼 보임. 유지할 것.
 - `build` 잡의 `pkg` 스텝(ci.yml:89-97)과 각 스텝의 `if: steps.pkg.outputs.present` 제거 → 스캐폴딩 전 PR 전부 실패.
+- CI가 현재 계정/레포 차원에서 아예 실행되지 않는다(체크아웃조차 안 됨, 잡 로그 404) — **워크플로를 고쳐도 해결되지 않는다.** 실질 게이트는 `bash scripts/check.sh`(CLAUDE.md 현재 상태 참고).
