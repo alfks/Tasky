@@ -8,9 +8,8 @@ PWA 아이콘 등 정적 자산만. 실제 web manifest는 `src/app/manifest.ts`
 
 ## 규칙
 
-1. 코드 파일(`.ts`/`.tsx`/`.js`) 금지 — 정적 자산만. 여기 있는 파일은 그대로 `dist/client/` 로 배포된다.
+1. 코드 파일(`.ts`/`.tsx`/`.js`) 금지 — 정적 자산만.
 2. 아이콘 크기·이름은 `src/app/manifest.ts`의 `icons` 배열과 1:1로 맞춘다(어긋나면 빌드는 통과해도 PWA 설치 아이콘이 깨진다).
-3. `_headers`는 Cloudflare Workers Static Assets의 캐시 헤더다. **이 파일이 있으면 vinext 생성본을 덮어쓴다**(병합 아님, 실측) — `/_next/static/*` immutable 규칙을 지우지 않는다(ADR-0010 규칙 5).
 
 ## 검증
 

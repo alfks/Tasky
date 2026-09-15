@@ -4,7 +4,7 @@
 
 ## 기술 스택
 
-Vinext(Next.js API on Vite 8, App Router) · React 19 · TypeScript · Tailwind CSS v4 · Zustand · Dexie(IndexedDB) · Vitest · Playwright · pnpm · 배포 Cloudflare Workers
+Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · Zustand · Dexie(IndexedDB) · Vitest · Playwright · pnpm
 
 ## 시작하기
 

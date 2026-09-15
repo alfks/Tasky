@@ -2,12 +2,18 @@
 # 실측: 이 파일이 있으면 vinext 가 생성하는 dist/client/_headers 를 "덮어쓴다"(병합 아님).
 # 따라서 아래 /_next/static/* 규칙(원래 vinext 생성본)을 여기서 직접 유지해야 한다 — 지우면
 # 콘텐츠 해시가 붙은 자산이 1년 immutable 캐시를 잃는다.
+# 여기 규칙은 "정적 자산으로 서빙되는 경로"에만 걸린다. Worker 가 동적으로 만드는 응답
+# (/manifest.webmanifest 등 metadata 파일 라우트 — ADR-0010 §결과)에는 적용되지 않는다(실측:
+# 그 경로 응답은 Worker 의 max-age=0, must-revalidate 로 나온다). 그런 경로 규칙은 적지 않는다.
 /_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# 폰트는 번들러를 거치지 않아(public/) 해시가 자동으로 붙지 않는다. 그래서 theme.md R14 의
+# "해시 파일명 + 1년 immutable" 중 파일명 해시는 서브셋 스크립트가 넣고(T-22), 캐시 수명은
+# 이 규칙이 준다. 해시 없는 이름으로 교체하면 1년 동안 낡은 폰트가 나가므로 둘은 한 쌍이다.
+/fonts/*
   Cache-Control: public, max-age=31536000, immutable
 
 # 서비스워커는 절대 오래 캐시하지 않는다 — 새 버전 감지(specs/pwa.md R4)가 막힌다.
 /sw.js
   Cache-Control: no-cache
-
-/manifest.webmanifest
-  Cache-Control: public, max-age=3600

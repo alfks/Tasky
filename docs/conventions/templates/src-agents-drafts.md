@@ -337,7 +337,7 @@ pnpm test -- src/lib --reporter=dot 2>&1 | tail -20
 
 1. 토큰 이름: `--color-{bg|surface|text|muted|accent|border}`, `--space-{1..8}`, `--radius-{sm|md|lg|full}`, `--z-{base|popover|modal|toast}`, `--shadow-{sm|md}`.
 2. 테마: `:root[data-theme="light"]`, `:root[data-theme="dark"]` 에서 같은 토큰 재정의. 강조색은 `--color-accent`(사용자 선택, 스토어가 inline style로 주입).
-3. Tailwind v4 `@theme`에 토큰을 등록해 `bg-bg`, `text-muted` 등 유틸로 사용. 폰트는 `tokens.css`의 `@font-face` 직접 선언(`next/font` 금지 — ADR-0010) + `layout.tsx`의 preload, 유틸에서는 `--font-sans`만 참조.
+3. Tailwind v4 `@theme`에 토큰을 등록해 `bg-bg`, `text-muted` 등 유틸로 사용. 폰트는 `layout.tsx`의 `next/font`, 여기서는 `--font-sans`만 참조.
 4. 토큰 추가/변경은 스크린샷(라이트/다크) 첨부.
 
 ## 검증
