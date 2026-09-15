@@ -15,6 +15,7 @@
 | [ADR-0006](./decisions/ADR-0006-layer-boundary-allow-list.md) | 레이어 경계 강제 구조 — 허용 목록 · 전수 분류 · 절대 경로 표기 · 배럴 위치 | accepted | 2026-09-15 | `src/**` 전체, `scripts/arch-layers.mjs`, `eslint.config.mjs`, `scripts/check-arch.sh` |
 | [ADR-0007](./decisions/ADR-0007-persistable-write-path-and-tombstone-reads.md) | 쓰기 경로 브랜드(`Persistable`)와 툼스톤 조회 규칙 | accepted | 2026-09-15 | `src/domain/meta.ts`, `src/repositories`, `src/infra/indexeddb/query.ts`, 계약 테스트 |
 | [ADR-0008](./decisions/ADR-0008-arch-rules-second-pass.md) | 아키텍처 규칙은 `--no-inline-config` 2차 패스로 강제(ADR-0006 결정 4 대체) | accepted | 2026-09-15 | `eslint.config.mjs`, `eslint.arch.config.mjs`, `scripts/arch-layers.mjs`, `scripts/check-arch.sh`, CI |
+| [ADR-0009](./decisions/ADR-0009-dataset-operations-and-adopt-write-path.md) | 데이터셋 단위 연산은 별개 계약 — `DatasetRepository`와 채택(`adopt`) 쓰기 경로(ADR-0005 규칙 5·ADR-0007 규칙 2의 적용 범위 한정) | accepted | 2026-09-15 | `src/domain/meta.ts`, `src/domain/backup`, `src/repositories/dataset-repository.ts`, `src/infra/indexeddb` |
 
 ## 예정(초안 필요 시 번호 예약 없이 작성)
-- 동기화 어댑터 설계(Phase 2, ADR-0005·0007을 supersede) · SNS 데이터 모델(Phase 2) · E2E 도입 범위
+- 동기화 어댑터 설계(Phase 2, ADR-0005·0007·0009를 supersede) · SNS 데이터 모델(Phase 2) · E2E 도입 범위
