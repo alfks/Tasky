@@ -90,6 +90,7 @@ add "$FT/infra.ts"     import/no-restricted-paths "$I '@/infra/__arch__/a'; expo
 add "$FT/app.ts"       import/no-restricted-paths "$I '@/app/__arch__/a'; export const x = a;"
 add "$FT/test.ts"      import/no-restricted-paths "$I '@/test/__arch__/a'; export const x = a;"
 add src/domain/__arch__/repo.ts        import/no-restricted-paths "$I '@/repositories/__arch__/a'; export const x = a;"
+add src/domain/__arch__/infra.ts       import/no-restricted-paths "$I '@/infra/__arch__/a'; export const x = a;"
 add src/repositories/__arch__/infra.ts import/no-restricted-paths "$I '@/infra/__arch__/a'; export const x = a;"
 add src/infra/__arch__/feature.ts      import/no-restricted-paths "$I '@/features/$FA/__arch__/a'; export const x = a;"
 add src/components/__arch__/domain.ts  import/no-restricted-paths "$I '@/domain/__arch__/a'; export const x = a;"
@@ -107,11 +108,17 @@ add src/lib/__arch__/launder.ts        import/no-restricted-paths "$LAUNDER"    
 add "$FT/via-test.ts"                  no-restricted-imports      "$I '@/features/$FA/__arch__/launder.test'; export const x = a;" # importer: 테스트 파일 import 금지
 add src/test/__arch__/launder.ts       -                          "$LAUNDER"                                          # 경유지 test 는 합법이지만 —
 add "$FT/via-testdir.ts"               import/no-restricted-paths "$I '@/test/__arch__/launder'; export const x = a;"  # importer: test 는 허용 목록 밖
+# 조립 지점(app/providers) 경유 — 예외 블록이 살아 있는지 검증(ADR-0006 규칙 6). __arch__ 경로가 실제 파일 대신 판정을 받는다
+add src/app/__arch__/providers.ts      no-restricted-syntax       'export { a } from "@/infra/__arch__/a";'             # 조립 지점: 재export 금지
+add src/app/__arch__/providers-ok.ts   -                          "$I '@/infra/__arch__/a'; export const x = a;"        # 조립 지점: infra 직접 import 은 합법
+add src/app/__arch__/via-providers.ts  no-restricted-imports      "$I '@/app/__arch__/providers'; export const x = a;"   # importer: app 파일은 조립 지점을 경유할 수 없다
+add src/app/__arch__/layout.ts         -                          "$I '@/app/__arch__/providers'; export const x = a;"   # 예외: layout 만 조립 지점을 import 한다
 # (c) 표기 우회 — 상대 경로·require·동적 import
 add "$FT/rel.ts"       no-restricted-imports      "$I '../../../infra/__arch__/a'; export const x = a;"
 add "$FT/rel1.ts"      no-restricted-imports      "$I './a'; export const x = a;"
 add "$FT/req.ts"       no-restricted-syntax       "export const x = require('@/infra/__arch__/a');"
 add "$FT/dyn.ts"       import/no-restricted-paths "export const x = import('@/infra/__arch__/a');"
+add "$FT/dyn-tpl.ts"   no-restricted-syntax       'export const x = import(`@/infra/__arch__/a`);'   # 리터럴이 아니면 경계 검사를 못 받으므로 문법 단계에서 금지
 # (d) 미분류 파일·잘못된 확장자·배럴 위치 — 파일 자체가 에러
 add src/__arch__/stray.ts              no-restricted-syntax       "export const x = 1;"
 add src/features/__arch__/stray.ts     no-restricted-syntax       "export const x = 1;"
@@ -133,6 +140,10 @@ add "$FT/ok-read.ts"   -                          "export const f = (t: { rev: n
 add src/domain/__arch__/react.ts       no-restricted-imports      "import { useState } from 'react'; export const x = useState;"
 add src/domain/__arch__/clock.ts       no-restricted-syntax       "export const n = Date.now();"
 add src/domain/__arch__/win.ts         no-restricted-globals      "export const w = window;"
+add src/domain/__arch__/lib-clock.ts   no-restricted-imports      "$I '@/lib/date'; export const x = a;"
+# meta.ts 예외 블록 — 결정성 규칙은 유지되고(부정), Meta 필드 쓰기만 풀린다(긍정). 두 경로는 eslint.config.mjs 의 meta 블록에 등록돼 있다
+add src/domain/__arch__/meta-clock.ts  no-restricted-syntax       "export const n = Date.now();"
+add src/domain/__arch__/meta-write.ts  -                          "export const t = { rev: 2 };"
 add src/lib/__arch__/pkg.ts            no-restricted-imports      "import { z } from 'zustand'; export const x = z;"
 add src/infra/__arch__/db.ts           no-restricted-imports      "import { db } from '@/infra/indexeddb/db'; export const x = db;"
 add "$FT/unres.ts"     import/no-unresolved       "$I '@/nope/__arch__/a'; export const x = a;"

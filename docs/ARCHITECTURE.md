@@ -42,12 +42,12 @@ flowchart TB
   classDef ext stroke-dasharray: 5 5,stroke:#888;
 ```
 
-**의존 규칙 — 허용 목록(allow-list)이다(ADR-0006).** 아래 표에 적힌 것만 import 할 수 있고 **그 외 `src/**` 는 전부 금지**다. 표의 단일 소스는 `scripts/arch-layers.mjs`(`ALLOW`)이며 `eslint.config.mjs` 가 그것으로 `import/no-restricted-paths` 규칙을 만든다(해석된 실제 경로 기준 — 별칭·배럴·동적 import 어느 쪽으로도 우회 불가, 상대 경로는 아예 금지). `src/**` 의 모든 파일은 정확히 하나의 레이어에 속하며, 어느 레이어에도 없는 파일은 파일 자체가 린트 에러다. 규칙이 실제로 잡는지는 `scripts/check-arch.sh`가 위반·허용 픽스처로 검증하고, 아키텍처 규칙의 `eslint-disable`은 `scripts/check-eslint-disable.sh`가 거부한다.
+**의존 규칙 — 허용 목록(allow-list)이다(ADR-0006).** 아래 표에 적힌 것만 import 할 수 있고 **그 외 `src/**` 는 전부 금지**다. 표의 단일 소스는 `scripts/arch-layers.mjs`(`ALLOW`)이며 `eslint.config.mjs` 가 그것으로 `import/no-restricted-paths` 규칙을 만든다(해석된 실제 경로 기준 — 별칭·배럴로 우회 불가, 상대 경로는 아예 금지. 동적 `import()` 는 인자가 문자열 리터럴일 때만 해석되므로 리터럴이 아닌 인자는 문법 단계에서 금지한다). `src/**` 의 모든 파일은 정확히 하나의 레이어에 속하며, 어느 레이어에도 없는 파일은 파일 자체가 린트 에러다. 규칙이 실제로 잡는지는 `scripts/check-arch.sh`가 위반·허용 픽스처로 검증하고, 아키텍처 규칙의 `eslint-disable`은 `scripts/check-eslint-disable.sh`가 거부한다.
 **스캐폴딩 전(`package.json` 없음)에는 린트가 존재하지 않는다** — 그때까지 이 표는 문서일 뿐이므로 `src/` 코드 티켓은 스캐폴딩 PR 머지 후에만 발행한다.
 
 | 레이어 | import 허용 — **이것만**(자기 레이어 포함) | 외부 패키지 |
 |--------|------------------------------------------|------------|
-| `src/app` | `app`, `components`, `lib`, `styles`, `features/<f>/index.ts`(feature 내부 경로 금지). 예외 `app/providers.tsx`(조립 지점): + `repositories`, `infra`, `features` | `dexie`·`zustand` 금지 |
+| `src/app` | `app`, `components`, `lib`, `styles`, `features/<f>/index.ts`(feature 내부 경로 금지). `@/app/providers` 는 `layout.tsx` 만 import. 예외 `app/providers.tsx`(조립 지점): + `repositories`, `infra`, `features`, 재export 금지 | `dexie`·`zustand` 금지 |
 | `src/components` | `components`, `lib`, `styles` (무상태 프리미티브) | `dexie`·`zustand` 금지 |
 | `src/features/<f>` | 자기 feature, `domain`, `repositories`, `components`, `lib`, `styles`, 다른 feature 의 `index.ts` 만 | `dexie` 금지 |
 | `src/domain` | `domain`, `lib` | **0개**(허용 목록) + 브라우저 전역·`Date`·`crypto`·`Math.random` 금지 |
@@ -58,7 +58,11 @@ flowchart TB
 | `src/test`, `*.test.*` | 전부(계약 테스트가 구현을 직접 돌린다). 역방향: 비테스트 파일은 `src/test`·`*.test.*` import 금지 | 제한 없음 |
 | `src/middleware.ts`, `src/instrumentation.ts` | `lib` (Next.js 가 위치를 강제하는 유일한 `src/` 직속 파일) | — |
 
-원칙: **UI → 상태 → 도메인 → 인터페이스 ← 인프라**. 인프라는 인터페이스를 구현할 뿐, `infra` 에 닿는 비테스트 파일은 `app/providers.tsx` 하나다(허용 목록의 이행적 폐포로 2홉 경유도 불가 — ADR-0006 결과). 경로 표기는 항상 `@/…`(code-style.md §7 표).
+원칙: **UI → 상태 → 도메인 → 인터페이스 ← 인프라**. 인프라는 인터페이스를 구현할 뿐이다. 경로 표기는 항상 `@/…`(code-style.md §7 표).
+
+**보장되는 것과 보장되지 않는 것**(린트는 *import 간선*만 본다 — 값의 흐름은 보지 못한다. 실측 근거: ADR-0006):
+- 보장: `infra` 를 **import** 하는 비테스트 파일은 `app/providers.tsx` 하나다. 그 파일을 import 할 수 있는 파일도 `layout.tsx` 하나이며, `providers.tsx` 의 재export(`export … from`)는 금지된다 — 재export 한 줄로 조립 지점을 경유지 삼는 2홉은 막힌다.
+- 보장 안 됨: `providers.tsx` 가 `export const getDb = () => db` 처럼 **직접 래퍼를 써서** infra 값을 내보내는 것. import 간선 규칙으로는 잡을 수 없다. 이 한 파일(`providers.tsx`)이 그래서 아키텍처 리뷰 대상이고(agent-collaboration.md 페르소나 표), 그 파일이 커지면 레포지토리 주입 외의 일을 하고 있다는 신호다.
 
 ## 2. 디렉토리 트리 (각 노드 → 그 디렉토리의 `AGENTS.md`)
 

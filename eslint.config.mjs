@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { FlatCompat } from '@eslint/eslintrc';
 import eslintConfigPrettier from 'eslint-config-prettier';
 
-import { ALLOW, FEATURE_ALLOW, LAYERS, PACKAGES, SRC_EXT, SRC_ROOT_FILES } from './scripts/arch-layers.mjs';
+import { ALLOW, FEATURE_ALLOW, LAYERS, LAYERS_WITHOUT_ALLOW, PACKAGES, SRC_EXT, SRC_ROOT_FILES } from './scripts/arch-layers.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const compat = new FlatCompat({ baseDirectory: ROOT });
@@ -78,7 +78,22 @@ const NO_META_WRITE = ['rev', 'updatedAt', 'createdAt', 'deletedAt'].map((k) => 
 }));
 /** Persistable 브랜드는 meta.ts 의 함수만 만든다 — 'as Persistable<…>' 캐스팅으로 위조 금지 */
 const NO_BRAND_CAST = { selector: ":matches(TSAsExpression, TSTypeAssertion) > TSTypeReference[typeName.name='Persistable']", message: "'as Persistable<…>' 금지 — 브랜드는 createMeta()/touch()/markDeleted() 만 만든다 (ADR-0007)." };
-const SRC_SYNTAX = [NO_REACT_FC, NO_EXPORT_ALL, NO_REQUIRE, NO_BRAND_CAST, ...NO_META_WRITE];
+/** 동적 import() 는 인자가 문자열 리터럴일 때만 경계 판정을 받는다 — 변수·템플릿 리터럴은 해석 불가 = 검사 우회 */
+const NO_DYNAMIC_NONLITERAL = { selector: "ImportExpression:not([source.type='Literal'])", message: '동적 import() 의 인자는 문자열 리터럴만 — 변수·템플릿 리터럴은 레이어 경계 검사를 우회한다 (code-style.md §7).' };
+const SRC_SYNTAX = [NO_REACT_FC, NO_EXPORT_ALL, NO_REQUIRE, NO_BRAND_CAST, NO_DYNAMIC_NONLITERAL, ...NO_META_WRITE];
+/** 도메인 결정성(ADR-0005 규칙 2). meta.ts 예외 블록도 반드시 이 배열을 그대로 쓴다 — flat config 는 규칙 단위 덮어쓰기라 빠뜨리면 통째로 사라진다 */
+const DOMAIN_DETERMINISM = [
+  { selector: "NewExpression[callee.name='Date']", message: '시간은 deps.now() 로 주입받습니다 (ADR-0005).' },
+  { selector: "CallExpression[callee.object.name='Date'][callee.property.name='now']", message: '시간은 deps.now() 로 주입받습니다 (ADR-0005).' },
+  { selector: "CallExpression[callee.object.name='Math'][callee.property.name='random']", message: '난수·ID 는 deps.id() 로 주입받습니다 (ADR-0005).' },
+  { selector: "MemberExpression[object.name='crypto']", message: 'ID 는 deps.id() 로 주입받습니다 (ADR-0005).' },
+];
+/** domain 은 시계·ID 의 런타임 구현을 직접 import 해서도 안 된다 — 한 단계 건너가면 위 셀렉터가 보지 못한다 */
+const NO_LIB_CLOCK = { group: ['@/lib/date', '@/lib/id'], message: '[domain] 시계·ID 구현을 직접 import 하지 않는다 — deps = { now, id } 로 주입 (ADR-0005 규칙 2).' };
+/** 조립 지점을 경유지로 쓰지 않는다: @/app/providers 를 import 할 수 있는 파일은 layout.tsx 하나 (ADR-0006 규칙 6) */
+const NO_PROVIDERS_IMPORT = { regex: '^@/app/(__arch__/)?providers$', message: '[app] 조립 지점(app/providers)은 layout.tsx 만 import 한다 — 다른 app 파일이 경유하면 infra 에 2홉으로 닿는다 (ADR-0006 규칙 6).' };
+/** 조립 지점의 재export 금지 — `export { db } from '@/infra/…'` 한 줄이면 허용 목록 밖 레이어가 그대로 새어나간다 */
+const NO_REEXPORT = { selector: 'ExportNamedDeclaration[source]', message: "[app/providers] 재export(`export … from`) 금지 — 조립 지점이 경유지가 된다. 필요한 값은 이 파일 안에서 조립해 컴포넌트로만 내보낸다 (ADR-0006 규칙 6)." };
 
 const config = [
   {
@@ -156,23 +171,18 @@ const config = [
   {
     files: ['src/domain/**'],
     rules: {
-      ...restrictedImports([RELATIVE, TEST_FILE, onlyPackages('domain', PACKAGES.domain)]),
+      ...restrictedImports([RELATIVE, TEST_FILE, NO_LIB_CLOCK, onlyPackages('domain', PACKAGES.domain)]),
       ...allowOnly('./src/domain', 'domain', ALLOW.domain),
       'no-restricted-globals': ['error', 'window', 'document', 'localStorage', 'sessionStorage', 'indexedDB', 'navigator'],
-      'no-restricted-syntax': [
-        'error',
-        ...SRC_SYNTAX,
-        { selector: "NewExpression[callee.name='Date']", message: '시간은 deps.now() 로 주입받습니다 (ADR-0005).' },
-        { selector: "CallExpression[callee.object.name='Date'][callee.property.name='now']", message: '시간은 deps.now() 로 주입받습니다 (ADR-0005).' },
-        { selector: "CallExpression[callee.object.name='Math'][callee.property.name='random']", message: '난수·ID 는 deps.id() 로 주입받습니다 (ADR-0005).' },
-        { selector: "MemberExpression[object.name='crypto']", message: 'ID 는 deps.id() 로 주입받습니다 (ADR-0005).' },
-      ],
+      'no-restricted-syntax': ['error', ...SRC_SYNTAX, ...DOMAIN_DETERMINISM],
     },
   },
   {
-    // Meta 를 쓰는 유일한 파일 — NO_META_WRITE 만 해제
-    files: ['src/domain/meta.ts'],
-    rules: { 'no-restricted-syntax': ['error', NO_REACT_FC, NO_EXPORT_ALL, NO_REQUIRE] },
+    // Meta·브랜드를 만드는 유일한 파일 — 해제하는 것은 NO_META_WRITE 와 NO_BRAND_CAST 둘뿐이다.
+    // 결정성 셀렉터는 그대로 유지한다: meta.ts 도 시각·ID 를 deps 로 받으므로 Date·crypto 가 필요 없고,
+    // 여기서 풀리면 시각·ID 진입점이 무검사가 된다. __arch__ 경로는 check-arch.sh 픽스처 전용(레포에 존재하지 않음).
+    files: ['src/domain/meta.ts', 'src/domain/__arch__/meta-clock.ts', 'src/domain/__arch__/meta-write.ts'],
+    rules: { 'no-restricted-syntax': ['error', NO_REACT_FC, NO_EXPORT_ALL, NO_REQUIRE, NO_DYNAMIC_NONLITERAL, ...DOMAIN_DETERMINISM] },
   },
   {
     files: ['src/repositories/**'],
@@ -231,17 +241,23 @@ const config = [
   })),
   {
     files: ['src/app/**'],
-    ignores: ['src/app/providers.tsx'],
+    ignores: ['src/app/providers.tsx', 'src/app/__arch__/providers.ts', 'src/app/__arch__/providers-ok.ts'],
     rules: {
-      ...restrictedImports([RELATIVE, TEST_FILE, denyPackages('app', STORAGE)]),
+      ...restrictedImports([RELATIVE, TEST_FILE, NO_PROVIDERS_IMPORT, denyPackages('app', STORAGE)]),
       ...allowOnly('./src/app', 'app', ALLOW.app, FEATURE_INDEXES), // feature 는 index.ts 만
     },
   },
   {
-    files: ['src/app/providers.tsx'],
+    // 조립 지점을 import 할 수 있는 유일한 파일(NO_PROVIDERS_IMPORT 해제). __arch__ 경로는 check-arch.sh 픽스처 전용.
+    files: ['src/app/layout.tsx', 'src/app/__arch__/layout.ts'],
+    rules: restrictedImports([RELATIVE, TEST_FILE, denyPackages('app', STORAGE)]),
+  },
+  {
+    files: ['src/app/providers.tsx', 'src/app/__arch__/providers.ts', 'src/app/__arch__/providers-ok.ts'],
     rules: {
       ...restrictedImports([RELATIVE, TEST_FILE, denyPackages('app/providers', STORAGE)]),
-      ...allowOnly('./src/app/providers.tsx', 'app/providers', ALLOW.providers),
+      ...allowOnly(['./src/app/providers.tsx', './src/app/__arch__/providers.ts', './src/app/__arch__/providers-ok.ts'], 'app/providers', ALLOW.providers),
+      'no-restricted-syntax': ['error', ...SRC_SYNTAX, NO_REEXPORT],
     },
   },
   {
@@ -298,5 +314,12 @@ const config = [
 
   eslintConfigPrettier,
 ];
+
+// --- 설정 자체의 가드: 레이어를 추가하고 규칙 블록을 빠뜨리면 아무 규칙도 받지 않는 영역이 생긴다(전수 분류 블록의 ignores 가 면제해 버린다) ---
+const TARGETED = new Set(config.flatMap((b) => b.files ?? []));
+const uncovered = LAYERS.filter((l) => !(l in LAYERS_WITHOUT_ALLOW) && !TARGETED.has(`src/${l}/**`));
+if (uncovered.length) {
+  throw new Error(`eslint.config.mjs: 레이어 ${uncovered.join(', ')} 에 규칙 블록(files: 'src/<layer>/**')이 없습니다 — 레이어를 추가하면 같은 PR 에서 블록도 추가하세요 (ADR-0006 규칙 1).`);
+}
 
 export default config;

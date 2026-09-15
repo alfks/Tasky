@@ -30,3 +30,20 @@ export const FEATURE_ALLOW = ['domain', 'repositories', 'components', 'lib', 'st
 
 /** 외부 패키지 허용 목록(하위 레이어만 — UI 레이어는 dexie/zustand 금지 목록으로 관리) */
 export const PACKAGES = { domain: [], repositories: [], infra: ['dexie'], lib: ['clsx', 'tailwind-merge'] };
+
+/**
+ * ALLOW 항목이 없는 레이어와 그 이유. 레이어를 추가하면 ALLOW 에 넣거나 여기에 이유를 적어야 한다
+ * — 아래 가드가 강제한다(이름만 추가하면 아무 규칙도 받지 않는 무제약 영역이 생기던 구멍을 막는다).
+ */
+export const LAYERS_WITHOUT_ALLOW = {
+  features: 'feature 마다 별도 허용 목록(FEATURE_ALLOW + 자기 디렉토리 + 다른 feature 의 index.ts)',
+  styles: '.css 만 존재 — 코드 파일은 그 자체가 에러',
+  test: '경계 제한 없음(계약 테스트가 infra 구현을 직접 돌린다)',
+};
+for (const l of LAYERS) {
+  if (!ALLOW[l] && !(l in LAYERS_WITHOUT_ALLOW)) {
+    throw new Error(
+      `arch-layers.mjs: 레이어 '${l}' 에 ALLOW 항목이 없습니다 — 허용 목록을 같은 PR 에서 추가하거나 LAYERS_WITHOUT_ALLOW 에 이유를 적으세요 (ADR-0006 규칙 1).`,
+    );
+  }
+}

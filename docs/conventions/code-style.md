@@ -76,7 +76,7 @@ src/infra/indexeddb/
 
 ## 5. 도메인 / 레포지토리 규칙 (ADR-0005 · ADR-0007)
 
-- `src/domain/**`는 외부 패키지를 하나도 import 하지 않고(린트 허용 목록 0개) 브라우저 전역·`Date`·`crypto`·`Math.random`도 참조하지 않는다(린트). 시간·ID는 `deps = { now: () => string, id: () => string }`로 주입(런타임 구현은 `lib/date.ts#nowIso`, `lib/id.ts#newId`).
+- `src/domain/**`는 외부 패키지를 하나도 import 하지 않고(린트 허용 목록 0개) 브라우저 전역·`Date`·`crypto`·`Math.random`도 참조하지 않는다(린트). 시간·ID는 `deps = { now: () => string, id: () => string }`로 주입(런타임 구현은 `lib/date.ts#nowIso`, `lib/id.ts#newId` — domain 에서 이 둘을 **직접 import 하는 것도 금지**). `meta.ts` 예외 블록은 `Meta` 필드 쓰기와 `Persistable` 생성만 풀고 결정성 규칙은 그대로 받는다(`check-arch.sh` 의 `meta-clock`/`meta-write` 픽스처가 고정).
 - 엔티티는 `type` + 생성 함수 `createTodo(input, deps): Persistable<Todo>`. 클래스 금지. 모든 변경 함수는 `touch(next, deps.now())` 로 끝나고 `Persistable<T>` 를 반환한다. 삭제는 `markDeleted(e, deps.now())`.
 - **쓰기 경로 타입**: `Persistable<T>` 를 만드는 함수는 `src/domain/meta.ts` 의 `createMeta`·`touch`·`markDeleted` 셋뿐. 레포지토리 `upsert` 는 이 타입만 받고 조회는 브랜드 없는 `T` 를 돌려주므로, 읽은 값을 그대로/스프레드해서 저장하면 컴파일 에러. `as Persistable` 캐스팅과 `meta.ts` 밖에서의 `rev/updatedAt/createdAt/deletedAt` 쓰기는 린트 에러(읽기는 허용).
 - 레포지토리 인터페이스: `Promise` 반환, 도메인 타입만(Dexie 타입 금지). 메서드는 조회(`getById / listByDate / listAll / get`)와 `upsert(entity: Persistable<T>)` — **`remove` 없음**. 조회는 툼스톤을 반환하지 않는다(`getById` → `undefined`, `list*` 제외, `includeDeleted` 옵션 없음).
@@ -111,7 +111,8 @@ src/infra/indexeddb/
 | 12 | `src/middleware.ts`·`src/instrumentation.ts` | `lib` 만 | `@/lib/<경로>` | `'@/lib/date'` |
 
 - `@/` import는 반드시 해석되어야 한다(`import/no-unresolved`) — 별칭이 깨지면 경계 검사가 조용히 무력화되므로 카나리로 둔다.
-- `require()`·`export *` 는 `src/` 전체에서 금지(린트). 동적 `import()` 는 같은 경계 판정을 받는다.
+- `require()`·`export *` 는 `src/` 전체에서 금지(린트). 동적 `import()` 는 **인자가 문자열 리터럴일 때만** 같은 경계 판정을 받으므로, 리터럴이 아닌 인자(변수·템플릿 리터럴)는 그 자체가 린트 에러다.
+- `@/app/providers`(조립 지점)를 import 할 수 있는 파일은 `src/app/layout.tsx` 하나이고, `providers.tsx` 는 재export(`export … from`)를 할 수 없다 — 조립 지점을 경유지로 쓰지 못하게 한다(ADR-0006 규칙 6, 한계는 ARCHITECTURE.md §1).
 
 **순서** (`import/order`가 정렬, 여기선 그룹 정의)
 1. `react`, `next/*` · 2. 외부 패키지 · 3. `@/domain/*` · 4. `@/repositories/*`, `@/infra/*` · 5. `@/features/*` · 6. `@/components/*` · 7. `@/lib/*`, `@/styles/*` · 8. `import type`은 각 그룹 마지막.
@@ -136,7 +137,7 @@ src/infra/indexeddb/
 - 스토어 액션은 try/catch로 받아 `error: string | null` 상태에 사용자 문구를 넣는다. `console.error`는 개발 모드에서만(`if (process.env.NODE_ENV !== 'production')`).
 - 에러를 삼키지 않는다(빈 catch 금지). 복구 불가 시 `app/error.tsx` 바운더리로 전파.
 - 사용자 문구는 한국어, 원인이 아닌 **다음 행동**을 안내("다시 시도해 주세요").
-- `any` 금지, `as` 캐스팅은 경계(IndexedDB 역직렬화, `query.ts`)에서만 + 주석. `as Persistable` 은 어디서도 금지(린트).
+- `any` 금지, `as` 캐스팅은 경계(IndexedDB 역직렬화, `query.ts`)에서만 + 주석. `as Persistable` 은 어디서도 금지(린트). 역직렬화 결과는 검증 후 도메인 함수로 되돌린다 — `JSON.parse` 결과를 바로 `upsert` 하지 않는다(타입도 린트도 못 잡는 경로).
 
 ## 10. 접근성 최소 기준
 
@@ -152,7 +153,7 @@ src/infra/indexeddb/
 
 - 러너: Vitest(jsdom). 컴포넌트: Testing Library(`getByRole` 우선). IndexedDB: `fake-indexeddb/auto`.
 - **필수**: `domain/**` 모든 export 함수, `repositories/**` 모든 메서드(memory + indexeddb 구현 둘 다 같은 계약 테스트 공유 `*.contract.test.ts`).
-- **계약 테스트 필수 케이스**(ADR-0007 규칙 3): (a) `Meta` 저장 전후 동일 (b) `upsert(touch(e))` 후 `getById(id)?.rev === e.rev + 1` (c) `upsert(markDeleted(e))` 후 `READS` 의 모든 조회 메서드가 그 id 를 반환하지 않음 (d) `// @ts-expect-error` 로 `upsert(plain)` 컴파일 실패 고정 (e) `const READS = [...] as const satisfies readonly (keyof TodoRepository)[]` + 조회 메서드 누락 시 타입 에러가 나는 전수 대조. 조회 메서드를 추가하면 `READS` 도 같은 PR.
+- **계약 테스트 필수 케이스**(ADR-0007 규칙 3): (a) `Meta` 저장 전후 동일 (b) `upsert(touch(e))` 후 `getById(id)?.rev === e.rev + 1` (c) `upsert(markDeleted(e))` 후 `READS` 의 모든 조회 메서드가 그 id 를 반환하지 않음 (d) `// @ts-expect-error` 로 `upsert(plain)` 컴파일 실패 고정 (e) `READS` 전수 대조 — `type ReadName = Exclude<keyof TodoRepository, 'upsert'>` + `const READS = { getById: (r, id) => r.getById(id), … } satisfies Record<ReadName, ReadCall>`. 조회 메서드를 빼면 `TS1360`(빠진 이름을 지목), 쓰기 메서드를 넣으면 `TS2353` 이다(tsc 5.9 실측). **`satisfies readonly (keyof T)[]` 같은 배열 형태는 전수성을 검사하지 않으므로 쓰지 않는다.** (c) 는 `Object.entries(READS)` 를 순회해 이 맵을 실제로 호출한다.
 - **권장**: feature 컴포넌트당 핵심 행동 1~3개(체크 토글, 추가, 삭제). 스냅샷 테스트 금지.
 - 테스트명은 한국어 문장: `it('완료된 투두 비율을 0~1로 반환한다')`.
 - 테스트 데이터는 `src/test/fixtures/*.ts` 팩토리(`makeTodo(overrides)`). 매직 날짜 금지 — 팩토리 기본값 사용. 픽스처는 `Meta` 리터럴을 써도 된다(테스트 파일 예외).
@@ -162,4 +163,4 @@ src/infra/indexeddb/
 
 ## 12. 금지 목록 (요약)
 
-`any` · `React.FC` · index key · `div onClick` · 하드코딩 색상 · `export *` · `require()` · 상대 경로 import · `features/*` 밖의 `index.ts` · `.js/.jsx` · 빈 catch · 티켓 없는 TODO · 컴포넌트 내 Dexie · `domain`의 외부 패키지 import · `domain`의 `Date`/`crypto` 직접 호출 · `touch()` 없는 엔티티 저장(컴파일 에러) · `meta.ts` 밖 `Meta` 필드 쓰기 · `as Persistable` · 레포지토리 `remove` · 아키텍처 규칙 `eslint-disable` · 사유 없는 `eslint-disable` · `useEffect` 상태 동기화 · 스냅샷 테스트 · 300줄 초과 파일 · 레퍼런스 앱 제품명
+`any` · `React.FC` · index key · `div onClick` · 하드코딩 색상 · `export *` · `require()` · 상대 경로 import · `features/*` 밖의 `index.ts` · `.js/.jsx` · 빈 catch · 티켓 없는 TODO · 컴포넌트 내 Dexie · `domain`의 외부 패키지 import · `domain`의 `Date`/`crypto` 직접 호출 · `touch()` 없는 엔티티 저장(컴파일 에러) · `meta.ts` 밖 `Meta` 필드 쓰기 · `as Persistable` · 레포지토리 `remove` · 리터럴 아닌 동적 `import()` · `layout.tsx` 밖에서 `@/app/providers` import · `providers.tsx` 의 재export · 아키텍처 규칙 `eslint-disable` · 사유 없는 `eslint-disable` · `useEffect` 상태 동기화 · 스냅샷 테스트 · 300줄 초과 파일 · 레퍼런스 앱 제품명
