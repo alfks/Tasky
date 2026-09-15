@@ -1,0 +1,39 @@
+/* 디자인 토큰. 색·간격·라운드·z-index 는 전부 여기서만 정의한다(src/styles/AGENTS.md). */
+@theme {
+  --color-bg: #fbfaf7;
+  --color-surface: #ffffff;
+  --color-text: #1f1d1a;
+  --color-muted: #6f6a62;
+  --color-accent: #f2a65a;
+  --color-border: #e7e2d9;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 1rem;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06);
+  --shadow-md: 0 4px 16px rgb(0 0 0 / 0.08);
+
+  --z-base: 0;
+  --z-popover: 10;
+  --z-modal: 20;
+  --z-toast: 30;
+}
+
+:root[data-theme='dark'] {
+  --color-bg: #17161a;
+  --color-surface: #211f25;
+  --color-text: #f4f1ec;
+  --color-muted: #a49e95;
+  --color-border: #332f38;
+}

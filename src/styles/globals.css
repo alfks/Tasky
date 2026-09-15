@@ -1,0 +1,22 @@
+/* 전역 스타일: 리셋과 문서 기본값만. 토큰은 tokens.css. */
+@import 'tailwindcss';
+@import './tokens.css';
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

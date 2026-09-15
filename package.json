@@ -1,0 +1,67 @@
+{
+  "name": "tasky",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "check": "bash scripts/check.sh",
+    "check:arch": "bash scripts/check-arch.sh",
+    "setup": "bash scripts/setup.sh",
+    "wt": "bash scripts/wt.sh"
+  },
+  "dependencies": {
+    "@serwist/next": "^9",
+    "clsx": "^2",
+    "dexie": "^4",
+    "next": "15.x",
+    "react": "19.x",
+    "react-dom": "19.x",
+    "tailwind-merge": "^3",
+    "zustand": "^5"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1",
+    "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6",
+    "@testing-library/react": "^16",
+    "@testing-library/user-event": "^14",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4",
+    "@vitest/coverage-v8": "^3",
+    "eslint": "^9",
+    "eslint-config-next": "15.x",
+    "eslint-config-prettier": "^10",
+    "fake-indexeddb": "^6",
+    "jsdom": "^26",
+    "prettier": "^3",
+    "prettier-plugin-tailwindcss": "^0.6",
+    "serwist": "^9",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "unrs-resolver"
+    ]
+  }
+}
