@@ -1,7 +1,10 @@
 # 읽기 조건: 라벨을 추가/변경할 때, 또는 새 레포에 라벨을 동기화할 때.
-# 적용: gh label create 반복 대신 아래 한 줄 (gh 확장 없이 순수 gh api):
-#   yq -r '.[] | "\(.name)|\(.color)|\(.description)"' .github/labels.yml | while IFS='|' read n c d; do gh label create "$n" --color "$c" --description "$d" --force; done
-# yq가 없으면 각 줄을 수동으로 gh label create 한다.
+# 적용: yq/jq 없이 gh 만으로 — 이 파일이 한 줄에 하나씩 `{ name: "...", color: "...", description: "..." }`
+# 형식(flow mapping)을 유지하는 한 grep+sed 로 그대로 파싱된다(yq 바이너리마다 필터 문법이 달라
+# 버전에 따라 깨지므로 쓰지 않는다). gh 만 있으면 된다:
+#   grep -E '^\- \{ name:' .github/labels.yml | \
+#   sed -E 's/^- \{ name: "([^"]+)", *color: "([^"]+)", *description: "([^"]+)" *\}.*$/\1\t\2\t\3/' | \
+#   while IFS=$'\t' read -r n c d; do gh label create "$n" --color "$c" --description "$d" --force; done
 
 # --- type: PR/이슈의 변경 유형 (커밋 type과 동일) ---
 - { name: "type:feature",   color: "0E8A16", description: "새 기능" }

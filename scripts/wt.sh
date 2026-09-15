@@ -27,30 +27,54 @@ BOARD="$WT_DIR/BOARD.md"
 BRANCH_RE='^(feature|fix|refactor|docs|chore|test)/[a-z0-9]+(-[a-z0-9]+)*$'
 
 # --- BOARD.md 락: flock 있으면 flock, 없으면 mkdir 스핀락(POSIX, 외부 도구 불필요) ---
+# mkdir 폴백은 락 디렉토리 안에 보유자 PID를 적어 두고, 반납은 "자기가 잡은 락"일 때만 한다
+# (그래야 락 획득에 실패한 프로세스가 EXIT trap 에서 남의 락을 rmdir 하지 않는다).
+# 대기 중 보유자 PID가 죽은 것을 확인하면(stale lock) 즉시 회수해 무한 대기를 피한다.
 _board_lock_dir="$WT_DIR/.board.lock.d"
 _board_lock_fd=""
+_board_lock_held=""
 board_lock_acquire() {
   mkdir -p "$WT_DIR"
   if command -v flock >/dev/null 2>&1; then
     exec 9>"$WT_DIR/.board.flock"
     flock -w 20 9 || { echo "ERROR: BOARD 락 획득 실패(20초 대기, flock)"; exit 1; }
     _board_lock_fd=9
+    _board_lock_held=flock
   else
     local tries=0
     until mkdir "$_board_lock_dir" 2>/dev/null; do
+      if [ -f "$_board_lock_dir/pid" ]; then
+        local holder_pid
+        holder_pid="$(cat "$_board_lock_dir/pid" 2>/dev/null || true)"
+        if [ -n "$holder_pid" ] && ! kill -0 "$holder_pid" 2>/dev/null; then
+          echo "WARN: BOARD 락 보유자(PID $holder_pid)가 죽어 있어 stale lock 을 회수합니다." >&2
+          rm -rf "$_board_lock_dir" 2>/dev/null || true
+          continue
+        fi
+      fi
       tries=$((tries + 1))
-      [ "$tries" -le 200 ] || { echo "ERROR: BOARD 락 획득 실패(20초 대기, mkdir 락) — 고아 락이면 삭제: rmdir $_board_lock_dir"; exit 1; }
+      [ "$tries" -le 200 ] || {
+        echo "ERROR: BOARD 락 획득 실패(20초 대기, mkdir 락, 보유자 PID $(cat "$_board_lock_dir/pid" 2>/dev/null || echo '알 수 없음') 살아있음)"
+        echo "  살아있는데도 실제로는 멈춰 있다면 수동 확인 후:  rm -rf $_board_lock_dir"
+        exit 1
+      }
       sleep 0.1
     done
+    echo "$$" > "$_board_lock_dir/pid" 2>/dev/null || true
+    _board_lock_held=mkdir
   fi
 }
 board_lock_release() {
-  if [ -n "$_board_lock_fd" ]; then
+  # 이 프로세스가 실제로 획득한 락만 반납한다 — 획득에 실패했거나 아직 시도하지 않은 경우는 no-op.
+  [ -n "$_board_lock_held" ] || return 0
+  if [ "$_board_lock_held" = flock ]; then
     flock -u "$_board_lock_fd" 2>/dev/null || true
     exec 9>&- 2>/dev/null || true
-    _board_lock_fd=""
+  else
+    rm -rf "$_board_lock_dir" 2>/dev/null || true
   fi
-  rmdir "$_board_lock_dir" 2>/dev/null || true
+  _board_lock_held=""
+  _board_lock_fd=""
 }
 # 정상 종료·에러 종료 어느 쪽이든 락을 반드시 반납한다(들고 있지 않으면 조용히 no-op).
 trap board_lock_release EXIT
@@ -86,24 +110,34 @@ set_status() { # $1 branch, $2 status  (브랜치명은 BRANCH_RE 로 검증된 
 # 브랜치가 $target(예: origin/main)에 이미 반영됐는지 git만으로 판정한다.
 # 일반 머지(fast-forward/3-way)와 squash 머지를 모두 잡는다:
 #  1) 조상 관계면 즉시 merged(일반 머지)
-#  2) 브랜치 트리 == merge-base 트리면 변경 없음 → merged
+#  2) 브랜치 트리 == merge-base 트리이고 그 사이 커밋이 0개면(즉 branch == merge_base) merged
+#     (커밋이 있는데 트리만 우연히 같아진 경우 — 빈 커밋, 되돌린 뒤 원상복구 등 — 는 3 으로 넘겨
+#      "변경은 없지만 히스토리가 있다"를 merged 와 구분한다. 조상 관계였다면 이미 1에서 잡혔을 것이다)
 #  3) 그 외에는 "브랜치를 merge-base 위에 얹은 가상 스쿼시 커밋"을 만들어
 #     `git cherry`(patch-id 비교)로 그 변경이 $target 히스토리에 이미 있는지 확인 (squash 머지 포착)
-# 반환: 0=merged, 1=merged 아님, 2=판정 불가(merge-base 없음 등)
+# 반환: 0=merged, 1=merged 아님, 2=판정 불가(merge-base 없음 등, fail-closed), 3=변경 없음이지만 커밋 존재(fail-closed)
 is_branch_merged() {
-  local branch="$1" target="$2" merge_base tree base_tree squash_commit
+  local branch="$1" target="$2" merge_base tree base_tree squash_commit commit_count cherry
   merge_base="$(git merge-base "$target" "$branch" 2>/dev/null)" || return 2
   git merge-base --is-ancestor "$branch" "$target" 2>/dev/null && return 0
   tree="$(git rev-parse "${branch}^{tree}" 2>/dev/null)" || return 2
   base_tree="$(git rev-parse "${merge_base}^{tree}" 2>/dev/null)" || return 2
-  [ "$tree" = "$base_tree" ] && return 0
+  if [ "$tree" = "$base_tree" ]; then
+    commit_count="$(git rev-list --count "${merge_base}..${branch}" 2>/dev/null)" || return 2
+    [ "$commit_count" -eq 0 ] && return 0
+    return 3
+  fi
   squash_commit="$(git commit-tree "$tree" -p "$merge_base" -m "_wt-squash-check_" 2>/dev/null)" || return 2
   # git cherry 는 각 커밋을 '-'(이미 target에 있음/patch-id 일치) 또는 '+'(없음)로 나열한다.
-  # 출력이 비어있는 게 아니라 '+' 로 시작하는 줄이 하나도 없어야 merged.
-  if ! git cherry "$target" "$squash_commit" 2>/dev/null | grep -q '^+'; then
-    return 0
-  fi
-  return 1
+  # squash_commit 은 언제나 1개이므로 정상 출력은 정확히 한 줄('-' 또는 '+')이어야 한다.
+  # git cherry 자체가 실패하거나 출력이 비면 판정 불가로 취급한다(fail-closed) — 침묵해서
+  # "+ 가 없으니 merged" 로 새는 쪽(fail-open)은 라운드 1 Blocker 와 같은 유형의 손실을 부른다.
+  cherry="$(git cherry "$target" "$squash_commit" 2>/dev/null)" || return 2
+  [ -n "$cherry" ] || return 2
+  case "$cherry" in
+    +*) return 1 ;;
+    *)  return 0 ;;
+  esac
 }
 
 cmd_new() {
@@ -125,15 +159,32 @@ cmd_new() {
   local base="main"
   git rev-parse --verify -q origin/main >/dev/null 2>&1 && base="origin/main"
   if [ "$flag" = "--existing" ]; then
-    git rev-parse --verify -q "$branch" >/dev/null 2>&1 || git fetch origin "$branch:$branch"
-    git worktree add --no-track "$dir" "$branch"
+    # --existing 은 브랜치를 새로 만들지 않으므로 --no-track 을 쓸 수 없다(git이 거부: "can only be
+    # used if a new branch is created"). 기존 브랜치의 upstream 은 이미 정해져 있으니 그대로 둔다 —
+    # 로컬에 없어 방금 fetch 로 받아온 경우도 `git fetch origin branch:branch` 는 upstream 을
+    # 설정하지 않으므로(clone/pull과 달리) origin/main 으로 잘못 잡힐 일이 없다.
+    local fetched=0
+    if ! git rev-parse --verify -q "$branch" >/dev/null 2>&1; then
+      git fetch origin "$branch:$branch" || { echo "ERROR: origin 에 '$branch' 브랜치가 없습니다."; exit 1; }
+      fetched=1
+    fi
+    git worktree add "$dir" "$branch" || {
+      [ "$fetched" = 1 ] && git branch -D "$branch" >/dev/null 2>&1
+      echo "ERROR: 워크트리 생성 실패 — 위 git 메시지를 확인하고 다시 시도하세요(반쪽 상태를 남기지 않도록 정리했습니다)."
+      exit 1
+    }
   else
     if git rev-parse --verify -q "$branch" >/dev/null 2>&1; then
       echo "ERROR: 브랜치 '$branch' 가 이미 있습니다. 이어서 하려면:  bash scripts/wt.sh new $branch --existing"; exit 1; fi
     # --no-track: start-point가 origin/main 이라도 upstream을 origin/main 으로 잡지 않는다.
     # (안 그러면 push --force-with-lease 가 실패하고 git이 push origin HEAD:main 을 제안한다 — 위험)
     # 최초 push는 push.autoSetupRemote=true(setup.sh) 가 올바른 원격 브랜치를 자동 생성한다.
-    git worktree add --no-track -b "$branch" "$dir" "$base"
+    # (이 경로만 새 브랜치를 만드므로 --no-track 이 유효하다 — --existing 경로에는 절대 붙이지 않는다.)
+    git worktree add --no-track -b "$branch" "$dir" "$base" || {
+      git branch -D "$branch" >/dev/null 2>&1
+      echo "ERROR: 워크트리 생성 실패 — 위 git 메시지를 확인하고 다시 시도하세요(반쪽 상태를 남기지 않도록 정리했습니다)."
+      exit 1
+    }
   fi
   if [ -f "$dir/package.json" ] && command -v pnpm >/dev/null 2>&1; then
     (cd "$dir" && pnpm install --prefer-offline --silent) || echo "WARN: pnpm install 실패 — 워크트리에서 수동 실행: pnpm install"
@@ -166,6 +217,7 @@ cmd_rm() {
     if [ "$rc" -ne 0 ]; then
       local why="'$target' 에 머지되지 않았습니다"
       [ "$rc" -eq 2 ] && why="머지 여부를 git만으로 판정할 수 없습니다(공통 조상 없음 등)"
+      [ "$rc" -eq 3 ] && why="변경 내용은 '$target' 과 같지만 커밋 $(git rev-list --count "$target..$branch")개가 머지되지 않았습니다(되돌린 커밋·빈 커밋 등). 삭제하면 히스토리가 유실됩니다"
       echo "ERROR: '$branch' 가 $why. 삭제 시 작업 유실 위험이 있어 기본은 거부합니다."
       echo "  머지된 것이 확실하면:  bash scripts/wt.sh rm $name --force"
       echo "  판정 근거를 직접 확인:  git log --oneline $target | grep -i \"\$(git log -1 --format=%s $branch)\""

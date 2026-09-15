@@ -1,5 +1,8 @@
 # 읽기 조건: CI가 실패했을 때 어느 잡/스텝인지 확인하려고, 또는 워크플로를 수정할 때.
-# 원칙: 검사 로직은 scripts/check-*.sh 에만 있고 여기서는 호출만 한다(로컬 훅과 동일 동작).
+# 원칙: 검사 목록의 단일 소스는 scripts/check.sh 다(로컬 훅과 동일 동작). 여기서는 그 스텝들을
+# `bash scripts/check.sh <step>` 으로 하나씩 호출만 한다 — 로직을 다시 나열하지 않으면서도,
+# 스텝을 쪼개 부르기 때문에 어느 검사가 실패했는지 GitHub Actions UI에 스텝 단위로 그대로 뜬다
+# (전부 `bash scripts/check.sh`로 한 번에 합치면 이 이점을 잃는다).
 name: CI
 
 on:
@@ -25,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 체크아웃 (PR은 머지 커밋이 아닌 head 커밋을 검사)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -36,13 +39,16 @@ jobs:
           find .githooks -maxdepth 1 -type f ! -name '*.md' -exec chmod +x {} + || true
 
       - name: 금지어 검사 (레포 전체 — 파일명 + 본문)
-        run: bash scripts/check-forbidden-words.sh
+        run: bash scripts/check.sh forbidden-words
 
       - name: AGENTS.md 구조 검사 (필수 디렉토리 · 60줄 · 읽기 조건 · CLAUDE.md 250줄)
-        run: bash scripts/check-agents-md.sh
+        run: bash scripts/check.sh agents-md
 
       - name: eslint-disable 정책 검사 (src/ — 아키텍처 규칙 우회 금지)
-        run: bash scripts/check-eslint-disable.sh
+        run: bash scripts/check.sh eslint-disable
+
+      - name: wt.sh 스모크 테스트 (/tmp 샌드박스 — 원본 레포는 건드리지 않음)
+        run: bash scripts/check.sh wt
 
       - name: 브랜치명 규칙 검사 (PR)
         if: github.event_name == 'pull_request'
@@ -59,7 +65,7 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: bash scripts/check-author.sh "$BASE_REF"
+        run: bash scripts/check.sh author "$BASE_REF"
 
       - name: PR 제목 형식 검사 (squash 커밋 제목이 됨)
         if: github.event_name == 'pull_request'
@@ -84,7 +90,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: guard
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: package.json 존재 확인 (스캐폴딩 전에는 이후 스텝 생략)
         id: pkg
@@ -104,7 +110,7 @@ jobs:
 
       - name: Node 설치
         if: steps.pkg.outputs.present == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -115,15 +121,15 @@ jobs:
 
       - name: lint
         if: steps.pkg.outputs.present == 'true'
-        run: pnpm lint
+        run: bash scripts/check.sh lint
 
       - name: 레이어 경계 린트 검증 (위반 픽스처가 실제로 잡히는지)
         if: steps.pkg.outputs.present == 'true'
-        run: bash scripts/check-arch.sh
+        run: bash scripts/check.sh arch
 
       - name: typecheck
         if: steps.pkg.outputs.present == 'true'
-        run: pnpm typecheck
+        run: bash scripts/check.sh typecheck
 
       - name: format check
         if: steps.pkg.outputs.present == 'true'
@@ -131,7 +137,7 @@ jobs:
 
       - name: test
         if: steps.pkg.outputs.present == 'true'
-        run: pnpm test -- --reporter=dot
+        run: bash scripts/check.sh test
 
       - name: build
         if: steps.pkg.outputs.present == 'true'

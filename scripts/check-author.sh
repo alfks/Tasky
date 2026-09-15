@@ -47,7 +47,12 @@ mode="${1:-main}"
 case "$mode" in
   --message-file)
     f="${2:?메시지 파일 경로 필요}"
-    msg="$(grep -vE '^[[:space:]]*#' "$f" || true)"
+    # '#'로 시작하는 줄을 주석으로 보고 걸러내지 않는다. git commit -m/-F 의 기본 cleanup
+    # 모드는 'strip'이 아니라 'whitespace'라 '#' 줄이 실제 커밋 메시지에 그대로 남는다
+    # (대화형 에디터로 커밋할 때만 cleanup=strip 이 적용돼 지워진다). 이 스크립트가 보는
+    # PR 제목·커밋 메시지 파일은 -m/-F 경로이므로, 실제로 커밋에 남는 원문 그대로 검사한다.
+    [ -f "$f" ] || { echo "FAIL: 검사 대상 파일이 없습니다: $f"; exit 1; }
+    msg="$(cat "$f")"
     subject="$(printf '%s\n' "$msg" | first_nonempty_line)"
     if [ -z "$subject" ]; then say_fail "커밋 메시지가 비어 있습니다"; else check_subject "커밋 메시지" "$subject"; fi
     check_ai_text "커밋 메시지" "$msg"

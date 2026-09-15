@@ -8,11 +8,12 @@
 ## 여기 있는 것
 | 스크립트 | 역할 | 호출처 |
 |---------|------|-------|
-| `setup.sh` | author config, `core.hooksPath=.githooks`, `pnpm install`(있을 때) | 사람/에이전트 최초 1회 |
-| `wt.sh new|rm|list` | 워크트리 생성/정리/목록 + BOARD.md 갱신(락으로 보호) | 구현자·오케스트레이터 |
-| `check.sh [base]` | 아래 3개 가드(+ 있으면 `pnpm lint/typecheck/test`)를 한 번에 실행, 결과 요약 | 커밋/PR 전 수동, `wt.sh new` 안내 |
+| `setup.sh` | author config, `core.hooksPath=.githooks`, `pnpm install`(있을 때). 재실행 안전(idempotent), 워크트리 안에서 실행하면 BOARD 초기화만 건너뜀 | 사람/에이전트 최초 1회, 훅이 안 돌 때 재실행 |
+| `wt.sh new|rm|list` | 워크트리 생성/정리/목록 + BOARD.md 갱신(락으로 보호). `rm`은 git만으로 머지 여부(일반/squash) 판정 후 삭제, 판정 불가·모호하면 fail-closed(거부) | 구현자·오케스트레이터 |
+| `test-wt.sh` | `wt.sh` 스모크 테스트. `/tmp` 샌드박스(가짜 bare origin)에서 new·new --existing(로컬/원격/미존재 3종)·rm merged·rm unmerged 거부·rm --force·동시 BOARD 갱신을 왕복. 원본 레포는 건드리지 않고 항상 자동 정리 | `check.sh wt`, CI guard, `wt.sh` 수정 후 수동 |
+| `check.sh [base]` \| `check.sh <step> [인자]` | **검사 목록의 단일 소스.** 인자 없이/`[base]`만 주면 전체를 순서대로 실행하고 요약 출력. `<step>`(forbidden-words\|agents-md\|eslint-disable\|author\|wt\|arch\|lint\|typecheck\|test) 하나만 주면 그 검사만 실행하고 그 exit code 그대로 반환 — CI(`ci.yml`)가 이 형태로 스텝별 호출해 실패 지점을 GitHub UI에 그대로 노출한다 | 커밋/PR 전 수동, `wt.sh new` 안내, CI 전 스텝 |
 | `check-forbidden-words.sh [paths…]` | 금지어 검사(조각 조립 정규식) | pre-commit, CI, 수동 |
-| `check-author.sh <base>` | `<base>..HEAD` 커밋 author/트레일러 검증 | CI, 수동 |
+| `check-author.sh <base>` | `<base>..HEAD` 커밋 author/트레일러 검증. `--message-file`/`--body-file` 은 실제 커밋에 남는 원문(`#` 줄 포함 — git의 기본 cleanup은 `-m`/`-F` 에서 주석을 지우지 않는다) 그대로 검사 | CI, 수동 |
 | `check-agents-md.sh` | 트래킹 파일이 있는 모든 디렉토리마다 `AGENTS.md` 존재(상위의 `관할:` 선언 시 면제)·60줄 이하 검사 | CI, 수동 |
 | `check-eslint-disable.sh [file…]` | `src/` 의 `eslint-disable` 정책(규칙명 없음·아키텍처 규칙·사유 없음·인라인 설정 금지). 규칙 목록의 단일 소스 | pre-commit 아님, CI guard, `check.sh`, `check-arch.sh` |
 | `check-arch.sh` | 레이어 경계 린트가 위반을 실제로 잡는지 임시 픽스처(`src/**/__arch__/`)로 검증. `package.json` 없으면 SKIP | CI build, `check.sh`, `pnpm check:arch` |
@@ -29,7 +30,8 @@
 ## 검증
 ```bash
 bash -n scripts/*.sh
-bash scripts/check.sh main   # 위 3개 가드를 한 번에
+bash scripts/check.sh main        # 위 검사 전부(+ wt.sh 스모크 테스트)를 한 번에
+bash scripts/check.sh <step>      # 하나만: forbidden-words|agents-md|eslint-disable|author|wt|arch|lint|typecheck|test
 ```
 
 ## 자주 하는 실수
