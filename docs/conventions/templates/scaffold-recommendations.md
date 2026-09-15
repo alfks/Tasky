@@ -67,6 +67,7 @@
   }
 }
 ```
+
 - 버전은 스캐폴딩 시점의 최신 안정판으로 `pnpm add`가 확정한다(위는 메이저 고정 의도만). `packageManager`의 정확한 pnpm 버전은 `pnpm --version` 출력으로 채운다.
 - **검사 목록의 단일 소스는 `scripts/check.sh`** — `pnpm check`는 그것을 부를 뿐이고 `check:all`·개별 `check:*` 나열은 두지 않는다(CI도 같은 스크립트를 호출). `check:arch`는 실패 원인을 단독 재현할 때만 쓴다.
 - ID는 `crypto.randomUUID()`(ADR-0005) — `nanoid`를 넣지 않는다.
@@ -90,7 +91,11 @@ const config = defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     exclude: ['**/*.slow.test.*', '**/__arch__/**', 'tests/**', 'node_modules/**', '.worktrees/**'],
-    coverage: { provider: 'v8', include: ['src/domain/**', 'src/repositories/**', 'src/lib/**'], reporter: ['text-summary'] },
+    coverage: {
+      provider: 'v8',
+      include: ['src/domain/**', 'src/repositories/**', 'src/lib/**'],
+      reporter: ['text-summary'],
+    },
   },
   resolve: { alias: { '@': path.resolve(__dirname, 'src') } },
 });

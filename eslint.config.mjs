@@ -25,7 +25,17 @@ import { fileURLToPath } from 'node:url';
 import { FlatCompat } from '@eslint/eslintrc';
 import eslintConfigPrettier from 'eslint-config-prettier';
 
-import { ALLOW, ARCH_RULES, ARCH_RULES_COMMON, FEATURE_ALLOW, LAYERS, LAYERS_WITHOUT_ALLOW, PACKAGES, SRC_EXT, SRC_ROOT_FILES } from './scripts/arch-layers.mjs';
+import {
+  ALLOW,
+  ARCH_RULES,
+  ARCH_RULES_COMMON,
+  FEATURE_ALLOW,
+  LAYERS,
+  LAYERS_WITHOUT_ALLOW,
+  PACKAGES,
+  SRC_EXT,
+  SRC_ROOT_FILES,
+} from './scripts/arch-layers.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const compat = new FlatCompat({ baseDirectory: ROOT });
@@ -60,18 +70,35 @@ const allowMessage = (label, except) =>
 const allowPattern = (label, except) => {
   const seg = (e) => e.replace(/^\.\//, '').replaceAll('/', '\\/');
   const dirs = except.filter((e) => !e.endsWith('.ts')).map(seg);
-  const barrels = except.filter((e) => e.endsWith('.ts')).map((e) => seg(e.replace(/\/index\.ts$/, '')));
-  const alts = [...(dirs.length ? [`(?:${dirs.join('|')})(?:\\/|$)`] : []), ...(barrels.length ? [`(?:${barrels.join('|')})$`] : [])];
-  return { regex: alts.length ? `^@\\/(?!${alts.join('|')})` : '^@\\/', message: allowMessage(label, except) };
+  const barrels = except
+    .filter((e) => e.endsWith('.ts'))
+    .map((e) => seg(e.replace(/\/index\.ts$/, '')));
+  const alts = [
+    ...(dirs.length ? [`(?:${dirs.join('|')})(?:\\/|$)`] : []),
+    ...(barrels.length ? [`(?:${barrels.join('|')})$`] : []),
+  ];
+  return {
+    regex: alts.length ? `^@\\/(?!${alts.join('|')})` : '^@\\/',
+    message: allowMessage(label, except),
+  };
 };
 /** 허용 목록 → import/no-restricted-paths zone. target 파일은 from('./src') 중 except 만 import 할 수 있다 */
 const allowZone = (target, label, except) => ({
-  'import/no-restricted-paths': ['error', { basePath: ROOT, zones: [{ target, from: './src', except, message: allowMessage(label, except) }] }],
+  'import/no-restricted-paths': [
+    'error',
+    {
+      basePath: ROOT,
+      zones: [{ target, from: './src', except, message: allowMessage(label, except) }],
+    },
+  ],
 });
 
 // --- 문자열 패턴 규칙 (no-restricted-imports). 전부 regex 한 형태로 통일한다 — group(minimatch)은 동적 import 거울을 만들 수 없다.
 //     regex 안의 '/' 는 '\/' 로 쓴다: 같은 문자열이 RegExp 와 esquery 셀렉터 양쪽에서 쓰인다.
-const RELATIVE = { regex: '^\\.', message: "src/ 안에서 상대 경로 금지 — 항상 '@/…' 절대 경로 (code-style.md §7 표)." };
+const RELATIVE = {
+  regex: '^\\.',
+  message: "src/ 안에서 상대 경로 금지 — 항상 '@/…' 절대 경로 (code-style.md §7 표).",
+};
 /**
  * 정규형(canonical) 표기 강제 — 아래 모든 문자열 규칙의 전제. 한 파일을 가리키는 표기를 하나로 고정한다.
  * 거부: '.'/'..' 세그먼트 · 중복 슬래시 · 후행 슬래시 · 허용 밖 문자(백슬래시·'%' 인코딩·공백·비ASCII) · '@/' 경로의 코드 확장자와 '/index'.
@@ -84,55 +111,143 @@ const CANONICAL = {
   message:
     "import 경로 표기 위반 — 파일 하나의 표기는 정규형 하나뿐이다: './' '../' 세그먼트, 중복·후행 슬래시, 백슬래시·인코딩·공백, 확장자(.ts/.tsx/.js…), '/index' 금지. 다른 표기는 문자열 기반 경계 규칙을 우회한다 (code-style.md §7).",
 };
-const TEST_FILE = { regex: '\\.(contract\\.|slow\\.)?test(\\.[cm]?[jt]sx?)?$', message: '테스트 파일은 테스트만 import 한다 (code-style.md §11).' };
+const TEST_FILE = {
+  regex: '\\.(contract\\.|slow\\.)?test(\\.[cm]?[jt]sx?)?$',
+  message: '테스트 파일은 테스트만 import 한다 (code-style.md §11).',
+};
 const STORAGE = ['dexie', 'zustand'];
 /** 패키지 허용 목록(regex 부정 선독): '@/' 와 allowPkgs 외 전부 금지 */
 const onlyPackages = (label, allowPkgs) => ({
   regex: `^(?!@\\/${allowPkgs.map((p) => `|${p}(?:\\/|$)`).join('')})`,
   message: `[${label}] 외부 패키지 허용 목록 밖: ${allowPkgs.length ? allowPkgs.join(', ') : '(없음)'} 만 허용. ${DOC}`,
 });
-const denyPackages = (label, pkgs) => ({ regex: `^(${pkgs.join('|')})(\\/|$)`, message: `[${label}] 이 레이어에서 금지된 패키지입니다. ${DOC}` });
+const denyPackages = (label, pkgs) => ({
+  regex: `^(${pkgs.join('|')})(\\/|$)`,
+  message: `[${label}] 이 레이어에서 금지된 패키지입니다. ${DOC}`,
+});
 
 /** "이 파일은 존재하면 안 된다" — 파일 자체가 에러(no-restricted-syntax 의 Program 셀렉터) */
-const forbidFile = (message) => ({ 'no-restricted-syntax': ['error', { selector: 'Program', message }] });
+const forbidFile = (message) => ({
+  'no-restricted-syntax': ['error', { selector: 'Program', message }],
+});
 
-const NO_REACT_FC = { selector: "TSTypeReference[typeName.left.name='React'][typeName.right.name='FC']", message: 'React.FC 금지. function 선언 + Props 타입을 사용하세요 (code-style.md §3).' };
-const NO_EXPORT_ALL = { selector: 'ExportAllDeclaration', message: "'export *' 금지 — 배럴은 명시 export 만 (code-style.md §2)." };
+const NO_REACT_FC = {
+  selector: "TSTypeReference[typeName.left.name='React'][typeName.right.name='FC']",
+  message: 'React.FC 금지. function 선언 + Props 타입을 사용하세요 (code-style.md §3).',
+};
+const NO_EXPORT_ALL = {
+  selector: 'ExportAllDeclaration',
+  message: "'export *' 금지 — 배럴은 명시 export 만 (code-style.md §2).",
+};
 /** 경로 판정을 받을 수 없는 모듈 참조는 구문 자체를 막는다: require()·require.resolve()·createRequire()(별칭 우회)·import.meta.resolve */
 const NO_REQUIRE = {
   selector:
     "CallExpression[callee.name='require'], CallExpression[callee.object.name='require'], CallExpression[callee.name='createRequire'], CallExpression[callee.property.name='createRequire'], CallExpression[callee.object.type='MetaProperty'][callee.property.name='resolve']",
-  message: 'require()·require.resolve()·createRequire()·import.meta.resolve 금지 — 레이어 경계 검사를 우회한다. import 를 쓴다.',
+  message:
+    'require()·require.resolve()·createRequire()·import.meta.resolve 금지 — 레이어 경계 검사를 우회한다. import 를 쓴다.',
 };
 /** `import x = require('…')`(TSImportEqualsDeclaration): no-restricted-imports 도 import/no-restricted-paths 도 보지 못한다 */
-const NO_IMPORT_EQUALS = { selector: 'TSImportEqualsDeclaration', message: "`import x = require('…')` 금지 — 경계 규칙이 보지 못하는 구문이다. `import … from '@/…'` 를 쓴다." };
+const NO_IMPORT_EQUALS = {
+  selector: 'TSImportEqualsDeclaration',
+  message:
+    "`import x = require('…')` 금지 — 경계 규칙이 보지 못하는 구문이다. `import … from '@/…'` 를 쓴다.",
+};
 /** Meta 갱신은 src/domain/meta.ts 한 곳(ADR-0007). 그 외에서 rev·updatedAt·createdAt·deletedAt 을 "쓰면"(객체 리터럴·대입) 에러. 읽기(todo.rev, 구조분해)는 허용 */
 const NO_META_WRITE = ['rev', 'updatedAt', 'createdAt', 'deletedAt'].map((k) => ({
   selector: `ObjectExpression > Property[key.name='${k}'], ObjectExpression > Property[key.value='${k}'], AssignmentExpression[left.property.name='${k}'], AssignmentExpression[left.property.value='${k}']`,
   message: `'${k}' 는 src/domain/meta.ts 의 createMeta()/touch()/markDeleted() 만 쓴다 (ADR-0007). 엔티티 변경은 도메인 함수 → touch() 경유.`,
 }));
 /** Persistable 브랜드는 meta.ts 의 함수만 만든다 — 'as Persistable<…>' 캐스팅으로 위조 금지 */
-const NO_BRAND_CAST = { selector: ":matches(TSAsExpression, TSTypeAssertion) > TSTypeReference[typeName.name='Persistable']", message: "'as Persistable<…>' 금지 — 브랜드는 createMeta()/touch()/markDeleted() 만 만든다 (ADR-0007)." };
+const NO_BRAND_CAST = {
+  selector:
+    ":matches(TSAsExpression, TSTypeAssertion) > TSTypeReference[typeName.name='Persistable']",
+  message:
+    "'as Persistable<…>' 금지 — 브랜드는 createMeta()/touch()/markDeleted()(+ADR-0009 adopt()) 만 만든다 (ADR-0007).",
+};
+/**
+ * Object.* 조립·변형 API 금지. 두 가지를 동시에 우회하기 때문이다:
+ * (a) Meta 필드를 리터럴 키 없이 덮어쓰므로 NO_META_WRITE 가 보지 못하고,
+ * (b) `Object.assign(x, y)` 의 반환 타입이 교차 타입 `X & Y` 라 Persistable 브랜드가 다른 엔티티로 옮겨붙는다.
+ * (b) 는 브랜드를 T 에 대해 불변으로 바꿔(ADR-0007 결정 1) 타입 단계에서도 막았지만, 이미 브랜드가 붙은 값을
+ * 출발점으로 삼는 변형(`Object.assign(touch(e, now), stale)`)은 타입으로 구분할 수 없어 여기서 구문째 막는다.
+ * 병합은 스프레드로, 엔티티 생성·변경은 createMeta()/touch()/markDeleted() 로 한다(meta.ts 는 예외 블록).
+ */
+const NO_OBJECT_MUTATE = {
+  selector:
+    "CallExpression[callee.object.name='Object'][callee.property.name=/^(assign|create|defineProperty|defineProperties|setPrototypeOf)$/]",
+  message:
+    'Object.assign()·create()·defineProperty()·defineProperties()·setPrototypeOf() 금지 — Meta 필드를 리터럴 키 없이 덮어써 NO_META_WRITE 를 우회하고, 교차 타입으로 Persistable 브랜드를 위조한다 (ADR-0007). 새 엔티티는 createMeta(), 변경은 touch()/markDeleted(), 그 밖의 병합은 스프레드.',
+};
+/** `as never` 는 어떤 파라미터에도 대입되는 만능 캐스팅이라 브랜드·경계 타입을 통째로 무력화한다 */
+const NO_NEVER_CAST = {
+  selector: ':matches(TSAsExpression, TSTypeAssertion) > TSNeverKeyword',
+  message:
+    "'as never' 금지 — 어떤 타입에도 대입되므로 Persistable 브랜드를 포함한 모든 타입 검사를 우회한다 (ADR-0007).",
+};
 /** 동적 import() 는 인자가 문자열 리터럴일 때만 경계 판정을 받는다 — 변수·템플릿 리터럴은 해석 불가 = 검사 우회 */
-const NO_DYNAMIC_NONLITERAL = { selector: "ImportExpression:not([source.type='Literal'])", message: '동적 import() 의 인자는 문자열 리터럴만 — 변수·템플릿 리터럴은 레이어 경계 검사를 우회한다 (code-style.md §7).' };
+const NO_DYNAMIC_NONLITERAL = {
+  selector: "ImportExpression:not([source.type='Literal'])",
+  message:
+    '동적 import() 의 인자는 문자열 리터럴만 — 변수·템플릿 리터럴은 레이어 경계 검사를 우회한다 (code-style.md §7).',
+};
 /** 모든 src 블록이 반드시 갖는 문법 규칙(파일 끝 가드가 강제) */
-const SYNTAX_BASE = [NO_REACT_FC, NO_EXPORT_ALL, NO_REQUIRE, NO_IMPORT_EQUALS, NO_DYNAMIC_NONLITERAL];
-const SRC_SYNTAX = [...SYNTAX_BASE, NO_BRAND_CAST, ...NO_META_WRITE];
+const SYNTAX_BASE = [
+  NO_REACT_FC,
+  NO_EXPORT_ALL,
+  NO_REQUIRE,
+  NO_IMPORT_EQUALS,
+  NO_DYNAMIC_NONLITERAL,
+];
+const SRC_SYNTAX = [
+  ...SYNTAX_BASE,
+  NO_BRAND_CAST,
+  NO_NEVER_CAST,
+  NO_OBJECT_MUTATE,
+  ...NO_META_WRITE,
+];
 /** 도메인 결정성(ADR-0005 규칙 2). meta.ts 예외 블록도 반드시 이 배열을 그대로 쓴다 — flat config 는 규칙 단위 덮어쓰기라 빠뜨리면 통째로 사라진다 */
 const DOMAIN_DETERMINISM = [
-  { selector: "NewExpression[callee.name='Date']", message: '시간은 deps.now() 로 주입받습니다 (ADR-0005).' },
-  { selector: "CallExpression[callee.object.name='Date'][callee.property.name='now']", message: '시간은 deps.now() 로 주입받습니다 (ADR-0005).' },
-  { selector: "CallExpression[callee.object.name='Math'][callee.property.name='random']", message: '난수·ID 는 deps.id() 로 주입받습니다 (ADR-0005).' },
-  { selector: "MemberExpression[object.name='crypto']", message: 'ID 는 deps.id() 로 주입받습니다 (ADR-0005).' },
+  {
+    selector: "NewExpression[callee.name='Date']",
+    message: '시간은 deps.now() 로 주입받습니다 (ADR-0005).',
+  },
+  {
+    selector: "CallExpression[callee.object.name='Date'][callee.property.name='now']",
+    message: '시간은 deps.now() 로 주입받습니다 (ADR-0005).',
+  },
+  {
+    selector: "CallExpression[callee.object.name='Math'][callee.property.name='random']",
+    message: '난수·ID 는 deps.id() 로 주입받습니다 (ADR-0005).',
+  },
+  {
+    selector: "MemberExpression[object.name='crypto']",
+    message: 'ID 는 deps.id() 로 주입받습니다 (ADR-0005).',
+  },
 ];
 /** domain 은 시계·ID 의 런타임 구현을 직접 import 해서도 안 된다 — 한 단계 건너가면 위 셀렉터가 보지 못한다 */
-const NO_LIB_CLOCK = { regex: '^@\\/lib\\/(date|id)$', message: '[domain] 시계·ID 구현을 직접 import 하지 않는다 — deps = { now, id } 로 주입 (ADR-0005 규칙 2).' };
+const NO_LIB_CLOCK = {
+  regex: '^@\\/lib\\/(date|id)$',
+  message:
+    '[domain] 시계·ID 구현을 직접 import 하지 않는다 — deps = { now, id } 로 주입 (ADR-0005 규칙 2).',
+};
 /** Dexie 테이블(db.ts)에 닿는 파일은 query.ts 하나 — 툼스톤 필터·쓰기 경로가 그 한 곳에 있다(ADR-0007) */
-const NO_DB_IMPORT = { regex: '^@\\/infra\\/indexeddb\\/db$', message: '[infra] db.ts 는 src/infra/indexeddb/query.ts 만 import 한다. 조회·쓰기는 query.ts 의 헬퍼로 (ADR-0007).' };
+const NO_DB_IMPORT = {
+  regex: '^@\\/infra\\/indexeddb\\/db$',
+  message:
+    '[infra] db.ts 는 src/infra/indexeddb/query.ts 만 import 한다. 조회·쓰기는 query.ts 의 헬퍼로 (ADR-0007).',
+};
 /** 조립 지점을 경유지로 쓰지 않는다: @/app/providers 를 import 할 수 있는 파일은 layout.tsx 하나 (ADR-0006 규칙 6) */
-const NO_PROVIDERS_IMPORT = { regex: '^@\\/app\\/(__arch__\\/)?providers$', message: '[app] 조립 지점(app/providers)은 layout.tsx 만 import 한다 — 다른 app 파일이 경유하면 infra 에 2홉으로 닿는다 (ADR-0006 규칙 6).' };
+const NO_PROVIDERS_IMPORT = {
+  regex: '^@\\/app\\/(__arch__\\/)?providers$',
+  message:
+    '[app] 조립 지점(app/providers)은 layout.tsx 만 import 한다 — 다른 app 파일이 경유하면 infra 에 2홉으로 닿는다 (ADR-0006 규칙 6).',
+};
 /** 조립 지점의 재export 금지 — `export { db } from '@/infra/…'` 한 줄이면 허용 목록 밖 레이어가 그대로 새어나간다 */
-const NO_REEXPORT = { selector: 'ExportNamedDeclaration[source]', message: "[app/providers] 재export(`export … from`) 금지 — 조립 지점이 경유지가 된다. 필요한 값은 이 파일 안에서 조립해 컴포넌트로만 내보낸다 (ADR-0006 규칙 6)." };
+const NO_REEXPORT = {
+  selector: 'ExportNamedDeclaration[source]',
+  message:
+    '[app/providers] 재export(`export … from`) 금지 — 조립 지점이 경유지가 된다. 필요한 값은 이 파일 안에서 조립해 컴포넌트로만 내보낸다 (ADR-0006 규칙 6).',
+};
 
 /**
  * 거울 대상: no-restricted-imports 가 보지 않는 "문자열로 모듈 경로를 쓰는 구문" 전부(라운드 4 전수 실측).
@@ -145,21 +260,35 @@ const NO_REEXPORT = { selector: 'ExportNamedDeclaration[source]', message: "[app
 const MIRROR_NODES = [
   (re) => `ImportExpression[source.value=${re}]`, // 동적 import('…')
   (re) => `TSImportType[source.value=${re}]`, // typeof import('…') · import('…').Q — 타입 경유
-  (re) => `NewExpression[callee.name='URL'][arguments.1.object.type='MetaProperty'][arguments.1.property.name='url'] > Literal[value=${re}]`, // new URL('…', import.meta.url) — 워커·자산 모듈 참조
+  (re) =>
+    `NewExpression[callee.name='URL'][arguments.1.object.type='MetaProperty'][arguments.1.property.name='url'] > Literal[value=${re}]`, // new URL('…', import.meta.url) — 워커·자산 모듈 참조
   (re) =>
     `CallExpression[callee.object.name=/^(vi|jest)$/][callee.property.name=/^(mock|doMock|unmock|doUnmock|importActual|importMock|requireActual|requireMock)$/] > Literal[value=${re}]`, // 모듈 모킹
 ];
 // --- 설정 자체의 가드 0: 거울 목록에서 노드 종류가 사라지면 그 구문이 즉시 우회로가 된다(TSImportType 이 그렇게 뚫렸다).
 //     목록을 줄이려면 이 이름도 같이 지워야 한다 — 두 곳을 고치게 해서 "모르고 빠뜨리는" 경우를 없앤다.
-const REQUIRED_MIRROR_NODES = ['ImportExpression', 'TSImportType', 'NewExpression', 'CallExpression'];
+const REQUIRED_MIRROR_NODES = [
+  'ImportExpression',
+  'TSImportType',
+  'NewExpression',
+  'CallExpression',
+];
 const MIRROR_SELECTORS = MIRROR_NODES.map((node) => node('/x/'));
-const missingNodes = REQUIRED_MIRROR_NODES.filter((name) => !MIRROR_SELECTORS.some((sel) => sel.startsWith(name)));
+const missingNodes = REQUIRED_MIRROR_NODES.filter(
+  (name) => !MIRROR_SELECTORS.some((sel) => sel.startsWith(name)),
+);
 if (missingNodes.length) {
-  throw new Error(`eslint.config.mjs: MIRROR_NODES 에 ${missingNodes.join(', ')} 거울이 없습니다 — 그 구문은 문자열 규칙·허용 목록을 전부 우회합니다 (ADR-0006 결정 9).`);
+  throw new Error(
+    `eslint.config.mjs: MIRROR_NODES 에 ${missingNodes.join(', ')} 거울이 없습니다 — 그 구문은 문자열 규칙·허용 목록을 전부 우회합니다 (ADR-0006 결정 9).`,
+  );
 }
 
 /** 문자열 패턴 하나 → 거울 셀렉터들. no-restricted-imports 는 이 구문들을 검사하지 않는다(ESLint 9 실측) */
-const mirrors = (p) => MIRROR_NODES.map((node) => ({ selector: node(`/${p.regex}/i`), message: `${p.message} [import()·typeof import()·모킹도 같은 판정]` }));
+const mirrors = (p) =>
+  MIRROR_NODES.map((node) => ({
+    selector: node(`/${p.regex}/i`),
+    message: `${p.message} [import()·typeof import()·모킹도 같은 판정]`,
+  }));
 /**
  * import 관련 두 규칙을 한 번에 만든다 — 문자열 패턴과 그 거울이 같은 블록에서 절대 갈라지지 않게.
  * patterns: 이 블록에서 추가로 금지할 문자열 패턴 · syntax: 이 블록의 no-restricted-syntax 항목(거울은 자동 추가).
@@ -177,7 +306,10 @@ const importRules = (patterns, syntax) => {
  */
 const layerRules = ({ target, label, allow, exact = [], patterns = [], syntax = SRC_SYNTAX }) => {
   const except = exceptOf(allow, exact);
-  return { ...importRules([allowPattern(label, except), ...patterns], syntax), ...allowZone(target, label, except) };
+  return {
+    ...importRules([allowPattern(label, except), ...patterns], syntax),
+    ...allowZone(target, label, except),
+  };
 };
 /** domain 과 meta.ts 예외 블록이 공유하는 문자열 패턴(예외 블록이 푸는 것은 문법 규칙 둘뿐이다) */
 const DOMAIN_PATTERNS = [TEST_FILE, NO_LIB_CLOCK, onlyPackages('domain', PACKAGES.domain)];
@@ -206,8 +338,14 @@ const config = [
     linterOptions: { reportUnusedDisableDirectives: 'error' },
     rules: {
       ...ARCH_RULES_COMMON, // 아키텍처 규칙(2차 패스가 다시 검사) — 설정의 단일 소스는 scripts/arch-layers.mjs
-      '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports', fixStyle: 'inline-type-imports' }],
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/consistent-type-imports': [
+        'error',
+        { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
+      ],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
       'import/order': [
         'error',
         {
@@ -252,18 +390,44 @@ const config = [
   {
     files: ['src/domain/**'],
     rules: {
-      ...layerRules({ target: './src/domain', label: 'domain', allow: ALLOW.domain, patterns: DOMAIN_PATTERNS, syntax: [...SRC_SYNTAX, ...DOMAIN_DETERMINISM] }),
-      'no-restricted-globals': ['error', 'window', 'document', 'localStorage', 'sessionStorage', 'indexedDB', 'navigator'],
+      ...layerRules({
+        target: './src/domain',
+        label: 'domain',
+        allow: ALLOW.domain,
+        patterns: DOMAIN_PATTERNS,
+        syntax: [...SRC_SYNTAX, ...DOMAIN_DETERMINISM],
+      }),
+      'no-restricted-globals': [
+        'error',
+        'window',
+        'document',
+        'localStorage',
+        'sessionStorage',
+        'indexedDB',
+        'navigator',
+      ],
     },
   },
   {
-    // Meta·브랜드를 만드는 유일한 파일 — 해제하는 것은 NO_META_WRITE 와 NO_BRAND_CAST 둘뿐이다.
+    // Meta·브랜드를 만드는 유일한 파일 — 해제하는 것은 NO_META_WRITE·NO_BRAND_CAST·NO_NEVER_CAST·NO_OBJECT_MUTATE 다.
     // 결정성 셀렉터는 그대로 유지한다: meta.ts 도 시각·ID 를 deps 로 받으므로 Date·crypto 가 필요 없고,
     // 여기서 풀리면 시각·ID 진입점이 무검사가 된다. import 규칙은 domain 과 같은 것을 다시 만든다
     // (no-restricted-syntax 를 덮어쓰는 블록은 구문 거울과 허용 목록 문자열 패턴도 같이 만들어야 한다 — 파일 끝 가드 2·3 이 강제).
     // __arch__ 경로는 check-arch.sh 픽스처 전용(레포에 존재하지 않음).
-    files: ['src/domain/meta.ts', 'src/domain/__arch__/meta-clock.ts', 'src/domain/__arch__/meta-write.ts', 'src/domain/__arch__/meta-dyn.ts'],
-    rules: layerRules({ target: './src/domain', label: 'domain', allow: ALLOW.domain, patterns: DOMAIN_PATTERNS, syntax: [...SYNTAX_BASE, ...DOMAIN_DETERMINISM] }),
+    files: [
+      'src/domain/meta.ts',
+      'src/domain/__arch__/meta-clock.ts',
+      'src/domain/__arch__/meta-write.ts',
+      'src/domain/__arch__/meta-dyn.ts',
+      'src/domain/__arch__/meta-assign.ts',
+    ],
+    rules: layerRules({
+      target: './src/domain',
+      label: 'domain',
+      allow: ALLOW.domain,
+      patterns: DOMAIN_PATTERNS,
+      syntax: [...SYNTAX_BASE, ...DOMAIN_DETERMINISM],
+    }),
   },
   {
     files: ['src/repositories/**'],
@@ -276,19 +440,39 @@ const config = [
   },
   {
     files: ['src/infra/**'],
-    rules: layerRules({ target: './src/infra', label: 'infra', allow: ALLOW.infra, patterns: [TEST_FILE, onlyPackages('infra', PACKAGES.infra), NO_DB_IMPORT] }),
+    rules: layerRules({
+      target: './src/infra',
+      label: 'infra',
+      allow: ALLOW.infra,
+      patterns: [TEST_FILE, onlyPackages('infra', PACKAGES.infra), NO_DB_IMPORT],
+    }),
   },
   {
     files: ['src/infra/indexeddb/query.ts'],
-    rules: layerRules({ target: './src/infra', label: 'infra', allow: ALLOW.infra, patterns: [TEST_FILE, onlyPackages('infra', PACKAGES.infra)] }),
+    rules: layerRules({
+      target: './src/infra',
+      label: 'infra',
+      allow: ALLOW.infra,
+      patterns: [TEST_FILE, onlyPackages('infra', PACKAGES.infra)],
+    }),
   },
   {
     files: ['src/lib/**'],
-    rules: layerRules({ target: './src/lib', label: 'lib', allow: ALLOW.lib, patterns: [TEST_FILE, onlyPackages('lib', PACKAGES.lib)] }),
+    rules: layerRules({
+      target: './src/lib',
+      label: 'lib',
+      allow: ALLOW.lib,
+      patterns: [TEST_FILE, onlyPackages('lib', PACKAGES.lib)],
+    }),
   },
   {
     files: ['src/components/**'],
-    rules: layerRules({ target: './src/components', label: 'components', allow: ALLOW.components, patterns: [TEST_FILE, denyPackages('components', STORAGE)] }),
+    rules: layerRules({
+      target: './src/components',
+      label: 'components',
+      allow: ALLOW.components,
+      patterns: [TEST_FILE, denyPackages('components', STORAGE)],
+    }),
   },
   ...FEATURES.map((f) => ({
     files: [`src/features/${f}/**`],
@@ -300,13 +484,20 @@ const config = [
       patterns: [
         TEST_FILE,
         denyPackages(`features/${f}`, ['dexie']),
-        { regex: `^@\\/features\\/${f}$`, message: `[features/${f}] 자기 배럴 import 금지(순환). 내부 파일은 '@/features/${f}/<path>' 로 직접.` },
+        {
+          regex: `^@\\/features\\/${f}$`,
+          message: `[features/${f}] 자기 배럴 import 금지(순환). 내부 파일은 '@/features/${f}/<path>' 로 직접.`,
+        },
       ],
     }),
   })),
   {
     files: ['src/app/**'],
-    ignores: ['src/app/providers.tsx', 'src/app/__arch__/providers.ts', 'src/app/__arch__/providers-ok.ts'],
+    ignores: [
+      'src/app/providers.tsx',
+      'src/app/__arch__/providers.ts',
+      'src/app/__arch__/providers-ok.ts',
+    ],
     rules: layerRules({
       target: './src/app',
       label: 'app',
@@ -318,12 +509,26 @@ const config = [
   {
     // 조립 지점을 import 할 수 있는 유일한 파일(NO_PROVIDERS_IMPORT 해제). __arch__ 경로는 check-arch.sh 픽스처 전용.
     files: ['src/app/layout.tsx', 'src/app/__arch__/layout.ts'],
-    rules: layerRules({ target: './src/app', label: 'app', allow: ALLOW.app, exact: FEATURE_PATHS, patterns: [TEST_FILE, denyPackages('app', STORAGE)] }),
+    rules: layerRules({
+      target: './src/app',
+      label: 'app',
+      allow: ALLOW.app,
+      exact: FEATURE_PATHS,
+      patterns: [TEST_FILE, denyPackages('app', STORAGE)],
+    }),
   },
   {
-    files: ['src/app/providers.tsx', 'src/app/__arch__/providers.ts', 'src/app/__arch__/providers-ok.ts'],
+    files: [
+      'src/app/providers.tsx',
+      'src/app/__arch__/providers.ts',
+      'src/app/__arch__/providers-ok.ts',
+    ],
     rules: layerRules({
-      target: ['./src/app/providers.tsx', './src/app/__arch__/providers.ts', './src/app/__arch__/providers-ok.ts'],
+      target: [
+        './src/app/providers.tsx',
+        './src/app/__arch__/providers.ts',
+        './src/app/__arch__/providers-ok.ts',
+      ],
       label: 'app/providers',
       allow: ALLOW.providers,
       patterns: [TEST_FILE, denyPackages('app/providers', STORAGE)],
@@ -332,17 +537,35 @@ const config = [
   },
   {
     files: SRC_ROOT_FILES.map((f) => `src/${f}`),
-    rules: layerRules({ target: './src', label: 'src 직속', allow: ALLOW.root, patterns: [TEST_FILE] }),
+    rules: layerRules({
+      target: './src',
+      label: 'src 직속',
+      allow: ALLOW.root,
+      patterns: [TEST_FILE],
+    }),
   },
 
   // --- 예외 ---
   {
-    files: ['src/app/**', '*.config.{ts,mjs,js}', 'next.config.ts', 'vitest.config.ts', 'playwright.config.ts'],
+    files: [
+      'src/app/**',
+      '*.config.{ts,mjs,js}',
+      'next.config.ts',
+      'vitest.config.ts',
+      'playwright.config.ts',
+    ],
     rules: { 'import/no-default-export': 'off' },
   },
   {
+    // 이 레포의 린트 설정 자체. 규칙 생성 헬퍼·거울·가드가 한 파일에 모여 있어야 서로 갈라지지 않으므로
+    // 분할하지 않는다 — 300줄 상한은 적용하지 않는다(src/** 의 상한은 그대로다).
+    files: ['eslint.config.mjs', 'eslint.arch.config.mjs'],
+    rules: { 'max-lines': 'off' },
+  },
+  {
     // 테스트는 경계를 넘어도 된다(계약 테스트가 infra 구현을 직접 돌린다). src/test 는 조립 지점(setup.ts)이자 픽스처.
-    // 표기 규칙(RELATIVE·CANONICAL)만 유지. Meta 필드 리터럴과 'as Persistable' 은 픽스처에 필요하므로 허용.
+    // 표기 규칙(RELATIVE·CANONICAL)만 유지. Meta 필드 리터럴·'as Persistable'·Object.assign 은 픽스처와
+    // 위조 시도 테스트(meta.test.ts)에 필요하므로 허용 — 브랜드 위조는 그 테스트에서 tsc 가 판정한다.
     files: ['**/*.test.{ts,tsx}', 'src/test/**'],
     rules: {
       'max-lines': 'off',
@@ -357,17 +580,23 @@ const config = [
   {
     files: ['src/**'],
     ignores: [...LAYERS.map((l) => `src/${l}/**`), ...SRC_ROOT_FILES.map((f) => `src/${f}`)],
-    rules: forbidFile(`src/ 직속 파일·미등록 디렉토리 금지: 모든 파일은 ${LAYERS.join('/')} 중 하나에 속한다(예외: ${SRC_ROOT_FILES.join(', ')}). ${DOC}`),
+    rules: forbidFile(
+      `src/ 직속 파일·미등록 디렉토리 금지: 모든 파일은 ${LAYERS.join('/')} 중 하나에 속한다(예외: ${SRC_ROOT_FILES.join(', ')}). ${DOC}`,
+    ),
   },
   {
     files: ['src/features/**'],
     ignores: FEATURES.map((f) => `src/features/${f}/**`),
-    rules: forbidFile('src/features 직속 파일 금지: 모든 파일은 src/features/<feature>/ 안에 둔다.'),
+    rules: forbidFile(
+      'src/features 직속 파일 금지: 모든 파일은 src/features/<feature>/ 안에 둔다.',
+    ),
   },
   {
     files: ['src/**/index.*'],
     ignores: ['src/features/*/index.ts'],
-    rules: forbidFile('배럴(index.ts)은 src/features/<feature>/index.ts 에만 둔다 (code-style.md §2).'),
+    rules: forbidFile(
+      '배럴(index.ts)은 src/features/<feature>/index.ts 에만 둔다 (code-style.md §2).',
+    ),
   },
   {
     files: ['src/styles/**'],
@@ -375,7 +604,9 @@ const config = [
   },
   {
     files: ['src/**/*.{js,jsx,mjs,cjs,mts,cts}'],
-    rules: forbidFile(`src/ 는 .${SRC_EXT.join('/.')} 만 허용한다(scripts/arch-layers.mjs SRC_EXT).`),
+    rules: forbidFile(
+      `src/ 는 .${SRC_EXT.join('/.')} 만 허용한다(scripts/arch-layers.mjs SRC_EXT).`,
+    ),
   },
 
   eslintConfigPrettier,
@@ -383,9 +614,13 @@ const config = [
 
 // --- 설정 자체의 가드 1: 레이어를 추가하고 규칙 블록을 빠뜨리면 아무 규칙도 받지 않는 영역이 생긴다(전수 분류 블록의 ignores 가 면제해 버린다) ---
 const TARGETED = new Set(config.flatMap((b) => b.files ?? []));
-const uncovered = LAYERS.filter((l) => !(l in LAYERS_WITHOUT_ALLOW) && !TARGETED.has(`src/${l}/**`));
+const uncovered = LAYERS.filter(
+  (l) => !(l in LAYERS_WITHOUT_ALLOW) && !TARGETED.has(`src/${l}/**`),
+);
 if (uncovered.length) {
-  throw new Error(`eslint.config.mjs: 레이어 ${uncovered.join(', ')} 에 규칙 블록(files: 'src/<layer>/**')이 없습니다 — 레이어를 추가하면 같은 PR 에서 블록도 추가하세요 (ADR-0006 규칙 1).`);
+  throw new Error(
+    `eslint.config.mjs: 레이어 ${uncovered.join(', ')} 에 규칙 블록(files: 'src/<layer>/**')이 없습니다 — 레이어를 추가하면 같은 PR 에서 블록도 추가하세요 (ADR-0006 규칙 1).`,
+  );
 }
 
 // --- 설정 자체의 가드 2: 문자열 패턴 ↔ 거울 ↔ 공통 문법 규칙 ↔ 허용 목록이 블록마다 함께 있는지 ---
@@ -401,27 +636,41 @@ for (const block of config) {
   if (!isSrcBlock || (!patterns && !syntax)) continue;
   if (syntax?.length === 1 && syntax[0].selector === 'Program') continue; // forbidFile: 파일 자체가 에러
   if (!patterns || !syntax) {
-    throw new Error(`eslint.config.mjs: [${where}] 블록은 no-restricted-imports 와 no-restricted-syntax 를 함께 설정해야 합니다 — importRules() 헬퍼를 쓰세요 (ADR-0006 결정 9).`);
+    throw new Error(
+      `eslint.config.mjs: [${where}] 블록은 no-restricted-imports 와 no-restricted-syntax 를 함께 설정해야 합니다 — importRules() 헬퍼를 쓰세요 (ADR-0006 결정 9).`,
+    );
   }
   const selectors = new Set(syntax.map((s) => s.selector));
-  const unmirrored = patterns.filter((p) => mirrors(p).some((m) => !selectors.has(m.selector))).map((p) => p.regex);
+  const unmirrored = patterns
+    .filter((p) => mirrors(p).some((m) => !selectors.has(m.selector)))
+    .map((p) => p.regex);
   if (unmirrored.length) {
-    throw new Error(`eslint.config.mjs: [${where}] 문자열 패턴 ${unmirrored.join(' , ')} 의 거울(${REQUIRED_MIRROR_NODES.join('·')})이 없습니다 — importRules() 헬퍼를 쓰세요 (ADR-0006 결정 9).`);
+    throw new Error(
+      `eslint.config.mjs: [${where}] 문자열 패턴 ${unmirrored.join(' , ')} 의 거울(${REQUIRED_MIRROR_NODES.join('·')})이 없습니다 — importRules() 헬퍼를 쓰세요 (ADR-0006 결정 9).`,
+    );
   }
   const missingBase = SYNTAX_BASE.filter((s) => !syntax.includes(s)).map((s) => s.selector);
   if (missingBase.length) {
-    throw new Error(`eslint.config.mjs: [${where}] 블록에 공통 문법 규칙 ${missingBase.join(' , ')} 가 빠졌습니다 — SYNTAX_BASE 를 포함하세요 (ADR-0006 결정 9).`);
+    throw new Error(
+      `eslint.config.mjs: [${where}] 블록에 공통 문법 규칙 ${missingBase.join(' , ')} 가 빠졌습니다 — SYNTAX_BASE 를 포함하세요 (ADR-0006 결정 9).`,
+    );
   }
   // --- 가드 3: 허용 목록의 두 표현(해석 경로 zone ↔ 문자열 패턴)이 같은 except 에서 나왔는지 ---
   // zone 은 typeof import()·모킹을 보지 못하므로 문자열 패턴이 빠지면 그 구문으로 레이어 경계 자체가 뚫린다(라운드 4 실측).
   const paths = block.rules?.['import/no-restricted-paths'];
   if (!paths) {
-    throw new Error(`eslint.config.mjs: [${where}] 블록은 import/no-restricted-paths 를 (zone 또는 'off' 로) 명시해야 합니다 — layerRules() 헬퍼를 쓰세요 (ADR-0006 결정 9).`);
+    throw new Error(
+      `eslint.config.mjs: [${where}] 블록은 import/no-restricted-paths 를 (zone 또는 'off' 로) 명시해야 합니다 — layerRules() 헬퍼를 쓰세요 (ADR-0006 결정 9).`,
+    );
   }
   if (paths !== 'off') {
-    const missingAllow = paths[1].zones.map((z) => allowPattern('', z.except).regex).filter((re) => !patterns.some((p) => p.regex === re));
+    const missingAllow = paths[1].zones
+      .map((z) => allowPattern('', z.except).regex)
+      .filter((re) => !patterns.some((p) => p.regex === re));
     if (missingAllow.length) {
-      throw new Error(`eslint.config.mjs: [${where}] zone 의 허용 목록에 대응하는 문자열 패턴 ${missingAllow.join(' , ')} 이 없습니다 — layerRules() 헬퍼를 쓰세요 (ADR-0006 결정 9).`);
+      throw new Error(
+        `eslint.config.mjs: [${where}] zone 의 허용 목록에 대응하는 문자열 패턴 ${missingAllow.join(' , ')} 이 없습니다 — layerRules() 헬퍼를 쓰세요 (ADR-0006 결정 9).`,
+      );
     }
   }
 }
@@ -429,10 +678,16 @@ for (const block of config) {
 // --- 설정 자체의 가드 4: 경계 강제에 쓰는 규칙이 전부 ARCH_RULES 안에 있는지 ---
 // 새 경계 규칙을 헬퍼에 추가하고 ARCH_RULES 에 넣지 않으면 2차 패스가 그 규칙을 검사하지 않는다 = 지시자 한 줄로 다시 꺼진다.
 // 목록을 줄이려면 ARCH_RULES 와 헬퍼 양쪽을 고쳐야 한다(가드 0 과 같은 "두 곳" 패턴).
-const HELPER_RULES = [...Object.keys(importRules([], [])), ...Object.keys(allowZone('./src', '', [])), 'no-restricted-globals'];
+const HELPER_RULES = [
+  ...Object.keys(importRules([], [])),
+  ...Object.keys(allowZone('./src', '', [])),
+  'no-restricted-globals',
+];
 const notArch = HELPER_RULES.filter((id) => !ARCH_RULES.includes(id));
 if (notArch.length) {
-  throw new Error(`eslint.config.mjs: 경계 규칙 ${notArch.join(', ')} 가 scripts/arch-layers.mjs 의 ARCH_RULES 에 없습니다 — 2차 패스가 검사하지 않아 eslint-disable 로 꺼집니다 (ADR-0008).`);
+  throw new Error(
+    `eslint.config.mjs: 경계 규칙 ${notArch.join(', ')} 가 scripts/arch-layers.mjs 의 ARCH_RULES 에 없습니다 — 2차 패스가 검사하지 않아 eslint-disable 로 꺼집니다 (ADR-0008).`,
+  );
 }
 
 export default config;

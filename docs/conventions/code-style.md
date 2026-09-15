@@ -6,20 +6,20 @@ ESLint·Prettier가 잡는 것은 여기 적지 않는다(도구가 강제). 여
 
 ## 1. 네이밍
 
-| 대상 | 규칙 | 예 |
-|------|------|----|
-| 컴포넌트 파일/함수 | PascalCase | `TodoItem.tsx`, `function TodoItem()` |
-| 훅 | `use` + PascalCase, 파일 camelCase | `useTodosByDate.ts` |
-| 그 외 파일(유틸, 스토어, 도메인) | kebab-case | `todo-store.ts`, `completion-rate.ts` |
-| 타입/인터페이스 | PascalCase, 접두사 `I` 금지 | `Todo`, `TodoRepository` |
-| Props 타입 | `<Component>Props` | `TodoItemProps` |
-| 상수 | UPPER_SNAKE | `MAX_TITLE_LENGTH` |
-| 불리언 | `is/has/can/should` 접두 | `isDone`, `hasCategory` |
-| 이벤트 핸들러 | `handle<Event>` (내부), `on<Event>` (props) | `handleToggle`, `onToggle` |
-| 디렉토리 | kebab-case | `date-strip/` |
-| 테스트 | 대상 파일명 + `.test.ts(x)` 동일 디렉토리 | `completion-rate.test.ts` |
-| 날짜 문자열 | 항상 `YYYY-MM-DD` (`DateKey` 타입) | `'2026-09-15'` |
-| ID | `string` (UUID v4, `src/lib/id.ts`의 `newId()`만 사용), 타입 별칭 `TodoId`, `CategoryId` | — |
+| 대상                             | 규칙                                                                                     | 예                                    |
+| -------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------- |
+| 컴포넌트 파일/함수               | PascalCase                                                                               | `TodoItem.tsx`, `function TodoItem()` |
+| 훅                               | `use` + PascalCase, 파일 camelCase                                                       | `useTodosByDate.ts`                   |
+| 그 외 파일(유틸, 스토어, 도메인) | kebab-case                                                                               | `todo-store.ts`, `completion-rate.ts` |
+| 타입/인터페이스                  | PascalCase, 접두사 `I` 금지                                                              | `Todo`, `TodoRepository`              |
+| Props 타입                       | `<Component>Props`                                                                       | `TodoItemProps`                       |
+| 상수                             | UPPER_SNAKE                                                                              | `MAX_TITLE_LENGTH`                    |
+| 불리언                           | `is/has/can/should` 접두                                                                 | `isDone`, `hasCategory`               |
+| 이벤트 핸들러                    | `handle<Event>` (내부), `on<Event>` (props)                                              | `handleToggle`, `onToggle`            |
+| 디렉토리                         | kebab-case                                                                               | `date-strip/`                         |
+| 테스트                           | 대상 파일명 + `.test.ts(x)` 동일 디렉토리                                                | `completion-rate.test.ts`             |
+| 날짜 문자열                      | 항상 `YYYY-MM-DD` (`DateKey` 타입)                                                       | `'2026-09-15'`                        |
+| ID                               | `string` (UUID v4, `src/lib/id.ts`의 `newId()`만 사용), 타입 별칭 `TodoId`, `CategoryId` | —                                     |
 
 ## 2. 파일/디렉토리 구조
 
@@ -95,20 +95,20 @@ src/infra/indexeddb/
 
 **경로 규칙 — 표 하나로 판단한다.** `src/` 안의 import 는 **항상 `@/…` 절대 경로**이고 상대 경로(`./`, `../`)는 전부 린트 에러다. 레이어 경계는 `import/no-restricted-paths`(**해석된 실제 경로**)와 같은 허용 목록에서 만든 문자열 패턴(그 규칙이 보지 못하는 `typeof import()`·모킹용)이 함께 검사하므로 표기·구문과 무관하게 판정이 같다(ADR-0006 결정 10·11). 아래 표는 가능한 출발·대상 조합 전부이며, 각 조합의 합법 표기는 정확히 하나다(빈칸 없음). 단, 파일 단위 예외(`domain` → `@/lib/date`·`@/lib/id`, `layout.tsx` 밖의 `@/app/providers`, `query.ts` 밖의 `@/infra/indexeddb/db`)는 표기가 아니라 import 자체가 금지다 — 단일 소스는 ARCHITECTURE.md §1. **표기는 정규형 하나로 강제된다**(`no-restricted-imports` 의 CANONICAL 패턴): 확장자(`.ts`·`.tsx`·`.js`…), `/index`, `./`·`../` 세그먼트, 중복·후행 슬래시, 백슬래시·`%` 인코딩·공백·비ASCII 는 전부 에러다. 같은 파일을 다른 문자열로 가리켜 문자열 기반 규칙(조립 지점·`lib/date`·`db.ts`·자기 배럴·패키지 목록)을 우회하는 길을 막는 전제다.
 
-| # | 출발 파일 | 대상 | 합법 표기(유일) | 예 |
-|---|----------|------|----------------|----|
-| 1 | 아무 곳 | 같은 디렉토리의 파일 | `@/<layer>/<경로>` | `domain/todo/todo.rules.ts` → `'@/domain/todo/todo'` |
-| 2 | 아무 곳 | 같은 레이어·같은 feature 의 형제 디렉토리 | `@/<layer>/<경로>` | `features/todo/components/TodoItem.tsx` → `'@/features/todo/store/todo-store'` |
-| 3 | 아무 곳 | 같은 feature 안 2단계·3단계 중첩(상위/하위 어느 쪽이든) | `@/<layer>/<경로>` | `features/todo/components/item/Row.tsx` → `'@/features/todo/store/todo-store'` |
-| 4 | feature 안 | 자기 feature 의 `index.ts` | **금지**(순환) — 내부 파일을 직접(#1~3) | — |
-| 5 | feature · app | 다른 feature | `@/features/<name>` (index.ts 만; 내부 경로는 에러) | `'@/features/category'` |
-| 6 | 아무 곳 | 다른 레이어의 파일(허용 목록 안일 때) | `@/<layer>/<경로>` (배럴 없음, 파일까지) | `'@/domain/todo/todo'`, `'@/components/ui/Button'`, `'@/repositories/container'` |
-| 7 | 아무 곳 | 허용 목록 밖 레이어 | **금지** — 코드를 옮기거나 ADR (ARCHITECTURE.md §1) | `features` → `@/infra/…` |
-| 8 | `app`, `features` | CSS | `@/styles/<file>.css` (side-effect import) | `import '@/styles/globals.css'` |
-| 9 | 아무 곳 | 외부 패키지 | 패키지명 (레이어별 허용/금지는 ARCHITECTURE.md §1) | `import Dexie from 'dexie'` (infra 만) |
-| 10 | 비테스트 파일 | `*.test.*`, `src/test/**` | **금지** | — |
-| 11 | `*.test.*`, `src/test/**` | 무엇이든 | `@/<layer>/<경로>` (경계 제한 없음, 상대 경로는 여기서도 금지) | `'@/infra/indexeddb/todo-indexeddb-repository'` |
-| 12 | `src/middleware.ts`·`src/instrumentation.ts` | `lib` 만 | `@/lib/<경로>` | `'@/lib/date'` |
+| #   | 출발 파일                                    | 대상                                                    | 합법 표기(유일)                                                | 예                                                                               |
+| --- | -------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| 1   | 아무 곳                                      | 같은 디렉토리의 파일                                    | `@/<layer>/<경로>`                                             | `domain/todo/todo.rules.ts` → `'@/domain/todo/todo'`                             |
+| 2   | 아무 곳                                      | 같은 레이어·같은 feature 의 형제 디렉토리               | `@/<layer>/<경로>`                                             | `features/todo/components/TodoItem.tsx` → `'@/features/todo/store/todo-store'`   |
+| 3   | 아무 곳                                      | 같은 feature 안 2단계·3단계 중첩(상위/하위 어느 쪽이든) | `@/<layer>/<경로>`                                             | `features/todo/components/item/Row.tsx` → `'@/features/todo/store/todo-store'`   |
+| 4   | feature 안                                   | 자기 feature 의 `index.ts`                              | **금지**(순환) — 내부 파일을 직접(#1~3)                        | —                                                                                |
+| 5   | feature · app                                | 다른 feature                                            | `@/features/<name>` (index.ts 만; 내부 경로는 에러)            | `'@/features/category'`                                                          |
+| 6   | 아무 곳                                      | 다른 레이어의 파일(허용 목록 안일 때)                   | `@/<layer>/<경로>` (배럴 없음, 파일까지)                       | `'@/domain/todo/todo'`, `'@/components/ui/Button'`, `'@/repositories/container'` |
+| 7   | 아무 곳                                      | 허용 목록 밖 레이어                                     | **금지** — 코드를 옮기거나 ADR (ARCHITECTURE.md §1)            | `features` → `@/infra/…`                                                         |
+| 8   | `app`, `features`                            | CSS                                                     | `@/styles/<file>.css` (side-effect import)                     | `import '@/styles/globals.css'`                                                  |
+| 9   | 아무 곳                                      | 외부 패키지                                             | 패키지명 (레이어별 허용/금지는 ARCHITECTURE.md §1)             | `import Dexie from 'dexie'` (infra 만)                                           |
+| 10  | 비테스트 파일                                | `*.test.*`, `src/test/**`                               | **금지**                                                       | —                                                                                |
+| 11  | `*.test.*`, `src/test/**`                    | 무엇이든                                                | `@/<layer>/<경로>` (경계 제한 없음, 상대 경로는 여기서도 금지) | `'@/infra/indexeddb/todo-indexeddb-repository'`                                  |
+| 12  | `src/middleware.ts`·`src/instrumentation.ts` | `lib` 만                                                | `@/lib/<경로>`                                                 | `'@/lib/date'`                                                                   |
 
 - **테스트 계층 단서**: 이 문서에서 "린트가 막는다" 는 서술은 전부 **비테스트 파일 기준**이다. 테스트 계층(`src/test/**`, `*.test.*`)은 레이어 경계·브라우저 전역·패키지 허용 목록·`Meta` 쓰기·`as Persistable` 이 면제되고, 표기 규칙(상대 경로 금지 + 정규형)과 공통 문법 규칙(`export *`·`require` 계열·리터럴 아닌 `import()` 금지)은 그대로 받는다(§11, 실측).
 - `@/` import는 반드시 해석되어야 한다(`import/no-unresolved`, `caseSensitive`) — 별칭이 깨지면 경계 검사가 조용히 무력화되므로 카나리로 둔다. 대소문자만 다른 표기(`@/app/Providers`)도 여기서 걸린다.
@@ -117,9 +117,11 @@ src/infra/indexeddb/
 - `@/app/providers`(조립 지점)를 import 할 수 있는 파일은 `src/app/layout.tsx` 하나이며(결정 10 의 구문 전수에 대해 실측), `providers.tsx` 는 재export(`export … from`)를 할 수 없다 — 조립 지점을 경유지로 쓰지 못하게 한다(ADR-0006 규칙 6, 한계는 ARCHITECTURE.md §1).
 
 **순서** (`import/order`가 정렬, 여기선 그룹 정의)
+
 1. `react`, `next/*` · 2. 외부 패키지 · 3. `@/domain/*` · 4. `@/repositories/*`, `@/infra/*` · 5. `@/features/*` · 6. `@/components/*` · 7. `@/lib/*`, `@/styles/*` · 8. `import type`은 각 그룹 마지막.
 
 **`eslint-disable` 정책** (강제: `scripts/check-arch.sh` 의 2차 패스, 규칙 목록의 단일 소스는 `scripts/arch-layers.mjs` 의 `ARCH_RULES` — ADR-0008)
+
 - 아키텍처 규칙(`import/no-restricted-paths`, `no-restricted-imports`, `no-restricted-globals`, `no-restricted-syntax`, `import/no-cycle`, `import/no-unresolved`, `import/no-default-export`, `@typescript-eslint/no-explicit-any`, `@typescript-eslint/triple-slash-reference`)은 **어떤 문법으로도 끌 수 없다**. `check-arch.sh` 가 `eslint --no-inline-config -c eslint.arch.config.mjs src` 를 한 번 더 돌리는데, 그 모드에서 ESLint 는 파일 안의 모든 인라인 지시자(`eslint-disable` 계열·`/* eslint … */`·`/* eslint-env */`·`/* global */`)를 무시한다 — 빈 규칙 목록(`/* eslint-disable , -- 사유 */`)·NBSP 구분자·BOM 같은 변형도 소용없다(실측). 경계가 불편하면 코드를 옮기거나 ADR로 경계를 바꾼다.
 - 그 외(스타일) 규칙은 `// eslint-disable-next-line <rule> -- <사유>` 로 끌 수 있고 **사유를 적는다**(리뷰 항목). 2차 패스는 그 규칙들을 아예 보지 않으므로 정당한 disable 이 막히지 않는다. 미사용 지시자는 1차 패스의 `reportUnusedDisableDirectives` 가 에러로 잡는다.
 - 경계 규칙이 실제로 위반을 잡는지(그리고 허용할 것을 허용하는지), 2차 패스가 살아 있는지는 `scripts/check-arch.sh`가 픽스처로 확인한다. 경계를 바꾸면 그 케이스도 같은 PR에서 바꾼다.

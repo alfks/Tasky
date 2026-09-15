@@ -6,12 +6,14 @@
 1차 MVP: 날짜 스트립 + 카테고리별 투두 CRUD + 체크/달성률 + 테마/색상.
 
 > **현재 상태(단일 소스 — 상태가 바뀌면 여기만 고친다)**
-> - 스캐폴딩 이전. `package.json`/`src/` 없음. `chore/scaffold-nextjs` 티켓 머지 전엔 기능 티켓 시작 불가. 지금 쓸 수 있는 검증은 §5 명령어 목록 참고.
+>
+> - 스캐폴딩 완료. Next.js 15 앱 셸 + `src/` 레이어 트리 + `pnpm check`(9개 검사) 동작 — 기능 티켓 착수 가능. 아직 비어 있는 것: feature 코드(`index.ts` 는 빈 배럴), 레포지토리 구현(memory·indexeddb), `lib/` 유틸, PWA(serwist·manifest).
 > - **CI 임시 미작동**: 계정/레포 차원의 Actions 실행 불가로 추정(워크플로 자체는 정상 — PR의 빨간 X는 코드 문제가 아니다). **`bash scripts/check.sh` 통과가 PR 전 실질 게이트**이며, CI 초록불을 머지 조건으로 삼지 않는다. 복구되면 이 항목을 지운다.
 
 ## 0. 절대 금지어 (최우선 규칙)
 
 기록으로 남는 **모든 것**(파일명·본문·코드·주석·테스트·커밋·PR·이슈·브랜치)에 레퍼런스 앱의 **실제 제품명을 쓰지 않는다.**
+
 - 금지 토큰: 영문 `to`·`do`·`mate` 조합(대소문자/공백/`_`/`-` 변형 전부), 한글 `투두`·`메이트` 조합(띄어쓰기 변형 전부).
 - 항상 **"레퍼런스 앱"**(영문 `reference app`)으로 지칭. 리서치 문서를 인용할 때도 동일.
 - 검사: `bash scripts/check-forbidden-words.sh` — pre-commit 훅과 CI가 자동 실행, 위반 시 실패.
@@ -29,17 +31,17 @@
 
 ## 3. 읽기 규칙 — 무엇을 언제 읽는가
 
-| 상황 | 읽을 것 | 읽지 말 것 |
-|------|--------|-----------|
-| 세션 시작 | 이 파일만 | `AGENTS.md` 전부 훑기 |
+| 상황                         | 읽을 것                                                                                                     | 읽지 말 것                                 |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| 세션 시작                    | 이 파일만                                                                                                   | `AGENTS.md` 전부 훑기                      |
 | 역할이 오케스트레이터/리뷰어 | [AGENTS.md](AGENTS.md) → [docs/conventions/agent-collaboration.md](docs/conventions/agent-collaboration.md) | 코드 컨벤션(리뷰 시엔 diff 보며 필요 절만) |
-| 코드 작성 시작 | [docs/conventions/code-style.md](docs/conventions/code-style.md) + 대상 디렉토리 `AGENTS.md` | 무관한 디렉토리 `AGENTS.md` |
-| 커밋/PR/워크트리 | [docs/conventions/git-workflow.md](docs/conventions/git-workflow.md) | — |
-| 핸드오프 문서 작성 | [.worktrees/AGENTS.md](.worktrees/AGENTS.md) | — |
-| 레이어 경계를 넘는 변경 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) + 관련 ADR | 전체 ADR |
-| 파일 위치를 모를 때 | [docs/DIRECTORY_MAP.md](docs/DIRECTORY_MAP.md) → Glob/Grep | 디렉토리 전체 Read |
-| 기능 요구사항 확인 | `docs/specs/<feature>.md` | 리서치 문서 전문(섹션만 grep) |
-| 토큰이 부족하다고 느낄 때 | [docs/conventions/token-efficiency.md](docs/conventions/token-efficiency.md) | — |
+| 코드 작성 시작               | [docs/conventions/code-style.md](docs/conventions/code-style.md) + 대상 디렉토리 `AGENTS.md`                | 무관한 디렉토리 `AGENTS.md`                |
+| 커밋/PR/워크트리             | [docs/conventions/git-workflow.md](docs/conventions/git-workflow.md)                                        | —                                          |
+| 핸드오프 문서 작성           | [.worktrees/AGENTS.md](.worktrees/AGENTS.md)                                                                | —                                          |
+| 레이어 경계를 넘는 변경      | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) + 관련 ADR                                                     | 전체 ADR                                   |
+| 파일 위치를 모를 때          | [docs/DIRECTORY_MAP.md](docs/DIRECTORY_MAP.md) → Glob/Grep                                                  | 디렉토리 전체 Read                         |
+| 기능 요구사항 확인           | `docs/specs/<feature>.md`                                                                                   | 리서치 문서 전문(섹션만 grep)              |
+| 토큰이 부족하다고 느낄 때    | [docs/conventions/token-efficiency.md](docs/conventions/token-efficiency.md)                                | —                                          |
 
 원칙: **맵 → Glob → Grep → 범위 Read**. 300줄 초과 파일은 전문 Read 금지(범위 지정). 상세: token-efficiency.md.
 
@@ -110,7 +112,7 @@ Node 22 / pnpm 10 / Next.js 15 / React 19 / TypeScript 5 strict / Tailwind CSS 4
 
 ## 11. PR 전 셀프 체크 (구현 에이전트)
 
-- [ ] `pnpm check` 통과(스캐폴딩 전: `bash scripts/check.sh`), `bash scripts/check-forbidden-words.sh` 통과
+- [ ] `pnpm check` 통과, `bash scripts/check-forbidden-words.sh` 통과
 - [ ] `git log --format='%an <%ae>' main..HEAD` 전부 `alfks <millie020524@gmail.com>`
 - [ ] 티켓 `owns:` 밖 파일을 건드리지 않았음 (`git diff --stat main..HEAD`)
 - [ ] 새 디렉토리마다 `AGENTS.md` 존재, 변경한 디렉토리의 `AGENTS.md`가 여전히 참
@@ -118,13 +120,13 @@ Node 22 / pnpm 10 / Next.js 15 / React 19 / TypeScript 5 strict / Tailwind CSS 4
 
 ## 12. 용어 통일 (코드 식별자 ↔ 한국어)
 
-| 한국어 | 코드 | 의미 |
-|-------|------|------|
-| 투두 | `Todo` | 특정 날짜·카테고리에 속한 할 일 한 건 |
-| 카테고리 | `Category` | 색상을 가진 투두 묶음 (예: 공부, 운동) |
-| 날짜 스트립 | `DateStrip` | 상단 가로 스크롤 날짜 선택 UI |
-| 달성률 | `completionRate` | 해당 날짜 투두 중 완료 비율 (0~1) |
-| 테마 | `Theme` | 라이트/다크 + 강조색(`accentColor`) |
-| 레퍼런스 앱 | `reference app` | 벤치마킹 대상 (제품명 금지) |
-| 이슈 | GitHub Issue (`#<n>`) | 외부/사용자가 등록하는 요청·버그(레포에 커밋됨) |
-| 티켓 | `T-<n>` | 에이전트 작업 단위(`.worktrees/tickets/`, 로컬, 커밋 안 함) |
+| 한국어      | 코드                  | 의미                                                        |
+| ----------- | --------------------- | ----------------------------------------------------------- |
+| 투두        | `Todo`                | 특정 날짜·카테고리에 속한 할 일 한 건                       |
+| 카테고리    | `Category`            | 색상을 가진 투두 묶음 (예: 공부, 운동)                      |
+| 날짜 스트립 | `DateStrip`           | 상단 가로 스크롤 날짜 선택 UI                               |
+| 달성률      | `completionRate`      | 해당 날짜 투두 중 완료 비율 (0~1)                           |
+| 테마        | `Theme`               | 라이트/다크 + 강조색(`accentColor`)                         |
+| 레퍼런스 앱 | `reference app`       | 벤치마킹 대상 (제품명 금지)                                 |
+| 이슈        | GitHub Issue (`#<n>`) | 외부/사용자가 등록하는 요청·버그(레포에 커밋됨)             |
+| 티켓        | `T-<n>`               | 에이전트 작업 단위(`.worktrees/tickets/`, 로컬, 커밋 안 함) |

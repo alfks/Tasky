@@ -9,9 +9,8 @@
 // 규칙 목록을 여기 다시 적지 않는다: 이 파일은 1차 설정을 읽어 ARCH_RULES 만 남긴다. 그래서 규칙의 내용·옵션·
 //   레이어별 생성 결과가 1차와 어긋날 수 없다(어긋나면 그게 곧 구멍이었다).
 // 사용법: bash scripts/check-arch.sh (2차 패스를 포함한다) — 직접 돌리려면 위 eslint 명령.
-import { ARCH_RULES, ARCH_RULES_COMMON, ARCH_RULES_LAYER } from './scripts/arch-layers.mjs';
-
 import base from './eslint.config.mjs';
+import { ARCH_RULES, ARCH_RULES_COMMON, ARCH_RULES_LAYER } from './scripts/arch-layers.mjs';
 
 const ARCH = new Set(ARCH_RULES);
 const value = (v) => JSON.stringify(Array.isArray(v) ? v : [v]);
@@ -22,7 +21,9 @@ const value = (v) => JSON.stringify(Array.isArray(v) ? v : [v]);
 //     `/// <reference types = "…" />` 가 기본값에서는 보고되지 않는다). 그래서 목록 전체를 한 블록에서 펼치는
 //     공통 블록을 찾아 값을 대조한다. 뒤쪽 예외 블록이 files 로 좁혀 'off' 하는 것은 설계대로이며 그대로 보존한다.
 // (b) 레이어 규칙은 레이어마다 값이 다르므로, 'off' 가 아닌 할당이 최소 한 곳에 있는지만 본다.
-const commonBlock = base.find((b) => b.rules && Object.keys(ARCH_RULES_COMMON).every((id) => id in b.rules));
+const commonBlock = base.find(
+  (b) => b.rules && Object.keys(ARCH_RULES_COMMON).every((id) => id in b.rules),
+);
 if (!commonBlock) {
   throw new Error(
     "eslint.arch.config.mjs: ARCH_RULES_COMMON 을 통째로 펼치는 공통 블록이 eslint.config.mjs 에 없습니다 — '...ARCH_RULES_COMMON' 스프레드를 확인하세요 (ADR-0008).",
@@ -35,23 +36,31 @@ for (const [id, want] of Object.entries(ARCH_RULES_COMMON)) {
     );
   }
 }
-const notEnabled = ARCH_RULES_LAYER.filter((id) => !base.some((b) => b.rules && id in b.rules && b.rules[id] !== 'off'));
+const notEnabled = ARCH_RULES_LAYER.filter(
+  (id) => !base.some((b) => b.rules && id in b.rules && b.rules[id] !== 'off'),
+);
 if (notEnabled.length) {
-  throw new Error(`eslint.arch.config.mjs: 경계 규칙 ${notEnabled.join(', ')} 를 켜는 블록이 eslint.config.mjs 에 없습니다 (ADR-0008).`);
+  throw new Error(
+    `eslint.arch.config.mjs: 경계 규칙 ${notEnabled.join(', ')} 를 켜는 블록이 eslint.config.mjs 에 없습니다 (ADR-0008).`,
+  );
 }
 
 // --- 파생: 규칙만 걸러내고 files/ignores/plugins/parser/settings 는 1차와 동일하게 쓴다 ---
 // reportUnusedDisableDirectives 는 끈다 — 지시자를 무시하는 패스에서는 모든 지시자가 "미사용" 으로 보인다.
 const config = base.map((block) => {
   const derived = { ...block };
-  if (block.rules) derived.rules = Object.fromEntries(Object.entries(block.rules).filter(([id]) => ARCH.has(id)));
-  if (block.linterOptions) derived.linterOptions = { ...block.linterOptions, reportUnusedDisableDirectives: 'off' };
+  if (block.rules)
+    derived.rules = Object.fromEntries(Object.entries(block.rules).filter(([id]) => ARCH.has(id)));
+  if (block.linterOptions)
+    derived.linterOptions = { ...block.linterOptions, reportUnusedDisableDirectives: 'off' };
   return derived;
 });
 
 // --- 가드 6: 파생 결과가 비면(규칙 이름이 전부 바뀌는 등) 2차 패스가 조용히 아무것도 검사하지 않는다 ---
 if (!config.some((b) => Object.keys(b.rules ?? {}).length > 0)) {
-  throw new Error('eslint.arch.config.mjs: 파생 결과에 아키텍처 규칙이 하나도 없습니다 — ARCH_RULES 와 eslint.config.mjs 의 규칙 이름을 대조하세요 (ADR-0008).');
+  throw new Error(
+    'eslint.arch.config.mjs: 파생 결과에 아키텍처 규칙이 하나도 없습니다 — ARCH_RULES 와 eslint.config.mjs 의 규칙 이름을 대조하세요 (ADR-0008).',
+  );
 }
 
 export default config;
