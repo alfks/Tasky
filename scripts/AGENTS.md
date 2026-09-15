@@ -15,7 +15,7 @@
 | `check-forbidden-words.sh [paths…]` | 금지어 검사(조각 조립 정규식) | pre-commit, CI, 수동 |
 | `check-author.sh <base>` | `<base>..HEAD` 커밋 author/트레일러 검증. `--message-file`/`--body-file` 은 실제 커밋에 남는 원문(`#` 줄 포함 — git의 기본 cleanup은 `-m`/`-F` 에서 주석을 지우지 않는다) 그대로 검사 | CI, 수동 |
 | `check-agents-md.sh` | 트래킹 파일이 있는 모든 디렉토리마다 `AGENTS.md` 존재(상위의 `관할:` 선언 시 면제)·60줄 이하 검사 | CI, 수동 |
-| `check-eslint-disable.sh [file…]` | `src/` 의 `eslint-disable` 정책(규칙명 없음·아키텍처 규칙·사유 없음·인라인 설정 금지). 규칙 목록의 단일 소스. 줄 판독은 주석을 먼저 인식하는 awk 토크나이저(문자열 내용만 비움, 미종결 따옴표는 원문 검사) — 주석 속 따옴표로 지시자를 숨기는 우회를 막는다 | pre-commit 아님, CI guard, `check.sh`, `check-arch.sh` |
+| `check-eslint-disable.sh [file…]` | `src/` 의 `eslint-disable` 정책(규칙명 없음·아키텍처 규칙·사유 없음·인라인 설정 금지). 규칙 목록의 단일 소스. **줄마다 독립 판정(문맥 상태 없음)** — `eslint-disable` 이 들어간 줄은 문자열·주석 안이라도 전부 지시자로 본다. 한 줄의 오판이 파일 전체로 번지지 않는 것이 요점이다(토크나이저 판은 정규식 안 백틱 하나로 이후 전체가 검사에서 빠졌다). 과잉 검출 한계는 스크립트 헤더에 | pre-commit 아님, CI guard, `check.sh`, `check-arch.sh` |
 | `check-arch.sh` | 레이어 경계 린트가 위반을 실제로 잡는지 임시 픽스처(`src/**/__arch__/`)로 검증. `package.json` 없으면 SKIP | CI build, `check.sh`, `pnpm check:arch` |
 | `arch-layers.mjs` | 레이어·허용 목록·`src/` 직속 파일·확장자의 단일 소스(데이터만, 로직 없음). `eslint.config.mjs`와 `check-arch.sh`가 import | `pnpm lint`, `check-arch.sh` |
 

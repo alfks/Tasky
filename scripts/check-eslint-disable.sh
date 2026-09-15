@@ -2,90 +2,97 @@
 # 읽기 조건: 이 검사가 실패했을 때, 또는 disable 금지 규칙 목록(RESTRICTED)을 바꿀 때.
 # 규칙(단일 소스 — code-style.md §7 은 여기로 링크한다): src/ 의 트래킹된 모든 파일(확장자 무관) 안에서
 #   (1) 규칙명 없는 eslint-disable 금지                       예) /* eslint-disable */
-#   (2) 아키텍처 규칙(RESTRICTED)의 disable 금지 — 우회 수단 없음  예) // eslint-disable-next-line import/no-restricted-paths
+#   (2) 아키텍처 규칙(RESTRICTED)의 disable 금지                예) // eslint-disable-next-line import/no-restricted-paths
 #   (3) 그 외 규칙의 disable 은 `-- 사유` 설명 필수              예) // eslint-disable-next-line no-console -- 개발용 진단
 #   (4) 인라인 설정 주석 금지                                   예) /* eslint no-restricted-imports: off */, /* eslint-env */, /* global */
 #   (5) 규칙명 부분에 ASCII 밖 문자 금지(NBSP·전각 공백·제로폭) — ESLint 는 이를 구분자로 인정하므로 우회로 취급
 # ESLint 자체는 "쓰인" disable 지시자를 조용히 통과시키므로(reportUnusedDisableDirectives 는 미사용만 잡는다) 이 검사가 필요하다.
+#
+# 판정 방식: **줄마다 독립 판정하고 문맥(문자열·주석 상태)을 다음 줄로 이어가지 않는다.**
+#   이전 버전은 awk 로 JS 를 토크나이즈했다. 그런데 정규식 리터럴·JSX 텍스트 안의 백틱 하나(`/[^a-z0-9`~]/g`)면
+#   토크나이저가 템플릿 리터럴 상태에 빠져 그 뒤 파일 전체가 검사에서 사라졌다(실측 우회 7종). 셸에서 정규식
+#   리터럴과 나눗셈을 가르려면 사실상 JS 파서가 필요하다 — 그래서 가르기를 포기하고, `eslint-disable` 이 들어간
+#   줄은 문맥과 무관하게 전부 지시자로 본다(과잉 검출). **한 줄의 오판이 다른 줄로 번지지 않는 것**이 요점이다.
+#   여러 줄로 쪼갠 지시자도 막힌다: ESLint 는 주석값을 trim 한 뒤 맨 앞이 `eslint-disable` 이어야 인정하므로,
+#   어느 한 줄에는 이 토큰이 통째로 남고 그 줄의 규칙 목록은 비거나 잘려 (1)·(3) 에 걸린다(실측).
+#   ESLint 와 맞춘 두 가지(실측): 규칙명을 감싼 따옴표는 ESLint 가 벗기므로 여기서도 벗긴다. `--` 사유 구분자는
+#   앞뒤 공백 + 하이픈 2개 이상일 때만 인정한다(ESLint 의 \s 는 상위집합이라 규칙 목록을 짧게 볼 위험이 없다).
+#
+# 알려진 한계(실측으로 뒷받침되는 것만 적는다 — "우회 수단 없음" 같은 단정은 쓰지 않는다):
+#   - 과잉 검출 2종(오탐 픽스처 14개 중 4개가 걸린다): (a) 문자열·템플릿·주석 안이라도 `eslint-disable` 을
+#     그대로 쓰면 걸린다, (b) 줄이 `eslint `/`global(s) ` 로 시작하면 여러 줄 설정 주석으로 보고 걸린다.
+#     린트 정책을 예시로 적어야 하면 docs/ 에 쓰거나 토큰을 쪼갠다(`'eslint-' + 'disable'`).
+#   - 검사 범위는 트래킹된 src/ 뿐이다. src/ 밖(루트 설정 파일 등)의 disable 은 보지 않는다.
+#   - CR 단독 개행 파일은 여러 JS 줄이 한 줄로 합쳐져 행번호가 부정확할 수 있다(판정 자체는 막는 쪽으로 기운다).
 # 사용법: bash scripts/check-eslint-disable.sh [file...]   (인자 없으면 트래킹된 src/ 전체 — 확장자를 열거하지 않는다)
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 RESTRICTED='import/no-restricted-paths|no-restricted-imports|no-restricted-globals|no-restricted-syntax|import/no-cycle|import/no-unresolved|import/no-default-export|@typescript-eslint/no-explicit-any'
 
-# 한 줄을 "주석은 그대로, 문자열 리터럴 내용은 비운" 형태로 정규화해 지시자 후보 줄만 뽑는다.
-# 핵심은 순서다: 주석을 먼저 인식한다. 이전 버전은 sed 로 문자열만 지워서, 주석 안의 따옴표 쌍이
-# 그 사이의 진짜 지시자를 통째로 삼켰다 — `/* " */ /* eslint-disable … */ /* " */` 가 검사를
-# 통과하고 실제 ESLint 에서는 규칙이 꺼졌다(라운드 3 Major). 블록 주석·템플릿 리터럴은 줄을
-# 넘어가므로 상태를 파일 단위로 이어간다. 줄 끝까지 닫히지 않은 따옴표(정규식 리터럴 오인 등)는
-# 판정 불가로 보고 그 줄을 원문 그대로 검사한다 — false negative(우회)는 금지, 과잉 검출은 허용.
-candidate_lines() { # $1 파일 → "행번호:정규화된 줄"
-  awk '
-    BEGIN { st = 0 }   # 0=코드, 1=블록 주석, 2=템플릿 리터럴
+check_file() { # $1 파일 → 위반 줄마다 FAIL 출력
+  LC_ALL=C awk -v R="$RESTRICTED" -v F="$1" '
+    BEGIN {
+      SQ = sprintf("%c", 39)           # 작은따옴표(awk 소스에 리터럴로 넣을 수 없다)
+      QUOTES = "[" SQ "\"]"
+      RX = "[[:space:],](" R ")[[:space:],]"   # 규칙명 앞뒤를 공백으로 패딩해서 본다 — 문자열 중간의 "$" 앵커를
+                                              # 앵커로 안 보는 awk 구현이 있어 경계 표현에 "|$" 를 쓰지 않는다
+    }
+    function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+    function fail(n, msg) { print "FAIL: " F ":" n " " msg }
     {
-      line = $0; out = ""; susp = 0; i = 1; L = length(line)
-      while (i <= L) {
-        c = substr(line, i, 1); c2 = substr(line, i, 2)
-        if (st == 1) { if (c2 == "*/") { out = out "*/"; i += 2; st = 0 } else { out = out c; i++ } }
-        else if (st == 2) { if (c == "\\") { i += 2 } else if (c == "`") { out = out "`"; i++; st = 0 } else { i++ } }
-        else if (c2 == "//") { out = out substr(line, i); i = L + 1 }
-        else if (c2 == "/*") { out = out "/*"; i += 2; st = 1 }
-        else if (c == "`") { out = out "`"; i++; st = 2 }
-        else if (c == "\"" || c == "\047") {
-          q = c; out = out q; i++; closed = 0
-          while (i <= L) {
-            d = substr(line, i, 1)
-            if (d == "\\") { i += 2; continue }
-            if (d == q) { out = out q; i++; closed = 1; break }
-            i++
-          }
-          if (! closed) { susp = 1; break }
-        }
-        else { out = out c; i++ }
+      line = $0; sub(/\r$/, "", line)
+
+      # 지시자 개수 — 토큰 분해 없이 부분 문자열 그대로 센다.
+      n = 0; t = line
+      while ((p = index(t, "eslint-disable")) > 0) { n++; t = substr(t, p + 14) }
+
+      # 인라인 설정 주석: 주석값이 trim 후 eslint/eslint-env/global(s) 로 시작하면 ESLint 가 설정으로 읽는다.
+      # 그 시작점은 (a) 여는 "/*" 바로 뒤이거나 (b) 여는 줄이 "/*" 뿐일 때 다음 줄 맨 앞이다 — 둘 다 본다.
+      # ("(x|$)" 형태는 awk 구현마다 편차가 있어 패턴을 나눠 쓴다.)
+      conf = (line ~ /\/\*[[:space:]]*eslint(-env)?[[:space:]]/ || line ~ /\/\*[[:space:]]*eslint(-env)?$/ ||
+              line ~ /\/\*[[:space:]]*globals?[[:space:]]/      || line ~ /\/\*[[:space:]]*globals?$/ ||
+              line ~ /^[[:space:]]*eslint(-env)?[[:space:]]/    || line ~ /^[[:space:]]*eslint(-env)?$/ ||
+              line ~ /^[[:space:]]*globals?[[:space:]]/         || line ~ /^[[:space:]]*globals?$/)
+
+      if (n == 0 && ! conf) next
+
+      if (n > 1) {
+        fail(NR, "한 줄에 eslint-disable 지시자가 2개 이상입니다. 줄을 나누세요(한 줄에 하나만 판정합니다).")
+        next
       }
-      if (susp) out = line
-      if (out ~ /eslint-disable/ || out ~ /\/\*[[:space:]]*eslint(-env)?[[:space:]]/ || out ~ /\/\*[[:space:]]*globals?[[:space:]]/)
-        print NR ":" out
+      if (conf) {
+        fail(NR, "인라인 ESLint 설정 주석 금지(규칙 (4)). 설정은 eslint.config.mjs 에서만.")
+        next
+      }
+
+      # 지시자 뒤 = 규칙 목록 + (`--` 사유). 블록 주석이면 첫 "*/" 에서 끊는다.
+      p = index(line, "eslint-disable"); rest = substr(line, p + 14)
+      if (rest ~ /^-next-line/) rest = substr(rest, 11)
+      else if (rest ~ /^-line/) rest = substr(rest, 6)
+      q = index(rest, "*/"); if (q > 0) rest = substr(rest, 1, q - 1)
+
+      if (match(rest, /[[:space:]]--+[[:space:]]/)) {
+        rules = substr(rest, 1, RSTART - 1); desc = substr(rest, RSTART + RLENGTH)
+      } else { rules = rest; desc = "" }
+
+      probe = rules; gsub(/[[:space:]]/, " ", probe)   # ASCII 공백만 정규화 → NBSP·전각공백·제로폭은 남는다
+      if (probe ~ /[^ -~]/) {
+        fail(NR, "disable 지시자의 규칙명에 ASCII 가 아닌 문자가 있습니다(규칙 (5): NBSP·전각공백·제로폭). 우회로 취급합니다.")
+        next
+      }
+      rules = trim(rules); desc = trim(desc)
+      unquoted = rules; gsub(QUOTES, "", unquoted)     # ESLint 는 규칙명을 감싼 따옴표를 벗긴다
+      padded = " " unquoted " "
+
+      if (rules == "")
+        fail(NR, "규칙명 없는 eslint-disable 금지(규칙 (1)). 규칙명을 지정하고 -- 사유를 적으세요.")
+      else if (padded ~ RX)
+        fail(NR, "아키텍처 규칙은 disable 할 수 없습니다(규칙 (2)): " SQ rules SQ ". 경계를 지키도록 코드를 옮기세요(docs/ARCHITECTURE.md §1).")
+      else if (desc == "")
+        fail(NR, "disable 에 사유가 없습니다(규칙 (3)). 예: // eslint-disable-next-line " rules " -- <이유>")
     }
   ' "$1"
-}
-
-check_file() { # $1 파일
-  local f="$1" line n body rules desc dircount
-  candidate_lines "$f" | while IFS= read -r line; do
-    n="${line%%:*}"
-    line="${line#*:}"
-    # 한 줄에 eslint-disable 지시자가 2개 이상이면 아래 sed(greedy)가 뒤의 것만 남기고 앞의
-    # 것은 검사되지 않은 채 통과한다 — 판정을 시도하는 대신 애초에 금지한다(줄 분리 강제).
-    dircount="$(printf '%s' "$line" | grep -o 'eslint-disable' | wc -l | tr -d ' ')"
-    if [ "$dircount" -gt 1 ]; then
-      echo "FAIL: $f:$n 한 줄에 eslint-disable 지시자가 2개 이상입니다. 줄을 나누세요(뒤의 것만 검사되어 앞의 것이 감사망을 빠져나갑니다)."
-      continue
-    fi
-    if printf '%s' "$line" | grep -qE '/\*[[:space:]]*eslint(-env)?[[:space:]]|/\*[[:space:]]*globals?[[:space:]]'; then
-      echo "FAIL: $f:$n 인라인 ESLint 설정 주석 금지(규칙 (4)). 설정은 eslint.config.mjs 에서만."
-      continue
-    fi
-    printf '%s' "$line" | grep -q 'eslint-disable' || continue
-    body="$(printf '%s' "$line" | sed -E 's/.*eslint-disable(-next-line|-line)?//; s/\*\/.*$//')"
-    case "$body" in
-      *--*) rules="${body%%--*}"; desc="${body#*--}" ;;
-      *)    rules="$body";        desc="" ;;
-    esac
-    if printf '%s' "$rules" | LC_ALL=C grep -q '[^ -~]'; then
-      echo "FAIL: $f:$n disable 지시자의 규칙명에 ASCII 가 아닌 문자가 있습니다(규칙 (5): NBSP·전각공백·제로폭). 우회로 취급합니다."
-      continue
-    fi
-    rules="$(printf '%s' "$rules" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
-    desc="$(printf '%s' "$desc" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
-    if [ -z "$rules" ]; then
-      echo "FAIL: $f:$n 규칙명 없는 eslint-disable 금지(규칙 (1)). 규칙명을 지정하고 -- 사유를 적으세요."
-    elif printf '%s' "$rules" | grep -qE "(^|[[:space:],])(${RESTRICTED})([[:space:],]|$)"; then
-      echo "FAIL: $f:$n 아키텍처 규칙은 disable 할 수 없습니다(규칙 (2)): '$rules'. 경계를 지키도록 코드를 옮기세요(docs/ARCHITECTURE.md §1)."
-    elif [ -z "$desc" ]; then
-      echo "FAIL: $f:$n disable 에 사유가 없습니다(규칙 (3)). 예: // eslint-disable-next-line $rules -- <이유>"
-    fi
-  done
 }
 
 if [ "$#" -gt 0 ]; then
