@@ -9,6 +9,20 @@ html {
 body {
   background-color: var(--color-bg);
   color: var(--color-text);
+  /* 실제 폰트 파일은 T-22 소관 — 여기서는 토큰을 폴백과 함께 참조만 한다(@font-face 금지). */
+  font-family: var(
+    --font-sans,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Apple SD Gothic Neo',
+    'Malgun Gothic',
+    'Noto Sans KR',
+    system-ui,
+    sans-serif
+  );
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--leading-normal);
 }
 
 @media (prefers-reduced-motion: reduce) {
