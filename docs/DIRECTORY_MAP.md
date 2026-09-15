@@ -15,7 +15,7 @@
 | `.github/` | CI, PR/이슈 템플릿, CODEOWNERS, 라벨 | [.github/AGENTS.md](../.github/AGENTS.md) | CI가 실패했을 때, 템플릿/라벨을 바꿀 때 |
 | `.githooks/` | pre-commit(금지어·author), commit-msg(트레일러) | [.githooks/AGENTS.md](../.githooks/AGENTS.md) | 커밋이 훅에 막혔을 때 |
 | `.worktrees/` | 워크트리 + 로컬 BOARD/tickets/handoffs/reviews | [.worktrees/AGENTS.md](../.worktrees/AGENTS.md) | 워크트리 만들기 전, 티켓/핸드오프 쓰기 전 |
-| `scripts/` | setup, wt, check-* | [scripts/AGENTS.md](../scripts/AGENTS.md) | 스크립트가 실패했거나 수정할 때 |
+| `scripts/` | setup, wt, check-*, arch-layers.mjs | [scripts/AGENTS.md](../scripts/AGENTS.md) | 스크립트가 실패했거나 수정할 때 |
 | `public/` (예정) | 아이콘, manifest.json | — (정적 자산) | PWA 아이콘 교체 시 |
 | `tests/e2e/` (예정) | Playwright 스모크 | `tests/AGENTS.md` | E2E 작성 시 |
 
@@ -44,7 +44,7 @@
 | `src/repositories/` | 레포지토리 인터페이스, memory 구현, 컨테이너 | `src/repositories/AGENTS.md` | 저장소 계약 변경 시 |
 | `src/infra/` | `indexeddb/`(Dexie), 후일 `sync/` | `src/infra/AGENTS.md` | 스키마/마이그레이션/구현 수정 시 |
 | `src/lib/` | `cn.ts` `date.ts` `id.ts` 등 순수 유틸 | `src/lib/AGENTS.md` | 유틸 추가 시(중복 방지) |
-| `src/styles/` | `tokens.css` `globals.css` | `src/styles/AGENTS.md` | 토큰/테마 변경 시 |
+| `src/styles/` | `tokens.css` `globals.css`(.css 만) | `src/styles/AGENTS.md` | 토큰/테마 변경 시 |
 | `src/test/` | Vitest setup, fixtures 팩토리 | `src/test/AGENTS.md` | 테스트 작성 시 픽스처 확인 |
 
 ## 빠른 질문표

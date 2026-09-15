@@ -4,7 +4,7 @@
 
 #### 3.12-h `src/**` AGENTS.md 초안 (스캐폴딩 티켓에서 디렉토리 생성과 동시에 작성)
 
-아래 초안은 스캐폴딩 티켓의 `owns:`에 포함시켜 함께 생성한다. 각 60줄 이하. 의존 방향 표는 `docs/ARCHITECTURE.md` §1 한 곳에만 두고 여기서는 링크한다(위반은 `pnpm lint`가 잡는다).
+아래 초안은 스캐폴딩 티켓의 `owns:`에 포함시켜 함께 생성한다. 각 60줄 이하. **전역 규칙은 여기 다시 쓰지 않는다** — 의존 방향은 `docs/ARCHITECTURE.md` §1, 코드·import·테스트 규칙은 `docs/conventions/code-style.md`(위반은 `pnpm lint`·`pnpm typecheck`가 잡는다). 각 초안의 "## 규칙"에는 **그 디렉토리에만 해당하는 것**만 적고 마지막 항목으로 출처를 링크한다. 이 파일은 11개 `AGENTS.md`로 복사되므로 여기 적힌 문장은 사본 11벌이 된다.
 
 ##### 파일: `/home/user/Tasky/src/AGENTS.md`
 ````markdown
@@ -16,15 +16,13 @@
 앱 소스 루트. 레이어 = 디렉토리: `app`(UI 셸) `components`(공용 UI) `features`(기능+상태) `domain`(규칙) `repositories`(계약) `infra`(구현) `lib`(유틸) `styles`(토큰) `test`(테스트 지원).
 
 ## 규칙
-1. 새 최상위 디렉토리는 ADR 필수. 위 9개 외에는 만들지 않는다.
-2. 의존 방향은 `docs/ARCHITECTURE.md` §1 표. `pnpm lint`가 해석된 경로 기준으로 막고(별칭·상대 경로·배럴 우회 불가), 아키텍처 규칙의 `eslint-disable`은 `scripts/check-eslint-disable.sh`가 거부한다.
-3. 경로 표기: 경계를 넘으면 `@/`, 같은 디렉토리 안은 상대 경로(`docs/conventions/code-style.md` §7).
-4. 각 하위 디렉토리 `AGENTS.md`는 자족적이다(이 파일을 다시 읽게 하지 않는다).
-5. `__arch__/`는 `scripts/check-arch.sh`의 임시 픽스처 이름 — 직접 만들지 않는다.
+1. 새 최상위 디렉토리·직속 파일·확장자는 ADR + `scripts/arch-layers.mjs` 수정. 목록 밖이면 파일 자체가 린트 에러다(ADR-0006).
+2. `__arch__/`는 `scripts/check-arch.sh`의 임시 픽스처 이름 — 직접 만들지 않는다.
+3. 의존 방향 `docs/ARCHITECTURE.md` §1 · 코드/import 표기 `docs/conventions/code-style.md` §2·§7.
 
 ## 검증
 ```bash
-pnpm lint && pnpm check:arch && pnpm typecheck
+pnpm check
 ```
 ````
 
@@ -35,20 +33,14 @@ pnpm lint && pnpm check:arch && pnpm typecheck
 # src/app/ — AGENTS
 
 ## 목적
-Next.js App Router 셸. 라우팅, 루트 레이아웃, 메타데이터/manifest, 레포지토리 조립(`providers.tsx`)만.
-
-## 여기 있는 것 / 없는 것
-- 있음: `layout.tsx`(서버, 폰트·테마 속성), `page.tsx`(서버, `<HomeScreen/>` 렌더만), `providers.tsx`(client, `setRepositories`), `manifest.ts`, `error.tsx`, `globals import`
-- 없음: 비즈니스 로직, 상태, 컴포넌트 구현(→ `features`)
+Next.js App Router 셸. `layout.tsx`(서버, 폰트·테마 속성), `page.tsx`(서버, `<HomeScreen/>` 렌더만), `providers.tsx`(client, `setRepositories` — 조립 지점), `manifest.ts`, `error.tsx`. 비즈니스 로직·상태·컴포넌트 구현은 `features`.
 
 ## 규칙
-1. `page.tsx`는 10줄 이내: feature 화면 컴포넌트 1개 렌더.
+1. `page.tsx`는 10줄 이내: feature 화면 컴포넌트 1개를 `@/features/<f>`(index.ts)에서 가져와 렌더.
 2. `'use client'`는 `providers.tsx`, `error.tsx`에만.
-3. `infra`·`repositories`를 import하는 유일한 곳은 `providers.tsx`(조립 지점). 다른 파일은 린트가 막는다.
-4. 라우트 추가는 스펙 + 오케스트레이터 승인(MVP는 `/` 단일 페이지).
-5. 서비스워커 설정(`@serwist/next`)은 `next.config.ts`에, 여기서는 `manifest.ts`만.
-
-의존 방향: `docs/ARCHITECTURE.md` §1 표(위반은 `pnpm lint`가 잡는다).
+3. 라우트 추가는 스펙 + 오케스트레이터 승인(MVP는 `/` 단일 페이지).
+4. 서비스워커 설정(`@serwist/next`)은 `next.config.ts`에, 여기서는 `manifest.ts`만. 아이콘은 `public/`(`src/app`에 이미지 파일 금지).
+5. 출처: `docs/ARCHITECTURE.md` §1·§6, `docs/conventions/code-style.md` §3.
 
 ## 검증
 ```bash
@@ -66,14 +58,11 @@ pnpm build 2>&1 | tail -5
 무상태·도메인 무관 UI 프리미티브(`ui/`): `Button`, `Checkbox`, `IconButton`, `Popover`, `Dialog`, `ColorSwatch`, `ProgressRing` 등.
 
 ## 규칙
-1. props로만 동작. 스토어·레포지토리·도메인 타입 import 금지(도메인을 모르는 컴포넌트) — 린트가 막는다.
-2. 색·간격은 토큰(`src/styles/tokens.css`)만. 카테고리 색은 `--cat-color` CSS 변수를 props로 받아 적용.
-3. 접근성 기본 내장: 포커스 링, `aria-*`, 키보드. 프리미티브가 접근성을 책임지면 feature는 신경 덜 쓴다.
-4. 파일 1개 = 컴포넌트 1개 + 테스트 1개(`Button.test.tsx`, 행동 1~2개).
-5. 세 번째 사용처가 생길 때 여기로 승격. 그 전엔 feature 안에 둔다.
-6. 같은 디렉토리 안은 상대 경로(`./Button`), `@/components/...`로 자기 자신을 부르지 않는다.
-
-의존 방향: `docs/ARCHITECTURE.md` §1 표(위반은 `pnpm lint`가 잡는다).
+1. props로만 동작. 카테고리 색은 `--cat-color` CSS 변수를 props로 받아 적용.
+2. 접근성 기본 내장: 포커스 링, `aria-*`, 키보드. 프리미티브가 접근성을 책임지면 feature는 신경 덜 쓴다.
+3. 파일 1개 = 컴포넌트 1개 + 테스트 1개(`Button.test.tsx`, 행동 1~2개).
+4. 세 번째 사용처가 생길 때 여기로 승격. 그 전엔 feature 안에 둔다.
+5. 출처: `docs/ARCHITECTURE.md` §1, `docs/conventions/code-style.md` §3·§6·§10.
 
 ## 검증
 ```bash
@@ -91,16 +80,10 @@ pnpm test -- src/components --reporter=dot 2>&1 | tail -20
 기능 슬라이스. 각 feature = `components/` + `hooks/` + `store/` + `index.ts`. MVP: `todo`, `category`, `date-strip`, `stats`, `theme`. 화면 조립은 `todo/components/HomeScreen.tsx`.
 
 ## 규칙
-1. 다른 feature는 `@/features/<f>`(index.ts)만 import. 내부 경로 import는 린트가 막는다. 같은 feature 안은 상대 경로(`../store/todo-store`) — `@/features/<self>/...`는 린트 에러.
-2. 스토어는 feature당 1개, Zustand, `getRepositories()` 경유. 컴포넌트에서 레포지토리 직접 호출 금지.
-3. 도메인 계산·엔티티 변경은 `@/domain` 순수 함수를 호출만(스토어/컴포넌트에 계산 로직·`updatedAt`/`rev` 갱신 금지).
-4. 컴포넌트 ≤ 200줄, 스토어 ≤ 300줄. 넘으면 분할.
-5. 낙관적 갱신은 `toggleDone` 등 즉시성 액션에만, 실패 시 롤백 + `error` 상태.
-6. 텍스트는 한국어. 3곳 이상 반복 시 `messages.ts`.
-7. feature 간 통신은 스토어 구독(`useTodoStore`)으로. 이벤트 버스 금지.
-8. 새 feature 디렉토리는 `eslint.config.mjs`가 자동 인식한다(등록 불필요). 디렉토리명은 kebab-case.
-
-의존 방향: `docs/ARCHITECTURE.md` §1 표(위반은 `pnpm lint`가 잡는다).
+1. `index.ts`는 `src/`에서 유일한 배럴 위치. 밖으로 보여줄 것만 명시 export(`HomeScreen`, 스토어 훅). 새 feature 디렉토리는 `eslint.config.mjs`가 자동 인식하지만 `index.ts`가 없으면 `check-arch.sh`가 실패한다.
+2. feature 간 통신은 상대 feature 의 `index.ts`가 export 한 스토어 훅 구독으로. 이벤트 버스 금지.
+3. `src/features/` 직속 파일 금지 — 공용 코드는 `components` 또는 `lib`로.
+4. 출처: `docs/ARCHITECTURE.md` §1, `docs/conventions/code-style.md` §2·§4·§7(같은 feature 안도 `@/features/<f>/…`).
 
 ## 검증
 ```bash
@@ -108,8 +91,8 @@ pnpm test -- src/features/<f> --reporter=dot 2>&1 | tail -20 && pnpm lint
 ```
 
 ## 자주 하는 실수
-- `useEffect`로 스토어 ↔ 로컬 state 동기화 → selector로 직접 구독.
 - 스토어 전체 구독(`useTodoStore()`) → 리렌더 폭증, selector 사용.
+- `repo.upsert({ ...todo, done: true })` → 컴파일 에러. 도메인 함수(`toggleDone`)의 반환값을 저장한다.
 ````
 
 ##### 파일: `/home/user/Tasky/src/domain/AGENTS.md`
@@ -119,19 +102,12 @@ pnpm test -- src/features/<f> --reporter=dot 2>&1 | tail -20 && pnpm lint
 # src/domain/ — AGENTS
 
 ## 목적
-프레임워크 의존 0의 비즈니스 규칙. `todo/`, `category/`, `date/`, `theme/`, `meta.ts`(`Meta` 타입 + `touch`), `errors.ts`.
+외부 패키지 0의 비즈니스 규칙. `todo/`, `category/`, `date/`, `theme/`, `meta.ts`(`Meta`·`Persistable`·`createMeta`/`touch`/`markDeleted`), `errors.ts`. 배럴 없음.
 
 ## 규칙
-1. import·참조 금지: `react`, `next`, `dexie`, `zustand`, 브라우저 전역, `Date`·`crypto`·`Math.random`, 다른 레이어(`lib` 제외). 린트가 막고 disable 주석은 무효다.
-2. 엔티티는 `type` + `create<Entity>(input, deps)`; `deps = { now: () => string, id: () => string }` 주입(테스트 결정성).
-3. 모든 변경 함수는 `touch(entity, deps.now())`로 끝난다 — `updatedAt`·`rev`(+1)는 여기서만 갱신(ADR-0005).
-4. 모든 export 함수에 단위 테스트(같은 디렉토리 `*.test.ts`). 커버리지 100% 목표.
-5. 불변: 입력을 변경하지 않고 새 객체 반환.
-6. 검증 실패는 `DomainError(code, message)` throw. 코드는 `errors.ts`의 union.
-7. 공통 필드 `Meta = { id, createdAt, updatedAt, rev, deletedAt? }` 예외 없음(`Settings` 포함). 삭제는 `deletedAt` 설정 + `touch`.
-8. 날짜는 `DateKey`('YYYY-MM-DD') 문자열. `Date` 객체는 `lib/date.ts`에서만 변환. 시각 필드는 `toISOString()` 형식만 허용.
-
-의존 방향: `docs/ARCHITECTURE.md` §1 표(위반은 `pnpm lint`가 잡는다).
+1. `meta.ts`는 `Persistable`을 만드는 유일한 파일. 다른 도메인 파일도 `Meta` 필드를 직접 쓰지 않고 `touch`/`markDeleted`를 호출한다(린트).
+2. 모든 export 함수에 단위 테스트(같은 디렉토리 `*.test.ts`). 커버리지 100% 목표.
+3. 출처: `docs/conventions/code-style.md` §5, ADR-0005·0007.
 
 ## 검증
 ```bash
@@ -146,17 +122,15 @@ pnpm test -- src/domain --coverage --reporter=dot 2>&1 | tail -20
 # src/repositories/ — AGENTS
 
 ## 목적
-저장소 **계약**(인터페이스)과 테스트용 memory 구현, 런타임 주입 컨테이너(`index.ts`: `getRepositories() / setRepositories()`).
+저장소 **계약**(인터페이스)과 테스트용 memory 구현, 런타임 주입 컨테이너(`container.ts`: `getRepositories() / setRepositories()`).
 
 ## 규칙
-1. 인터페이스 메서드는 `Promise` 반환, 도메인 타입만 사용. Dexie·IndexedDB 타입 노출 금지.
-2. 시그니처 변경 = ADR + memory·indexeddb 구현 동시 수정 + 계약 테스트(`*.contract.test.ts`) 갱신. 한 PR.
-3. 계약 테스트는 구현 팩토리를 인자로 받아 memory/indexeddb 둘 다 실행한다. `Meta`가 저장 전후 동일한지 포함(레포지토리는 시각·`rev`를 만들지 않는다 — ADR-0005).
-4. 목록 조회는 `deletedAt`이 없는 것만 반환(`includeDeleted` 옵션으로 확장 가능). 물리 삭제 메서드 없음.
-5. 컨테이너 기본값 없음: `getRepositories()`는 미설정 시 throw(조립 누락을 조기 발견).
-6. `SettingsRepository.get()`은 행이 없으면 `id: 'default'` 기본 행을 만들어 반환(단일 행 보장).
-
-의존 방향: `docs/ARCHITECTURE.md` §1 표(위반은 `pnpm lint`가 잡는다).
+1. 시그니처 변경 = ADR + memory·indexeddb 구현 동시 수정 + 계약 테스트(`*.contract.test.ts`)·`READS` 목록 갱신. 한 PR.
+2. 계약 테스트는 구현 팩토리를 인자로 받아 memory/indexeddb 둘 다 실행한다.
+3. memory 구현의 조회는 `memory/live.ts` 헬퍼만 거친다(툼스톤 필터 한 곳).
+4. 컨테이너 기본값 없음: `getRepositories()`는 미설정 시 throw(조립 누락을 조기 발견).
+5. `SettingsRepository.get()`은 행이 없으면 `id: 'default'` 기본 행을 만들어 반환(단일 행 보장).
+6. 출처: `docs/conventions/code-style.md` §5·§11, ADR-0007.
 
 ## 검증
 ```bash
@@ -176,12 +150,9 @@ pnpm test -- src/repositories --reporter=dot 2>&1 | tail -20
 ## 규칙
 1. 스키마는 `indexeddb/db.ts` 한 곳. 변경은 `version(n+1).stores({...}).upgrade(...)` 추가로만(기존 버전 수정 금지) + ADR + 마이그레이션 테스트(fake-indexeddb로 n → n+1). 비인덱스 필드 추가는 버전업 불필요.
 2. DB 이름 `tasky`. 테이블: `todos`, `categories`, `settings`. 인덱스는 `docs/ARCHITECTURE.md` §4.
-3. 각 구현은 계약 테스트를 통과해야 한다(`repositories/*.contract.test.ts` 재사용).
-4. 역직렬화 경계에서만 `as` 허용 + 주석. 스키마 불일치 시 `RepositoryError`.
-5. `infra`를 import하는 비테스트 파일은 `src/app/providers.tsx`, `src/test/setup.ts`뿐 — 린트가 막는다.
-6. 트랜잭션은 다중 테이블 쓰기에만 명시적으로.
-
-의존 방향: `docs/ARCHITECTURE.md` §1 표(위반은 `pnpm lint`가 잡는다).
+3. `db.ts`를 import하는 파일은 `indexeddb/query.ts`뿐(린트). 레포지토리 구현은 `query.ts`의 `liveAll/liveOne/put`만 쓴다 — 툼스톤 필터와 역직렬화 `as`가 그 한 곳에 있다.
+4. 각 구현은 계약 테스트를 통과해야 한다(`repositories/*.contract.test.ts` 재사용). 트랜잭션은 다중 테이블 쓰기에만.
+5. 출처: `docs/ARCHITECTURE.md` §1·§6, ADR-0002·0007.
 
 ## 검증
 ```bash
@@ -199,12 +170,9 @@ pnpm test -- src/infra --reporter=dot 2>&1 | tail -20
 프레임워크·도메인 무관 순수 유틸. `cn.ts`(clsx+tailwind-merge), `date.ts`(DateKey ↔ Date, 주 계산, `nowIso()`), `id.ts`(`newId()` = `crypto.randomUUID()` 래퍼).
 
 ## 규칙
-1. 추가 전 `Grep`으로 중복 확인. 함수 1개당 테스트 1개.
-2. 도메인 타입 import 금지(도메인이 lib를 쓰지, 반대는 안 됨) — 린트가 막는다. `DateKey`만 예외적으로 `date.ts`가 정의하고 domain이 재export.
-3. 외부 패키지·플랫폼 API 래핑은 여기서만(교체 지점). 시간·ID 생성 함수는 `deps`로 도메인에 주입된다(도메인이 직접 부르지 않는다).
-4. 파일 ≤ 150줄.
-
-의존 방향: `docs/ARCHITECTURE.md` §1 표(위반은 `pnpm lint`가 잡는다).
+1. 추가 전 `Grep`으로 중복 확인. 함수 1개당 테스트 1개. 파일 ≤ 150줄.
+2. `DateKey`는 `date.ts`가 정의하고 domain이 재export. 시간·ID 생성 함수는 `deps`로 도메인에 주입된다.
+3. 출처: `docs/ARCHITECTURE.md` §1(허용 패키지 `clsx`, `tailwind-merge`).
 
 ## 검증
 ```bash
@@ -219,14 +187,13 @@ pnpm test -- src/lib --reporter=dot 2>&1 | tail -20
 # src/styles/ — AGENTS
 
 ## 목적
-디자인 토큰(`tokens.css`)과 전역 스타일(`globals.css`). 감성 앱의 "룩"은 여기서 결정된다.
+디자인 토큰(`tokens.css`)과 전역 스타일(`globals.css`). `.css`만 둔다(코드 파일은 린트 에러).
 
 ## 규칙
 1. 토큰 이름: `--color-{bg|surface|text|muted|accent|border}`, `--space-{1..8}`, `--radius-{sm|md|lg|full}`, `--z-{base|popover|modal|toast}`, `--shadow-{sm|md}`.
 2. 테마: `:root[data-theme="light"]`, `:root[data-theme="dark"]` 에서 같은 토큰 재정의. 강조색은 `--color-accent`(사용자 선택, 스토어가 inline style로 주입).
-3. Tailwind v4 `@theme`에 토큰을 등록해 `bg-bg`, `text-muted` 등 유틸로 사용. 컴포넌트에서 hex 금지.
-4. 폰트는 `layout.tsx`의 `next/font`로 로드, 여기서는 `--font-sans` 변수만 참조.
-5. 토큰 추가/변경은 스크린샷(라이트/다크) 첨부.
+3. Tailwind v4 `@theme`에 토큰을 등록해 `bg-bg`, `text-muted` 등 유틸로 사용. 폰트는 `layout.tsx`의 `next/font`, 여기서는 `--font-sans`만 참조.
+4. 토큰 추가/변경은 스크린샷(라이트/다크) 첨부.
 
 ## 검증
 ```bash
@@ -244,11 +211,9 @@ pnpm build 2>&1 | tail -5
 Vitest 셋업(`setup.ts`: jsdom, `fake-indexeddb/auto`, `setRepositories(memory)`)과 픽스처 팩토리(`fixtures/todo.ts` 등 `makeTodo(overrides)`).
 
 ## 규칙
-1. 픽스처는 팩토리 함수만(정적 JSON 금지). 기본값은 결정적(고정 날짜 `2026-01-15`, 고정 id 접두, `rev: 1`, `createdAt = updatedAt = '2026-01-15T00:00:00.000Z'`).
-2. 시간·ID는 `deps` 주입으로 고정. `vi.useFakeTimers()`는 애니메이션 테스트에만.
-3. 각 테스트는 독립: `beforeEach`에서 memory 레포지토리 초기화.
-4. 스냅샷 금지. `getByRole` 우선.
-5. 이 디렉토리와 `*.test.*`는 레이어 경계 린트에서 제외된다. 반대로 비테스트 코드는 여기를 import할 수 없다(린트).
+1. 픽스처는 팩토리 함수만(정적 JSON 금지). 기본값은 결정적(고정 날짜 `2026-01-15`, 고정 id 접두, `rev: 1`, `createdAt = updatedAt = '2026-01-15T00:00:00.000Z'`). `Persistable`이 필요하면 `touch(...)`로 만든다(`as Persistable` 금지는 여기서도 적용).
+2. 각 테스트는 독립: `beforeEach`에서 memory 레포지토리 초기화. `vi.useFakeTimers()`는 애니메이션 테스트에만.
+3. 출처: `docs/conventions/code-style.md` §11.
 
 ## 검증
 ```bash
@@ -267,9 +232,8 @@ Playwright E2E(`tests/e2e/`). 스모크 1개(앱 로드 → 카테고리 추가 
 
 ## 규칙
 1. 셀렉터는 `getByRole`/`getByLabel`. `data-testid`는 최후 수단.
-2. 각 테스트는 새 브라우저 컨텍스트(IndexedDB 격리).
-3. CI에서는 chromium만. 로컬은 `pnpm test:e2e --headed`.
-4. 실패 시 트레이스 첨부(`--trace on-first-retry`).
+2. 각 테스트는 새 브라우저 컨텍스트(IndexedDB 격리). CI에서는 chromium만, 로컬은 `pnpm test:e2e --headed`.
+3. 실패 시 트레이스 첨부(`--trace on-first-retry`).
 
 ## 검증
 ```bash

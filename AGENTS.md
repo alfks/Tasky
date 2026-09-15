@@ -45,7 +45,7 @@ CLAUDE.md의 규칙은 여기서 반복하지 않는다. 이 문서는 **역할�
 ## 4. 병렬 작업 충돌 회피 (파일 소유권 락)
 
 - **락의 단위는 파일 경로**, 선언 위치는 티켓의 `owns:`. BOARD.md의 `owns` 열이 현재 락 현황.
-- 동시 진행 티켓의 `owns:`는 **서로소**여야 한다. 공용 파일(`package.json`, `src/styles/tokens.css`, `src/repositories/index.ts` 등)은 **한 번에 한 티켓만** 소유.
+- 동시 진행 티켓의 `owns:`는 **서로소**여야 한다. 공용 파일(`package.json`, `src/styles/tokens.css`, `src/repositories/container.ts` 등)은 **한 번에 한 티켓만** 소유.
 - **교집합 검사 책임: 오케스트레이터.** 티켓 발행 전 BOARD.md의 `in-progress`/`in-review`/`needs-fix` 행 `owns` 열과 신규 티켓 `owns:`를 대조(절차: agent-collaboration.md §1.1). 이 검사는 기계적으로 강제되지 않는다 — 티켓 파일이 `.gitignore` 대상이라 CI가 볼 수 없기 때문(더 강한 CI 강제를 넣지 않은 이유: 지금 단계에선 리뷰 시점 diff 대조로 충분하고, 별도 스크립트·CI 스텝 추가는 과설계로 판단).
 - 락 규칙 위반(= `owns:` 밖 파일 변경)은 리뷰에서 자동 Blocker. **검증 방법**: PR 본문 `## owns` 블록(티켓의 `owns:`를 그대로 복사)과 `git diff --name-only main...HEAD`를 리뷰어가 대조 — 초과 파일이 있으면 Blocker.
 - 새 디렉토리 생성은 그 디렉토리 전체(`src/features/todo/**`)를 owns로 선언 가능. 기존 디렉토리는 파일 단위.

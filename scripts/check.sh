@@ -26,17 +26,23 @@ step_arch()            { if has_pnpm; then bash scripts/check-arch.sh; else skip
 step_lint()            { if has_pnpm; then pnpm lint; else skip_pnpm; fi; }
 step_typecheck()       { if has_pnpm; then pnpm typecheck; else skip_pnpm; fi; }
 step_test()            { if has_pnpm; then pnpm test -- --reporter=dot; else skip_pnpm; fi; }
+step_format()          { if has_pnpm; then pnpm format:check; else skip_pnpm; fi; }
 step_wt()              { bash scripts/test-wt.sh; }
 # package.json 이 생기고 나면(스캐폴딩 후) 위 4개(step_arch/lint/typecheck/test)를 "pnpm check"
 # 하나로 위임하는 편이 스크립트-package.json 중복을 줄인다. 지금은 package.json 자체가 없어
 # 그 스크립트가 존재하지 않으므로, 개별 pnpm 명령을 직접 호출하는 현재 형태를 유지한다.
 
 case "${1:-}" in
-  forbidden-words|agents-md|eslint-disable|author|arch|lint|typecheck|test|wt)
+  forbidden-words|agents-md|eslint-disable|author|arch|lint|typecheck|test|format|wt)
     step="$1"; shift
     "step_${step//-/_}" "$@"
     exit $?
     ;;
+esac
+
+MODE=""
+case "${1:-}" in
+  --guard|--build) MODE="$1"; shift;;
 esac
 
 BASE="${1:-main}"
@@ -56,15 +62,29 @@ run_step() { # $1 라벨, 나머지는 명령
   echo
 }
 
-run_step "금지어 검사"              step_forbidden_words
-run_step "AGENTS.md 구조 검사"       step_agents_md
-run_step "eslint-disable 정책 검사"  step_eslint_disable
-run_step "author/커밋 메시지 검사 ($BASE)" step_author "$BASE"
-run_step "wt.sh 스모크 테스트"       step_wt
-run_step "레이어 경계 린트 검증"      step_arch
-run_step "pnpm lint"                step_lint
-run_step "pnpm typecheck"           step_typecheck
-run_step "pnpm test"                step_test
+run_guard() {
+  run_step "금지어 검사"              step_forbidden_words
+  run_step "AGENTS.md 구조 검사"       step_agents_md
+  run_step "eslint-disable 정책 검사"  step_eslint_disable
+  run_step "author/커밋 메시지 검사 ($BASE)" step_author "$BASE"
+}
+run_build() {
+  run_step "레이어 경계 린트 검증"      step_arch
+  run_step "pnpm lint"                step_lint
+  run_step "pnpm typecheck"           step_typecheck
+  run_step "pnpm format:check"        step_format
+  run_step "pnpm test"                step_test
+}
+
+case "$MODE" in
+  --guard) run_guard ;;
+  --build) run_build ;;
+  *)
+    run_guard
+    run_step "wt.sh 스모크 테스트"       step_wt
+    run_build
+    ;;
+esac
 
 echo "=================================="
 echo "요약: 통과 $pass / 실패 $fail_count"
@@ -73,5 +93,6 @@ if [ "$fail_count" -eq 0 ]; then
   exit 0
 else
   echo "FAIL: 위 실패 항목을 고친 뒤 다시 실행하세요"
+  echo "src/**/__arch__ 잔여물이 보이면 rm -rf src/**/__arch__ (check-arch.sh 비정상 종료 흔적)"
   exit 1
 fi

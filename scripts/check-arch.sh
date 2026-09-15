@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # 읽기 조건: 이 검사가 실패했을 때, 또는 레이어 경계(eslint.config.mjs)를 바꿀 때 — 경계 하나 = 아래 케이스 하나.
-# 규칙: 레이어 경계 린트가 "실제로 위반을 잡는지"를 일부러 위반하는 임시 파일로 확인한다(린트 규칙의 테스트).
+# 규칙: 레이어 경계 린트가 "실제로 위반을 잡는지"(부정 케이스)와 "허용해야 할 것을 허용하는지"(긍정 케이스)를
+#       임시 파일로 확인한다(린트 규칙의 테스트). 그 전에 src/** 전수 분류(모든 트래킹 파일이 정확히 한 레이어)와
+#       확장자 목록(SRC_EXT)을 검사한다 — 목록의 단일 소스는 scripts/arch-layers.mjs.
 #       임시 파일은 src/<layer>/__arch__/ 에 만들었다가 trap 으로 반드시 지운다. 잔여물은 .gitignore(커밋 불가)와
 #       eslint.config.mjs 의 ignores(pnpm lint 무해)가 막고, 여기서는 --no-ignore 로 그 ignores 를 뚫고 검사한다.
+#       비정상 종료로 남았으면: rm -rf src/**/__arch__
 # 사용법: bash scripts/check-arch.sh   (package.json 이 없으면 SKIP)
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -13,7 +16,41 @@ if [ ! -f package.json ] || [ ! -x "$ESLINT" ]; then
   exit 0
 fi
 
-# feature 디렉토리 2개(서로 다른 feature 간 규칙을 검사하기 위해)
+# --- 0. 레이어·예외 파일·확장자 목록을 scripts/arch-layers.mjs 에서 읽는다(단일 소스) ---
+lists="$(node --input-type=module -e '
+import { pathToFileURL } from "node:url";
+const m = await import(pathToFileURL(process.argv[1]).href);
+console.log([m.LAYERS.join(" "), m.SRC_ROOT_FILES.join(" "), m.SRC_EXT.join(" ")].join("\n"));
+' "$PWD/scripts/arch-layers.mjs")" || { echo "FAIL: scripts/arch-layers.mjs 를 읽지 못했습니다."; exit 1; }
+LAYERS="$(printf '%s\n' "$lists" | sed -n 1p)"
+ROOT_FILES="$(printf '%s\n' "$lists" | sed -n 2p)"
+SRC_EXT="$(printf '%s\n' "$lists" | sed -n 3p)"
+
+# --- 1. 전수 분류: src/ 의 모든 트래킹 파일은 LAYERS 중 하나 아래에 있거나 ROOT_FILES 다. 확장자는 SRC_EXT 안 ---
+bad=0
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  rel="${f#src/}"
+  top="${rel%%/*}"
+  ext="${f##*.}"
+  if [ "$top" = "$rel" ]; then # src/ 직속 파일
+    case " $ROOT_FILES " in *" $rel "*) ;; *) echo "FAIL: $f — src/ 직속 파일은 ${ROOT_FILES// /, } 만 허용. 레이어 디렉토리로 옮기세요."; bad=1 ;; esac
+  else
+    case " $LAYERS " in *" $top "*) ;; *) echo "FAIL: $f — 'src/$top' 은 레이어가 아닙니다(LAYERS: $LAYERS). 새 레이어는 ADR + eslint.config.mjs LAYERS/ALLOW."; bad=1 ;; esac
+  fi
+  case " $SRC_EXT " in *" $ext "*) ;; *) echo "FAIL: $f — src/ 에 허용되지 않는 확장자 '.$ext'(허용: $SRC_EXT). .js/.jsx 는 .ts/.tsx 로."; bad=1 ;; esac
+done <<EOF
+$(git ls-files src)
+EOF
+for f in src/features/*/; do
+  [ -d "$f" ] || continue
+  case "$(basename "$f")" in __*) continue ;; esac
+  [ -f "$f/index.ts" ] || { echo "FAIL: $f 에 index.ts(공개 API 배럴)가 없습니다."; bad=1; }
+done
+[ "$bad" -eq 0 ] || { echo "FAIL: src/** 전수 분류 실패 — 위 파일을 옮기거나 ADR 로 레이어를 추가하세요."; exit 1; }
+echo "PASS: src/** 전수 분류(레이어 $(git ls-files src | wc -l | tr -d ' ')개 파일, 확장자 $SRC_EXT)"
+
+# --- 2. 린트 픽스처 ---
 features=""
 for d in src/features/*/; do
   [ -d "$d" ] || continue
@@ -22,48 +59,100 @@ for d in src/features/*/; do
   features="$features $b"
 done
 set -- $features
-if [ "$#" -lt 2 ]; then
-  echo "FAIL: src/features 에 feature 디렉토리가 2개 이상 있어야 합니다(현재 $#개). 스캐폴딩 티켓은 MVP feature 5개 디렉토리를 만든다."
-  exit 1
-fi
-FA="$1"; FB="$2"
+[ "$#" -ge 1 ] || { echo "FAIL: src/features 에 feature 디렉토리가 없습니다(스캐폴딩 완료 조건 1)."; exit 1; }
+FA="$1"; FB="${2:-}"
+[ -n "$FB" ] || echo "WARN: feature 가 1개뿐 — 교차 feature 케이스 3건은 건너뜁니다."
 
-DIRS="src/domain src/repositories src/infra src/components src/lib src/app src/test src/features/$FA src/features/$FB"
+DIRS="src src/domain src/repositories src/infra src/components src/lib src/app src/test src/styles src/features src/features/$FA"
+[ -n "$FB" ] && DIRS="$DIRS src/features/$FB"
 cleanup() { for d in $DIRS; do rm -rf "$d/__arch__"; done; }
 trap cleanup EXIT
 for d in $DIRS; do
   rm -rf "$d/__arch__"; mkdir -p "$d/__arch__"
-  printf '// 아키텍처 검사 임시 파일 — scripts/check-arch.sh 가 만들고 지운다. 남아 있으면 rm -rf src/**/__arch__\nexport const a = 1;\n' > "$d/__arch__/index.ts"
+  printf '// 아키텍처 검사 임시 파일 — scripts/check-arch.sh 가 만들고 지운다. 남아 있으면 rm -rf src/**/__arch__\nexport const a = 1;\n' > "$d/__arch__/a.ts"
 done
+# 경유지(2홉 세탁) 후보: 금지된 곳(infra)을 재export 하는 파일을 여러 위치에 둔다. 세탁이 막히는 방식은 둘 중 하나 —
+# importer 가 경유지를 import 하지 못하거나(허용 목록 밖), 경유지 파일 자체가 자기 레이어 규칙에 걸린다(전수 분류).
+LAUNDER='export { a } from "@/infra/__arch__/a";'
+for d in src src/styles src/test src/lib; do printf '%s\n' "$LAUNDER" > "$d/__arch__/launder.ts"; done
+printf '%s\n' "$LAUNDER" > "src/features/$FA/__arch__/launder.test.ts"
 
-CASES=""
-FILES=""
-add() { # $1 파일  $2 기대 ruleId  $3 본문
+CASES=""; FILES=""
+add() { # $1 파일  $2 기대 ruleId('-' = 위반 0건이어야 함)  $3 본문
   printf '%s\n' "$3" > "$1"
   CASES="$CASES $1|$2"
   FILES="$FILES $1"
 }
 FT="src/features/$FA/__arch__"
-# (a) 상대 경로 우회 · (b) 배럴/디렉토리 import 우회 — 둘 다 해석된 경로 기준으로 잡혀야 한다
-add "$FT/rel.ts"       import/no-restricted-paths "import { a } from '../../../infra/__arch__'; export const x = a;"
-add "$FT/barrel.ts"    import/no-restricted-paths "import { a } from '@/infra/__arch__'; export const x = a;"
-add "$FT/app.ts"       import/no-restricted-paths "import { a } from '@/app/__arch__'; export const x = a;"
-add "$FT/test.ts"      import/no-restricted-paths "import { a } from '@/test/__arch__'; export const x = a;"
-add "$FT/other.ts"     import/no-restricted-paths "import { a } from '@/features/$FB/__arch__'; export const x = a;"
-add "$FT/self.ts"      no-restricted-imports      "import { a } from '@/features/$FA/__arch__'; export const x = a;"
-add "$FT/depth.ts"     no-restricted-imports      "import { a } from '../../../lib/__arch__'; export const x = a;"
+I='import { a } from'
+# (a) 직접 위반 — 허용 목록 밖 레이어
+add "$FT/infra.ts"     import/no-restricted-paths "$I '@/infra/__arch__/a'; export const x = a;"
+add "$FT/app.ts"       import/no-restricted-paths "$I '@/app/__arch__/a'; export const x = a;"
+add "$FT/test.ts"      import/no-restricted-paths "$I '@/test/__arch__/a'; export const x = a;"
+add src/domain/__arch__/repo.ts        import/no-restricted-paths "$I '@/repositories/__arch__/a'; export const x = a;"
+add src/repositories/__arch__/infra.ts import/no-restricted-paths "$I '@/infra/__arch__/a'; export const x = a;"
+add src/infra/__arch__/feature.ts      import/no-restricted-paths "$I '@/features/$FA/__arch__/a'; export const x = a;"
+add src/components/__arch__/domain.ts  import/no-restricted-paths "$I '@/domain/__arch__/a'; export const x = a;"
+add src/lib/__arch__/domain.ts         import/no-restricted-paths "$I '@/domain/__arch__/a'; export const x = a;"
+add src/app/__arch__/repo.ts           import/no-restricted-paths "$I '@/repositories/__arch__/a'; export const x = a;"
+add src/app/__arch__/infra.ts          import/no-restricted-paths "$I '@/infra/__arch__/a'; export const x = a;"
+add src/app/__arch__/domain.ts         import/no-restricted-paths "$I '@/domain/__arch__/a'; export const x = a;"
+# (b) 경유지 2홉 — 열거되지 않은 위치를 거쳐도 막힌다(라운드 2 Blocker 재현). importer 또는 경유지 중 최소 한쪽이 에러
+add src/domain/__arch__/via-root.ts    import/no-restricted-paths "$I '@/__arch__/launder'; export const x = a;"   # importer: src 직속은 허용 목록 밖
+add src/__arch__/launder.ts            no-restricted-syntax       "$LAUNDER"                                          # 경유지: 미분류 파일
+add "$FT/via-styles.ts"                -                          "$I '@/styles/__arch__/launder'; export const x = a;" # importer 는 합법(styles 허용) —
+add src/styles/__arch__/launder.ts     no-restricted-syntax       "$LAUNDER"                                          # 경유지: styles 에 코드 금지
+add src/domain/__arch__/via-lib.ts     -                          "$I '@/lib/__arch__/launder'; export const x = a;"    # importer 는 합법(lib 허용) —
+add src/lib/__arch__/launder.ts        import/no-restricted-paths "$LAUNDER"                                          # 경유지: lib 은 src 내부 import 금지
+add "$FT/via-test.ts"                  no-restricted-imports      "$I '@/features/$FA/__arch__/launder.test'; export const x = a;" # importer: 테스트 파일 import 금지
+add src/test/__arch__/launder.ts       -                          "$LAUNDER"                                          # 경유지 test 는 합법이지만 —
+add "$FT/via-testdir.ts"               import/no-restricted-paths "$I '@/test/__arch__/launder'; export const x = a;"  # importer: test 는 허용 목록 밖
+# (c) 표기 우회 — 상대 경로·require·동적 import
+add "$FT/rel.ts"       no-restricted-imports      "$I '../../../infra/__arch__/a'; export const x = a;"
+add "$FT/rel1.ts"      no-restricted-imports      "$I './a'; export const x = a;"
+add "$FT/req.ts"       no-restricted-syntax       "export const x = require('@/infra/__arch__/a');"
+add "$FT/dyn.ts"       import/no-restricted-paths "export const x = import('@/infra/__arch__/a');"
+# (d) 미분류 파일·잘못된 확장자·배럴 위치 — 파일 자체가 에러
+add src/__arch__/stray.ts              no-restricted-syntax       "export const x = 1;"
+add src/features/__arch__/stray.ts     no-restricted-syntax       "export const x = 1;"
+add src/styles/__arch__/code.ts        no-restricted-syntax       "export const x = 1;"
+add "$FT/ext.js"                       no-restricted-syntax       "$I '@/infra/__arch__/a'; export const x = a;"
+add "$FT/ext.jsx"                      no-restricted-syntax       "$I '@/infra/__arch__/a'; export const x = a;"
+add "$FT/ext.mts"                      no-restricted-syntax       "$I '@/infra/__arch__/a'; export const x = a;"
+add src/domain/__arch__/index.ts       no-restricted-syntax       "export { a } from '@/domain/__arch__/a';"
+add "$FT/star.ts"                      no-restricted-syntax       "export * from '@/domain/__arch__/a';"
+# (e) 배럴·자기참조·패키지·도메인 결정성·Meta 쓰기
+add "$FT/self-barrel.ts" no-restricted-imports    "$I '@/features/$FA'; export const x = a;"
 add "$FT/dexie.ts"     no-restricted-imports      "import Dexie from 'dexie'; export const x = Dexie;"
-add "$FT/unres.ts"     import/no-unresolved       "import { a } from '@/nope/__arch__'; export const x = a;"
-add src/domain/__arch__/repo.ts        import/no-restricted-paths "import { a } from '@/repositories/__arch__'; export const x = a;"
+add "$FT/rev.ts"       no-restricted-syntax       "export const t = { rev: 2 };"
+add "$FT/updated.ts"   no-restricted-syntax       "export const t = { updatedAt: 'x' };"
+add "$FT/deleted.ts"   no-restricted-syntax       "export const t = { deletedAt: 'x' };"
+add "$FT/assign.ts"    no-restricted-syntax       "export const f = (t: { rev: number }) => { t.rev = 1; return t; };"
+add "$FT/cast.ts"      no-restricted-syntax       "type Persistable<T> = T & { __b: true }; export const f = (t: object) => t as Persistable<object>;"
+add "$FT/ok-read.ts"   -                          "export const f = (t: { rev: number; updatedAt: string }) => { const { rev } = t; return rev + t.updatedAt.length; };"
 add src/domain/__arch__/react.ts       no-restricted-imports      "import { useState } from 'react'; export const x = useState;"
 add src/domain/__arch__/clock.ts       no-restricted-syntax       "export const n = Date.now();"
 add src/domain/__arch__/win.ts         no-restricted-globals      "export const w = window;"
-add src/repositories/__arch__/infra.ts import/no-restricted-paths "import { a } from '@/infra/__arch__'; export const x = a;"
-add src/infra/__arch__/feature.ts      import/no-restricted-paths "import { a } from '@/features/$FA/__arch__'; export const x = a;"
-add src/components/__arch__/domain.ts  import/no-restricted-paths "import { a } from '@/domain/__arch__'; export const x = a;"
-add src/lib/__arch__/domain.ts         import/no-restricted-paths "import { a } from '@/domain/__arch__'; export const x = a;"
-add src/app/__arch__/repo.ts           import/no-restricted-paths "import { a } from '@/repositories/__arch__'; export const x = a;"
-add src/app/__arch__/infra.ts          import/no-restricted-paths "import { a } from '@/infra/__arch__'; export const x = a;"
+add src/lib/__arch__/pkg.ts            no-restricted-imports      "import { z } from 'zustand'; export const x = z;"
+add src/infra/__arch__/db.ts           no-restricted-imports      "import { db } from '@/infra/indexeddb/db'; export const x = db;"
+add "$FT/unres.ts"     import/no-unresolved       "$I '@/nope/__arch__/a'; export const x = a;"
+if [ -n "$FB" ]; then
+  add "$FT/other-internal.ts" import/no-restricted-paths "$I '@/features/$FB/__arch__/a'; export const x = a;"
+  add src/app/__arch__/feat-internal.ts import/no-restricted-paths "$I '@/features/$FA/__arch__/a'; export const x = a;"
+fi
+# (f) 긍정 케이스 — 허용돼야 하는 것이 허용된다(except 설정이 깨지면 여기서 잡힌다)
+add "$FT/ok-self-deep.ts"  - "$I '@/features/$FA/__arch__/a'; export const x = a;"
+add "$FT/ok-domain.ts"     - "$I '@/domain/__arch__/a'; export const x = a;"
+add "$FT/ok-repo.ts"       - "$I '@/repositories/__arch__/a'; export const x = a;"
+add "$FT/ok-components.ts" - "$I '@/components/__arch__/a'; export const x = a;"
+add src/app/__arch__/ok-feature.ts   - "$I '@/features/$FA'; export const x = a;"
+add src/app/__arch__/ok-components.ts - "$I '@/components/__arch__/a'; export const x = a;"
+add src/domain/__arch__/ok-lib.ts    - "$I '@/lib/__arch__/a'; export const x = a;"
+add src/infra/__arch__/ok-repo.ts    - "$I '@/repositories/__arch__/a'; export const x = a;"
+add src/infra/__arch__/ok-dexie.ts   - "import Dexie from 'dexie'; export const x = Dexie;"
+add src/test/__arch__/ok-infra.ts    - "$I '@/infra/__arch__/a'; export const x = a;"
+add "$FT/ok.test.ts"       - "$I '@/infra/__arch__/a'; export const x = a;"
+[ -n "$FB" ] && add "$FT/ok-other.ts" - "$I '@/features/$FB'; export const x = a;"
 
 json="$(mktemp)"
 trap 'cleanup; rm -f "$json"' EXIT
@@ -74,23 +163,27 @@ const fs = require("fs"), path = require("path");
 const [jsonPath, ...cases] = process.argv.slice(1);
 let results;
 try { results = JSON.parse(fs.readFileSync(jsonPath, "utf8")); } catch { console.log("FAIL: eslint JSON 출력을 읽지 못했습니다(설정 오류?). 직접 실행: ./node_modules/.bin/eslint --no-ignore src/domain/__arch__"); process.exit(1); }
-const byFile = new Map(results.map((r) => [path.relative(process.cwd(), r.filePath), r.messages.map((m) => m.ruleId)]));
-let fail = 0;
+const byFile = new Map(results.map((r) => [path.relative(process.cwd(), r.filePath), r.messages.filter((m) => m.severity === 2).map((m) => m.ruleId || "(fatal)")]));
+let fail = 0, n = 0;
 for (const c of cases) {
   const [file, rule] = c.split("|");
   const got = byFile.get(file) || [];
-  const ok = got.includes(rule);
-  if (!ok) fail = 1;
-  console.log(`${ok ? "PASS" : "FAIL"}: ${file} → ${rule}${ok ? "" : ` (실제: ${got.filter(Boolean).join(", ") || "보고 없음"})`}`);
+  const ok = rule === "-" ? got.length === 0 : got.includes(rule);
+  if (!ok) fail = 1; n++;
+  console.log(`${ok ? "PASS" : "FAIL"}: ${file} → ${rule === "-" ? "허용" : rule}${ok ? "" : ` (실제: ${got.join(", ") || "보고 없음"})`}`);
 }
-if (fail) { console.log("FAIL: 레이어 경계 린트가 위 위반을 잡지 못합니다 — eslint.config.mjs 의 해당 레이어 블록을 확인하세요."); process.exit(1); }
+console.log(`픽스처 ${n}건`);
+if (fail) { console.log("FAIL: 레이어 경계 린트가 위와 다르게 판정합니다 — eslint.config.mjs 의 해당 레이어 블록을 확인하세요."); process.exit(1); }
 ' "$json" $CASES
 
-# (c) eslint-disable 우회 — 린트가 아니라 check-eslint-disable.sh 가 잡아야 한다
-printf '%s\n' "// eslint-disable-next-line import/no-restricted-paths" "import { a } from '@/infra/__arch__'; export const x = a;" > "$FT/disable.ts"
-if bash scripts/check-eslint-disable.sh "$FT/disable.ts" >/dev/null 2>&1; then
-  echo "FAIL: check-eslint-disable.sh 가 'eslint-disable-next-line import/no-restricted-paths' 를 통과시켰습니다."
-  exit 1
-fi
-echo "PASS: $FT/disable.ts → check-eslint-disable.sh 가 거부"
+# (g) eslint-disable 우회 — 린트가 아니라 check-eslint-disable.sh 가 잡아야 한다(일반 공백 + NBSP 구분자)
+printf '%s\n' "// eslint-disable-next-line import/no-restricted-paths" "$I '@/infra/__arch__/a'; export const x = a;" > "$FT/disable.ts"
+printf '// eslint-disable-next-line\xc2\xa0import/no-restricted-paths -- x\n%s\n' "$I '@/infra/__arch__/a'; export const x = a;" > "$FT/disable-nbsp.ts"
+for f in "$FT/disable.ts" "$FT/disable-nbsp.ts"; do
+  if bash scripts/check-eslint-disable.sh "$f" >/dev/null 2>&1; then
+    echo "FAIL: check-eslint-disable.sh 가 $f 의 'eslint-disable-next-line import/no-restricted-paths' 를 통과시켰습니다."
+    exit 1
+  fi
+  echo "PASS: $f → check-eslint-disable.sh 가 거부"
+done
 echo "OK: 레이어 경계 린트 검증 통과"

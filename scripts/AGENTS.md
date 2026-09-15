@@ -17,9 +17,10 @@
 | `check-agents-md.sh` | 트래킹 파일이 있는 모든 디렉토리마다 `AGENTS.md` 존재(상위의 `관할:` 선언 시 면제)·60줄 이하 검사 | CI, 수동 |
 | `check-eslint-disable.sh [file…]` | `src/` 의 `eslint-disable` 정책(규칙명 없음·아키텍처 규칙·사유 없음·인라인 설정 금지). 규칙 목록의 단일 소스 | pre-commit 아님, CI guard, `check.sh`, `check-arch.sh` |
 | `check-arch.sh` | 레이어 경계 린트가 위반을 실제로 잡는지 임시 픽스처(`src/**/__arch__/`)로 검증. `package.json` 없으면 SKIP | CI build, `check.sh`, `pnpm check:arch` |
+| `arch-layers.mjs` | 레이어·허용 목록·`src/` 직속 파일·확장자의 단일 소스(데이터만, 로직 없음). `eslint.config.mjs`와 `check-arch.sh`가 import | `pnpm lint`, `check-arch.sh` |
 
 ## 규칙
-1. POSIX sh 호환 bash(`#!/usr/bin/env bash`, `set -euo pipefail`). macOS/Linux 둘 다 동작(GNU 전용 옵션 금지: `grep -P`, `sed -i ''` 차이 주의).
+1. POSIX sh 호환 bash(`#!/usr/bin/env bash`, `set -euo pipefail`). macOS/Linux 둘 다 동작(GNU 전용 옵션 금지: `grep -P`, `sed -i ''` 차이 주의). `*.mjs`는 데이터 모듈만(로직은 셸).
 2. 성공 시 조용히(마지막 한 줄 OK), 실패 시 **원인 + 고치는 명령**을 출력하고 exit 1.
 3. 금지어 패턴은 절대 리터럴로 쓰지 않는다. 조각 변수 조립 방식 유지.
 4. 외부 도구 의존 최소화(`git`, `grep`, `awk`, `sed`만). `jq`, `yq`, `flock` 필요하면 없을 때의 대체 경로 제공(`wt.sh`의 BOARD 락은 `flock` 없으면 `mkdir` 스핀락으로 대체).

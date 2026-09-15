@@ -38,14 +38,8 @@ jobs:
           chmod +x scripts/*.sh || true
           find .githooks -maxdepth 1 -type f ! -name '*.md' -exec chmod +x {} + || true
 
-      - name: 금지어 검사 (레포 전체 — 파일명 + 본문)
-        run: bash scripts/check.sh forbidden-words
-
-      - name: AGENTS.md 구조 검사 (필수 디렉토리 · 60줄 · 읽기 조건 · CLAUDE.md 250줄)
-        run: bash scripts/check.sh agents-md
-
-      - name: eslint-disable 정책 검사 (src/ — 아키텍처 규칙 우회 금지)
-        run: bash scripts/check.sh eslint-disable
+      - name: guard 검사 (금지어 · AGENTS.md 구조 · eslint-disable 정책 · author/트레일러)
+        run: bash scripts/check.sh --guard "${{ github.base_ref || 'main' }}"
 
       - name: wt.sh 스모크 테스트 (/tmp 샌드박스 — 원본 레포는 건드리지 않음)
         run: bash scripts/check.sh wt
@@ -60,12 +54,6 @@ jobs:
             exit 1
           fi
           echo "OK branch: $HEAD_REF"
-
-      - name: 커밋 author · 트레일러 검증 (PR의 모든 커밋)
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: bash scripts/check.sh author "$BASE_REF"
 
       - name: PR 제목 형식 검사 (squash 커밋 제목이 됨)
         if: github.event_name == 'pull_request'
@@ -119,25 +107,9 @@ jobs:
         if: steps.pkg.outputs.present == 'true'
         run: pnpm install --frozen-lockfile
 
-      - name: lint
+      - name: build 검사 (lint · 레이어 경계 린트 · typecheck · format:check · test)
         if: steps.pkg.outputs.present == 'true'
-        run: bash scripts/check.sh lint
-
-      - name: 레이어 경계 린트 검증 (위반 픽스처가 실제로 잡히는지)
-        if: steps.pkg.outputs.present == 'true'
-        run: bash scripts/check.sh arch
-
-      - name: typecheck
-        if: steps.pkg.outputs.present == 'true'
-        run: bash scripts/check.sh typecheck
-
-      - name: format check
-        if: steps.pkg.outputs.present == 'true'
-        run: pnpm format:check
-
-      - name: test
-        if: steps.pkg.outputs.present == 'true'
-        run: bash scripts/check.sh test
+        run: bash scripts/check.sh --build
 
       - name: build
         if: steps.pkg.outputs.present == 'true'
