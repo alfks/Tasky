@@ -5,6 +5,8 @@
 **Tasky**: 레퍼런스 앱(국내 인기 감성 투두 앱)의 GUI/UX/기능을 매우 흡사하게 재현하는 **감성 투두/일정 관리 데스크탑 웹앱**. Next.js(App Router) + TypeScript + PWA, **로컬 우선(IndexedDB, repository 패턴)**. SNS(친구·피드·반응)는 Phase 2.
 1차 MVP: 날짜 스트립 + 카테고리별 투두 CRUD + 체크/달성률 + 테마/색상.
 
+> **현재 상태(단일 소스 — 상태가 바뀌면 이 줄만 고친다)**: 스캐폴딩 이전. `package.json`/`src/` 없음. `chore/scaffold-nextjs` 티켓이 머지되기 전에는 기능 티켓을 시작할 수 없다. 지금 쓸 수 있는 검증: `bash scripts/check-forbidden-words.sh`, `bash scripts/check-agents-md.sh`, `bash scripts/check.sh`(스캐폴딩 전 대체 체크 — 스캐폴딩 후엔 `pnpm check`).
+
 ## 0. 절대 금지어 (최우선 규칙)
 
 기록으로 남는 **모든 것**(파일명·본문·코드·주석·테스트·커밋·PR·이슈·브랜치)에 레퍼런스 앱의 **실제 제품명을 쓰지 않는다.**
@@ -17,31 +19,11 @@
 1. **커밋 author는 항상 `alfks <millie020524@gmail.com>`.** AI 명의 author, `Co-Authored-By: Claude…`, `Generated with Claude Code`, 세션 URL 등 **AI 흔적을 커밋·PR에 남기지 않는다.** 강제: `bash scripts/setup.sh`(레포 로컬 config + 훅). 임시: `git -c user.name=alfks -c user.email=millie020524@gmail.com commit …`.
 2. **병렬 작업은 반드시 `.worktrees/<작업명>/` 워크트리에서.** 메인 워킹트리(`/home/user/Tasky`)에서 동시 편집 금지. 생성: `bash scripts/wt.sh new feature/<작업명>`.
 3. **브랜치명은 `feature|fix|refactor|docs|chore|test/<작업명>`** (kebab-case 영문). `claude/…`, `opus/…`, `sonnet/…` 등 **에이전트 이름 기반 브랜치 금지.**
-4. **디렉토리마다 `AGENTS.md` 필수.** 그 디렉토리의 규칙/맥락은 **거기에만** 적는다(루트에 중복 금지). 에이전트는 **그 디렉토리를 실제로 읽거나 수정할 때만** 해당 `AGENTS.md`를 읽는다. 디렉토리를 새로 만들면 `AGENTS.md`도 같이 만든다(템플릿: `docs/conventions/templates/AGENTS.template.md`).
+4. **트래킹된 파일이 있는 모든 디렉토리는 `AGENTS.md` 필수.** 예외: 상위 디렉토리의 `AGENTS.md`가 본문에 `관할: <하위디렉토리명>/` 형태로 **명시적으로 관할을 선언**한 하위 디렉토리는 면제. 그 디렉토리의 규칙/맥락은 **거기에만** 적는다(루트에 중복 금지). 에이전트는 **그 디렉토리를 실제로 읽거나 수정할 때만** 해당 `AGENTS.md`를 읽는다. 디렉토리를 새로 만들면 `AGENTS.md`도 같이 만든다(템플릿: `docs/conventions/templates/AGENTS.template.md`).
 
-## 2. 디렉토리 맵 (단일 소스: [docs/DIRECTORY_MAP.md](docs/DIRECTORY_MAP.md))
+## 2. 디렉토리 맵 / 아키텍처 (단일 소스 — 여기서 중복 기재하지 않는다)
 
-| 경로 | 한 줄 | 규칙 파일 |
-|------|------|-----------|
-| `docs/` | 설계·컨벤션·리서치·스펙·ADR | [docs/AGENTS.md](docs/AGENTS.md) |
-| `docs/conventions/` | 코드/깃/협업/토큰 컨벤션 | [docs/conventions/AGENTS.md](docs/conventions/AGENTS.md) |
-| `docs/research/` | 레퍼런스 앱 리서치(읽기 전용, 길다) | [docs/research/AGENTS.md](docs/research/AGENTS.md) |
-| `docs/specs/` | 기능 스펙(티켓의 근거) | [docs/specs/AGENTS.md](docs/specs/AGENTS.md) |
-| `docs/decisions/` | ADR(아키텍처 결정 기록) | [docs/decisions/AGENTS.md](docs/decisions/AGENTS.md) |
-| `.github/` | CI, PR/이슈 템플릿, CODEOWNERS, 라벨 | [.github/AGENTS.md](.github/AGENTS.md) |
-| `.worktrees/` | 워크트리 + 로컬 작업 보드/티켓(gitignore) | [.worktrees/AGENTS.md](.worktrees/AGENTS.md) |
-| `scripts/` | 검사/워크트리/셋업 스크립트 | [scripts/AGENTS.md](scripts/AGENTS.md) |
-| `.githooks/` | 로컬 git 훅(금지어·author·트레일러) | [.githooks/AGENTS.md](.githooks/AGENTS.md) |
-| `src/app/` | Next.js 라우트(얇은 셸) | `src/app/AGENTS.md` (스캐폴딩 시 생성) |
-| `src/components/` | 공용 프레젠테이션 UI | `src/components/AGENTS.md` |
-| `src/features/` | 기능 슬라이스(컴포넌트+훅+store) | `src/features/AGENTS.md` |
-| `src/domain/` | 엔티티·순수 함수·유스케이스(프레임워크 의존 0) | `src/domain/AGENTS.md` |
-| `src/repositories/` | 레포지토리 **인터페이스** + in-memory 구현 | `src/repositories/AGENTS.md` |
-| `src/infra/` | IndexedDB(Dexie) 구현, 후일 sync/ | `src/infra/AGENTS.md` |
-| `src/lib/` | 프레임워크 무관 유틸(date, id, cn) | `src/lib/AGENTS.md` |
-| `src/styles/` | 토큰 CSS, 전역 CSS | `src/styles/AGENTS.md` |
-
-아키텍처(레이어·의존 방향·확장 지점): [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+파일 위치: [docs/DIRECTORY_MAP.md](docs/DIRECTORY_MAP.md) · 레이어·의존 방향·확장 지점: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · 각 디렉토리 규칙: 그 디렉토리의 `AGENTS.md`.
 
 ## 3. 읽기 규칙 — 무엇을 언제 읽는가
 
@@ -51,6 +33,7 @@
 | 역할이 오케스트레이터/리뷰어 | [AGENTS.md](AGENTS.md) → [docs/conventions/agent-collaboration.md](docs/conventions/agent-collaboration.md) | 코드 컨벤션(리뷰 시엔 diff 보며 필요 절만) |
 | 코드 작성 시작 | [docs/conventions/code-style.md](docs/conventions/code-style.md) + 대상 디렉토리 `AGENTS.md` | 무관한 디렉토리 `AGENTS.md` |
 | 커밋/PR/워크트리 | [docs/conventions/git-workflow.md](docs/conventions/git-workflow.md) | — |
+| 핸드오프 문서 작성 | [.worktrees/AGENTS.md](.worktrees/AGENTS.md) | — |
 | 레이어 경계를 넘는 변경 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) + 관련 ADR | 전체 ADR |
 | 파일 위치를 모를 때 | [docs/DIRECTORY_MAP.md](docs/DIRECTORY_MAP.md) → Glob/Grep | 디렉토리 전체 Read |
 | 기능 요구사항 확인 | `docs/specs/<feature>.md` | 리서치 문서 전문(섹션만 grep) |
@@ -61,7 +44,7 @@
 ## 4. 커밋 / 브랜치 / PR 요약 (상세: git-workflow.md)
 
 - 커밋: `<type>(<scope>): <한국어 제목>` — type ∈ `feat|fix|refactor|docs|chore|test|style|perf|ci`. 본문 한국어, 트레일러 없음. 예: `feat(todo): 카테고리별 투두 체크 토글 추가`
-- 브랜치: `main`(보호) ← PR only, **squash merge**. 동기화는 `git rebase main` (merge 커밋 금지).
+- 브랜치: `main` ← PR only, **squash merge**. 보호 설정은 레포 최초 1회 수동 필요([git-workflow.md §1.1](docs/conventions/git-workflow.md)) — 미설정 상태에선 CI 실패 PR도 머지될 수 있음. 동기화는 `git rebase main` (merge 커밋 금지).
 - PR: 템플릿 필수, 라벨 `type:*` + `area:*`, 리뷰 라운드 ≤ 3, 종료 기준 (Blocker+Major) ≤ 3.
 - 한 PR = 한 티켓 = 한 워크트리. 300줄(diff) 초과 시 분할 검토.
 
@@ -72,7 +55,7 @@ bash scripts/setup.sh                     # 최초 1회: author config + 훅 + p
 bash scripts/wt.sh new feature/<name>     # 워크트리 생성(+브랜치) → .worktrees/<name>
 bash scripts/wt.sh list                   # 워크트리/보드 상태
 bash scripts/wt.sh rm <name>              # 머지 후 워크트리+브랜치 정리
-pnpm check                                # lint + typecheck + test (PR 전 필수)
+pnpm check                                # lint+typecheck+test, PR 전 필수 (스캐폴딩 전: bash scripts/check.sh)
 bash scripts/check-forbidden-words.sh     # 금지어 검사
 bash scripts/check-author.sh main         # main 이후 커밋 author 검증
 bash scripts/check-agents-md.sh           # AGENTS.md 누락 검사
@@ -124,7 +107,7 @@ Node 22 / pnpm 10 / Next.js 15 / React 19 / TypeScript 5 strict / Tailwind CSS 4
 
 ## 11. PR 전 셀프 체크 (구현 에이전트)
 
-- [ ] `pnpm check` 통과, `bash scripts/check-forbidden-words.sh` 통과
+- [ ] `pnpm check` 통과(스캐폴딩 전: `bash scripts/check.sh`), `bash scripts/check-forbidden-words.sh` 통과
 - [ ] `git log --format='%an <%ae>' main..HEAD` 전부 `alfks <millie020524@gmail.com>`
 - [ ] 티켓 `owns:` 밖 파일을 건드리지 않았음 (`git diff --stat main..HEAD`)
 - [ ] 새 디렉토리마다 `AGENTS.md` 존재, 변경한 디렉토리의 `AGENTS.md`가 여전히 참
@@ -140,3 +123,5 @@ Node 22 / pnpm 10 / Next.js 15 / React 19 / TypeScript 5 strict / Tailwind CSS 4
 | 달성률 | `completionRate` | 해당 날짜 투두 중 완료 비율 (0~1) |
 | 테마 | `Theme` | 라이트/다크 + 강조색(`accentColor`) |
 | 레퍼런스 앱 | `reference app` | 벤치마킹 대상 (제품명 금지) |
+| 이슈 | GitHub Issue (`#<n>`) | 외부/사용자가 등록하는 요청·버그(레포에 커밋됨) |
+| 티켓 | `T-<n>` | 에이전트 작업 단위(`.worktrees/tickets/`, 로컬, 커밋 안 함) |

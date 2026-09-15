@@ -19,6 +19,12 @@ GitHub 자동화와 양식. 규칙을 사람이 기억하지 않아도 되게 �
 5. 템플릿 문구에 AI 언급·제품명 금지.
 6. 라벨 변경은 `labels.yml` 수정 → 상단 주석의 명령으로 동기화.
 
+## 관할: workflows/
+## 관할: ISSUE_TEMPLATE/
+`.github/workflows/`와 `.github/ISSUE_TEMPLATE/`에는 별도 `AGENTS.md`를 두지 않는다(이 문서가 관할, CLAUDE.md §1-4의 면제 조건).
+1. `workflows/*.yml` 수정은 위 "규칙" §1~§3과 동일하게 따른다.
+2. `ISSUE_TEMPLATE/*.md` 문구 규칙: AI 언급·제품명 금지(§5와 동일). 새 템플릿 추가 시 `config.yml`에 등록.
+
 ## 검증
 ```bash
 gh pr checks <n>                         # 상태

@@ -33,37 +33,21 @@ CLAUDE.md의 규칙은 여기서 반복하지 않는다. 이 문서는 **역할�
 1. 산출물은 `docs/research/<topic>.md`(읽기 조건 주석 + 섹션 헤더 필수). 응답은 파일 경로 + 10줄 요약.
 2. 금지어 규칙 최우선. 출처의 제품명은 "레퍼런스 앱"으로 치환.
 
-## 2. 핸드오프 포맷 (경로로 전달, 본문 복붙 금지)
+## 2. 핸드오프 포맷
 
-```markdown
-# Handoff T-<n>: <제목>
-- branch: feature/<name>   worktree: .worktrees/<name>   pr: #<번호>
-- status: ready-for-review | needs-fix | blocked
-- changed: <파일 목록, --stat 기준>
-- decisions: <구현 중 내린 판단 1~3줄; 아키텍처 영향 있으면 ADR 번호>
-- not-done: <티켓 범위 중 못 한 것 + 이유>
-- verify: <리뷰어/오케스트레이터가 확인할 명령 1~3개>
-- risks: <알려진 리스크>
-```
+포맷 정의는 [.worktrees/AGENTS.md](.worktrees/AGENTS.md)(핸드오프 파일이 실제로 놓이는 곳, PR 생성 직후 작성). 리뷰 라운드마다 `## Round N 반영` 절을 append(agent-collaboration.md §3).
 
-## 3. 리뷰 피드백 루프
+## 3. 리뷰 피드백 루프 (요약 — 상세: [agent-collaboration.md §4](docs/conventions/agent-collaboration.md))
 
-```
-라운드 N 시작 → 리뷰어 병렬 실행(백엔드·프론트엔드·사용자, 필요 시 접근성) → 오케스트레이터 집계
-  집계: 동일 이슈 중복 제거 → Blocker/Major/Minor/Nit 카운트
-  유효 피드백 = Blocker + Major
-  유효 피드백 ≤ 3  → 종료: 구현자가 Blocker 수정(제기 리뷰어 확인 필수) + Major 반영/근거 거절 → 머지
-  유효 피드백 > 3  → 구현자 전부 처리 → 라운드 N+1 (최대 3라운드)
-  3라운드 초과      → 오케스트레이터가 사용자에게 에스컬레이션(범위 축소 또는 티켓 분할)
-```
-- 리뷰어 간 의견 충돌은 오케스트레이터가 ADR 또는 스펙을 근거로 판정. 근거가 없으면 사용자 관점 리뷰어 의견 우선.
-- 라운드 상태는 PR 라벨 `review:round-1|2|3`, 종료 시 `status:ready-to-merge`.
+병렬 페르소나 리뷰 → 오케스트레이터 집계(중복 제거) → **유효 피드백(Blocker+Major) ≤ 3**이면 종료(Blocker 수정 + Major 반영/근거 거절) 후 머지, **≥ 4**면 다음 라운드(최대 3). 초과 시 사용자 에스컬레이션. 리뷰어 간 의견 충돌은 오케스트레이터가 ADR/스펙 근거로 판정.
+라운드 상태는 PR 라벨 `review:round-1|2|3`, 종료 시 `status:ready-to-merge`.
 
 ## 4. 병렬 작업 충돌 회피 (파일 소유권 락)
 
 - **락의 단위는 파일 경로**, 선언 위치는 티켓의 `owns:`. BOARD.md의 `owns` 열이 현재 락 현황.
 - 동시 진행 티켓의 `owns:`는 **서로소**여야 한다. 공용 파일(`package.json`, `src/styles/tokens.css`, `src/repositories/index.ts` 등)은 **한 번에 한 티켓만** 소유.
-- 락 규칙 위반(= `owns:` 밖 파일 변경)은 리뷰에서 자동 Blocker.
+- **교집합 검사 책임: 오케스트레이터.** 티켓 발행 전 BOARD.md의 `in-progress`/`in-review`/`needs-fix` 행 `owns` 열과 신규 티켓 `owns:`를 대조(절차: agent-collaboration.md §1.1). 이 검사는 기계적으로 강제되지 않는다 — 티켓 파일이 `.gitignore` 대상이라 CI가 볼 수 없기 때문(더 강한 CI 강제를 넣지 않은 이유: 지금 단계에선 리뷰 시점 diff 대조로 충분하고, 별도 스크립트·CI 스텝 추가는 과설계로 판단).
+- 락 규칙 위반(= `owns:` 밖 파일 변경)은 리뷰에서 자동 Blocker. **검증 방법**: PR 본문 `## owns` 블록(티켓의 `owns:`를 그대로 복사)과 `git diff --name-only main...HEAD`를 리뷰어가 대조 — 초과 파일이 있으면 Blocker.
 - 새 디렉토리 생성은 그 디렉토리 전체(`src/features/todo/**`)를 owns로 선언 가능. 기존 디렉토리는 파일 단위.
 - 공유 리소스 순서: `package.json` 의존성 추가는 `chore/deps-<n>` 티켓으로 먼저 머지 → 기능 티켓은 그 위에서 시작.
 - 충돌 발생 시: 워크트리에서 `git rebase main` → 해결 → `--force-with-lease`. 다른 티켓의 변경을 되돌리지 않는다.

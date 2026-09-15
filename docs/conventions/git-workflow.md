@@ -11,6 +11,18 @@
 - 브랜치 수명: 1 티켓 = 1 브랜치 = 1 워크트리 = 1 PR. 머지 후 즉시 삭제.
 - 장기 브랜치(Phase 2 `sync`)가 필요하면 ADR로 결정.
 
+### 1.1 레포 최초 1회 수동 설정 (사람이 GitHub UI/`gh`로, 코드로 강제 불가)
+
+`main` 보호는 레포 설정이라 코드로 표현할 수 없다. 아래를 1회 설정할 것(`gh api -X PUT repos/:owner/:repo/branches/main/protection …` 또는 Settings → Branches):
+- [ ] PR 없이 직접 push 금지
+- [ ] 필수 상태 체크: `guard`, `build` (워크플로 잡 이름과 정확히 일치)
+- [ ] 리니어 히스토리(merge 커밋 금지)
+- [ ] squash merge만 허용(merge commit·rebase merge 비활성화)
+- [ ] 머지 후 head 브랜치 자동 삭제
+- [ ] force push 금지(관리자 포함)
+
+미설정 상태에서는 위 어느 것도 보장되지 않는다 — CI 빨간 PR이 머지되거나 `main`에 직접 push될 수 있음. 확인: `gh api repos/:owner/:repo/branches/main/protection`.
+
 ## 2. 커밋 컨벤션 (Conventional Commits, 본문 한국어)
 
 ```
@@ -71,7 +83,7 @@ cd /home/user/Tasky/.worktrees/date-strip
 ### 작업 중
 ```bash
 git status --short                 # owns: 밖 파일이 보이면 즉시 되돌림
-pnpm check                          # lint + typecheck + test
+pnpm check                          # lint + typecheck + test (스캐폴딩 전: bash scripts/check.sh)
 git add <파일…>                     # git add -A 금지 (소유권 밖 파일 방지)
 git commit -m "feat(date-strip): 주 단위 날짜 스트립 컴포넌트 추가"
 git push -u origin feature/date-strip
@@ -82,7 +94,7 @@ git push -u origin feature/date-strip
 git fetch origin main
 git rebase origin/main
 # 충돌 시 §5 → git add <해결 파일> && git rebase --continue
-pnpm check
+pnpm check                          # 스캐폴딩 전: bash scripts/check.sh
 git push --force-with-lease
 ```
 

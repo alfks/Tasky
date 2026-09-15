@@ -34,8 +34,15 @@ size: S                  # S(<100줄) M(<300줄) L(스캐폴딩/설정)
 ## 참고 (스펙 섹션, 리서치 문서 섹션 헤더만 — 본문 복붙 금지)
 ```
 
-- `owns:` 없는 티켓은 무효. 오케스트레이터는 발행 전 `BOARD.md`의 진행 중 티켓들과 교집합 검사.
-- 티켓 번호는 BOARD.md의 마지막 번호 +1. 로컬 파일이므로 커밋하지 않는다.
+- `owns:` 없는 티켓은 무효. 오케스트레이터는 발행 전 `BOARD.md`의 진행 중 티켓들과 교집합 검사(절차: §1.1).
+- 티켓 번호는 **오케스트레이터가 발행 시점에** `BOARD.md`의 마지막 번호 +1로 부여한다(단조 증가, 삭제된 티켓 번호도 재사용 금지). 로컬 파일이므로 커밋하지 않는다.
+
+### 1.1 owns 교집합 검사 절차 (오케스트레이터, 티켓 발행 전 필수)
+
+1. `BOARD.md`에서 status가 `todo`·`in-progress`·`in-review`·`needs-fix`인 행의 `owns` 열을 모은다.
+2. 새 티켓의 `owns:` 글롭과 한 줄씩 비교해 같은 파일/디렉토리를 가리키는 것이 있으면 교집합.
+3. 겹치면 두 티켓을 직렬화(`depends_on`)하거나 `owns:`를 재분할해서 겹침을 없앤다.
+4. 이 검사는 기계적으로 강제되지 않는다(티켓이 `.gitignore` 대상이라 CI가 못 봄) — 리뷰 시점 검증은 PR 본문 `## owns` 블록과 `git diff --name-only main...HEAD` 대조로 보완한다(AGENTS.md §4).
 
 ## 2. 작업 보드 — `.worktrees/BOARD.md`
 
@@ -48,7 +55,7 @@ status ∈ `todo | in-progress | in-review | needs-fix | ready-to-merge | done |
 
 ## 3. 핸드오프 문서 — `.worktrees/handoffs/T-<n>.md`
 
-포맷은 루트 AGENTS.md §2. 추가 규칙:
+포맷은 [.worktrees/AGENTS.md](../../.worktrees/AGENTS.md). 추가 규칙:
 - 구현 에이전트가 PR 생성 직후 작성. 리뷰 라운드마다 `## Round N 반영` 절을 append.
 - 리뷰어는 리뷰 전에 핸드오프의 `decisions:`와 `not-done:`을 읽는다(의도된 미구현을 지적하지 않기 위해).
 

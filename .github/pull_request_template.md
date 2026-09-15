@@ -21,9 +21,13 @@
 ## 테스트 방법
 <!-- 리뷰어가 그대로 실행할 명령과 확인 포인트 -->
 ```bash
-pnpm check
+pnpm check   # 스캐폴딩 전: bash scripts/check.sh
 ```
 -
+
+## owns (티켓의 `owns:`를 그대로 복사 — 리뷰어가 `git diff --name-only main...HEAD`와 대조)
+```owns
+```
 
 ## 리뷰 포인트
 <!-- 리뷰어가 집중해서 봐 주었으면 하는 곳 1~3개 (파일:줄) 및 스스로 확신이 없는 판단 -->
@@ -36,8 +40,8 @@ pnpm check
 - [ ] `pnpm lint`, `pnpm typecheck`, `pnpm test` 통과
 - [ ] 새로 만든 디렉토리마다 `AGENTS.md`가 있고, 변경한 디렉토리의 `AGENTS.md`가 여전히 정확하다 (갱신했으면 파일명 기재: )
 - [ ] 접근성 확인: 키보드만으로 조작 가능, 시맨틱 요소 사용, 포커스 링 유지 (UI 변경 시)
-- [ ] 티켓 `owns:` 범위 밖 파일을 수정하지 않았다
-- [ ] 핸드오프 문서 작성: `.worktrees/handoffs/T-<n>.md`
+- [ ] 티켓 `owns:` 범위 밖 파일을 수정하지 않았다 (위 `## owns` 블록과 `git diff --name-only main...HEAD` 대조)
+- [ ] 핸드오프 문서 작성: `.worktrees/handoffs/T-<n>.md` (포맷: `.worktrees/AGENTS.md`)
 
 ## 관련 이슈
 <!-- Closes #<n> / Refs T-<n> / ADR-<nnnn> -->

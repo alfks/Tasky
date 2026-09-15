@@ -21,6 +21,11 @@
 4. 예시는 실제 이 프로젝트 경로/식별자로(가상 예시 금지).
 5. 각 문서 400줄 이하.
 
+## 관할: templates/
+`docs/conventions/templates/`에는 별도 `AGENTS.md`를 두지 않는다(이 문서가 관할, CLAUDE.md §1-4의 면제 조건).
+1. 템플릿 파일(`*.template.md`, `*-drafts.md`, `*-recommendations.md`)은 실제로 적용되는 규칙이 아니라 **복사해서 쓰는 원본/초안**이다. 위 "규칙" 절은 적용하지 않되, 금지어 규칙(CLAUDE.md §0)은 그대로 적용.
+2. 새 템플릿 추가 시 위 "여기 있는 것" 표에 행을 추가한다.
+
 ## 검증
 ```bash
 bash scripts/check-forbidden-words.sh

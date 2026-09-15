@@ -11,10 +11,24 @@
 ├── AGENTS.md              ← 이 파일(트래킹)
 ├── BOARD.md               ← 작업 보드(오케스트레이터만 수정)
 ├── tickets/T-<n>.md       ← 티켓(포맷: docs/conventions/agent-collaboration.md §1)
-├── handoffs/T-<n>.md      ← 구현자 핸드오프(루트 AGENTS.md §2)
+├── handoffs/T-<n>.md      ← 구현자 핸드오프(포맷: 아래 "핸드오프 포맷")
 ├── reviews/T-<n>-round<N>-<persona>.md
 └── <name>/                ← 워크트리 (브랜치 <type>/<name>)
 ```
+
+## 핸드오프 포맷 (경로로 전달, 본문 복붙 금지 — 구현 에이전트가 PR 생성 직후 작성)
+
+```markdown
+# Handoff T-<n>: <제목>
+- branch: feature/<name>   worktree: .worktrees/<name>   pr: #<번호>
+- status: ready-for-review | needs-fix | blocked
+- changed: <파일 목록, --stat 기준>
+- decisions: <구현 중 내린 판단 1~3줄; 아키텍처 영향 있으면 ADR 번호>
+- not-done: <티켓 범위 중 못 한 것 + 이유>
+- verify: <리뷰어/오케스트레이터가 확인할 명령 1~3개>
+- risks: <알려진 리스크>
+```
+리뷰 라운드마다 `## Round N 반영` 절을 append. 리뷰어는 리뷰 전에 `decisions:`·`not-done:`을 먼저 읽는다.
 
 ## 규칙
 1. 워크트리 생성·삭제는 `bash scripts/wt.sh` 로만(직접 `git worktree add` 금지 — 보드 갱신과 경로 규칙을 스크립트가 보장).
