@@ -18,33 +18,6 @@
   --color-saturday: #5b8def;
   --color-sunday: #e06b7d;
 
-  /* 3-C 카테고리 팔레트(12색). 저장값은 라이트 HEX(도메인이 단일 소스) — 여기 -dark 짝은
-     스와치·다크 렌더용 조회 테이블일 뿐, 값의 출처는 아니다. */
-  --color-cat-coral: #ff8fa3;
-  --color-cat-coral-dark: #e27a8e;
-  --color-cat-peach: #ffb38a;
-  --color-cat-peach-dark: #e39a73;
-  --color-cat-orange: #ffc978;
-  --color-cat-orange-dark: #e3ae63;
-  --color-cat-yellow: #ffeb99;
-  --color-cat-yellow-dark: #e0cd7e;
-  --color-cat-lime: #cfeb8f;
-  --color-cat-lime-dark: #b3cf76;
-  --color-cat-mint: #a8e6b0;
-  --color-cat-mint-dark: #8ccb95;
-  --color-cat-teal: #8fdcd0;
-  --color-cat-teal-dark: #76c1b6;
-  --color-cat-sky: #7cc6ff;
-  --color-cat-sky-dark: #6aaee3;
-  --color-cat-blue: #9db8f5;
-  --color-cat-blue-dark: #829ed9;
-  --color-cat-lavender: #b5a8f0;
-  --color-cat-lavender-dark: #9b8ed6;
-  --color-cat-lilac: #d8b8e8;
-  --color-cat-lilac-dark: #bc9ecc;
-  --color-cat-gray: #c9ccd6;
-  --color-cat-gray-dark: #9ea1ab;
-
   /* 3-D 형태 */
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -82,9 +55,7 @@
     'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
     'Malgun Gothic', 'Noto Sans KR', system-ui, sans-serif;
 
-  /* 3-D 그림자 — 라이트 기본값(다크 값은 하단 테마 블록에서 재정의) */
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06);
-  --shadow-md: 0 6px 20px rgb(0 0 0 / 0.08);
+  /* 3-D 그림자는 @theme 에 리터럴로 넣지 않는다 — 아래 :root/@theme inline 주석 참고. */
 
   /* 3-D 모션(R5: reduced-motion 에서 0ms — 하단에서 재정의) */
   --motion-fast: 150ms;
@@ -106,6 +77,50 @@
   --control-hit-min: 32px;
 }
 
+/* @theme 밖 런타임 토큰. 여기 값은 Tailwind 유틸을 만들지 않고 CSS 변수로만 존재한다.
+   그림자 — 값의 단일 소스는 @theme 밖의 이 런타임 변수다. Tailwind v4 의 shadow 유틸은
+   값에서 색을 뽑아 `var(--tw-shadow-color, <색 리터럴>)` 로 굽기 때문에, @theme 에 리터럴을
+   그대로 등록하면 .shadow-sm/.shadow-md 가 빌드 시점 라이트 값으로 고정돼 다크 재정의를
+   무시한다(실측). 아래 @theme inline 이 var() 를 그대로 유틸에 흘려보내 런타임에 읽게 한다. */
+:root {
+  --elev-sm: 0 1px 2px rgb(0 0 0 / 0.06);
+  --elev-md: 0 6px 20px rgb(0 0 0 / 0.08);
+
+  /* 3-C 카테고리 팔레트(12색)도 @theme 밖에 둔다. @theme 에 등록하면 bg-cat-coral 같은 유틸
+     24개가 생겨 theme.md R1("컴포넌트는 §3-A 토큰과 --cat-color 만 쓴다")을 우회할 길이 열린다.
+     값의 단일 소스는 도메인 상수(theme.md §4)이고, 여기 -dark 짝은 스와치·다크 렌더용 조회
+     테이블일 뿐 값의 출처가 아니다. */
+  --color-cat-coral: #ff8fa3;
+  --color-cat-coral-dark: #e27a8e;
+  --color-cat-peach: #ffb38a;
+  --color-cat-peach-dark: #e39a73;
+  --color-cat-orange: #ffc978;
+  --color-cat-orange-dark: #e3ae63;
+  --color-cat-yellow: #ffeb99;
+  --color-cat-yellow-dark: #e0cd7e;
+  --color-cat-lime: #cfeb8f;
+  --color-cat-lime-dark: #b3cf76;
+  --color-cat-mint: #a8e6b0;
+  --color-cat-mint-dark: #8ccb95;
+  --color-cat-teal: #8fdcd0;
+  --color-cat-teal-dark: #76c1b6;
+  --color-cat-sky: #7cc6ff;
+  --color-cat-sky-dark: #6aaee3;
+  --color-cat-blue: #9db8f5;
+  --color-cat-blue-dark: #829ed9;
+  --color-cat-lavender: #b5a8f0;
+  --color-cat-lavender-dark: #9b8ed6;
+  --color-cat-lilac: #d8b8e8;
+  --color-cat-lilac-dark: #bc9ecc;
+  --color-cat-gray: #c9ccd6;
+  --color-cat-gray-dark: #9ea1ab;
+}
+
+@theme inline {
+  --shadow-sm: var(--elev-sm);
+  --shadow-md: var(--elev-md);
+}
+
 /* 시스템 기본("system" 모드): OS 가 다크면 따른다(R7). 명시 선택(data-theme="light")이 있으면
    :not([data-theme="light"]) 가 걸려 이 블록은 적용되지 않는다 — 명시 선택이 시스템을 이긴다. */
 @media (prefers-color-scheme: dark) {
@@ -124,8 +139,8 @@
     --color-saturday: #8fb6ff;
     --color-sunday: #f08a9a;
 
-    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
-    --shadow-md: 0 6px 20px rgb(0 0 0 / 0.45);
+    --elev-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+    --elev-md: 0 6px 20px rgb(0 0 0 / 0.45);
   }
 }
 
@@ -145,8 +160,8 @@
   --color-saturday: #8fb6ff;
   --color-sunday: #f08a9a;
 
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
-  --shadow-md: 0 6px 20px rgb(0 0 0 / 0.45);
+  --elev-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+  --elev-md: 0 6px 20px rgb(0 0 0 / 0.45);
 }
 
 /* R5: 모션 축소 선호 시 모든 --motion-* 는 0ms(전역 애니메이션 정지는 globals.css 도 겹으로 처리). */

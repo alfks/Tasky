@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 const tokensPath = join(process.cwd(), 'src/styles/tokens.css');
 const CSS = readFileSync(tokensPath, 'utf-8');
+const GLOBALS = readFileSync(join(process.cwd(), 'src/styles/globals.css'), 'utf-8');
 
 /** startMarker 다음 첫 '{' 부터 짝이 맞는 '}' 까지의 내용을 돌려준다(중첩 블록 포함). */
 function extractBlock(source: string, startMarker: string): string {
@@ -35,6 +36,9 @@ function parseDecls(block: string): Map<string, string> {
 }
 
 const base = parseDecls(extractBlock(CSS, '@theme {'));
+// 유틸을 만들면 안 되는 토큰(그림자 값 --elev-*, 카테고리 팔레트)은 @theme 밖 :root 에 있다.
+const runtime = parseDecls(extractBlock(CSS, ':root {'));
+const themeInline = parseDecls(extractBlock(CSS, '@theme inline {'));
 const mediaDark = parseDecls(extractBlock(CSS, '@media (prefers-color-scheme: dark) {'));
 const explicitDark = parseDecls(extractBlock(CSS, ":root[data-theme='dark'] {"));
 const reducedMotion = parseDecls(extractBlock(CSS, '@media (prefers-reduced-motion: reduce) {'));
@@ -82,15 +86,19 @@ describe('디자인 토큰: 의미 토큰(§3-A)', () => {
 
 describe('디자인 토큰: 카테고리 팔레트 12색(§3-C)', () => {
   it.each(PALETTE)('cat-%s — 라이트 %s / 다크 %s 가 정확히 대응한다', (id, light, dark) => {
-    expect(base.get(`color-cat-${id}`)).toBe(light);
-    expect(base.get(`color-cat-${id}-dark`)).toBe(dark);
+    expect(runtime.get(`color-cat-${id}`)).toBe(light);
+    expect(runtime.get(`color-cat-${id}-dark`)).toBe(dark);
   });
 
   it('정확히 12색이다(더 많지도 적지도 않다)', () => {
-    const ids = [...base.keys()].filter(
+    const ids = [...runtime.keys()].filter(
       (k) => /^color-cat-[\w-]+$/.test(k) && !k.endsWith('-dark'),
     );
     expect(ids).toHaveLength(12);
+  });
+
+  it('@theme 밖에 둬서 bg-cat-* 유틸이 생기지 않는다(R1 우회 경로 차단)', () => {
+    expect([...base.keys()].filter((k) => k.startsWith('color-cat-'))).toHaveLength(0);
   });
 });
 
@@ -130,10 +138,21 @@ describe('디자인 토큰: 형태·간격·타이포·모션·z-index(§3-D)', 
   });
 
   it('그림자 2종, 다크에서 알파값이 짙어진다(라이트 .06/.08 → 다크 .30/.45)', () => {
-    expect(base.get('shadow-sm')).toBe('0 1px 2px rgb(0 0 0 / 0.06)');
-    expect(base.get('shadow-md')).toBe('0 6px 20px rgb(0 0 0 / 0.08)');
-    expect(explicitDark.get('shadow-sm')).toBe('0 1px 2px rgb(0 0 0 / 0.3)');
-    expect(explicitDark.get('shadow-md')).toBe('0 6px 20px rgb(0 0 0 / 0.45)');
+    expect(runtime.get('elev-sm')).toBe('0 1px 2px rgb(0 0 0 / 0.06)');
+    expect(runtime.get('elev-md')).toBe('0 6px 20px rgb(0 0 0 / 0.08)');
+    for (const dark of [mediaDark, explicitDark]) {
+      expect(dark.get('elev-sm')).toBe('0 1px 2px rgb(0 0 0 / 0.3)');
+      expect(dark.get('elev-md')).toBe('0 6px 20px rgb(0 0 0 / 0.45)');
+    }
+  });
+
+  it('그림자 유틸(.shadow-*)이 빌드 시점 라이트 값으로 굳지 않는다', () => {
+    // @theme 에 리터럴을 등록하면 Tailwind 가 색을 뽑아 .shadow-md 안에 굽고, 다크 재정의가
+    // 무시된다(리뷰 실측). 값은 --elev-* 에만 두고 @theme inline 으로 var() 를 흘려보낸다.
+    expect(base.has('shadow-sm')).toBe(false);
+    expect(base.has('shadow-md')).toBe(false);
+    expect(themeInline.get('shadow-sm')).toBe('var(--elev-sm)');
+    expect(themeInline.get('shadow-md')).toBe('var(--elev-md)');
   });
 
   it('모션 3단계 + 이징, reduced-motion 에서 전부 0ms(R5)', () => {
@@ -163,8 +182,11 @@ describe('디자인 토큰: 폰트 스택(§3-F R10)', () => {
     expect(stack).not.toMatch(/@import|googleapis|fonts\.google/);
   });
 
-  it('CSS 안에 @font-face 가 없다(실제 폰트 파일 로딩은 T-22 소관)', () => {
+  it('tokens.css 는 @font-face 를 갖지 않는다(폰트 파일 선언은 fonts.css 한 곳)', () => {
+    // 임시 상태가 아니라 유지할 분리다: @font-face 는 src/styles/fonts.css 에만 두고
+    // globals.css 가 import 한다(next/font 는 ADR-0010 으로 폐기). tokens.css 는 값만 갖는다.
     expect(CSS).not.toMatch(/@font-face/);
+    expect(GLOBALS).toMatch(/@import\s+'\.\/fonts\.css';/);
   });
 });
 
@@ -205,6 +227,20 @@ describe('디자인 토큰: 접근성 대비(R9)', () => {
           explicitDark.get(surface) as string,
         ),
       ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('포커스 링 대비 ≥ 3:1, bg·surface 기준 라이트/다크', () => {
+    for (const surface of ['color-bg', 'color-surface']) {
+      expect(
+        contrastRatio(base.get('color-focus') as string, base.get(surface) as string),
+      ).toBeGreaterThanOrEqual(3);
+      expect(
+        contrastRatio(
+          explicitDark.get('color-focus') as string,
+          explicitDark.get(surface) as string,
+        ),
+      ).toBeGreaterThanOrEqual(3);
     }
   });
 
