@@ -3,7 +3,17 @@
 // eslint.config.mjs 는 eslint-config-next 패치 때문에 ESLint 밖에서 import 할 수 없어 데이터만 이 파일로 분리했다.
 
 /** src/ 최상위 레이어. 이 목록 밖의 디렉토리·파일은 미분류 = 에러 */
-export const LAYERS = ['app', 'components', 'features', 'domain', 'repositories', 'infra', 'lib', 'styles', 'test'];
+export const LAYERS = [
+  'app',
+  'components',
+  'features',
+  'domain',
+  'repositories',
+  'infra',
+  'lib',
+  'styles',
+  'test',
+];
 
 /** src/ 직속에 둘 수 있는 유일한 파일(Next.js 가 위치를 강제). lib 만 import 가능(ALLOW.root) */
 export const SRC_ROOT_FILES = ['middleware.ts', 'instrumentation.ts'];
@@ -29,7 +39,12 @@ export const ALLOW = {
 export const FEATURE_ALLOW = ['domain', 'repositories', 'components', 'lib', 'styles'];
 
 /** 외부 패키지 허용 목록(하위 레이어만 — UI 레이어는 dexie/zustand 금지 목록으로 관리) */
-export const PACKAGES = { domain: [], repositories: [], infra: ['dexie'], lib: ['clsx', 'tailwind-merge'] };
+export const PACKAGES = {
+  domain: [],
+  repositories: [],
+  infra: ['dexie'],
+  lib: ['clsx', 'tailwind-merge'],
+};
 
 /**
  * ALLOW 항목이 없는 레이어와 그 이유. 레이어를 추가하면 ALLOW 에 넣거나 여기에 이유를 적어야 한다
@@ -64,9 +79,17 @@ export const ARCH_RULES_COMMON = {
   '@typescript-eslint/no-explicit-any': 'error',
   // 삼중슬래시 지시자는 주석이라 셀렉터가 닿지 않는다. 기본값(types: 'prefer-import', lib: 'always')은
   // `/// <reference types = "…" />` 를 통과시키므로 셋 다 'never' 로 고정한다(라운드 3 우회 m14·m16·m17).
-  '@typescript-eslint/triple-slash-reference': ['error', { lib: 'never', path: 'never', types: 'never' }],
+  '@typescript-eslint/triple-slash-reference': [
+    'error',
+    { lib: 'never', path: 'never', types: 'never' },
+  ],
 };
 /** 레이어 블록이 레이어마다 생성하는 경계 규칙(설정은 eslint.config.mjs 의 layerRules()/importRules() 가 만든다) */
-export const ARCH_RULES_LAYER = ['no-restricted-imports', 'no-restricted-syntax', 'import/no-restricted-paths', 'no-restricted-globals'];
+export const ARCH_RULES_LAYER = [
+  'no-restricted-imports',
+  'no-restricted-syntax',
+  'import/no-restricted-paths',
+  'no-restricted-globals',
+];
 /** 2차 패스가 남기는 규칙 전체 */
 export const ARCH_RULES = [...Object.keys(ARCH_RULES_COMMON), ...ARCH_RULES_LAYER];

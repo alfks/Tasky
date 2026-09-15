@@ -14,6 +14,7 @@
 ### 1.1 레포 최초 1회 수동 설정 (사람이 GitHub UI/`gh`로, 코드로 강제 불가)
 
 `main` 보호는 레포 설정이라 코드로 표현할 수 없다. 아래를 1회 설정할 것(`gh api -X PUT repos/:owner/:repo/branches/main/protection …` 또는 Settings → Branches):
+
 - [ ] PR 없이 직접 push 금지
 - [ ] 필수 상태 체크: `guard`, `build` (워크플로 잡 이름과 정확히 일치)
 - [ ] 리니어 히스토리(merge 커밋 금지)
@@ -57,6 +58,7 @@ bash scripts/check-author.sh main
 ```
 
 잘못된 author로 이미 커밋했다면(본인 브랜치, 아직 머지 전):
+
 ```bash
 git rebase main --exec 'git commit --amend --no-edit --author="alfks <millie020524@gmail.com>"'
 git push --force-with-lease
@@ -67,6 +69,7 @@ git push --force-with-lease
 원칙: **모든 워크트리는 `/home/user/Tasky/.worktrees/<name>/`**. 메인 워킹트리는 오케스트레이터가 `main` 상태 확인용으로만 사용.
 
 ### 생성
+
 ```bash
 cd /home/user/Tasky
 git fetch origin main
@@ -77,10 +80,12 @@ bash scripts/wt.sh new feature/date-strip
 #   .worktrees/BOARD.md에 행 추가
 cd /home/user/Tasky/.worktrees/date-strip
 ```
+
 - `<name>`은 브랜치명에서 `type/`을 뺀 부분. 같은 이름 워크트리가 있으면 실패(재사용 금지, 정리 후 재생성).
 - 기존 브랜치를 이어받을 때: `bash scripts/wt.sh new feature/date-strip --existing`.
 
 ### 작업 중
+
 ```bash
 git status --short                 # owns: 밖 파일이 보이면 즉시 되돌림
 pnpm check                          # = bash scripts/check.sh (금지어·AGENTS.md·author·wt·arch·lint·typecheck·format·test)
@@ -90,6 +95,7 @@ git push -u origin feature/date-strip
 ```
 
 ### main 동기화 (merge 커밋 금지)
+
 ```bash
 git fetch origin main
 git rebase origin/main
@@ -99,6 +105,7 @@ git push --force-with-lease
 ```
 
 ### 정리 (머지 후, 오케스트레이터)
+
 ```bash
 cd /home/user/Tasky
 bash scripts/wt.sh rm date-strip
@@ -111,17 +118,18 @@ bash scripts/wt.sh rm date-strip
 ```
 
 ### 자주 나는 문제
-| 증상 | 조치 |
-|------|------|
-| `fatal: '<branch>' is already checked out at …` | 같은 브랜치를 두 워크트리에서 못 씀. `bash scripts/wt.sh list`로 찾아 정리 |
-| 워크트리 안에서 `.worktrees/`가 또 보임 | 정상(`AGENTS.md`만 트래킹). 중첩 생성 금지 — 항상 `/home/user/Tasky`에서 `wt.sh` 실행 |
-| `pnpm install`이 느림 | `pnpm install --prefer-offline` (store 공유). 그래도 느리면 `pnpm store status` |
-| 훅이 안 돎 | `git config core.hooksPath` → `.githooks` 여야 함. `bash scripts/setup.sh` 재실행 |
+
+| 증상                                            | 조치                                                                                  |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `fatal: '<branch>' is already checked out at …` | 같은 브랜치를 두 워크트리에서 못 씀. `bash scripts/wt.sh list`로 찾아 정리            |
+| 워크트리 안에서 `.worktrees/`가 또 보임         | 정상(`AGENTS.md`만 트래킹). 중첩 생성 금지 — 항상 `/home/user/Tasky`에서 `wt.sh` 실행 |
+| `pnpm install`이 느림                           | `pnpm install --prefer-offline` (store 공유). 그래도 느리면 `pnpm store status`       |
+| 훅이 안 돎                                      | `git config core.hooksPath` → `.githooks` 여야 함. `bash scripts/setup.sh` 재실행     |
 
 ## 4. PR 라이프사이클
 
 1. **생성**: `gh pr create --base main --fill` 후 템플릿(`.github/pull_request_template.md`) 전 섹션 채움. 제목 = 대표 커밋 제목 형식. 라벨: `type:<type>` + `area:<scope>` + `review:round-1`.
-2. **CI**: `guard`(금지어·author·AGENTS.md) + `build`(lint·typecheck·test·build) 모두 녹색이어야 리뷰 시작. *(임시 예외: CI가 계정/레포 차원에서 실행되지 않는 동안은 `bash scripts/check.sh` 로컬 통과로 대체한다 — 워크플로 수정으로는 해결되지 않음, CLAUDE.md 현재 상태 참고. 복구되면 이 예외는 삭제하고 위 원칙으로 복귀.)*
+2. **CI**: `guard`(금지어·author·AGENTS.md) + `build`(lint·typecheck·test·build) 모두 녹색이어야 리뷰 시작. _(임시 예외: CI가 계정/레포 차원에서 실행되지 않는 동안은 `bash scripts/check.sh` 로컬 통과로 대체한다 — 워크플로 수정으로는 해결되지 않음, CLAUDE.md 현재 상태 참고. 복구되면 이 예외는 삭제하고 위 원칙으로 복귀.)_
 3. **리뷰 라운드**: 리뷰어는 PR 코멘트가 아니라 **핸드오프 채널(오케스트레이터에게 보고)** 로 결과를 낸다. 오케스트레이터가 집계 결과를 PR 코멘트 1개로 남긴다(라운드별 1개).
 4. **수정**: 같은 브랜치에 커밋 추가(`fix(review): …` 또는 원 type). 리뷰 반영 커밋은 스쿼시 머지 시 사라지므로 개수 제한 없음.
 5. **머지**: 조건 — CI 녹색(임시 예외 기간엔 `bash scripts/check.sh` 로컬 통과 — 위 §4-2 참고), `status:ready-to-merge` 라벨, 리뷰 종료 기준 충족, `main`과 충돌 없음(리베이스 완료).
