@@ -6,9 +6,12 @@
 #   bash scripts/check.sh <step> [base 또는 인자]  검사 하나만 실행, 그 검사의 exit code 그대로 반환
 # step 이름: forbidden-words | agents-md | eslint-disable | author | wt | arch | lint | typecheck | test
 #
-# 이 스크립트가 검사 목록의 단일 소스다. .github/workflows/ci.yml 은 각 스텝에서 이 스크립트를
-# step 이름으로 호출하기만 한다(로직 중복 없음) — 그러면서도 스텝을 나눠 부르므로 어느 검사가
-# 실패했는지 GitHub Actions UI 에 스텝 단위로 그대로 뜬다(하나로 합치면 이 이점을 잃는다).
+# 이 스크립트가 검사 목록의 단일 소스다. .github/workflows/ci.yml 은 guard/build 각 잡에서
+# 이 스크립트를 `--guard`/`--build` 로 한 번씩만 호출한다(로직 중복 없음). 스텝을 검사마다
+# 쪼개지 않고 묶은 이유: run_step 이 개별 검사가 실패해도 나머지를 계속 돌려 "요약: 통과 N / 실패 M"
+# 까지 한 번의 실행에서 전부 보여주기 때문 — 스텝을 쪼개 fail-fast 하면 첫 실패 이후 것들을
+# 그 CI 실행에서는 볼 수 없다. 어느 검사가 실패했는지는 로그의 "FAIL: <라벨>" 줄과(CI에서는)
+# 아래 run_step 의 `::error::` 애노테이션으로 확인한다.
 # package.json 이 없으면(스캐폴딩 전) pnpm 관련 검사는 SKIP.
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -57,6 +60,7 @@ run_step() { # $1 라벨, 나머지는 명령
     pass=$((pass + 1))
   else
     echo "FAIL: $label"
+    [ "${GITHUB_ACTIONS:-}" = "true" ] && echo "::error title=${label}::${label} 실패 — 위 로그 참조"
     fail_count=$((fail_count + 1))
   fi
   echo
