@@ -31,6 +31,7 @@ mode="${1:-}"
 case "$mode" in
   --text-file)
     f="${2:?파일 경로 필요}"
+    [ -f "$f" ] || { echo "FAIL: 검사 대상 파일이 없습니다: $f"; exit 1; }
     report "$f" "$(grep -niE "$PATTERN" "$f" || true)"
     ;;
   --paths)
@@ -38,10 +39,12 @@ case "$mode" in
     [ "$#" -gt 0 ] || { echo "경로를 지정하세요"; exit 2; }
     existing=()
     for p in "$@"; do [ -e "$p" ] && existing+=("$p"); done
-    if [ "${#existing[@]}" -gt 0 ]; then
-      report "경로 ${existing[*]} (본문)" "$(grep -rnIiE "$PATTERN" "${existing[@]}" 2>/dev/null || true)"
-      report "경로 ${existing[*]} (파일명)" "$(find "${existing[@]}" -print 2>/dev/null | grep -iE "$PATTERN" || true)"
+    if [ "${#existing[@]}" -eq 0 ]; then
+      echo "FAIL: 지정한 경로가 하나도 없습니다: $* — 빌드 산출물 경로가 바뀌었는지 확인하세요(이대로면 검사가 아무것도 안 봅니다)"
+      exit 1
     fi
+    report "경로 ${existing[*]} (본문)" "$(grep -rnIiE "$PATTERN" "${existing[@]}" 2>/dev/null || true)"
+    report "경로 ${existing[*]} (파일명)" "$(find "${existing[@]}" -print 2>/dev/null | grep -iE "$PATTERN" || true)"
     ;;
   --staged)
     report "인덱스(본문)" "$(git grep --cached -nIiE "$PATTERN" -- . "${EXCLUDES[@]}" || true)"

@@ -16,6 +16,10 @@ AI_RE='co-authored-by:.*(claude|anthropic|copilot|chatgpt|openai|gemini|gpt|nore
 fail=0
 say_fail() { echo "FAIL: $*"; fail=1; }
 
+# UTF-8 코드포인트 수(로케일 비의존). ${#s} 는 로케일이 없는 컨테이너(C 로케일)에서 바이트를 세어
+# 한글 제목을 3배로 과대 계산한다. 연속 바이트(0x80-0xBF)를 지우고 남은 바이트 수 = 코드포인트 수.
+cp_len() { LC_ALL=C printf '%s' "$1" | LC_ALL=C tr -d '\200-\277' | LC_ALL=C wc -c | tr -d ' '; }
+
 check_ai_text() { # $1 label, $2 text
   local hits
   hits="$(printf '%s\n' "$2" | grep -niE "$AI_RE" || true)"
@@ -31,8 +35,9 @@ check_subject() { # $1 label, $2 subject
   if ! printf '%s' "$subject" | grep -qE "$SUBJECT_RE"; then
     say_fail "$label 제목 형식 위반: '$subject' → '<type>(<scope>): <한국어 제목>'  (type: ${TYPES})"
   fi
-  if [ "${#subject}" -gt 72 ]; then
-    say_fail "$label 제목이 72자를 넘습니다 (${#subject}자)"
+  local n; n="$(cp_len "$subject")"
+  if [ "$n" -gt 72 ]; then
+    say_fail "$label 제목이 72자를 넘습니다 (${n}자)"
   fi
 }
 
@@ -49,6 +54,7 @@ case "$mode" in
     ;;
   --body-file)
     f="${2:?파일 경로 필요}"
+    [ -f "$f" ] || { echo "FAIL: 검사 대상 파일이 없습니다: $f"; exit 1; }
     check_ai_text "본문" "$(cat "$f")"
     ;;
   --*)

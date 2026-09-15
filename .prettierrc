@@ -9,8 +9,6 @@
   "bracketSpacing": true,
   "arrowParens": "always",
   "endOfLine": "lf",
-  "plugins": ["prettier-plugin-tailwindcss"],
-  "tailwindFunctions": ["cn"],
   "overrides": [
     { "files": "*.md", "options": { "proseWrap": "preserve", "printWidth": 120 } },
     { "files": "*.{yml,yaml}", "options": { "singleQuote": false } }

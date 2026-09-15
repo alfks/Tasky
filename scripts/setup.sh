@@ -16,8 +16,10 @@ git config rebase.autoStash true
 git config push.autoSetupRemote true
 git config fetch.prune true
 
-# 4) 실행 권한 + 워크트리 보드 준비
-chmod +x scripts/*.sh .githooks/* 2>/dev/null || true
+# 4) 실행 권한(실행 대상만 — .githooks/AGENTS.md 같은 문서 파일은 건드리지 않는다.
+#    잘못 주면 클론 직후 git status 가 더러워진다) + 워크트리 보드 준비
+chmod +x scripts/*.sh 2>/dev/null || true
+find .githooks -maxdepth 1 -type f ! -name '*.md' -exec chmod +x {} + 2>/dev/null || true
 bash scripts/wt.sh init
 
 # 5) 의존성 (스캐폴딩 후에만)

@@ -31,7 +31,9 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: 스크립트 실행 권한
-        run: chmod +x scripts/*.sh .githooks/* || true
+        run: |
+          chmod +x scripts/*.sh || true
+          find .githooks -maxdepth 1 -type f ! -name '*.md' -exec chmod +x {} + || true
 
       - name: 금지어 검사 (레포 전체 — 파일명 + 본문)
         run: bash scripts/check-forbidden-words.sh
