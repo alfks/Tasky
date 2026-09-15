@@ -1,0 +1,31 @@
+<!-- 읽기 조건: CI가 실패했을 때, 워크플로/템플릿/라벨/CODEOWNERS를 수정할 때. PR을 "만들기만" 할 때는 템플릿이 자동 삽입되므로 읽지 않아도 된다. -->
+
+# .github/ — AGENTS
+
+## 목적
+GitHub 자동화와 양식. 규칙을 사람이 기억하지 않아도 되게 만드는 곳.
+
+## 여기 있는 것
+- `workflows/ci.yml`: `guard`(금지어·author·AGENTS.md 구조, 항상) + `build`(lint·typecheck·test·build, `package.json` 있을 때만)
+- `pull_request_template.md`, `ISSUE_TEMPLATE/{feature_request,bug_report}.md`, `ISSUE_TEMPLATE/config.yml`
+- `CODEOWNERS`: 전 경로 `@alfks`
+- `labels.yml`: 라벨 정의(`type:*`, `area:*`, `review:round-N`, `status:*`, `size:large`, `phase:2`, `adr`)
+
+## 규칙
+1. CI 스텝은 `scripts/check-*.sh`를 **호출**한다. 로직을 yml에 중복 구현하지 않는다(로컬과 CI가 같은 스크립트).
+2. 워크플로 변경은 `ci(...)` 커밋, PR에 실행 로그 링크 첨부.
+3. 액션은 메이저 버전 태그(`@v4`)로 고정. 서드파티 액션 추가는 사용자 확인.
+4. 시크릿은 쓰지 않는다(로컬 우선 앱, 배포 없음). 필요해지면 ADR.
+5. 템플릿 문구에 AI 언급·제품명 금지.
+6. 라벨 변경은 `labels.yml` 수정 → 상단 주석의 명령으로 동기화.
+
+## 검증
+```bash
+gh pr checks <n>                         # 상태
+gh run view <run-id> --log-failed | tail -60
+act -j guard 2>/dev/null || echo "act 미설치: bash scripts/check-forbidden-words.sh 로 대체"
+```
+
+## 자주 하는 실수
+- `fetch-depth: 0` 없이 author 검사 → 커밋 범위가 비어 통과처럼 보임. 유지할 것.
+- `build` 잡 조건(`hashFiles('package.json') != ''`) 제거 → 스캐폴딩 전 PR 전부 실패.

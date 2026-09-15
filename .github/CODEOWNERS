@@ -1,0 +1,13 @@
+# 읽기 조건: 리뷰어 자동 지정 규칙을 바꿀 때만.
+# 모든 경로의 최종 승인자는 alfks. 에이전트는 리뷰 의견을 내지만 승인 권한은 사람에게 있다.
+*                       @alfks
+
+# 규칙·아키텍처 문서는 변경 시 반드시 alfks 승인
+/CLAUDE.md              @alfks
+/AGENTS.md              @alfks
+/docs/conventions/      @alfks
+/docs/decisions/        @alfks
+/docs/ARCHITECTURE.md   @alfks
+/.github/               @alfks
+/scripts/               @alfks
+/.githooks/             @alfks

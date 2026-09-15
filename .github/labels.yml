@@ -1,0 +1,38 @@
+# 읽기 조건: 라벨을 추가/변경할 때, 또는 새 레포에 라벨을 동기화할 때.
+# 적용: gh label create 반복 대신 아래 한 줄 (gh 확장 없이 순수 gh api):
+#   yq -r '.[] | "\(.name)|\(.color)|\(.description)"' .github/labels.yml | while IFS='|' read n c d; do gh label create "$n" --color "$c" --description "$d" --force; done
+# yq가 없으면 각 줄을 수동으로 gh label create 한다.
+
+# --- type: PR/이슈의 변경 유형 (커밋 type과 동일) ---
+- { name: "type:feature",   color: "0E8A16", description: "새 기능" }
+- { name: "type:fix",       color: "D73A4A", description: "버그 수정" }
+- { name: "type:refactor",  color: "FBCA04", description: "구조 변경(동작 동일)" }
+- { name: "type:docs",      color: "0075CA", description: "문서" }
+- { name: "type:chore",     color: "BFD4F2", description: "설정/의존성/스크립트" }
+- { name: "type:test",      color: "C5DEF5", description: "테스트" }
+
+# --- area: 영향 영역 (커밋 scope와 대응) ---
+- { name: "area:todo",       color: "5319E7", description: "투두 기능" }
+- { name: "area:category",   color: "5319E7", description: "카테고리" }
+- { name: "area:date-strip", color: "5319E7", description: "날짜 스트립/달력" }
+- { name: "area:theme",      color: "5319E7", description: "테마/색상" }
+- { name: "area:domain",     color: "1D76DB", description: "도메인 규칙" }
+- { name: "area:infra",      color: "1D76DB", description: "IndexedDB/저장소 구현" }
+- { name: "area:collab",     color: "E4E669", description: "협업 규칙/CI/스크립트" }
+- { name: "area:pwa",        color: "1D76DB", description: "PWA/서비스워커" }
+
+# --- review: 리뷰 라운드 상태 (오케스트레이터가 갱신) ---
+- { name: "review:round-1", color: "F9D0C4", description: "리뷰 1라운드 진행 중" }
+- { name: "review:round-2", color: "F9D0C4", description: "리뷰 2라운드 진행 중" }
+- { name: "review:round-3", color: "F9D0C4", description: "리뷰 3라운드(최종) 진행 중" }
+
+# --- status ---
+- { name: "status:triage",         color: "EDEDED", description: "분류 대기" }
+- { name: "status:blocked",        color: "B60205", description: "선행 작업/결정 대기" }
+- { name: "status:ready-to-merge", color: "0E8A16", description: "리뷰 종료, 머지 가능" }
+- { name: "status:escalated",      color: "B60205", description: "3라운드 초과, 사용자 결정 필요" }
+
+# --- size / phase ---
+- { name: "size:large", color: "E99695", description: "diff 300줄 초과 (스캐폴딩/설정 등 정당한 예외)" }
+- { name: "phase:2",    color: "D4C5F9", description: "Phase 2(SNS/동기화) 범위" }
+- { name: "adr",        color: "006B75", description: "아키텍처 결정 기록 포함" }

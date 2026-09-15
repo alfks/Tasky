@@ -1,0 +1,133 @@
+# 읽기 조건: CI가 실패했을 때 어느 잡/스텝인지 확인하려고, 또는 워크플로를 수정할 때.
+# 원칙: 검사 로직은 scripts/check-*.sh 에만 있고 여기서는 호출만 한다(로컬 훅과 동일 동작).
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+  CI: "true"
+
+jobs:
+  guard:
+    name: guard (금지어 · author · 브랜치명 · AGENTS.md)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 체크아웃 (PR은 머지 커밋이 아닌 head 커밋을 검사)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: 스크립트 실행 권한
+        run: chmod +x scripts/*.sh .githooks/* || true
+
+      - name: 금지어 검사 (레포 전체 — 파일명 + 본문)
+        run: bash scripts/check-forbidden-words.sh
+
+      - name: AGENTS.md 구조 검사 (필수 디렉토리 · 60줄 · 읽기 조건 · CLAUDE.md 250줄)
+        run: bash scripts/check-agents-md.sh
+
+      - name: 브랜치명 규칙 검사 (PR)
+        if: github.event_name == 'pull_request'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if ! printf '%s' "$HEAD_REF" | grep -qE '^(feature|fix|refactor|docs|chore|test)/[a-z0-9]+(-[a-z0-9]+)*$'; then
+            echo "::error::브랜치명 규칙 위반: '$HEAD_REF' → <type>/<kebab-name> (type: feature|fix|refactor|docs|chore|test). 에이전트 이름 기반 브랜치 금지."
+            exit 1
+          fi
+          echo "OK branch: $HEAD_REF"
+
+      - name: 커밋 author · 트레일러 검증 (PR의 모든 커밋)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/check-author.sh "$BASE_REF"
+
+      - name: PR 제목 형식 검사 (squash 커밋 제목이 됨)
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          printf '%s\n' "$PR_TITLE" > "$RUNNER_TEMP/pr-title.txt"
+          bash scripts/check-author.sh --message-file "$RUNNER_TEMP/pr-title.txt"
+          bash scripts/check-forbidden-words.sh --text-file "$RUNNER_TEMP/pr-title.txt"
+
+      - name: PR 본문 AI 서명 · 금지어 검사
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s\n' "$PR_BODY" > "$RUNNER_TEMP/pr-body.txt"
+          bash scripts/check-author.sh --body-file "$RUNNER_TEMP/pr-body.txt"
+          bash scripts/check-forbidden-words.sh --text-file "$RUNNER_TEMP/pr-body.txt"
+
+  build:
+    name: build (lint · typecheck · test · build)
+    runs-on: ubuntu-latest
+    needs: guard
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: package.json 존재 확인 (스캐폴딩 전에는 이후 스텝 생략)
+        id: pkg
+        run: |
+          if [ -f package.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::package.json 없음 — 스캐폴딩 전이므로 build 잡을 건너뜁니다."
+          fi
+
+      - name: pnpm 설치
+        if: steps.pkg.outputs.present == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Node 설치
+        if: steps.pkg.outputs.present == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 의존성 설치
+        if: steps.pkg.outputs.present == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: lint
+        if: steps.pkg.outputs.present == 'true'
+        run: pnpm lint
+
+      - name: typecheck
+        if: steps.pkg.outputs.present == 'true'
+        run: pnpm typecheck
+
+      - name: format check
+        if: steps.pkg.outputs.present == 'true'
+        run: pnpm format:check
+
+      - name: test
+        if: steps.pkg.outputs.present == 'true'
+        run: pnpm test -- --reporter=dot
+
+      - name: build
+        if: steps.pkg.outputs.present == 'true'
+        run: pnpm build
+
+      - name: 빌드 산출물에 금지어 없음 확인 (생성 파일 포함)
+        if: steps.pkg.outputs.present == 'true'
+        run: bash scripts/check-forbidden-words.sh --paths .next/server public

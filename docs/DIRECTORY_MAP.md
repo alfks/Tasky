@@ -1,0 +1,60 @@
+<!-- 읽기 조건: 어떤 파일이 어디 있는지(또는 어디에 만들어야 하는지) 모를 때. 답을 찾으면 닫는다. 이 표가 현실과 다르면 docs 티켓으로 고친다. -->
+
+# 디렉토리 맵 (단일 소스)
+
+규칙: 각 디렉토리의 규칙·맥락은 **그 디렉토리의 `AGENTS.md`에만** 있다. 여기서는 위치와 "언제 읽는가"만 답한다.
+`(예정)` 표시는 스캐폴딩 티켓에서 생성된다. 그 전에는 존재하지 않으므로 Read 시도하지 않는다.
+
+## 루트
+
+| 경로 | 한 줄 | AGENTS.md | 언제 읽어야 하는가 |
+|------|------|-----------|------------------|
+| `CLAUDE.md` | 루트 헌법 | — | 모든 세션 시작 |
+| `AGENTS.md` | 역할 프로토콜·핸드오프·리뷰 루프·락 | — | 오케스트레이터/리뷰어 역할, 핸드오프 주고받을 때 |
+| `README.md` | 사람용 소개 | — | 읽지 않아도 됨 |
+| `.github/` | CI, PR/이슈 템플릿, CODEOWNERS, 라벨 | [.github/AGENTS.md](../.github/AGENTS.md) | CI가 실패했을 때, 템플릿/라벨을 바꿀 때 |
+| `.githooks/` | pre-commit(금지어·author), commit-msg(트레일러) | [.githooks/AGENTS.md](../.githooks/AGENTS.md) | 커밋이 훅에 막혔을 때 |
+| `.worktrees/` | 워크트리 + 로컬 BOARD/tickets/handoffs/reviews | [.worktrees/AGENTS.md](../.worktrees/AGENTS.md) | 워크트리 만들기 전, 티켓/핸드오프 쓰기 전 |
+| `scripts/` | setup, wt, check-* | [scripts/AGENTS.md](../scripts/AGENTS.md) | 스크립트가 실패했거나 수정할 때 |
+| `public/` (예정) | 아이콘, manifest.json | — (정적 자산) | PWA 아이콘 교체 시 |
+| `tests/e2e/` (예정) | Playwright 스모크 | `tests/AGENTS.md` | E2E 작성 시 |
+
+## docs/
+
+| 경로 | 한 줄 | AGENTS.md | 언제 읽어야 하는가 |
+|------|------|-----------|------------------|
+| `docs/` | 문서 루트 | [docs/AGENTS.md](./AGENTS.md) | 문서를 새로 만들 때 |
+| `docs/ARCHITECTURE.md` | 레이어·의존 방향·데이터 모델·확장 지점 | — | 레이어 경계 넘는 변경 전 |
+| `docs/DIRECTORY_MAP.md` | 이 문서 | — | 위치를 모를 때 |
+| `docs/DECISIONS.md` | ADR 인덱스 | — | "왜 이렇게 했지?"가 궁금할 때 |
+| `docs/conventions/` | code-style, git-workflow, agent-collaboration, token-efficiency, templates/ | [docs/conventions/AGENTS.md](./conventions/AGENTS.md) | 각 문서의 읽기 조건 참조 |
+| `docs/research/` | 레퍼런스 앱 리서치(읽기 전용, 긴 문서) | [docs/research/AGENTS.md](./research/AGENTS.md) | 스펙을 쓸 때 **섹션 단위로** |
+| `docs/specs/` | 기능별 스펙(티켓의 근거) | [docs/specs/AGENTS.md](./specs/AGENTS.md) | 기능 티켓 시작 시 해당 스펙만 |
+| `docs/decisions/` | ADR 본문 | [docs/decisions/AGENTS.md](./decisions/AGENTS.md) | ADR을 쓰거나 인용할 때 |
+
+## src/ (예정 — 스캐폴딩 티켓에서 AGENTS.md와 함께 생성)
+
+| 경로 | 한 줄 | AGENTS.md | 언제 읽어야 하는가 |
+|------|------|-----------|------------------|
+| `src/` | 소스 루트 | `src/AGENTS.md` | 새 최상위 디렉토리를 만들 때만 |
+| `src/app/` | Next.js 라우트·레이아웃·providers(조립 지점)·PWA 메타 | `src/app/AGENTS.md` | 라우트/레이아웃/메타데이터 수정 시 |
+| `src/components/` | 공용 무상태 UI 프리미티브(`ui/`) | `src/components/AGENTS.md` | 새 프리미티브 추가, 기존 프리미티브 수정 시 |
+| `src/features/` | 기능 슬라이스: `todo` `category` `date-strip` `stats` `theme` | `src/features/AGENTS.md` | feature 코드 작성 시 (하위 feature별 AGENTS.md는 두지 않음 — 60줄 안에서 `features/AGENTS.md`가 전부 다룸) |
+| `src/domain/` | 엔티티·규칙·순수 함수, 프레임워크 의존 0 | `src/domain/AGENTS.md` | 도메인 타입/규칙 추가·수정 시 |
+| `src/repositories/` | 레포지토리 인터페이스, memory 구현, 컨테이너 | `src/repositories/AGENTS.md` | 저장소 계약 변경 시 |
+| `src/infra/` | `indexeddb/`(Dexie), 후일 `sync/` | `src/infra/AGENTS.md` | 스키마/마이그레이션/구현 수정 시 |
+| `src/lib/` | `cn.ts` `date.ts` `id.ts` 등 순수 유틸 | `src/lib/AGENTS.md` | 유틸 추가 시(중복 방지) |
+| `src/styles/` | `tokens.css` `globals.css` | `src/styles/AGENTS.md` | 토큰/테마 변경 시 |
+| `src/test/` | Vitest setup, fixtures 팩토리 | `src/test/AGENTS.md` | 테스트 작성 시 픽스처 확인 |
+
+## 빠른 질문표
+
+| 질문 | 답 |
+|------|----|
+| 새 UI 컴포넌트는 어디? | 한 기능 전용 → `src/features/<f>/components/`, 두 기능 이상 → `src/components/ui/` |
+| 달성률 계산은 어디? | `src/domain/todo/todo.rules.ts` (순수 함수) |
+| IndexedDB 스키마는 어디? | `src/infra/indexeddb/db.ts` (변경 시 ADR) |
+| 새 유틸은 어디? | 먼저 `Grep` 으로 `src/lib/` 확인 → 없으면 `src/lib/<name>.ts` |
+| 티켓/핸드오프는 어디? | `.worktrees/tickets/`, `.worktrees/handoffs/` (커밋하지 않음) |
+| 결정 근거는 어디? | `docs/DECISIONS.md` → 해당 ADR |
+| 레퍼런스 앱 동작 확인은? | `docs/research/reference-app-research.md`의 `## N.` 섹션을 Grep으로 찾아 그 범위만 |

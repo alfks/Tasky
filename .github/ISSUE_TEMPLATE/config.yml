@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 아키텍처 결정 제안 (ADR)
+    url: https://github.com/alfks/Tasky/blob/main/docs/decisions/AGENTS.md
+    about: 레이어/저장소/의존성 변경은 이슈 대신 docs/decisions/ 에 ADR 초안 PR로 제안합니다.
+  - name: 협업 규칙 문의
+    url: https://github.com/alfks/Tasky/blob/main/AGENTS.md
+    about: 에이전트 협업 프로토콜, 티켓/리뷰 규칙은 루트 AGENTS.md를 참고합니다.

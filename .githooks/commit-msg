@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# 읽기 조건: 커밋이 이 훅에 막혔을 때. 로직은 scripts/check-author.sh, scripts/check-forbidden-words.sh 에 있다.
+# 검사: 제목 형식 '<type>(<scope>): 제목', 72자, AI 서명/트레일러 없음, 금지어 없음
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+MSG_FILE="$1"
+
+bash "$ROOT/scripts/check-author.sh" --message-file "$MSG_FILE"
+bash "$ROOT/scripts/check-forbidden-words.sh" --text-file "$MSG_FILE"
