@@ -9,7 +9,7 @@
 ```
 .worktrees/
 ├── AGENTS.md              ← 이 파일(트래킹)
-├── BOARD.md               ← 작업 보드(오케스트레이터만 수정)
+├── BOARD.md               ← 작업 보드(쓰기 주체는 규칙 4 참조)
 ├── tickets/T-<n>.md       ← 티켓(포맷: docs/conventions/agent-collaboration.md §1)
 ├── handoffs/T-<n>.md      ← 구현자 핸드오프(포맷: 아래 "핸드오프 포맷")
 ├── reviews/T-<n>-round<N>-<persona>.md
@@ -34,7 +34,7 @@
 1. 워크트리 생성·삭제는 `bash scripts/wt.sh` 로만(직접 `git worktree add` 금지 — 보드 갱신과 경로 규칙을 스크립트가 보장).
 2. 항상 `/home/user/Tasky`(메인 트리)에서 `wt.sh` 실행. 워크트리 안에서 또 워크트리 생성 금지.
 3. `<name>` = 브랜치명에서 `type/` 제거. 한 브랜치 = 한 워크트리. 머지 후 즉시 `wt.sh rm`.
-4. `BOARD.md`는 오케스트레이터만 수정. 구현자는 티켓·핸드오프에만 쓴다. 리뷰어는 `reviews/`에만 쓴다.
+4. `BOARD.md`의 `status` 열은 `wt.sh`(`new`/`rm`)가 자동 갱신한다. 그 외 열(id/title/owns/pr/round)은 오케스트레이터만 손으로 고친다. 구현자는 티켓·핸드오프에만 쓴다. 리뷰어는 `reviews/`에만 쓴다.
 5. 다른 워크트리(`.worktrees/<other>/`)의 파일을 읽거나 수정하지 않는다(락 규칙). 상대 작업 내용이 필요하면 `handoffs/`를 읽는다.
 6. 이 디렉토리의 로컬 파일은 백업되지 않는다. 결정·근거는 PR 본문 또는 ADR로 옮겨야 영속된다.
 7. BOARD 초기 내용이 없으면 `wt.sh`가 헤더를 만든다. 티켓 번호는 BOARD 마지막 +1.

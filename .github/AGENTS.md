@@ -34,4 +34,4 @@ act -j guard 2>/dev/null || echo "act 미설치: bash scripts/check-forbidden-wo
 
 ## 자주 하는 실수
 - `fetch-depth: 0` 없이 author 검사 → 커밋 범위가 비어 통과처럼 보임. 유지할 것.
-- `build` 잡 조건(`hashFiles('package.json') != ''`) 제거 → 스캐폴딩 전 PR 전부 실패.
+- `build` 잡의 `pkg` 스텝(ci.yml:89-97)과 각 스텝의 `if: steps.pkg.outputs.present` 제거 → 스캐폴딩 전 PR 전부 실패.

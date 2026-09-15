@@ -4,7 +4,7 @@
 
 - 상태: accepted
 - 날짜: 2026-09-15
-- 관련: docs/conventions/code-style.md §4·§6, ADR-0002
+- 관련: docs/conventions/code-style.md §4·§6, ADR-0002(레포지토리 호출) · relates to ADR-0005(store는 `rev`/`updatedAt`을 직접 쓰지 않고 `touch()`를 거친다)
 
 ## 맥락
 서버가 없는 로컬 우선 앱이라 서버 상태 라이브러리는 과하다. 반면 테마·강조색·카테고리 색이 핵심 기능이라 런타임 색 변경이 잦다. 병렬 에이전트가 각자 스타일을 발명하면 감성 일관성이 깨진다.
@@ -31,4 +31,8 @@
 1. 스토어는 `src/features/<f>/store/` 에만, 전역 단일 스토어 금지.
 2. 컴포넌트는 selector로 구독. 스토어 전체 구독은 리뷰 Major.
 3. 색·간격·라운드·z-index는 토큰만. 예외는 카테고리 사용자 지정 색(`--cat-color`).
-4. 새 상태/스타일 라이브러리 추가는 이 ADR을 supersede하는 새 ADR 필요.
+4. 새 상태/스타일 라이브러리 추가는 이 ADR을 supersede하는 새 ADR 필요(현재 supersedes/superseded by 없음).
+
+## 재검토 트리거
+- 동기화 도입으로 서버 캐시가 필요해질 때(TanStack Query 재검토).
+- `touch()` 갱신 규칙(ADR-0005)이 바뀌어 store 계약에 영향을 줄 때.

@@ -71,7 +71,16 @@ status ∈ `todo | in-progress | in-review | needs-fix | ready-to-merge | done |
 | **접근성**(선택: UI 변경 PR) | code-style §10 항목 전부, 키보드 흐름, 대비, 포커스, reduced-motion | 비UI |
 | **아키텍처**(선택: 레이어/스키마 변경 PR) | ADR 부합, 의존 방향, 확장 지점 보존 | 세부 구현 |
 
-기본 3명(백엔드·프론트엔드·사용자). UI 변경이면 접근성 추가, `domain/repositories/infra` 변경이면 아키텍처 추가.
+### 소집 규칙 (PR에서 바뀐 경로 기준, 중복 시 합집합)
+
+| PR 성격 | 판정 경로 | 소집 페르소나 |
+|---------|----------|---------------|
+| 기본 | (항상) | 백엔드/데이터 · 프론트엔드 · 사용자 관점 |
+| UI 변경 | `src/features/*/components/**`, `src/app/**` | + 접근성 |
+| 데이터 레이어 | `src/domain/**`, `src/repositories/**`, `src/infra/**` | + 아키텍처 |
+| 아키텍처/거버넌스 | `docs/ARCHITECTURE.md`, `docs/decisions/**`, `eslint.config.mjs`, `AGENTS.md`/`CLAUDE.md` | + 아키텍처 |
+| 스크립트/CI만 | `scripts/**`, `.github/**`(소스 변경 없음) | 백엔드/데이터만(생략 사유는 PR 본문에 기재) |
+| 문서만 | `docs/**`·`*.md`(코드 diff 없음) | 사용자 관점만 |
 
 ### 4.2 리뷰 보고 템플릿 (리뷰어 → 오케스트레이터)
 
