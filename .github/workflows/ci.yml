@@ -119,4 +119,4 @@ jobs:
 
       - name: 빌드 산출물에 금지어 없음 확인 (생성 파일 포함)
         if: steps.pkg.outputs.present == 'true'
-        run: bash scripts/check-forbidden-words.sh --paths .next/server public
+        run: bash scripts/check-forbidden-words.sh --paths dist/client public

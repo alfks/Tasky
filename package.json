@@ -2,17 +2,21 @@
   "name": "tasky",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=22 <23"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "vinext dev",
+    "build": "vinext build && find dist/client -name AGENTS.md -delete && echo vinext-client-entry-manifest.json >> dist/client/.assetsignore && pnpm sw:build",
+    "sw:build": "serwist build serwist.config.js",
+    "start": "wrangler dev --config dist/server/wrangler.json",
+    "deploy": "wrangler deploy --config dist/server/wrangler.json",
+    "deploy:dry-run": "pnpm run deploy --dry-run --outdir dist/dry-run",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.sw.json",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
@@ -25,18 +29,21 @@
     "wt": "bash scripts/wt.sh"
   },
   "dependencies": {
-    "@serwist/next": "^9",
+    "@vinext/cloudflare": "1.0.0-beta.8",
     "clsx": "^2",
     "dexie": "^4",
-    "next": "15.x",
-    "react": "19.x",
-    "react-dom": "19.x",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-server-dom-webpack": "^19.3.0",
     "tailwind-merge": "^3",
+    "vinext": "1.0.0-beta.10",
     "zustand": "^5"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.54.9",
     "@eslint/eslintrc": "^3",
     "@playwright/test": "^1",
+    "@serwist/cli": "^9.5.12",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6",
     "@testing-library/react": "^16",
@@ -44,24 +51,29 @@
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@vitejs/plugin-react": "^4",
-    "@vitest/coverage-v8": "^3",
+    "@vitejs/plugin-react": "^6.1.1",
+    "@vitejs/plugin-rsc": "^0.5.34",
+    "@vitest/coverage-v8": "^5.0.1",
     "eslint": "^9",
     "eslint-config-next": "15.x",
     "eslint-config-prettier": "^10",
     "fake-indexeddb": "^6",
     "jsdom": "^26",
+    "next": "15.5.25",
     "prettier": "^3",
     "prettier-plugin-tailwindcss": "^0.6",
-    "serwist": "^9",
+    "serwist": "^9.5.12",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^3"
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1",
+    "wrangler": "^4.131.2"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild",
-      "unrs-resolver"
+      "unrs-resolver",
+      "workerd"
     ]
   }
 }

@@ -32,7 +32,7 @@ const todo = (fields: Partial<Omit<Todo, keyof Meta>> = {}) =>
   });
 
 const category = (name: string, order: number) =>
-  createMeta<Category>(deps, { name, color: '#000', order });
+  createMeta<Category>(deps, { name, color: '#000', order, status: 'active' });
 
 beforeEach(async () => {
   seq = 0;

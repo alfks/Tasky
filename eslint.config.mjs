@@ -319,6 +319,9 @@ const config = [
     ignores: [
       '.next/**',
       'out/**',
+      'dist/**', // Vinext 빌드 산출물
+      '.vinext/**',
+      '.wrangler/**',
       'coverage/**',
       'node_modules/**',
       'playwright-report/**',

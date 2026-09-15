@@ -1,0 +1,114 @@
+# 읽기 조건: 배포가 실패했을 때 어느 스텝인지 확인하려고, 또는 배포 설정을 바꿀 때.
+# 원칙: 검사 목록의 단일 소스는 scripts/check.sh 다(ci.yml 과 동일). 여기서는 배포만 한다 —
+# guard/build 검사를 다시 나열하지 않고 `bash scripts/check.sh` 를 한 번 호출한다.
+# 배포 명령의 단일 소스는 package.json 의 `deploy` 스크립트다. 여기서 wrangler 를 직접 호출하거나
+# 별도 액션으로 같은 명령을 다시 적지 않는다 — 로컬 `pnpm deploy:dry-run` 은 그 스크립트에
+# `--dry-run` 만 얹은 것이라(package.json), 로컬에서 확인한 명령과 CI 가 실행하는 명령이 같다.
+# 조용한 초록불을 만들지 않는다: 시크릿 확인을 맨 앞에 두고(없으면 즉시 실패), continue-on-error 를
+# 쓰지 않으며, 배포 스텝에 `if:` 조건을 달지 않는다(조건부 스킵 = 거짓 초록불). 빌드 산출물 존재도
+# 배포 직전에 확인한다(빈 디렉토리를 배포하고 성공으로 끝나는 사고 방지). 배포 직전에 같은 명령을
+# `--dry-run` 으로 한 번 돌려, 업로드 대상과 설정이 실제로 해석되는지 확인한 뒤 진짜 배포로 넘어간다.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+  CI: "true"
+
+jobs:
+  deploy:
+    name: deploy (Cloudflare Workers)
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: 시크릿 존재 확인 (없으면 여기서 실패 — 조용히 건너뛰지 않는다)
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          missing=0
+          if [ -z "$CF_API_TOKEN" ]; then
+            echo "::error title=시크릿 누락::CLOUDFLARE_API_TOKEN 이 비어 있습니다 — 레포 Settings → Secrets and variables → Actions 에 등록하세요."
+            missing=1
+          fi
+          if [ -z "$CF_ACCOUNT_ID" ]; then
+            echo "::error title=시크릿 누락::CLOUDFLARE_ACCOUNT_ID 가 비어 있습니다 — 레포 Settings → Secrets and variables → Actions 에 등록하세요."
+            missing=1
+          fi
+          [ "$missing" -eq 0 ] || exit 1
+          echo "OK: 배포 시크릿 2개 확인"
+
+      - name: 체크아웃
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: 스크립트 실행 권한
+        run: chmod +x scripts/*.sh || true
+
+      - name: pnpm 설치
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Node 설치
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 의존성 설치
+        run: pnpm install --frozen-lockfile
+
+      - name: 배포 전 검사 (금지어 · AGENTS.md · author · arch · lint · typecheck · format · test)
+        run: bash scripts/check.sh "${{ github.event.before || 'main' }}"
+
+      - name: 빌드 (vinext build + 서비스워커 프리캐시 주입)
+        run: pnpm build
+
+      - name: 빌드 산출물 확인 (조용한 빈 배포 방지)
+        run: |
+          for f in dist/client/index.html dist/client/sw.js dist/server/wrangler.json; do
+            if [ ! -s "$f" ]; then
+              echo "::error title=빌드 산출물 누락::$f 가 없거나 비어 있습니다 — 배포를 중단합니다."
+              exit 1
+            fi
+          done
+          echo "OK: index.html · sw.js · wrangler.json 존재"
+
+      - name: 빌드 산출물에 금지어 없음 확인 (생성 파일 포함)
+        run: bash scripts/check-forbidden-words.sh --paths dist/client public
+
+      - name: 배포 dry-run (로컬 `pnpm deploy:dry-run` 과 같은 명령 — 업로드 대상·설정 해석 확인)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm run deploy:dry-run
+
+      - name: Cloudflare Workers 배포 (package.json 의 `deploy` — dry-run 과 같은 명령)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm run deploy
+
+      - name: 배포 확인 (HTTP 200 · sw.js 도달)
+        env:
+          DEPLOY_URL: ${{ vars.DEPLOY_URL }}
+        run: |
+          if [ -z "$DEPLOY_URL" ]; then
+            echo "::error title=스모크 불가::vars.DEPLOY_URL 이 비어 있습니다 — 레포 Settings → Secrets and variables → Actions → Variables 에 배포 URL(예: https://tasky.<subdomain>.workers.dev)을 등록하세요. 등록 목록은 CLAUDE.md 현재 상태 참고."
+            exit 1
+          fi
+          curl -fsS -o /dev/null -w '%{http_code} %{url_effective}\n' "$DEPLOY_URL/"
+          curl -fsS -o /dev/null -w '%{http_code} %{url_effective}\n' "$DEPLOY_URL/sw.js"

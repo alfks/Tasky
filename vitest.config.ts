@@ -18,7 +18,7 @@ const config = defineConfig({
       reporter: ['text-summary'],
     },
   },
-  resolve: { alias: { '@': path.resolve(__dirname, 'src') } },
+  resolve: { alias: { '@': path.resolve(import.meta.dirname, 'src') } },
 });
 
 export default config;

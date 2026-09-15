@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  adopt,
   createMeta,
+  deletionStamp,
   isTombstone,
   markDeleted,
   touch,
@@ -160,5 +162,56 @@ describe('Persistable 브랜드 위조 시도', () => {
     await expect(noopRepository.upsert(createMeta<Todo>(deps, FIELDS))).resolves.toBeUndefined();
     await expect(noopRepository.upsert(touch(plain, T1))).resolves.toBeUndefined();
     await expect(noopRepository.upsert(markDeleted(plain, T1))).resolves.toBeUndefined();
+  });
+});
+
+describe('adopt (ADR-0009 결정 3)', () => {
+  const uuid = '3f0e0b1a-9c2d-4e6f-8a1b-0c2d3e4f5a6b';
+  const fromFile = (): Todo => ({ ...makePlainTodo(), id: uuid, rev: 7, updatedAt: T1 });
+
+  it('시각·rev 를 새로 찍지 않고 브랜드만 붙인다 — 왕복 동일성이 유지된다', () => {
+    const row = fromFile();
+    const adopted = adopt(row);
+    expect(adopted).toEqual(row);
+    expect(adopted.rev).toBe(7);
+    expect(adopted.updatedAt).toBe(T1);
+  });
+
+  it('브랜드가 붙었으므로 upsert 에 그대로 넘길 수 있다', async () => {
+    await expect(noopRepository.upsert(adopt(fromFile()))).resolves.toBeUndefined();
+  });
+
+  it('Settings 의 고정 id 는 UUID 검사에서 제외된다', () => {
+    expect(adopt({ ...makePlainTodo(), id: 'default' }).id).toBe('default');
+  });
+
+  it('Meta 형식이 아니면 META_FORMAT_INVALID (backup R4 형식 오류)', () => {
+    const cases: Array<Partial<Todo>> = [
+      { id: 'todo-1' }, // UUID v4 가 아니다
+      { id: '' },
+      { createdAt: '2026-01-15' },
+      { updatedAt: '2026-01-15T00:00:00Z' },
+      { deletedAt: 'nope' },
+      { rev: 0 },
+      { rev: 1.5 },
+    ];
+    for (const patch of cases) {
+      expect(() => adopt({ ...fromFile(), ...patch })).toThrow(
+        expect.objectContaining({ code: 'META_FORMAT_INVALID' }),
+      );
+    }
+  });
+});
+
+describe('deletionStamp', () => {
+  it('툼스톤의 삭제 시각을 결과 객체 형태로 돌려준다', () => {
+    const tombstone = markDeleted(makePlainTodo(), T1);
+    expect(deletionStamp(tombstone)).toEqual({ deletedAt: T1 });
+  });
+
+  it('툼스톤이 아니면 던진다', () => {
+    expect(() => deletionStamp(makePlainTodo())).toThrow(
+      expect.objectContaining({ code: 'META_FORMAT_INVALID' }),
+    );
   });
 });

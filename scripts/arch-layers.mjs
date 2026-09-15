@@ -16,7 +16,7 @@ export const LAYERS = [
 ];
 
 /** src/ 직속에 둘 수 있는 유일한 파일(Next.js 가 위치를 강제). lib 만 import 가능(ALLOW.root) */
-export const SRC_ROOT_FILES = ['middleware.ts', 'instrumentation.ts'];
+export const SRC_ROOT_FILES = ['middleware.ts', 'instrumentation.ts', 'sw.ts'];
 
 /** src/ 안에 존재할 수 있는 확장자. 늘릴 때는 ADR */
 export const SRC_EXT = ['ts', 'tsx', 'css', 'md'];

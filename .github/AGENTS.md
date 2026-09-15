@@ -9,6 +9,7 @@ GitHub 자동화와 양식. 규칙을 사람이 기억하지 않아도 되게 �
 ## 여기 있는 것
 
 - `workflows/ci.yml`: `guard`(금지어·author·AGENTS.md 구조·브랜치명·PR 제목/본문, 항상) + `build`(레이어 경계 린트 + 아키텍처 2차 패스·lint·typecheck·format·test·build, `package.json` 있을 때만)
+- `workflows/deploy.yml`: `main` push·수동 실행 시 Cloudflare Workers 배포(ADR-0010). 시크릿 확인 → `scripts/check.sh` → `pnpm build` → 빌드 산출물 존재 확인 → 배포 → 스모크
 - `pull_request_template.md`, `ISSUE_TEMPLATE/{feature_request,bug_report}.md`, `ISSUE_TEMPLATE/config.yml`
 - `CODEOWNERS`: 전 경로 `@alfks`
 - `labels.yml`: 라벨 정의(`type:*`, `area:*`, `review:round-N`, `status:*`, `size:large`, `phase:2`, `adr`)
@@ -18,9 +19,10 @@ GitHub 자동화와 양식. 규칙을 사람이 기억하지 않아도 되게 �
 1. CI 스텝은 `scripts/check-*.sh`를 **호출**한다. 로직을 yml에 중복 구현하지 않는다(로컬과 CI가 같은 스크립트).
 2. 워크플로 변경은 `ci(...)` 커밋, PR에 실행 로그 링크 첨부.
 3. 액션은 메이저 버전 태그(`@v4`)로 고정. 서드파티 액션 추가는 사용자 확인.
-4. 시크릿은 쓰지 않는다(로컬 우선 앱, 배포 없음). 필요해지면 ADR.
-5. 템플릿 문구에 AI 언급·제품명 금지.
-6. 라벨 변경은 `labels.yml` 수정 → 상단 주석의 명령으로 동기화.
+4. 배포 시크릿은 `CLOUDFLARE_API_TOKEN`·`CLOUDFLARE_ACCOUNT_ID` 둘뿐이다(ADR-0010). 늘리려면 ADR.
+5. 배포 스텝에 `if:`·`continue-on-error`를 붙이지 않는다 — 조건부 스킵은 "시크릿 없는데 초록불"을 만든다. 시크릿·빌드 산출물 확인 스텝은 실패하도록 둔다.
+6. 템플릿 문구에 AI 언급·제품명 금지.
+7. 라벨 변경은 `labels.yml` 수정 → 상단 주석의 명령으로 동기화.
 
 ## 관할: workflows/
 
