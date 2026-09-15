@@ -1,6 +1,9 @@
-/* 전역 스타일: 리셋과 문서 기본값만. 토큰은 tokens.css. */
+/* 전역 스타일: 리셋과 문서 기본값만. 토큰은 tokens.css, @font-face 는 fonts.css(T-22). */
 @import 'tailwindcss';
 @import './tokens.css';
+/* 폰트 파일 선언(@font-face)은 fonts.css 한 곳에만 둔다 — ADR-0010 으로 next/font 경로가
+   폐기돼 CSS 가 유일한 선언 자리다. 여기서 한 번만 import 하고 tokens.css 는 값만 갖는다. */
+@import './fonts.css';
 
 html {
   color-scheme: light dark;
@@ -9,6 +12,20 @@ html {
 body {
   background-color: var(--color-bg);
   color: var(--color-text);
+  /* 폰트 파일 선언은 fonts.css — 여기서는 토큰을 폴백과 함께 참조만 한다. */
+  font-family: var(
+    --font-sans,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Apple SD Gothic Neo',
+    'Malgun Gothic',
+    'Noto Sans KR',
+    system-ui,
+    sans-serif
+  );
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--leading-normal);
 }
 
 @media (prefers-reduced-motion: reduce) {
