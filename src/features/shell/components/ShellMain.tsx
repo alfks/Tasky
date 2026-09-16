@@ -7,6 +7,7 @@ import type { Category } from '@/domain/category/category';
 import type { DateKey } from '@/domain/date/date-key';
 
 import { useCommandStore } from '@/features/command';
+import { useDateStripStore } from '@/features/date-strip';
 import { useDelayedFlag } from '@/features/shell/hooks/useDelayedFlag';
 import { TodoList } from '@/features/todo';
 
@@ -16,7 +17,31 @@ import { Skeleton } from '@/components/ui/Skeleton';
 /** §2-C 문구. 테스트가 스펙과 1:1 로 대조한다. */
 export const EMPTY_CATEGORIES_TEXT = '카테고리를 만들면 할 일을 적을 수 있어요';
 export const EMPTY_CATEGORIES_CTA = '첫 카테고리 만들기';
+/** 선택 날짜가 **오늘**일 때의 §2-C 문구. 스펙에 적힌 문장 그대로다. */
 export const EMPTY_TODOS_TEXT = '오늘은 비어 있어요. 하나 적어 볼까요?';
+/** 아직 오지 않은 날. 지금 하자고 부르지 않고 미리 적어 두자고 권한다. */
+export const EMPTY_TODOS_TEXT_FUTURE = '이날은 아직 비어 있어요. 미리 적어 둘까요?';
+/**
+ * 이미 지난 날. "하나 적어 볼까요?" 는 지나간 날엔 재촉으로 읽히고, 그날 아무것도 안 한 사람을
+ * 나무라는 말이 된다. 그래서 과거형으로 사실만 말하고, 뒤늦게 적는 것도 괜찮다고만 덧붙인다
+ * (지난 날짜에도 투두는 그대로 추가된다 — 길을 막지는 않는다).
+ */
+export const EMPTY_TODOS_TEXT_PAST = '이날은 비어 있었어요. 지금 적어 둬도 괜찮아요.';
+
+/**
+ * 선택 날짜가 오늘인지 과거인지 미래인지에 따라 빈 상태 한 줄을 고른다.
+ *
+ * 날짜를 옮겨 다니는 것이 이 앱의 핵심 동작이라(date-strip R4), "오늘은" 을 어느 날짜에나
+ * 쓰면 화면이 거짓말을 한다. `today` 는 **날짜 스트립 스토어의 것**을 그대로 받는다 —
+ * 오늘 판정의 출처는 `lib/date.todayKey()` 하나이고, 자정을 넘길 때 그 값을 갱신하는 곳도
+ * 거기뿐이다(R12). 여기서 시계를 다시 읽으면 판정이 두 벌이 된다.
+ *
+ * DateKey 는 0 을 채운 'YYYY-MM-DD' 고정 폭이라 사전순 비교가 곧 날짜순 비교다.
+ */
+export function emptyTodosText(date: DateKey, today: DateKey): string {
+  if (date === today) return EMPTY_TODOS_TEXT;
+  return date > today ? EMPTY_TODOS_TEXT_FUTURE : EMPTY_TODOS_TEXT_PAST;
+}
 /** §2-C 로딩: 이 시간을 넘겨도 끝나지 않을 때만 스켈레톤을 그린다. */
 export const SKELETON_DELAY_MS = 100;
 
@@ -77,6 +102,8 @@ export function ShellMain({
   onCreateCategory,
   showBottomAdd,
 }: ShellMainProps) {
+  // 자정을 넘기면 스트립의 '오늘' 이 갱신되고(R12) 이 한 줄도 같은 박자로 따라간다.
+  const today = useDateStripStore((state) => state.today);
   const showCategorySkeleton = useDelayedFlag(categoriesPending, SKELETON_DELAY_MS);
   const showTodoSkeleton = useDelayedFlag(todosFirstLoading, SKELETON_DELAY_MS);
   const noCategories = !categoriesPending && categories.length === 0;
@@ -119,7 +146,9 @@ export function ShellMain({
             */}
             <div hidden={showTodoSkeleton}>
               {todosEmpty ? (
-                <p className="pb-[var(--space-2)] text-base text-muted">{EMPTY_TODOS_TEXT}</p>
+                <p className="pb-[var(--space-2)] text-base text-muted">
+                  {emptyTodosText(date, today)}
+                </p>
               ) : null}
               <TodoList date={date} categories={categories} />
             </div>
