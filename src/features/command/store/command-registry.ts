@@ -5,6 +5,7 @@
  * 여기 등록한다. 팔레트가 명령 목록을 직접 들고 있으면 새 기능이 생길 때마다 팔레트 파일을 고쳐야
  * 하고, 그 파일은 한 티켓의 소유라 충돌이 난다.
  */
+import { throwsOnDuplicate, reportDuplicate } from '@/features/command/lib/duplicate-policy';
 import type { ShortcutId } from '@/features/command/store/shortcut-catalog';
 
 export type Command = {
@@ -29,11 +30,26 @@ export class DuplicateCommandError extends Error {
   }
 }
 
-/** 여러 개를 한 번에. 하나라도 중복이면 **아무것도 등록하지 않는다**(부분 등록 상태 금지). */
-export function addCommands(list: readonly Command[], commands: readonly Command[]): Command[] {
+/**
+ * 여러 개를 한 번에. 하나라도 중복이면 **아무것도 등록하지 않는다**(부분 등록 상태 금지).
+ *
+ * 중복의 처리는 단축키와 같다 — `strict` 면 던지고, 아니면 기록만 남기고 먼저 등록된 쪽을
+ * 유지한다(`lib/duplicate-policy.ts`). 이 등록도 `useEffect` 안에서 일어나므로 프로덕션에서
+ * 던지면 앱 전체가 하얘진다.
+ */
+export function addCommands(
+  list: readonly Command[],
+  commands: readonly Command[],
+  strict: boolean = throwsOnDuplicate(),
+): Command[] {
   const ids = new Set(list.map((command) => command.id));
   for (const command of commands) {
-    if (ids.has(command.id)) throw new DuplicateCommandError(command.id);
+    if (ids.has(command.id)) {
+      const error = new DuplicateCommandError(command.id);
+      if (strict) throw error;
+      reportDuplicate(error);
+      return [...list];
+    }
     ids.add(command.id);
   }
   return [...list, ...commands];

@@ -1,16 +1,14 @@
 /**
  * 등록된 단축키 목록에 대한 순수 연산. React 도 스토어도 모른다 — 테스트가 상태 없이 돈다.
  *
- * 중복 등록을 **예외로** 다루는 이유: 같은 조합에 두 핸들러가 붙으면 하나가 조용히 이기고, 어느
- * 쪽이 이기는지는 마운트 순서라는 보이지 않는 값에 달린다. 그 상태로 배포되면 "가끔 안 돼요" 라는
- * 재현 불가 버그가 된다. 반면 중복은 **사용자 입력과 무관하게 결정적**이라 마운트하는 순간 항상
- * 터진다 — 개발·테스트에서 100% 잡히고 사용자에게 도달할 경로가 좁다.
+ * 중복 등록을 어떻게 다루는지(개발은 예외, 프로덕션은 경고 + 먼저 등록된 쪽 유지)와 그 근거는
+ * `lib/duplicate-policy.ts` 에 한 번만 적혀 있다.
  */
+import { throwsOnDuplicate, reportDuplicate } from '@/features/command/lib/duplicate-policy';
 import { chordId, matchesChord, type Chord } from '@/features/command/lib/key-chord';
 import {
   SHORTCUTS,
   SHORTCUT_CHORDS,
-  SHORTCUT_GROUPS,
   SHORTCUT_IDS,
   type ShortcutGroup,
   type ShortcutId,
@@ -35,8 +33,18 @@ export class DuplicateShortcutError extends Error {
   }
 }
 
-/** 목록에 하나 더한다. 이미 있으면 `DuplicateShortcutError`. */
-export function addShortcut(list: readonly ShortcutEntry[], entry: ShortcutEntry): ShortcutEntry[] {
+/**
+ * 목록에 하나 더한다.
+ *
+ * 이미 있으면 `strict` 일 때 `DuplicateShortcutError`, 아니면 기록만 남기고 **목록을 그대로**
+ * 돌려준다(먼저 등록된 쪽이 산다). 기본값은 환경이 정한다 — `duplicate-policy.ts` 참고.
+ * `strict` 를 인자로 뽑아 둔 이유는 프로덕션 갈래도 테스트가 실제로 밟게 하기 위해서다.
+ */
+export function addShortcut(
+  list: readonly ShortcutEntry[],
+  entry: ShortcutEntry,
+  strict: boolean = throwsOnDuplicate(),
+): ShortcutEntry[] {
   const definition = SHORTCUTS[entry.id];
   if (definition.scope === 'global' && entry.run === undefined) {
     throw new Error(`'${entry.id}' 는 전역 단축키라 핸들러가 필요합니다.`);
@@ -47,7 +55,12 @@ export function addShortcut(list: readonly ShortcutEntry[], entry: ShortcutEntry
         '항목 컴포넌트가 자기 keydown 에서 처리합니다.',
     );
   }
-  if (list.some((other) => other.id === entry.id)) throw new DuplicateShortcutError(entry.id);
+  if (list.some((other) => other.id === entry.id)) {
+    const error = new DuplicateShortcutError(entry.id);
+    if (strict) throw error;
+    reportDuplicate(error);
+    return [...list];
+  }
   return [...list, entry];
 }
 
@@ -84,18 +97,22 @@ export type HelpRow = {
 
 /**
  * 도움말 표의 행(R5). **등록된 것만** 싣는다 — 목록 전체를 실으면 아직 아무도 처리하지 않는 키가
- * 도움말에 먼저 나타나고, 눌러도 아무 일이 없는 문서가 된다.
+ * 도움말에 먼저 나타나고, 눌러도 아무 일이 없는 문서가 된다. 항목 포커스 키(R2)도 예외가 아니다:
+ * 그 키를 처리하는 컴포넌트가 `useDocumentedShortcuts` 로 등록할 때 비로소 도움말에 나타난다.
+ *
+ * 묶음 순서(`SHORTCUT_GROUPS`)는 여기서 다시 정렬하지 않는다. 카탈로그가 이미 묶음 순으로 적혀
+ * 있고 그 불변식은 카탈로그 테스트가 지킨다 — 여기에 정렬을 두면 **한 줄도 밟히지 않는 코드**가
+ * 되어, 지워도 테스트가 초록으로 남는다(실제로 그랬다).
  */
 export function helpRows(list: readonly ShortcutEntry[]): HelpRow[] {
   const registered = new Set(list.map((entry) => entry.id));
-  const rows = SHORTCUT_IDS.filter((id) => registered.has(id)).map((id) => ({
+  return SHORTCUT_IDS.filter((id) => registered.has(id)).map((id) => ({
     id,
     group: SHORTCUTS[id].group,
     description: SHORTCUTS[id].description,
     chords: SHORTCUT_CHORDS[id],
     scope: SHORTCUTS[id].scope,
   }));
-  return rows.sort((a, b) => SHORTCUT_GROUPS.indexOf(a.group) - SHORTCUT_GROUPS.indexOf(b.group));
 }
 
 /** 도움말·팔레트가 조합을 그릴 때 쓰는 조회. */

@@ -115,28 +115,50 @@ export function shortcutDefinition(id: ShortcutId): ShortcutDefinition {
 export const SHORTCUT_IDS = Object.keys(SHORTCUTS) as ShortcutId[];
 
 /**
- * 항목 포커스 단축키 id(R2). `<CommandLayer/>` 가 이것만 **문서용으로** 한 번 등록한다 —
- * 투두·카테고리 행이 따로 등록하면 중복이 된다. 모듈 상수라 훅의 의존성으로 안전하다.
+ * 항목 포커스 단축키 id(R2). 이 키들을 **실제로 처리하는** 목록 컴포넌트(T-15)가
+ * `useDocumentedShortcuts(ITEM_SHORTCUT_IDS)` 로 **한 번** 등록해 도움말에 싣는다. 처리기가 없는
+ * `<CommandLayer/>` 가 대신 등록하면, 아직 동작하지 않는 키가 도움말에 먼저 나타난다(R5 위반).
+ * 등록하는 쪽은 한 곳뿐이어야 한다 — 투두 행과 카테고리 행이 각각 부르면 중복이다.
+ * 모듈 상수라 훅의 의존성으로 안전하다.
  */
 export const ITEM_SHORTCUT_IDS: readonly ShortcutId[] = SHORTCUT_IDS.filter(
   (id) => SHORTCUTS[id].scope === 'item',
 );
 
+/**
+ * 조합 하나가 카탈로그에 들어가도 되는지 검사하고, 통과하면 `seen` 에 주인을 기록한다(R4).
+ *
+ * `buildChords` 안에 인라인으로 두지 않는 이유: 그러면 테스트가 이 검사를 **복제**해야만 검증할 수
+ * 있고(카탈로그 전체를 돌며 같은 판정을 다시 쓰는 거울 픽스처), 그 복제는 프로덕션 가드를 한 번도
+ * 밟지 않는다 — 가드를 통째로 지워도 테스트가 초록으로 남는다. 실제로 그랬다. 함수로 뽑아 두면
+ * 테스트가 예약 조합·중복 조합을 **직접 먹여** 던지는 것을 단언할 수 있다.
+ *
+ * `seen` 의 키는 `scope:chordId` 다 — 같은 조합이라도 전역과 항목은 서로 다른 순간에 쓰인다(R2).
+ */
+export function assertRegisterable(
+  chord: Chord,
+  spec: string,
+  id: string,
+  scope: ShortcutScope,
+  seen: Map<string, string>,
+): void {
+  if (reservedConflict(chord) !== null) {
+    throw new Error(`'${id}' 의 '${spec}' 는 브라우저·OS 예약 조합입니다(R4).`);
+  }
+  // 목록 안의 충돌은 등록을 기다릴 필요가 없다 — 모듈 로드 시점에 죽는 편이 낫다.
+  const key = `${scope}:${chordId(chord)}`;
+  const owner = seen.get(key);
+  if (owner !== undefined) throw new Error(`'${spec}' 가 '${owner}' 와 '${id}' 에 겹칩니다.`);
+  seen.set(key, id);
+}
+
 function buildChords(): Record<ShortcutId, Chord[]> {
   const byId = {} as Record<ShortcutId, Chord[]>;
-  const seen = new Map<string, ShortcutId>();
+  const seen = new Map<string, string>();
   for (const id of SHORTCUT_IDS) {
     byId[id] = SHORTCUTS[id].chords.map((spec) => {
       const chord = parseChord(spec);
-      const reserved = reservedConflict(chord);
-      if (reserved !== null) {
-        throw new Error(`'${id}' 의 '${spec}' 는 브라우저·OS 예약 조합입니다(R4).`);
-      }
-      // 목록 안의 충돌은 등록을 기다릴 필요가 없다 — 모듈 로드 시점에 죽는 편이 낫다.
-      const key = `${SHORTCUTS[id].scope}:${chordId(chord)}`;
-      const owner = seen.get(key);
-      if (owner !== undefined) throw new Error(`'${spec}' 가 '${owner}' 와 '${id}' 에 겹칩니다.`);
-      seen.set(key, id);
+      assertRegisterable(chord, spec, id, SHORTCUTS[id].scope, seen);
       return chord;
     });
   }

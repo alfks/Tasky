@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react';
 
 import { ShortcutHelpDialog } from '@/features/command/components/ShortcutHelpDialog';
-import { useDocumentedShortcuts, useShortcut } from '@/features/command/hooks/useShortcut';
+import { useShortcut } from '@/features/command/hooks/useShortcut';
 import { useShortcutDispatch } from '@/features/command/hooks/useShortcutDispatch';
 import { useCommandStore } from '@/features/command/store/command-store';
-import { ITEM_SHORTCUT_IDS } from '@/features/command/store/shortcut-catalog';
 
 type CommandLayerProps = {
   /**
@@ -18,13 +17,17 @@ type CommandLayerProps = {
 /**
  * 앱 전체에서 **한 번만** 마운트하는 단축키 레이어(T-20 이 셸에 놓는다).
  *
- * 두 번 마운트하면 `?`·`Mod+K` 가 중복 등록되어 `DuplicateShortcutError` 로 즉시 터진다. 조용히
- * 두 번 실행되는 것보다 낫다 — 그 상태에서는 도움말이 열렸다 닫히는 것처럼 보인다.
+ * 두 번 마운트하면 `?`·`Mod+K` 가 중복 등록된다 — 개발에서는 `DuplicateShortcutError` 로 즉시
+ * 터지고, 프로덕션에서는 먼저 마운트된 쪽이 산다(`lib/duplicate-policy.ts`). 조용히 두 번
+ * 실행되는 것보다 낫다 — 그 상태에서는 도움말이 열렸다 닫히는 것처럼 보인다.
+ *
+ * **항목 포커스 키(R2)는 여기서 등록하지 않는다.** 등록은 곧 "도움말에 싣는다" 이고(R5), 아직
+ * 아무도 처리하지 않는 키를 도움말에 실으면 눌러도 아무 일이 없는 문서가 된다. 그 키를 실제로
+ * 처리하는 목록(T-15)이 `useDocumentedShortcuts(ITEM_SHORTCUT_IDS)` 를 부르면 도움말에
+ * 자동으로 나타난다.
  */
 export function CommandLayer({ palette }: CommandLayerProps) {
   useShortcutDispatch();
-  // 항목 포커스 키(R2)는 처리하지 않고 도움말에만 싣는다 — 처리는 투두·카테고리 행이 한다.
-  useDocumentedShortcuts(ITEM_SHORTCUT_IDS);
 
   const openHelp = useCommandStore((state) => state.openHelp);
   const closeHelp = useCommandStore((state) => state.closeHelp);

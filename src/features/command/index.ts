@@ -4,6 +4,8 @@
 // - 셸(T-20)은 `<CommandLayer/>` 를 **한 번** 마운트하고, 도움말 버튼에 `openHelp` 를 건다.
 // - 기능(T-15·T-20·T-23)은 `useShortcut('<id>', handler)` 로 조합이 아니라 **id 로** 핸들러를 건다.
 //   조합·설명·묶음은 `SHORTCUTS` 카탈로그가 단일 소스이고 도움말은 거기서 생성된다(R5).
+// - 항목 포커스 키(R2)는 그 키를 실제로 처리하는 목록(T-15)이
+//   `useDocumentedShortcuts(ITEM_SHORTCUT_IDS)` 로 한 번 등록한다 — 등록하는 순간 도움말에 나타난다.
 // - 팔레트(T-19)는 `registerCommands` 로 명령을 등록하고, `<CommandLayer palette={…}/>` 로 화면을 끼운다.
 //   검색·정렬·최근 실행은 `matchCommands`·`orderByRecent`·`recentCommandIds` 가 이미 있다.
 export { CommandLayer } from '@/features/command/components/CommandLayer';
@@ -29,6 +31,7 @@ export {
 } from '@/features/command/store/command-registry';
 
 export {
+  ITEM_SHORTCUT_IDS,
   SHORTCUTS,
   SHORTCUT_GROUPS,
   SHORTCUT_IDS,

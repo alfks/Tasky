@@ -9,6 +9,7 @@ import { useShortcutDispatch } from '@/features/command/hooks/useShortcutDispatc
 import { useCommandStore } from '@/features/command/store/command-store';
 
 import { Dialog } from '@/components/ui/Dialog';
+import { overlayLayerCount } from '@/components/ui/overlay-stack';
 
 /** jsdom 의 `navigator.platform` 은 비어 있다 — 두 플랫폼을 모두 밟으려면 갈아 끼운다. */
 function setPlatform(platform: string) {
@@ -74,6 +75,15 @@ describe('전역 디스패치 — 통과 경로', () => {
     expect(press(document.body, { key: 'ArrowLeft' }).defaultPrevented).toBe(false);
   });
 
+  it('언마운트하면 오버레이 스택에 레이어를 남기지 않는다', () => {
+    // 디스패처는 자기 자신을 맨 아래 레이어로 밀어 넣는다 — 정리에서 빼지 않으면 마운트마다 쌓인다.
+    const before = overlayLayerCount();
+    const { unmount } = render(<Harness />);
+    expect(overlayLayerCount()).toBe(before + 1);
+    unmount();
+    expect(overlayLayerCount()).toBe(before);
+  });
+
   it('언마운트하면 더 이상 반응하지 않는다', () => {
     const onNext = vi.fn();
     const { unmount } = render(<Harness onNext={onNext} />);
@@ -125,13 +135,20 @@ describe('가드 — IME 조합 중(R6)', () => {
     expect(onNext).not.toHaveBeenCalled();
   });
 
-  it('조합 중에는 Mod+K 도 무시한다 — 조합기가 key 를 덮어쓴다', () => {
+  it('조합 중에도 Mod+K 는 동작한다 — 한글을 치다가 첫 Mod+K 를 잃지 않는다(R1)', () => {
     const onPalette = vi.fn();
     render(<Harness onPalette={onPalette} />);
-    press(document.body, { key: 'k', ctrlKey: true, isComposing: true });
-    expect(onPalette).not.toHaveBeenCalled();
-    press(document.body, { key: 'k', ctrlKey: true });
+    const input = screen.getByLabelText('제목');
+    input.focus();
+    press(input, { key: 'k', ctrlKey: true, isComposing: true });
     expect(onPalette).toHaveBeenCalledTimes(1);
+  });
+
+  it('조합 중 단일 키는 여전히 무시한다 — 예외는 Mod+K 하나뿐이다(R6)', () => {
+    const onNext = vi.fn();
+    render(<Harness onNext={onNext} />);
+    press(document.body, { key: 'ArrowRight', isComposing: true });
+    expect(onNext).not.toHaveBeenCalled();
   });
 });
 

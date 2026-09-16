@@ -33,8 +33,14 @@ export type GuardContext = {
  * 1. `handled` — 누군가 이미 `preventDefault()` 했다. 날짜 스트립은 포커스가 그 안에 있을 때
  *    `←/→` 로 셀을 옮기며 기본 동작을 막는다. 여기서 비켜 주지 않으면 한 번의 `←` 가 날짜를
  *    **두 칸** 옮긴다(스트립이 한 칸 + 전역이 한 칸).
- * 2. `ime` — 조합 중(R6). `Mod+K` 처럼 입력 중에도 도는 단축키에도 적용된다: 조합 중에는
- *    `key` 가 `Process`/`Unidentified` 로 오는 조합기가 있어 매칭 자체를 신뢰할 수 없다.
+ * 2. `ime` — 조합 중(R6). **입력 예외가 없는 단축키에만** 적용한다. R6 의 문면은 "`N`·`T` 등
+ *    단일 키" 로 범위를 그었고, R1 은 `Mod+K` 를 "입력 중에도 동작" 으로 따로 빼 뒀다.
+ *    실측(`/opt/pw-browsers/chromium-1194`, CDP `Input.imeSetComposition` 으로 `ㅎ`·`한` 을
+ *    조합 중인 입력칸에 `Ctrl+K`): keydown 이 `{ key: 'k', code: 'KeyK', keyCode: 75,
+ *    isComposing: true, ctrlKey: true }` 로 **정확히** 온다 — `Process`/`Unidentified` 가 아니다.
+ *    같은 조건에서 `preventDefault()` 를 불러도 조합 중 글자(`한`)는 입력칸에 그대로 남는다.
+ *    즉 수식키가 붙은 조합은 조합 중에도 `key` 를 믿을 수 있고, 통과시켜도 조합을 방해하지 않는다.
+ *    여기서 막으면 한글을 치던 사용자가 **첫 `Mod+K` 를 잃는다**(두 번째에야 팔레트가 열린다).
  * 3. `overlay` — 대화상자·팝오버·메뉴가 떠 있다. 그 뒤에서 날짜가 바뀌면 닫았을 때 화면이 달라져 있다.
  * 4. `editable` — 입력 중(R1).
  */
@@ -43,7 +49,7 @@ export function shortcutBlockReason(
   ctx: GuardContext,
 ): ShortcutBlockReason | null {
   if (e.defaultPrevented) return 'handled';
-  if (isImeKey(e)) return 'ime';
+  if (!ctx.allowInEditable && isImeKey(e)) return 'ime';
   if (!ctx.isTopLayer) return 'overlay';
   if (!ctx.allowInEditable && isEditableTarget(e.target)) return 'editable';
   return null;

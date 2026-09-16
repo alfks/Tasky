@@ -39,6 +39,12 @@ describe('recent-commands (R12)', () => {
     expect(readRecentCommands(localStorage)).toHaveLength(5);
   });
 
+  it('저장소에 5개보다 많이 들어 있어도 5개만 읽는다 — 구버전·손상된 값 대비(R12)', () => {
+    // 쓰기 쪽 상한만 테스트하면 읽기 쪽 상한을 지워도 초록이다. 저장소를 직접 오염시켜 읽기를 밟는다.
+    localStorage.setItem(RECENT_COMMANDS_KEY, JSON.stringify(['a', 'b', 'c', 'd', 'e', 'f', 'g']));
+    expect(readRecentCommands(localStorage)).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+
   it('저장된 값이 없으면 빈 목록이다', () => {
     expect(readRecentCommands(localStorage)).toEqual([]);
   });

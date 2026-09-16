@@ -96,14 +96,22 @@ describe('shortcutBlockReason', () => {
     expect(fireFrom('<button>버튼</button>', { key: 't' })).toBeNull();
   });
 
-  it('입력 예외가 있어도 조합 중에는 막는다', () => {
+  it('입력 예외가 있는 단축키는 조합 중에도 통과한다(R1 의 Mod+K)', () => {
+    // 실측: Chromium 은 조합 중 Ctrl+K 를 key:'k', isComposing:true 로 정확히 주고,
+    // preventDefault 해도 조합 중 글자는 남는다. 여기서 막으면 첫 Mod+K 를 잃는다.
     expect(
       fireFrom(
         '<input />',
         { key: 'k', ctrlKey: true, isComposing: true },
         { allowInEditable: true },
       ),
-    ).toBe('ime');
+    ).toBeNull();
+    // keyCode 229 로만 알려 오는 조합기에서도 같다 — 예외는 조합 여부를 가리지 않는다.
+    expect(
+      fireFrom('<input />', { key: 'k', ctrlKey: true, keyCode: 229 }, { allowInEditable: true }),
+    ).toBeNull();
+    // 예외가 없는 단축키는 조합 중에 여전히 막힌다(R6).
+    expect(fireFrom('<input />', { key: 'k', ctrlKey: true, isComposing: true })).toBe('ime');
   });
 
   it('오버레이가 떠 있으면 막는다', () => {

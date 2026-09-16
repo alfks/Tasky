@@ -29,6 +29,26 @@ describe('addShortcut', () => {
     );
   });
 
+  it('던지지 않기로 한 판(프로덕션)에서는 먼저 등록된 쪽이 산다 — 하얀 화면을 만들지 않는다', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const first: ShortcutEntry = { id: 'date.next', run: vi.fn() };
+    const list = addShortcut([], first, false);
+    const after = addShortcut(list, { id: 'date.next', run: vi.fn() }, false);
+    expect(after).toHaveLength(1);
+    expect(after[0]).toBe(first);
+    // 조용히 삼키지는 않는다 — 기록은 남는다.
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(String(spy.mock.calls[0][0])).toMatch(/date\.next/);
+    spy.mockRestore();
+  });
+
+  it('중복이 아닌 오류는 프로덕션에서도 던진다 — 프로그래밍 실수는 삼키지 않는다', () => {
+    expect(() => addShortcut([], { id: 'date.next' }, false)).toThrow(/핸들러/);
+    expect(() => addShortcut([], { id: 'todo.toggle', run: vi.fn() }, false)).toThrow(
+      /항목 포커스/,
+    );
+  });
+
   it('중복 오류 문구가 조합을 알려 준다(어느 화면을 봐야 하는지)', () => {
     const list = addShortcut([], { id: 'palette.open', run: vi.fn() });
     expect(() => addShortcut(list, { id: 'palette.open', run: vi.fn() })).toThrow(/Mod\+K/);
@@ -103,7 +123,8 @@ describe('findShortcutFor', () => {
 });
 
 describe('helpRows (R5)', () => {
-  it('등록된 것만, 묶음 순서대로 싣는다', () => {
+  it('등록 순서와 무관하게 카탈로그 순서로 싣는다', () => {
+    // 표의 묶음 순서는 카탈로그 순서에서 온다(그 불변식은 shortcut-catalog.test.ts 가 지킨다).
     let list: ShortcutEntry[] = [];
     list = addShortcut(list, { id: 'help.open', run: vi.fn() }); // 화면
     list = addShortcut(list, { id: 'todo.toggle' }); // 할 일
