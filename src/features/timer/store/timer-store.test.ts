@@ -19,6 +19,7 @@ import { FOCUS_EXTEND_MINUTES } from '@/features/timer/store/timer-actions';
 import { TIMER_PREFS_KEY } from '@/features/timer/store/timer-prefs';
 import { selectRemainingSeconds } from '@/features/timer/store/timer-selectors';
 import { createTimerStore, type TimerStore } from '@/features/timer/store/timer-store';
+import { useTodoStore } from '@/features/todo';
 import { makeTodo } from '@/test/fixtures/todo';
 
 import { todayKey } from '@/lib/date';
@@ -244,6 +245,27 @@ describe('투두 누적 (R8)', () => {
       const updated = await getRepositories().todos.getById(todo.id);
       expect(updated?.focusSeconds).toBe(2100);
     });
+  });
+
+  it('가산 뒤에는 투두 스토어의 사본도 새로 읽는다 — 이어지는 체크가 집중 시간을 덮지 않는다', async () => {
+    const store = createTimerStore();
+    const todo = await seedTodo();
+    await useTodoStore.getState().loadDate(todo.date);
+    state(store).selectTodo(todo.id);
+    await state(store).start();
+
+    jumpTo(120);
+    state(store).tick();
+    await state(store).stop();
+    await settle(async () => {
+      expect((await getRepositories().todos.getById(todo.id))?.focusSeconds).toBe(120);
+    });
+
+    // 사용자가 이어서 체크한다. 투두 스토어가 낡은 사본으로 쓰면 방금 더한 120초가 0 으로 사라진다.
+    await useTodoStore.getState().toggleDone(todo.id, true);
+
+    const updated = await getRepositories().todos.getById(todo.id);
+    expect(updated).toMatchObject({ focusSeconds: 120, done: true });
   });
 
   it('투두가 그 사이 삭제됐으면 세션만 남는다', async () => {

@@ -180,6 +180,62 @@ describe('다중 탭 (R5)', () => {
     await state(tabB).refresh();
     expect(state(tabB).session).toBeNull();
   });
+
+  it('한 탭에서 [집중 시작] 을 연타해도 running 세션은 1개다', async () => {
+    const store = createTimerStore();
+
+    // 저장소 조회와 세션 기록 사이가 열려 있으면 열 건 전부가 "활성 세션 없음" 을 읽고 각자 만든다.
+    const results = await Promise.all(Array.from({ length: 10 }, () => state(store).start()));
+
+    const sessions = await getRepositories().focusSessions.listAll();
+    expect(sessions.filter((session) => session.status === 'running')).toHaveLength(1);
+    expect(sessions).toHaveLength(1);
+    expect(results.every((started) => started)).toBe(true);
+    expect(state(store).error).toBeNull();
+  });
+
+  it('중지 저장이 끝나기 전에 다시 시작해도 거부되지 않는다 — 쓰기가 한 줄로 선다', async () => {
+    const store = createTimerStore();
+    await state(store).start();
+
+    jumpTo(45);
+    // IndexedDB 의 쓰기는 즉시 끝나지 않는다 — 그 지연이 있어야 경합 창이 실제 크기로 열린다.
+    const sessions = getRepositories().focusSessions;
+    const upsert = sessions.upsert.bind(sessions);
+    vi.spyOn(sessions, 'upsert').mockImplementation(async (session) => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await upsert(session);
+    });
+
+    // 중지가 저장되는 동안 사용자가 곧바로 다시 시작한다. 두 쓰기가 같은 줄에 서지 않으면
+    // 시작 쪽이 저장소에서 "아직 달리고 있는" 세션을 읽고 거부한다.
+    const stopping = state(store).stop();
+    const restarting = state(store).start();
+    const [stopped, started] = await Promise.all([stopping, restarting]);
+
+    expect(stopped).toBe(true);
+    expect(started).toBe(true);
+    expect(state(store).error).toBeNull();
+    expect(state(store).session?.status).toBe('running');
+    expect(await getRepositories().focusSessions.listAll()).toHaveLength(2);
+  });
+
+  it('저장에 실패해도 타이머는 화면에서 계속 돌고, 재동기화가 그것을 내리지 않는다 (§2 에러)', async () => {
+    const store = createTimerStore();
+    const repos = getRepositories();
+    vi.spyOn(repos.focusSessions, 'upsert').mockRejectedValue(new Error('저장소가 막혔다'));
+
+    const started = await state(store).start();
+    expect(started).toBe(false);
+    expect(state(store).error).toBe('기록을 저장하지 못했어요');
+    expect(state(store).session).not.toBeNull();
+    expect(state(store).sessionUnsaved).toBe(true);
+
+    // 저장되지 않은 세션은 저장소에 없는 것이 당연하다 — 그것까지 내리면 타이머가 사라진다.
+    await state(store).refresh();
+    expect(state(store).session).not.toBeNull();
+    expect(remaining(store)).toBe(1500);
+  });
 });
 
 describe('[5분 더] (R10)', () => {

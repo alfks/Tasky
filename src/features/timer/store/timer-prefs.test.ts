@@ -19,6 +19,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('저장 키 (R1)', () => {
+  it('스펙이 못 박은 키 그대로다 — 바뀌면 기기에 기억된 설정이 통째로 사라진다', () => {
+    expect(TIMER_PREFS_KEY).toBe('tasky.timer.v1');
+  });
+});
+
 describe('parseTimerPrefs', () => {
   it('기본값은 25분·소리 켬이다', () => {
     expect(FOCUS_DEFAULT_MINUTES).toBe(25);

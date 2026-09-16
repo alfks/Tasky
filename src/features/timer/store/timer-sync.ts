@@ -27,23 +27,40 @@ import {
   type TimerNotice,
   type TimerState,
 } from '@/features/timer/store/timer-state';
-import { persistEnding, readTodoTitle } from '@/features/timer/store/timer-writes';
+import {
+  persistEnding,
+  readTodoTitle,
+  type TimerSerialize,
+} from '@/features/timer/store/timer-writes';
 
 /** 액션이 스토어를 읽고 쓰는 통로. zustand 의 `set`·`get` 을 그대로 받는다. */
 export type TimerContext = {
   readonly set: (partial: Partial<TimerState>) => void;
   readonly get: () => TimerState;
   readonly deps: MetaDeps;
+  /** 이 스토어의 쓰기 한 줄 큐 (R5). 읽고-쓰기 사이를 다른 쓰기가 끼어들지 못하게 한다. */
+  readonly serialize: TimerSerialize;
 };
 
 /** 세션이 끝나는 세 가지 이유. `stop` 만 사용자가 누른 것이고 나머지는 시간이 만든 것이다. */
 export type TimerEnding = 'complete' | 'expire' | 'stop';
 
 /**
- * 세션을 끝낸다. **상태 전이는 동기로 먼저** 하고 저장은 뒤따른다 —
- * 그래야 같은 틱에 두 번 들어와도 두 번째는 `session === null` 을 보고 그냥 돌아간다(중복 완료 방지).
+ * 세션을 끝낸다. 같은 틱에 두 번 들어와도 두 번째는 `session === null` 을 보고 그냥 돌아간다
+ * (중복 완료 방지). 큐를 거치므로 시작·일시정지 쓰기와 순서가 뒤엉키지 않는다 (R5).
+ *
+ * 큐 **밖에서** 부르는 곳은 없다 — 안에서 또 `serialize` 를 부르면 교착이 된다.
  */
-export async function endSession(
+export function endSession(
+  ctx: TimerContext,
+  session: FocusSession,
+  ending: TimerEnding,
+): Promise<boolean> {
+  return ctx.serialize(() => endSessionNow(ctx, session, ending));
+}
+
+/** 큐 차례가 왔을 때의 실제 종료. 상태 전이를 먼저 하고 저장이 뒤따른다. */
+async function endSessionNow(
   ctx: TimerContext,
   session: FocusSession,
   ending: TimerEnding,

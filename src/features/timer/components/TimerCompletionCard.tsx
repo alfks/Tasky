@@ -53,7 +53,7 @@ export function TimerCompletionCard() {
 
   return (
     <section
-      role="alertdialog"
+      role={fresh ? 'alertdialog' : 'status'}
       aria-labelledby={titleId}
       aria-describedby={bodyId}
       className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-xl)] border border-border bg-surface-2 p-[var(--space-4)] shadow-[var(--shadow-sm)]"

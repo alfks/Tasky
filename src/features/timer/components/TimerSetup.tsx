@@ -1,7 +1,7 @@
 'use client';
 
 // 대기 화면 (timer §2·R1). 길이 프리셋(radiogroup) + 직접 입력 + 투두 선택 + 시작.
-import { useId, useState } from 'react';
+import { useId, useState, type Ref } from 'react';
 
 import { FOCUS_MAX_MINUTES, FOCUS_MIN_MINUTES } from '@/domain/focus/focus-session.rules';
 import type { Todo } from '@/domain/todo/todo';
@@ -24,7 +24,12 @@ function useUndoneTodos(): Todo[] {
   return selectTodos({ byId }).filter((todo) => !todo.done);
 }
 
-export function TimerSetup() {
+type TimerSetupProps = {
+  /** 중지 직후 포커스가 돌아올 자리 (§5 완료 조건 3). 패널이 준다. */
+  startRef?: Ref<HTMLButtonElement>;
+};
+
+export function TimerSetup({ startRef }: TimerSetupProps) {
   const groupId = useId();
   const minutes = useTimerStore((state) => state.minutes);
   const soundOff = useTimerStore((state) => state.soundOff);
@@ -109,7 +114,9 @@ export function TimerSetup() {
         끝났을 때 소리로 알리기
       </label>
 
-      <Button onClick={() => void start()}>집중 시작</Button>
+      <Button ref={startRef} onClick={() => void start()}>
+        집중 시작
+      </Button>
     </div>
   );
 }

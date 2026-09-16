@@ -11,6 +11,7 @@ import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
 import { TimerChip } from '@/features/timer/components/TimerChip';
 import { resetTimerRuntime } from '@/features/timer/hooks/useTimerRuntime';
+import { resetTimerSignals } from '@/features/timer/hooks/useTimerSignals';
 import { initialTimerState } from '@/features/timer/store/timer-state';
 import { useTimerStore } from '@/features/timer/store/timer-store';
 import { makeFocusSession } from '@/test/fixtures/focus-session';
@@ -33,11 +34,13 @@ beforeEach(() => {
   localStorage.clear();
   setRepositories(createMemoryRepositories());
   resetTimerRuntime();
+  resetTimerSignals();
   useTimerStore.setState(initialTimerState(START));
 });
 
 afterEach(() => {
   resetTimerRuntime();
+  resetTimerSignals();
   vi.useRealTimers();
 });
 

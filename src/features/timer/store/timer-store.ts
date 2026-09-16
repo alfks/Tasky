@@ -7,6 +7,7 @@ import type { MetaDeps } from '@/domain/meta';
 
 import { createTimerActions, type TimerActions } from '@/features/timer/store/timer-actions';
 import { initialTimerState, type TimerState } from '@/features/timer/store/timer-state';
+import { createTimerWriteQueue } from '@/features/timer/store/timer-writes';
 
 import { nowIso } from '@/lib/date';
 import { newId } from '@/lib/id';
@@ -24,9 +25,11 @@ const defaultDeps: MetaDeps = { now: nowIso, id: newId };
  * 테스트가 격리된 인스턴스를 만들 수 있도록 팩토리를 열어 둔다.
  */
 export function createTimerStore(deps: MetaDeps = defaultDeps) {
+  // 쓰기 큐는 스토어마다 하나다 — 격리된 테스트 인스턴스끼리 큐를 공유하면 서로를 기다리게 된다.
+  const serialize = createTimerWriteQueue();
   return create<TimerStore>()((set, get) => ({
     ...initialTimerState(deps.now()),
-    ...createTimerActions({ set, get, deps }),
+    ...createTimerActions({ set, get, deps, serialize }),
   }));
 }
 

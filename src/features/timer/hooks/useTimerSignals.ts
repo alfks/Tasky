@@ -2,12 +2,19 @@
 
 // 완료 신호 중 (b) 소리와 (c) 탭 제목 (timer R9·R9-a·R11). (a) 패널 카드는 컴포넌트가 그린다.
 //
+// **한 벌만 설치한다**(`useTimerRuntime` 과 같은 참조 수 방식). 헤더 칩과 패널이 둘 다 이 훅을 부르는데
+// 신호를 컴포넌트마다 걸면: 차임이 두 번 울려 2음이 4음으로 겹치고(AudioContext 도 2개),
+// 탭 제목 깜빡임 인터벌이 2개 돌아 **위상에 따라 R9 (c) 가 통째로 사라진다**(둘이 서로 상쇄한다).
+// 그래서 상태를 훅으로 구독하지 않고 **모듈 하나가 스토어를 구독**한다 — 첫 마운트가 설치하고
+// 마지막 언마운트가 걷는다.
+//
 // **소리는 정보의 유일한 통로가 아니다.** 자동재생 정책으로 차임이 막히면 `playFocusChime()` 이
 // `false` 를 돌려주고 끝이며, 카드(a)와 탭 제목(c)은 그대로 남는다 — 조용히 아무 일도 없는 상태가 되지 않는다.
 // 모션 축소를 선호하면 탭 제목은 깜빡이지 않고 고정된 "끝!" 문구로 남는다(theme R5 의 취지).
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 
 import { selectDocumentTitle } from '@/features/timer/store/timer-selectors';
+import type { TimerState } from '@/features/timer/store/timer-state';
 import { useTimerStore } from '@/features/timer/store/timer-store';
 
 /** R9 (b): 880Hz·1175Hz 각 120ms, 사이 80ms, gain 0.2 고정. 파일이 아니라 합성음이라 번들이 늘지 않는다. */
@@ -87,66 +94,102 @@ function prefersReducedMotion(): boolean {
   }
 }
 
-/** 실행 중 탭 제목(R11)과 완료 깜빡임(R9 c). 앱 셸이 쓰던 제목을 기억했다가 되돌린다. */
-function useTimerTitle(): void {
-  const baseRef = useRef<string>('');
-  const session = useTimerStore((state) => state.session);
-  const now = useTimerStore((state) => state.now);
-  const todoTitle = useTimerStore((state) => state.todoTitle);
-  const blinking = useTimerStore((state) => state.completion?.signal === 'full');
+/** 설치된 신호 한 벌이 들고 있는 것. 모듈 안에만 있고 밖으로 새지 않는다. */
+type Installed = {
+  /** 앱 셸이 쓰던 제목. 걷을 때 그대로 되돌린다. */
+  readonly base: string;
+  blinkId: ReturnType<typeof setInterval> | null;
+  /** 이미 차임을 울린 완료 세션 id. 인스턴스가 아니라 설치 한 벌이 기억하므로 중복이 없다. */
+  playedId: string | null;
+};
 
+type Signals = { mounts: number; stop: (() => void) | null };
+
+const signals: Signals = { mounts: 0, stop: null };
+
+/** 테스트가 파일 사이로 새는 전역 상태를 끊을 때 쓴다(`resetTimerRuntime` 과 같은 목적). */
+export function resetTimerSignals(): void {
+  signals.stop?.();
+  signals.mounts = 0;
+  signals.stop = null;
+}
+
+/** (c) 탭 제목 — 완료면 깜빡임(R9 c), 아니면 실행 중 제목(R11)이나 원래 제목. */
+function applyTitle(state: TimerState, installed: Installed): void {
+  // R9-a: 오래된 완료(`record-only`)는 (c)를 주지 않는다 — 카드만 뜬다.
+  if (state.completion?.signal === 'full') {
+    const loud = `${COMPLETION_TITLE_PREFIX} · ${installed.base}`;
+    if (installed.blinkId !== null) {
+      return; // 이미 깜빡이는 중이다
+    }
+    document.title = loud;
+    if (prefersReducedMotion()) {
+      return; // 고정된 "끝!" 문구로 남는다
+    }
+    let on = true;
+    installed.blinkId = globalThis.setInterval(() => {
+      on = !on;
+      document.title = on ? loud : installed.base;
+    }, TITLE_BLINK_MS);
+    return;
+  }
+  if (installed.blinkId !== null) {
+    globalThis.clearInterval(installed.blinkId);
+    installed.blinkId = null;
+  }
+  document.title = selectDocumentTitle(state, installed.base) ?? installed.base;
+}
+
+/** (b) 차임 — 막 끝난 완료(`full`)에만, 세션당 한 번, 소리를 켠 경우에만 (R9·R9-a). */
+function applyChime(state: TimerState, installed: Installed): void {
+  const completion = state.completion;
+  if (completion === null || completion.signal !== 'full' || state.soundOff) {
+    return;
+  }
+  if (installed.playedId === completion.session.id) {
+    return;
+  }
+  installed.playedId = completion.session.id;
+  void playFocusChime();
+}
+
+/** 신호 한 벌을 건다. 돌려주는 함수가 인터벌·구독·탭 제목을 전부 되돌린다. */
+function install(): () => void {
+  const installed: Installed = { base: document.title, blinkId: null, playedId: null };
+  const apply = (state: TimerState): void => {
+    applyTitle(state, installed);
+    applyChime(state, installed);
+  };
+
+  apply(useTimerStore.getState());
+  const unsubscribe = useTimerStore.subscribe(apply);
+
+  return () => {
+    unsubscribe();
+    if (installed.blinkId !== null) {
+      globalThis.clearInterval(installed.blinkId);
+      installed.blinkId = null;
+    }
+    document.title = installed.base;
+  };
+}
+
+/**
+ * 소리 + 탭 제목을 한 벌만 건다. 패널이 접혀 있어도 도는 헤더 칩이 부르고, 패널도 같이 부른다 —
+ * 둘 다 마운트돼도 차임은 한 번, 깜빡임 인터벌도 하나다.
+ */
+export function useTimerSignals(): void {
   useEffect(() => {
-    baseRef.current = document.title;
+    signals.mounts += 1;
+    if (signals.mounts === 1) {
+      signals.stop = install();
+    }
     return () => {
-      document.title = baseRef.current;
+      signals.mounts -= 1;
+      if (signals.mounts === 0) {
+        signals.stop?.();
+        signals.stop = null;
+      }
     };
   }, []);
-
-  useEffect(() => {
-    const base = baseRef.current;
-    if (blinking) {
-      const loud = `${COMPLETION_TITLE_PREFIX} · ${base}`;
-      document.title = loud;
-      if (prefersReducedMotion()) {
-        return undefined;
-      }
-      let on = true;
-      const id = globalThis.setInterval(() => {
-        on = !on;
-        document.title = on ? loud : base;
-      }, TITLE_BLINK_MS);
-      return () => {
-        globalThis.clearInterval(id);
-        document.title = base;
-      };
-    }
-    const running = selectDocumentTitle({ session, now, todoTitle }, base);
-    document.title = running ?? base;
-    return undefined;
-  }, [blinking, session, now, todoTitle]);
-}
-
-/** 완료 순간의 차임 (R9 b). `record-only` 등급(R9-a)이거나 소리를 껐으면 울리지 않는다. */
-function useCompletionChime(): void {
-  const signal = useTimerStore((state) => state.completion?.signal ?? null);
-  const sessionId = useTimerStore((state) => state.completion?.session.id ?? null);
-  const soundOff = useTimerStore((state) => state.soundOff);
-  const playedRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (sessionId === null || signal !== 'full' || soundOff) {
-      return;
-    }
-    if (playedRef.current === sessionId) {
-      return;
-    }
-    playedRef.current = sessionId;
-    void playFocusChime();
-  }, [sessionId, signal, soundOff]);
-}
-
-/** 소리 + 탭 제목을 한 번에 건다. 패널이 접혀 있어도 도는 헤더 칩이 부른다. */
-export function useTimerSignals(): void {
-  useTimerTitle();
-  useCompletionChime();
 }
