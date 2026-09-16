@@ -22,6 +22,10 @@
 //   - store.transaction(run)         네 테이블 rw 트랜잭션               write · restore
 //
 // 테이블 넷과 그 트랜잭션은 `Store` 하나로 묶여 있고 레포지토리 구현이 **주입받는다**(아래 `Store` 주석).
+//
+// `store.open()` 은 조회·쓰기가 아니라 **스키마를 여는** 통로다. Dexie 의 지연 오픈 때문에 업그레이드
+// 실패가 아무 호출에서나 raw Dexie 에러로 터지는 것을 막고 `RepositoryError('SCHEMA_UPGRADE_FAILED')`
+// 로 바꾼다(TECH_PLAN §5 규칙 4 — 아래 `Store.open` 주석).
 import { type EntityTable, type IDType, type IndexableType } from 'dexie';
 
 import type { Category } from '@/domain/category/category';
@@ -29,6 +33,8 @@ import type { FocusSession } from '@/domain/focus/focus-session';
 import { isTombstone, type Meta, type Persistable } from '@/domain/meta';
 import type { Settings } from '@/domain/theme/settings';
 import type { Todo } from '@/domain/todo/todo';
+
+import { RepositoryError } from '@/repositories/repository-error';
 
 import { createDb, db, STORES, type TaskyDb } from '@/infra/indexeddb/db';
 
@@ -87,9 +93,58 @@ export type Store = {
    * Dexie 와 무관한 일은 트랜잭션에 **들어가기 전에** 끝낸다.
    */
   readonly transaction: (run: () => Promise<void>) => Promise<void>;
+  /**
+   * 이 묶음의 DB 를 **명시적으로** 연다. 실패는 `RepositoryError('SCHEMA_UPGRADE_FAILED')` 다
+   * (TECH_PLAN §5 마이그레이션 규칙 4).
+   *
+   * 왜 필요한가: Dexie 는 첫 조회·쓰기에서야 DB 를 여는 **지연 오픈**이라, 버전업의 `upgrade`
+   * 콜백이 던지면 그 실패가 하필 그때 돈 아무 호출(`todos.listByDate` 같은)에서 **raw Dexie 에러**
+   * (`UpgradeError`)로 터진다. 호출처는 code 로 분기할 수 없고, 화면은 "할 일을 불러오지 못했어요"
+   * 같은 엉뚱한 문구를 띄운다 — 실제로는 스키마가 올라가지 못해 **그 기기에서 아무것도 저장할 수 없는**
+   * 상태다. 앱 셸은 이 code 를 보고 "백업 내보내기만 가능한 모드" 로 안내한다(app-shell §2-C).
+   *
+   * 멱등하다(Dexie `open()` 이 같은 프라미스를 돌려준다). 성공한 뒤에는 평소대로 지연 오픈과 구분되지 않는다.
+   */
+  readonly open: () => Promise<void>;
 };
 
-function storeOf(database: TaskyDb): Store {
+/** 열기 실패의 `detail` — **에러 이름만** 싣는다. 메시지에는 업그레이드 콜백이 넣은 값이 섞일 수 있다. */
+function openFailureDetail(error: unknown): string {
+  return `open 실패 name=${errorName(error) ?? typeof error}`;
+}
+
+function errorName(error: unknown): string | undefined {
+  const name: unknown =
+    typeof error === 'object' && error !== null ? (error as { name?: unknown }).name : undefined;
+  return typeof name === 'string' ? name : undefined;
+}
+
+/**
+ * **스키마와 무관한** 열기 실패의 Dexie 에러 이름. 이런 실패는 감싸지 않고 원본 그대로 올린다 —
+ * `SCHEMA_UPGRADE_FAILED` 로 바꾸면 앱 셸이 "백업 내보내기만 가능한 모드"(스키마가 못 올라갔다는 뜻)를
+ * **잘못** 띄운다.
+ *
+ * 왜 이 방향(허용 목록이 아니라 제외 목록)인가 — 실측이 그렇게 시켰다(fake-indexeddb, 탐침 4종):
+ *   · 업그레이드 콜백이 던지면 Dexie 는 **콜백이 던진 에러를 그대로** 거절 값으로 준다(`name=Error`).
+ *     즉 "업그레이드 실패" 를 이름으로 **알아볼 수 없다** — 허용 목록은 잡아야 할 그 케이스를 놓친다.
+ *   · `indexedDB` 가 없으면(사생활 보호 모드) `MissingAPIError` 다 — 재현됨, 아래 목록에 있다.
+ *   · 저장 버전이 선언보다 높은 롤백 배포는 이 하네스에서 **거절 자체가 나지 않았다**(fake-indexeddb 가
+ *     낮은 선언으로도 열어 준다). 실제 브라우저의 `VersionError` 는 여기서 재현할 수 없어 목록에 넣지
+ *     않았다 — 테스트 없는 분기를 추가하지 않는다는 뜻이다(PR #34 리뷰 라운드 1 Minor).
+ * 전용 code(`DB_OPEN_FAILED`)를 두는 편이 더 낫지만 `repositories/repository-error.ts` 가 이 티켓
+ * owns 밖이라 이번에는 원본을 그대로 올린다.
+ */
+const NOT_SCHEMA_FAILURES: ReadonlySet<string> = new Set([
+  'MissingAPIError',
+  'DatabaseClosedError',
+]);
+
+/**
+ * 임의의 Dexie 인스턴스를 묶음으로 감싼다. 앱 코드는 아래 `tables` 하나만 쓰고, `createStore(name)` 와
+ * **마이그레이션 실패를 주입한 인스턴스를 감싸는 테스트**(`migration.test.ts`)가 이 함수를 쓴다 —
+ * 그래야 그 테스트가 검사하는 `open` 이 앱이 실제로 쓰는 바로 그 함수다.
+ */
+export function storeOn(database: TaskyDb): Store {
   return {
     todos: brand(database.todos, STORES.todos),
     categories: brand(database.categories, STORES.categories),
@@ -104,18 +159,29 @@ function storeOf(database: TaskyDb): Store {
         database.focusSessions,
         run,
       ),
+    open: async () => {
+      try {
+        await database.open();
+      } catch (error) {
+        const name = errorName(error);
+        if (name !== undefined && NOT_SCHEMA_FAILURES.has(name)) {
+          throw error;
+        }
+        throw new RepositoryError('SCHEMA_UPGRADE_FAILED', openFailureDetail(error));
+      }
+    },
   };
 }
 
 /** 앱이 쓰는 묶음(DB 이름 `tasky`). `createIndexedDbRepositories()` 의 기본값이다. */
-export const tables: Store = storeOf(db);
+export const tables: Store = storeOn(db);
 
 /**
  * **이름이 다른 DB** 위의 별도 묶음. 테스트가 서로 격리된 저장소를 여러 개 만들 때만 쓴다 —
  * 앱 코드는 위 `tables` 하나만 쓴다(DB 가 여러 개 생기면 백업·마이그레이션의 단일 소스가 깨진다).
  */
 export function createStore(name: string): Store {
-  return storeOf(createDb(name));
+  return storeOn(createDb(name));
 }
 
 /** `id` 오름차순 비교. 두 구현(memory `allRows`)이 같은 순서를 내도록 여기서도 명시적으로 정렬한다. */

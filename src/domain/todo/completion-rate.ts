@@ -2,7 +2,6 @@
 // 조회가 이미 툼스톤을 제외하므로 여기서 `deletedAt` 을 다시 보지 않는다 (ADR-0007 결정 4).
 import type { Category } from '@/domain/category/category';
 import { sortCategoriesForDisplay } from '@/domain/category/category.rules';
-import type { DateKey } from '@/domain/date/date-key';
 import type { CategoryId } from '@/domain/ids';
 import type { Todo } from '@/domain/todo/todo';
 
@@ -67,21 +66,9 @@ export function summarizeByCategory(
   return [...known, ...unknown];
 }
 
-/** 날짜 스트립 배지·점의 원천 (date-strip R8, completion-rate R8): 날짜별 완료/전체 + 그날 등장한 카테고리. */
-export function summarizeWeek(
-  todos: readonly Todo[],
-): Map<DateKey, CompletionCounts & { categoryIds: CategoryId[] }> {
-  const byDate = new Map<DateKey, CompletionCounts & { categoryIds: CategoryId[] }>();
-  for (const todo of todos) {
-    const entry = byDate.get(todo.date) ?? { done: 0, total: 0, categoryIds: [] };
-    if (!entry.categoryIds.includes(todo.categoryId)) {
-      entry.categoryIds.push(todo.categoryId);
-    }
-    byDate.set(todo.date, {
-      done: entry.done + (todo.done ? 1 : 0),
-      total: entry.total + 1,
-      categoryIds: entry.categoryIds,
-    });
-  }
-  return byDate;
-}
+// **`summarizeWeek` 은 여기 없다.** 원래 날짜별 `{done, total, categoryIds}` 를 모으는 같은 이름의
+// 함수가 있었지만, 같은 계산(날짜별 버킷팅 + 완료 수 + 그날 등장한 카테고리)을 `day-summary.ts` 의
+// `summarizeDays` 가 이미 하고 있었다 — 그쪽은 카테고리 순서·점 규칙(date-strip R7)까지 지키고, 날짜
+// 스트립(`useWeekSummaries`)과 달성률이 실제로 부르는 것도 그쪽 하나다. 둘을 남겨 두면 "세 곳의 값은
+// 항상 같은 함수의 결과"(R8)가 이름만 참이 된다. 날짜 범위 요약이 필요하면 `summarizeDays(days, …)` 를
+// 쓴다(TECH_PLAN §12 의 `summarizeRange` 확장도 그쪽에서 이어 간다).

@@ -86,7 +86,7 @@ describe('R7. 점은 그날 투두가 있는 카테고리 색을 최대 3개, 4�
     ]);
   });
 
-  it('삭제된 카테고리(저장소가 모르는 id)는 점도 넘침도 만들지 않고 개수에만 남는다', () => {
+  it('조회표에 없는 카테고리(호출부가 색을 못 찾은 id)는 점도 넘침도 만들지 않고 개수에만 남는다', () => {
     const active = makeCategory({ seq: 1 });
     const todos = [
       makeTodo({ seq: 1, date: DAY, categoryId: 'gone' }),
@@ -98,7 +98,7 @@ describe('R7. 점은 그날 투두가 있는 카테고리 색을 최대 3개, 4�
     expect(summary).toMatchObject({ total: 2, doneCount: 1 });
   });
 
-  it('보이는 카테고리가 4개면 삭제된 카테고리가 섞여 있어도 넘침은 1 이다', () => {
+  it('보이는 카테고리가 4개면 조회표에 없는 id 가 섞여 있어도 넘침은 1 이다', () => {
     const categories = makeCategories(4);
     const todos = [
       ...categories.map((c, i) => makeTodo({ seq: i + 1, date: DAY, categoryId: c.id })),

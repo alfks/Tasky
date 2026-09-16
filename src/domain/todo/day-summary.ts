@@ -47,11 +47,16 @@ export function indexCategoryDots(categories: readonly Category[]): CategoryDotI
 /**
  * 한 날짜의 투두 목록을 요약으로 (R7·R8).
  *
- * 조회표에 없는 카테고리(= 삭제되어 저장소가 더는 돌려주지 않는 것)는 **점을 만들지 않고 넘침으로도
- * 세지 않는다.** 색을 모르는 상태에서 중립색 점을 찍으면 대비 1.97:1 로 사실상 보이지 않으면서
- * 최대 3개뿐인 자리를 먹어 보이는 카테고리를 밀어낸다. 그 날의 개수는 `total`·`doneCount` 에 그대로
- * 남아 셀 접근성 이름("할 일 N개 중 M개 완료")으로 전달된다. 색 복원은 저장소에 툼스톤 조회가
- * 생긴 뒤의 일이다(ADR-0007 결정 4).
+ * 조회표에 없는 카테고리는 **점을 만들지 않고 넘침으로도 세지 않는다.** 색을 모르는 상태에서
+ * 중립색 점을 찍으면 대비 1.97:1 로 사실상 보이지 않으면서 최대 3개뿐인 자리를 먹어 보이는
+ * 카테고리를 밀어낸다. 그 날의 개수는 `total`·`doneCount` 에 그대로 남아 셀 접근성 이름
+ * ("할 일 N개 중 M개 완료")으로 전달된다.
+ *
+ * **"조회표에 없다" 가 곧 "삭제됐다" 는 아니다.** 예전에는 그랬지만, `CategoryRepository.listDeletedByIds`
+ * (ADR-0014)가 생긴 뒤로 삭제된 카테고리도 색을 달고 `categories` 에 실려 들어온다 — 날짜 스트립은
+ * `useWeekSummaries` 가 살아 있는 목록에서 못 찾은 id 만 모아 한 번 더 물어 채운다. 그래서 여기서
+ * 조회표에 없는 id 는 "호출부가 색을 끝내 찾지 못한 것"(예: 툼스톤 조회를 하지 않는 호출부, 또는
+ * 그 조회로도 안 나오는 id)이고, 그 경우에만 위 규칙이 적용된다.
  */
 export function summarizeDay(todos: readonly Todo[], index: CategoryDotIndex): DaySummary {
   const seen = new Map<CategoryId, { rank: number; color: string }>();

@@ -55,7 +55,7 @@ export type BackupIssueCode =
 /**
  * 검증 실패 한 건. **`path` 는 구조 경로(`todos[12].title`)뿐이고 값은 절대 싣지 않는다** —
  * 제목·메모는 사용자 데이터라 `Error.message` 를 타고 로그·리포팅으로 새면 회수할 수 없다
- * (memory 데이터셋 저장소의 `writeDetail` 과 같은 판단). 경로 문자열은 고정 필드명과 배열 인덱스
+ * (데이터셋 쓰기의 `writeDetail`(`@/repositories/write-plan`) 과 같은 판단). 경로 문자열은 고정 필드명과 배열 인덱스
  * 로만 조립되므로 입력에서 온 문자열이 섞일 자리가 없다.
  */
 export type BackupIssue = {
