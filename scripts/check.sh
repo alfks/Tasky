@@ -4,7 +4,7 @@
 # 사용법:
 #   bash scripts/check.sh [base]                모든 검사를 순서대로 실행, 요약 출력 (base 기본값 main)
 #   bash scripts/check.sh <step> [base 또는 인자]  검사 하나만 실행, 그 검사의 exit code 그대로 반환
-# step 이름: forbidden-words | env-secrets | agents-md | author | wt | arch | lint | typecheck | test
+# step 이름: forbidden-words | env-secrets | agents-md | author | wt | arch | lint | typecheck | format | test
 #
 # 이 스크립트가 검사 목록의 단일 소스다. .github/workflows/ci.yml 은 guard/build 각 잡에서
 # 이 스크립트를 `--guard`/`--build` 로 한 번씩만 호출한다(로직 중복 없음). 스텝을 검사마다

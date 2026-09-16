@@ -11,7 +11,8 @@
 # 허용 예외는 `.env.example` 하나다(자격증명 없는 템플릿, 일부러 커밋한다).
 # 한계(실측 8종 중 차단 4 / 통과 4): 이 검사는 **파일명만** 본다.
 #   차단 = `.env` `.env.local` `.env.production` `config/.env.staging`(경로 어디든)
-#   통과 = `.env.example`(의도된 예외) · `.environment` `env` `my.env`
+#          + 대소문자 변형 `.ENV` `.Env` · 후행 공백 `.env ` (정규화 후 판정)
+#   통과 = `.env.example`(의도된 예외, **정확히 이 철자만**) · `.environment` `env` `my.env`
 # 즉 `foo.env` 처럼 접미사형 이름이나, 아예 다른 이름의 파일에 적은 토큰은 잡지 못한다.
 # 이 목록은 `.gitignore` 의 `.env` / `.env.*` 규칙과 같은 범위다 — 둘이 어긋나면 한쪽이 빈다.
 set -euo pipefail
@@ -26,13 +27,19 @@ esac
 
 # `.env`, `.env.local`, `path/.env.production` … 은 잡고 `.env.example` 만 뺀다.
 # 경로 어디에 있든 잡도록 basename 으로 판정한다.
+# 판정은 **정규화한 이름**으로 한다. 대소문자 변형(`.ENV`)과 후행 공백(`.env `)이 실제로 통과했었다 —
+# macOS·Windows 의 대소문자 무시 파일시스템에서는 `.ENV` 가 곧 `.env` 라서 더 위험하다.
+# 면제는 **정확히 `.env.example`** 하나뿐이다(대소문자 변형은 면제하지 않는다 — 막는 쪽으로 틀린다).
+shopt -s extglob
 bad=""
 while IFS= read -r f; do
   [ -z "$f" ] && continue
   base=${f##*/}
-  case "$base" in
-    .env.example) continue ;;
-    .env|.env.*)  bad="$bad$f"$'\n' ;;
+  [ "$base" = ".env.example" ] && continue
+  key=${base,,}                 # 소문자화
+  key=${key%%+([[:space:]])}    # 후행 공백·탭 제거
+  case "$key" in
+    .env|.env.*) bad="$bad$f"$'\n' ;;
   esac
 done <<< "$files"
 

@@ -40,7 +40,7 @@ jobs:
           chmod +x scripts/*.sh || true
           find .githooks -maxdepth 1 -type f ! -name '*.md' -exec chmod +x {} + || true
 
-      - name: guard 검사 (금지어 · AGENTS.md 구조 · author/트레일러)
+      - name: guard 검사 (금지어 · 자격증명 파일(.env) · AGENTS.md 구조 · author/트레일러)
         run: bash scripts/check.sh --guard "${{ github.base_ref || 'main' }}"
 
       - name: wt.sh 스모크 테스트 (/tmp 샌드박스 — 원본 레포는 건드리지 않음)
