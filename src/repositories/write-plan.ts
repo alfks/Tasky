@@ -88,10 +88,16 @@ export function planWrite(
       const entity = checkedEntity(write);
       return () => appliers.settings(entity);
     }
-    default:
+    default: {
+      // **소진성 가드.** 이것이 없으면 `DatasetWrite` 에 테이블이 하나 늘었을 때 두 구현의
+      // `DatasetWriteAppliers` 에서만 컴파일 에러가 나고(실측 2건) 이 파일은 조용히 통과한다 —
+      // appliers 만 채운 사람은 새 테이블이 런타임에 `DATASET_WRITE_INVALID` 로 거절되는 것을 본다.
+      // 가드를 두면 세 곳이 함께 걸린다(실측 3건).
+      const unhandled: never = write;
       throw new RepositoryError(
         'DATASET_WRITE_INVALID',
-        writeDetail(write, '계약에 없는 테이블이다'),
+        writeDetail(unhandled, '계약에 없는 테이블이다'),
       );
+    }
   }
 }

@@ -171,7 +171,7 @@ function createOrderActions(
  * **`writer` 를 주입받는다** — 안에서 만들면 삭제 액션(`createRemovalActions`)이 자기 writer 를
  * 만들게 되고, 두 갈래 큐가 서로의 결과를 못 본다. 생성이 저장 중일 때 삭제가 시작되면
  * 이름 유일성(R2)·`order` 모집단(R5)이 한 건 낡은 채로 계획이 선다. 스토어가 큐 하나를 만들어
- * 두 묶음에 같이 넘긴다.
+ * 두 묶음에 같이 넘긴다. (`optimistic` 경로의 계획은 여전히 큐 밖에서 선다 — `category-writes.ts` 머리말.)
  */
 export function createCategoryActions(
   ctx: CategoryContext,

@@ -190,7 +190,12 @@ describe('dataset.write 1단계 검증의 값 (계약이 보지 않는 축: 에�
 
     await expect(
       spiedRepos.dataset.write([{ table: 'todos', entity: todoOf({}) }, broken(null)]),
-    ).rejects.toThrow();
+      // 계약의 `rejectsWithCode` 와 같은 수준 — 이 자리는 검증이 던지는 자리라 code 까지 정해져 있다.
+      // (위 세 자리는 Dexie 의 복제 불가 에러를 기대하는 자리라 `toThrow()` 가 맞다.)
+    ).rejects.toSatisfy(
+      (error: unknown) => isRepositoryError(error) && error.code === 'DATASET_WRITE_INVALID',
+      "RepositoryError('DATASET_WRITE_INVALID') 가 아니다",
+    );
 
     expect(opened, '검증 실패인데 트랜잭션이 열렸다 — 검증이 트랜잭션 안으로 들어갔다').toBe(0);
     // 대조군: 정상 쓰기는 실제로 트랜잭션을 연다(스파이가 항상 0 을 세는 게 아니다).
