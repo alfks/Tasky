@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import type { DateKey } from '@/domain/date/date-key';
 import {
   completionCounts,
   completionPercent,
   completionRate,
   summarizeByCategory,
-  summarizeWeek,
 } from '@/domain/todo/completion-rate';
 
 import { makeCategory } from '@/test/fixtures/category';
@@ -86,26 +84,5 @@ describe('summarizeByCategory (R5)', () => {
       { categoryId: known.id, done: 1, total: 2 },
       { categoryId: 'ghost', done: 0, total: 1 },
     ]);
-  });
-});
-
-describe('summarizeWeek (R8 · date-strip R8)', () => {
-  it('날짜별 완료/전체와 등장 카테고리를 모은다', () => {
-    const todos = [
-      ...makeTodos(2, (i) => ({ categoryId: 'a', done: i === 0 })),
-      ...makeTodos(1, () => ({ date: '2026-01-16' as DateKey, categoryId: 'b' })),
-      ...makeTodos(1, () => ({ date: '2026-01-16' as DateKey, categoryId: 'a', done: true })),
-    ];
-    const week = summarizeWeek(todos);
-    expect(week.get('2026-01-15' as DateKey)).toEqual({ done: 1, total: 2, categoryIds: ['a'] });
-    expect(week.get('2026-01-16' as DateKey)).toEqual({
-      done: 1,
-      total: 2,
-      categoryIds: ['b', 'a'],
-    });
-  });
-
-  it('투두가 없으면 빈 Map', () => {
-    expect(summarizeWeek([]).size).toBe(0);
   });
 });
