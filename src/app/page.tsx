@@ -1,8 +1,6 @@
-/** 단일 라우트(`/`)의 화면. 기능이 붙으면 `@/features/<f>` 의 화면 컴포넌트 하나를 렌더한다. */
+/** 단일 라우트(`/`)의 화면 — 조립은 전부 `@/features/shell` 의 `AppShell` 이 한다(ADR-0001). */
+import { AppShell } from '@/features/shell';
+
 export function Page() {
-  return (
-    <main>
-      <h1>Tasky</h1>
-    </main>
-  );
+  return <AppShell />;
 }
