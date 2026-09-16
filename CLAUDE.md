@@ -109,7 +109,7 @@ CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… pnpm run deploy   # 실제 �
 
 ## 9. 환경
 
-Node 22 / pnpm 10 / **Vite 8**(순수 Vite + React SPA, 라우터 없음) / React 19 / TypeScript 5 strict / Tailwind CSS 4 / Zustand / Dexie(지연 로드) / Vitest 5 / Playwright / Serwist 9(PWA) / Cloudflare Workers 정적 자산(배포). `next`·`vinext` 계열 의존은 **없다**(ADR-0013). 패키지 매니저는 **pnpm만** (`npm`, `yarn` 금지). 경로 별칭 `@/*` → `src/*`. E2E 브라우저는 이미 설치돼 있다(`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`) — `playwright install` 은 네트워크 정책에 막히므로 쓰지 않는다. 상세·제약: [ADR-0013](docs/decisions/ADR-0013-plain-vite-react-and-lazy-dexie.md).
+Node 22 / pnpm 10 / **Vite 8**(순수 Vite + React SPA, 라우터 없음) / React 19 / TypeScript 5 strict / Tailwind CSS 4 / Zustand / Dexie(지연 로드) / Vitest 5 / Playwright / Serwist 9(PWA) / Cloudflare Workers 정적 자산(배포). **런타임 의존에 `next`·`vinext` 계열은 없다**(ADR-0013). 다만 **린트 설정만 `eslint-config-next` 를 devDependency 로 아직 쓴다** — `@typescript-eslint` 파서·플러그인과 `react`/`react-hooks`/`jsx-a11y` 플러그인이 전부 이 프리셋을 통해서만 들어온다(T-33 실측). 걷어내려면 그 플러그인들을 직접 의존으로 올리는 별도 티켓이 필요하다. 순환 검출이 쓰는 `eslint-plugin-import` 만은 이미 직접 의존이다. 패키지 매니저는 **pnpm만** (`npm`, `yarn` 금지). 경로 별칭 `@/*` → `src/*`. E2E 브라우저는 이미 설치돼 있다(`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`) — `playwright install` 은 네트워크 정책에 막히므로 쓰지 않는다. 상세·제약: [ADR-0013](docs/decisions/ADR-0013-plain-vite-react-and-lazy-dexie.md).
 
 ## 10. 티켓 수명주기 (한눈에)
 

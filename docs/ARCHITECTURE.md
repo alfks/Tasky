@@ -63,6 +63,7 @@ flowchart TB
 **보장되는 것과 보장되지 않는 것**(린트는 *import 간선*만 본다 — 값의 흐름은 보지 못한다. 실측 근거: ADR-0006):
 
 - 보장: 테스트 계층(`src/test/**`, `*.test.*` — 경계 규칙 면제)과 `infra` 자신을 빼면, `infra` 를 **import** 하는 파일은 `app/providers.tsx` 하나다. 그 파일을 import 할 수 있는 파일도 `main.tsx` 하나다(ADR-0013 이전에는 `layout.tsx` 였다) — 표기 변형과 ADR-0006 결정 10 이 열거한 모듈 경로 구문 전수(정적·`import type`·동적 `import()`·`typeof import()`·모킹·`require` 계열·`new URL('…', import.meta.url)`)에 대해 실측했고 `check-arch.sh` 픽스처가 고정한다(주석인 삼중슬래시 지시자는 §1 의 규칙 + grep 이 별도로 막는다). 이 판정은 `eslint-disable` 로 끌 수 없다 — 2차 패스가 지시자를 무시하고 다시 본다(ADR-0008). `providers.tsx` 의 재export(`export … from`)는 금지된다 — 재export 한 줄로 조립 지점을 경유지 삼는 2홉은 막힌다.
+- 보장: **순환 import 는 깊이 제한 없이 잡는다**(`import/no-cycle`, `maxDepth: Infinity`). 예전에는 `maxDepth: 4` 라서 5홉 이상의 순환이 `pnpm lint` rc=0 으로 통과하고 런타임에서 `Cannot access '…' before initialization` 로 터졌다(T-33 실측 — feature 배럴을 경유하는 순환은 대부분 5홉을 넘는다). 깊이 제한을 없애도 `pnpm lint` 시간은 변하지 않았다(T-33 실측: 18.7~~22.9초 → 18.7~~19.5초). 이 규칙이 쓰는 `eslint-plugin-import` 는 **직접 devDependency 로 등록**하고 `eslint.config.mjs` 의 공통 블록이 플러그인을 직접 등록한다 — 무관한 프리셋(`eslint-config-next`)이 딸려 오는 것에 얹혀 있으면 그 프리셋을 걷어내는 순간 순환 가드가 같이 사라진다(가드 7 이 규칙 존재를 설정 로드 시점에 확인한다).
 - 보장 안 됨: `providers.tsx` 가 `export const getDb = () => db` 처럼 **직접 래퍼를 써서** infra 값을 내보내는 것. import 간선 규칙으로는 잡을 수 없다. 이 한 파일(`providers.tsx`)이 그래서 아키텍처 리뷰 대상이고(agent-collaboration.md 페르소나 표), 그 파일이 커지면 레포지토리 주입 외의 일을 하고 있다는 신호다.
 
 ## 2. 디렉토리 트리 (각 노드 → 그 디렉토리의 `AGENTS.md`)

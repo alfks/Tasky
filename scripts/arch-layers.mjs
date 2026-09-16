@@ -75,7 +75,11 @@ for (const l of LAYERS) {
  */
 /** 공통 블록에서 켜는 아키텍처 규칙 — 설정값까지 여기가 단일 소스다(eslint.config.mjs 가 그대로 펼친다) */
 export const ARCH_RULES_COMMON = {
-  'import/no-cycle': ['error', { maxDepth: 4 }],
+  // maxDepth 는 제한하지 않는다. 예전 값 4 는 5홉 이상의 순환을 놓쳤고(feature 배럴을 경유하면 대부분 5홉을
+  // 넘는다), 그 순환은 lint rc=0 으로 통과한 뒤 런타임에서 `Cannot access '…' before initialization` 로 터졌다
+  // (T-33 실측: command → timer 를 넣으면 timer-store.test.ts 가 죽는데 lint 는 조용했다).
+  // 비용은 없다 — `pnpm lint` 는 18.7~22.9초에서 18.7~19.5초로, 측정 오차 안이다(T-33 실측, 각 3회).
+  'import/no-cycle': ['error', { maxDepth: Infinity }],
   // @/ 별칭이 해석되지 않으면 no-restricted-paths 가 조용히 무력화된다 — @/ import 만 반드시 해석되게 강제(카나리).
   // caseSensitive: 대소문자만 다른 표기('@/app/Providers')는 대소문자 무시 파일시스템(macOS/Windows)에서도 여기서 막힌다.
   'import/no-unresolved': ['error', { ignore: ['^(?!@/)'], caseSensitive: true }],
