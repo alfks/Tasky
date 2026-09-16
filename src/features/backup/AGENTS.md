@@ -7,6 +7,4 @@
 
 ## 관할: components/
 
-## 관할: hooks/
-
 ## 관할: store/

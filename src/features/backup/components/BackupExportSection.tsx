@@ -13,6 +13,8 @@ type BackupExportSectionProps = {
   lastBackupAt: string | undefined;
   /** 경과 일수 계산 기준 시각(주입 — 렌더 중 시계를 읽지 않는다). */
   now: string;
+  /** 저장을 확인하지 못했을 때의 안내 (R10·R14). 없으면 `null`. */
+  note: string | null;
   busy: boolean;
   disabled: boolean;
   onExport: () => void;
@@ -32,6 +34,7 @@ export function BackupExportSection({
   counts,
   lastBackupAt,
   now,
+  note,
   busy,
   disabled,
   onExport,
@@ -58,6 +61,11 @@ export function BackupExportSection({
           JSON 내보내기
         </Button>
       </div>
+      {note === null ? null : (
+        <p role="status" className="text-sm text-danger">
+          {note}
+        </p>
+      )}
     </section>
   );
 }

@@ -3,6 +3,11 @@
 //
 // 이 파일이 지키는 한 문장: **쓰기는 `dataset.restore()` 한 번뿐이고 그 앞의 모든 실패는 쓰기 전에 난다.**
 // 그래서 파일이 손상됐든 도중에 예상 밖의 값이 튀어나왔든 저장소는 변하지 않는다(backup R4·R7).
+//
+// **`dataset.readAll()` 의 호출처는 둘뿐이다** — `exportBackup`(R2)과 `runImport`(R6). ADR-0009 규칙 4 가
+// 할당한 자리가 그 둘이고, 넷째를 만들면 ADR 을 다시 봐야 한다. 그래서 개수·경고 점은 엔티티 조회로
+// 읽는다(`refresh`·`refreshWarning`) — 앱이 뜰 때마다 툼스톤 포함 전량(R13 규모 16MB)을 메모리로
+// 끌어올리지 않기 위해서이기도 하다(리뷰 라운드 1 Major-4).
 import { checkBackupSize } from '@/domain/backup/backup-document';
 import {
   backupCounts,
@@ -11,7 +16,11 @@ import {
   serializeBackup,
 } from '@/domain/backup/export-backup';
 import type { ImportMode } from '@/domain/backup/plan-import';
-import { shouldWarnStaleBackup } from '@/domain/backup/stale-backup';
+import {
+  BACKUP_WARN_MIN_TODOS,
+  isBackupStale,
+  shouldWarnStaleBackup,
+} from '@/domain/backup/stale-backup';
 import type { MetaDeps } from '@/domain/meta';
 import { markBackedUp } from '@/domain/theme/settings.rules';
 
@@ -21,11 +30,17 @@ import {
   canExport,
   canImport,
   EXPORT_FAILED,
+  EXPORT_UNCONFIRMED,
   importErrorMessage,
   IMPORT_FAILED,
+  LOAD_FAILED,
   type BackupState,
 } from '@/features/backup/store/backup-state';
-import { downloadJson, readFileText } from '@/features/backup/store/browser-file';
+import {
+  openBackupTarget,
+  readFileText,
+  type BackupTarget,
+} from '@/features/backup/store/browser-file';
 import { useTodoStore } from '@/features/todo';
 
 /** 시각·id + **로컬 날짜**(파일명 R1). 테스트는 고정값을 넣는다. */
@@ -33,12 +48,13 @@ export type BackupDeps = MetaDeps & { today: () => string };
 
 /** 브라우저 파일 입출력. 테스트는 대역으로 바꾼다(jsdom 은 실제 다운로드를 하지 않는다). */
 export type BackupIo = {
-  download: (fileName: string, text: string) => void;
+  /** 저장할 자리를 사용자 제스처 안에서 확보한다. 사용자가 취소하면 `null`. */
+  openTarget: (fileName: string) => Promise<BackupTarget | null>;
   read: (file: File) => Promise<string>;
 };
 
 /** 런타임 기본 입출력. */
-export const browserBackupIo: BackupIo = { download: downloadJson, read: readFileText };
+export const browserBackupIo: BackupIo = { openTarget: openBackupTarget, read: readFileText };
 
 export type BackupContext = {
   readonly set: (partial: Partial<BackupState>) => void;
@@ -51,8 +67,10 @@ export type BackupActions = {
   openDialog: () => void;
   /** 가져오기 진행 중에는 닫히지 않는다 (§2 로딩). */
   closeDialog: () => void;
-  /** 현재 개수·마지막 백업 시각·경고 점을 다시 읽는다. */
+  /** 다이얼로그가 보여줄 개수·마지막 백업 시각·경고 점을 다시 읽는다. */
   refresh: () => Promise<void>;
+  /** 경고 점 하나만 판정한다 — 마운트 경로. 최신 백업이면 투두를 한 건도 읽지 않는다. */
+  refreshWarning: () => Promise<void>;
   exportBackup: () => Promise<boolean>;
   selectFile: (file: File | null) => Promise<void>;
   setMode: (mode: ImportMode) => void;
@@ -61,7 +79,14 @@ export type BackupActions = {
   dismissResult: () => void;
 };
 
-/** 가져오기 뒤 화면을 다시 읽는다 (R11). 새로고침 없이 목록이 바뀐다. */
+/**
+ * 가져오기 뒤 화면을 다시 읽는다 (R11). 새로고침 없이 목록이 바뀐다.
+ *
+ * 투두 스토어는 직접 다시 읽고, **자기 데이터를 따로 캐시해 둔 feature** 는 `dataRevision` 을 구독해
+ * 스스로 다시 조회한다(백업이 남의 조회 함수를 알면 의존 방향이 뒤집힌다). 지금 구독해야 하는 쪽은
+ * 날짜 스트립의 주 요약·달성률(`useWeekSummaries`)인데 그 파일은 이 티켓의 `owns` 밖이라 배선은
+ * 후속 티켓 몫이다 — 그때까지 주 요약은 낡은 값을 보여준다(리뷰 라운드 1 Major-3).
+ */
 async function reloadViews(): Promise<void> {
   const todo = useTodoStore.getState();
   if (todo.date !== null) {
@@ -70,11 +95,17 @@ async function reloadViews(): Promise<void> {
 }
 
 export function createBackupActions(ctx: BackupContext): BackupActions {
+  /** 다이얼로그가 쓰는 정확한 개수. 엔티티 조회라 툼스톤이 섞이지 않는다(= `backupCounts` 와 같은 수). */
   const refresh = async (): Promise<void> => {
     try {
-      const snapshot = await getRepositories().dataset.readAll();
-      const current = backupCounts(snapshot);
-      const lastBackupAt = snapshot.settings.lastBackupAt;
+      const repositories = getRepositories();
+      const [categoryList, todoList, settings] = await Promise.all([
+        repositories.categories.list({ includeClosed: true }),
+        repositories.todos.listAll(),
+        repositories.settings.get(),
+      ]);
+      const current = { categories: categoryList.length, todos: todoList.length };
+      const lastBackupAt = settings?.lastBackupAt;
       const now = ctx.deps.now();
       ctx.set({
         current,
@@ -83,23 +114,68 @@ export function createBackupActions(ctx: BackupContext): BackupActions {
         warnStale: shouldWarnStaleBackup({ lastBackupAt, todoCount: current.todos, now }),
       });
     } catch {
-      ctx.set({ error: EXPORT_FAILED });
+      ctx.set({ error: LOAD_FAILED });
     }
   };
 
+  /**
+   * 경고 점만 판정한다 (R14). 설정 한 행을 먼저 읽고 **30일이 지나지 않았으면 거기서 끝난다** —
+   * 마지막 백업이 최신인 사용자는 앱이 뜰 때 투두를 한 건도 읽지 않는다.
+   *
+   * 오래됐을 때만 개수를 보는데, 그때도 전량을 들고 오지 않는다: 계약이 정한 "빈 질의는 전량을
+   * `limit` 까지"(`TodoRepository.search`)를 임계값 20 으로 써서 **최대 20행**만 받는다. 저장소 안의
+   * 스캔까지 없애려면 계약에 `count` 가 있어야 하는데 그 파일은 이 티켓의 `owns` 밖이다 —
+   * 여기서 줄인 것은 "앱 시작마다 전량을 메모리에 올리는 것" 이지 스캔 자체가 아니다.
+   */
+  const refreshWarning = async (): Promise<void> => {
+    try {
+      const repositories = getRepositories();
+      const now = ctx.deps.now();
+      const lastBackupAt = (await repositories.settings.get())?.lastBackupAt;
+      ctx.set({ lastBackupAt, refreshedAt: now });
+      if (!isBackupStale(lastBackupAt, now)) {
+        ctx.set({ warnStale: false });
+        return;
+      }
+      const probe = await repositories.todos.search('', BACKUP_WARN_MIN_TODOS);
+      ctx.set({ warnStale: probe.length >= BACKUP_WARN_MIN_TODOS });
+    } catch {
+      ctx.set({ error: LOAD_FAILED });
+    }
+  };
+
+  /**
+   * 내보내기 (R1·R2·R10).
+   *
+   * 순서가 규칙이다: **저장할 자리를 먼저** 잡고(사용자 제스처가 살아 있어야 파일 피커가 열린다),
+   * 그다음에 전량을 읽어 본문을 만든다. 사용자가 피커를 취소하면 16MB 를 만들 이유가 없다.
+   *
+   * `lastBackupAt` 은 **저장 완료를 관측했을 때만** 찍는다 (R14). 앵커 내려받기는 취소·차단을 알려주지
+   * 않으므로 그 경로에서 찍으면 백업하지 않은 사용자의 경고 점이 꺼진다 — 경고 점을 끄는 행동이
+   * 백업보다 싸서는 안 된다는 것이 R14 의 근거다. 대신 무엇이 일어났는지 문구로 알린다.
+   */
   const exportBackup = async (): Promise<boolean> => {
     if (!canExport(ctx.get())) {
       return false;
     }
-    ctx.set({ phase: 'exporting', error: null });
+    ctx.set({ phase: 'exporting', error: null, exportNote: null });
     try {
       const repositories = getRepositories();
+      const target = await ctx.io.openTarget(backupFileName(ctx.deps.today()));
+      if (target === null) {
+        // 사용자가 저장을 취소했다. 실패가 아니므로 오류 문구를 띄우지 않고, 아무것도 갱신하지 않는다.
+        ctx.set({ phase: 'idle' });
+        return false;
+      }
       const snapshot = await repositories.dataset.readAll();
       const text = serializeBackup(buildBackupDocument(snapshot, ctx.deps.now()));
-      // 내려받기가 실패하면 여기서 던진다 — `lastBackupAt` 은 그때 갱신되지 않는다(R10).
-      ctx.io.download(backupFileName(ctx.deps.today()), text);
-      await repositories.settings.upsert(markBackedUp(snapshot.settings, ctx.deps));
-      ctx.set({ phase: 'idle' });
+      await target.save(text);
+      if (target.confirmable) {
+        await repositories.settings.upsert(markBackedUp(snapshot.settings, ctx.deps));
+        ctx.set({ phase: 'idle' });
+      } else {
+        ctx.set({ phase: 'idle', exportNote: EXPORT_UNCONFIRMED });
+      }
       await refresh();
       return true;
     } catch {
@@ -109,11 +185,19 @@ export function createBackupActions(ctx: BackupContext): BackupActions {
   };
 
   const selectFile = async (file: File | null): Promise<void> => {
+    // 파일이 바뀌면 교체 확인 서명도 다시 받는다 — 파괴적 동작 앞의 체크는 남겨 두는 편이 싸지 않다.
     if (file === null) {
-      ctx.set({ fileName: null, selection: null, issue: null, error: null });
+      ctx.set({ fileName: null, selection: null, issue: null, error: null, acknowledged: false });
       return;
     }
-    ctx.set({ fileName: file.name, selection: null, issue: null, error: null, result: null });
+    ctx.set({
+      fileName: file.name,
+      selection: null,
+      issue: null,
+      error: null,
+      result: null,
+      acknowledged: false,
+    });
     const tooLarge = checkBackupSize(file.size);
     if (tooLarge !== null) {
       ctx.set({ issue: tooLarge });
@@ -163,7 +247,9 @@ export function createBackupActions(ctx: BackupContext): BackupActions {
         fileName: null,
         issue: null,
         acknowledged: false,
+        exportNote: null,
         result: { counts: plan.counts, source: selection.counts },
+        dataRevision: ctx.get().dataRevision + 1,
       });
       await refresh();
       await reloadViews();
@@ -175,13 +261,18 @@ export function createBackupActions(ctx: BackupContext): BackupActions {
   };
 
   return {
-    openDialog: () => ctx.set({ open: true, error: null, result: null }),
+    openDialog: () => {
+      ctx.set({ open: true, error: null, result: null, exportNote: null });
+      // 개수는 다이얼로그에만 필요하다 — 열 때 읽으면 앱 시작 비용이 0 이다.
+      void refresh();
+    },
     closeDialog: () => {
       if (ctx.get().phase !== 'importing') {
         ctx.set({ open: false });
       }
     },
     refresh,
+    refreshWarning,
     exportBackup,
     selectFile,
     setMode: (mode) => ctx.set({ mode, acknowledged: false }),

@@ -6,9 +6,11 @@ import {
   assertMeta,
   isBackupShapeError,
   META_KEYS,
+  optionalString,
   pickFields,
   requireDateKey,
   requireNumber,
+  requireString,
 } from '@/domain/backup/shape';
 
 import { makeTodo } from '@/test/fixtures/todo';
@@ -113,5 +115,43 @@ describe('assertMeta', () => {
 
   it('Settings 의 고정 id 는 UUID 검사에서 제외된다', () => {
     expect(() => assertMeta({ ...makeTodo(), id: 'default' }, 'settings')).not.toThrow();
+  });
+});
+
+// 빈 문자열 금지는 **이 함수 자신의 계약**이다. 지우고도 전 테스트가 통과하면(리뷰 라운드 1 Major-5(b)
+// 실측) 아무도 그 계약을 지키지 않는 것이다. 뒤의 도메인 규칙(제목 길이·색 형식)이 우연히 덮어 주는
+// 자리도 있지만, `optionalString('todoId')` 처럼 뒷단 규칙이 아예 없는 자리가 있다.
+describe('requireString — 빈 문자열은 값이 아니다', () => {
+  it('빈 문자열을 거부한다', () => {
+    expect(pathOf(() => requireString({ title: '' }, 'title', 'todos[0]'))).toBe('todos[0].title');
+  });
+
+  it('빈 문자열 id 를 거부한다', () => {
+    expect(pathOf(() => requireString({ id: '' }, 'id', 'categories[3]'))).toBe('categories[3].id');
+  });
+
+  it('문자열이 아니면 거부한다', () => {
+    expect(pathOf(() => requireString({ title: 42 }, 'title', 'todos[0]'))).toBe('todos[0].title');
+    expect(pathOf(() => requireString({}, 'title', 'todos[0]'))).toBe('todos[0].title');
+  });
+
+  it('값이 있으면 그대로 돌려준다', () => {
+    expect(requireString({ title: '장보기' }, 'title', 'todos[0]')).toBe('장보기');
+  });
+});
+
+describe('optionalString — 없는 것과 빈 것은 다르다', () => {
+  it('키가 없으면 undefined 다', () => {
+    expect(optionalString({}, 'todoId', 'focusSessions[0]')).toBeUndefined();
+  });
+
+  it('있는데 비어 있으면 거부한다 — 뒷단 규칙이 없는 자리다', () => {
+    expect(pathOf(() => optionalString({ todoId: '' }, 'todoId', 'focusSessions[0]'))).toBe(
+      'focusSessions[0].todoId',
+    );
+  });
+
+  it('있으면 그대로 돌려준다', () => {
+    expect(optionalString({ memo: '우유' }, 'memo', 'todos[0]')).toBe('우유');
   });
 });

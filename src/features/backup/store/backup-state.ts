@@ -44,6 +44,16 @@ export type BackupState = {
   error: string | null;
   /** 가져오기 결과 토스트 (R12). */
   result: { counts: ImportCounts; source: BackupCounts } | null;
+  /**
+   * 내보내기는 끝났지만 **저장을 확인하지 못했다**는 안내 (R10·R14). 이 경우 `lastBackupAt` 을 찍지
+   * 않으므로 경고 점도 그대로 남는다 — 왜 남는지를 말해 주지 않으면 고장으로 보인다.
+   */
+  exportNote: string | null;
+  /**
+   * 가져오기가 성공할 때마다 +1 (R11). 저장소 전체가 통째로 바뀌었다는 신호이고, 자기 데이터를
+   * 캐시해 둔 다른 feature 가 이 값을 구독해 다시 조회한다(백업 스토어는 그들의 조회 함수를 모른다).
+   */
+  dataRevision: number;
 };
 
 /** 가져오기 실패 공통 문구 (§2 에러). 원인이 아니라 **데이터가 그대로라는 사실**을 알린다. */
@@ -51,6 +61,16 @@ export const IMPORT_FAILED = '가져오지 못했어요. 파일은 바뀌지 않
 
 /** 내보내기 실패 공통 문구. */
 export const EXPORT_FAILED = '내보내지 못했어요. 다시 시도해 주세요';
+
+/** 지금 데이터를 읽지 못했을 때 (내보내기·가져오기 어느 쪽도 아직 누르지 않은 상태의 실패). */
+export const LOAD_FAILED = '지금 데이터를 읽지 못했어요. 다시 시도해 주세요';
+
+/**
+ * 저장 완료를 관측할 수 없는 브라우저에서 내보낸 뒤의 안내 (R10·R14).
+ * File System Access API 가 없으면 `anchor.click()` 뿐이고 그것은 취소·차단을 알려주지 않는다.
+ */
+export const EXPORT_UNCONFIRMED =
+  '파일이 저장됐는지 확인해 주세요. 이 브라우저는 저장 완료를 알려주지 않아 "마지막 백업" 시각을 갱신하지 않았어요';
 
 /** 교체 확인 체크박스가 꺼져 있을 때 `[가져오기]` 가 다는 이유 (§5). */
 export const NEEDS_ACKNOWLEDGE = '확인 체크가 필요해요';
@@ -69,9 +89,16 @@ export const initialBackupState: BackupState = {
   issue: null,
   error: null,
   result: null,
+  exportNote: null,
+  dataRevision: 0,
 };
 
-/** 도메인 규칙 위반은 그 문구를 그대로, 그 밖의 실패는 공통 문구를 쓴다. */
+/**
+ * 도메인 규칙 위반은 그 문구를 그대로, 그 밖의 실패는 공통 문구를 쓴다.
+ *
+ * `LocalSnapshotError`(지금 저장소의 행이 형식을 어김)는 `DomainError` 가 아니므로 여기서 공통 문구로
+ * 떨어진다 — 파일은 멀쩡한데 "파일 형식이 올바르지 않아요" 라고 하지 않기 위한 분기다(§2 저장 실패).
+ */
 export function importErrorMessage(error: unknown): string {
   return error instanceof DomainError ? error.message : IMPORT_FAILED;
 }
@@ -108,6 +135,8 @@ export function importBlockedReason(state: BackupState): string | null {
 
 /** 결과 토스트 문구 (R12). 개수는 파일이 담고 있던 것 + 적용 결과다. */
 export function importResultMessage(result: NonNullable<BackupState['result']>): string {
+  // 괄호 안의 셋을 더하면 앞머리의 카테고리 + 할 일 개수와 **같다** — 파일 내용을 분해한 값이기
+  // 때문이다(§2 예시 `20+3+289 = 312`, `planMerge` 주석).
   const { counts, source } = result;
   return (
     `카테고리 ${source.categories}개, 할 일 ${source.todos}개를 가져왔어요 ` +

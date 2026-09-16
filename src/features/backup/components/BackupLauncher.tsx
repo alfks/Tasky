@@ -2,10 +2,13 @@
 
 // 사이드바 하단의 "⇅ 백업/복원" 진입점 (backup.md §2·R11·R12·R14).
 //
+// **토스트 뷰포트 소유권은 임시다** — 앱 셸(T-15)이 상주 뷰포트를 두면 `role="status"` 라이브 영역이
+// 둘이 된다. 그때 이 뷰포트를 지우고 셸의 것에 결과 토스트를 넘긴다(리뷰 라운드 1 Minor-7).
+//
 // **다이얼로그는 지연 로드한다.** 자주 열지 않는 화면이라 첫 로드 JS 예산(TECH_PLAN §8)에 상시로
 // 실릴 이유가 없다 — 열 때 한 번 받아 오면 된다. 경고 점 판정에 필요한 것은 스토어뿐이라
 // 버튼과 점은 지연 로드 대상이 아니다.
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 
 import { BackupWarningDot } from '@/features/backup/components/BackupWarningDot';
 import { importResultMessage } from '@/features/backup/store/backup-state';
@@ -26,14 +29,26 @@ export function BackupLauncher() {
   const warnStale = useBackupStore((state) => state.warnStale);
   const result = useBackupStore((state) => state.result);
   const openDialog = useBackupStore((state) => state.openDialog);
-  const refresh = useBackupStore((state) => state.refresh);
+  const refreshWarning = useBackupStore((state) => state.refreshWarning);
   const dismissResult = useBackupStore((state) => state.dismissResult);
 
+  /**
+   * 토스트 뷰포트는 **하이드레이션 이후에만** 띄운다.
+   *
+   * `ToastViewport` 는 `document` 가 없으면 `null` 이라 SSR HTML 에 없다. 그것을 첫 렌더에 그대로 두면
+   * 서버 HTML 과 클라이언트 트리가 달라 React 19 가 트리를 통째로 다시 만든다(실 Chromium PAGEERROR —
+   * 리뷰 라운드 1 Major-1). `toasts` 가 빌 때 아예 렌더하지 않는 방법도 있지만, 그러면 라이브 영역과
+   * 문구가 같은 순간에 삽입되어 상당수 스크린리더가 읽지 않는다(`Toast.tsx` 주석). 그래서 **비어 있는
+   * 뷰포트를 마운트 직후에 미리 띄워 둔다** — 첫 렌더는 서버와 같고, 영역은 문구보다 먼저 있다.
+   */
+  const [mounted, setMounted] = useState(false);
+
   // 파생 상태 동기화가 아니라 **외부 저장소 읽기**다(code-style §3 이 금지하는 쪽이 아니다).
-  // 경고 점은 다이얼로그를 열지 않아도 보여야 하므로 마운트 시 한 번 읽는다.
+  // 경고 점은 다이얼로그를 열지 않아도 보여야 하므로 마운트 시 한 번 읽는다 — 개수까지 읽지는 않는다.
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    setMounted(true);
+    void refreshWarning();
+  }, [refreshWarning]);
 
   const toasts =
     result === null
@@ -56,7 +71,7 @@ export function BackupLauncher() {
           <LazyBackupDialog />
         </Suspense>
       ) : null}
-      <ToastViewport toasts={toasts} onClose={dismissResult} />
+      {mounted ? <ToastViewport toasts={toasts} onClose={dismissResult} /> : null}
     </>
   );
 }

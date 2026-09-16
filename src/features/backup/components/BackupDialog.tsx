@@ -1,6 +1,8 @@
 'use client';
 
 // 백업/복원 다이얼로그 (backup.md §2·§5). 조립만 한다 — 절 두 개와 하단 버튼, 그리고 진행 중 상태다.
+import { useId } from 'react';
+
 import { useShallow } from 'zustand/react/shallow';
 
 import { BackupExportSection } from '@/features/backup/components/BackupExportSection';
@@ -23,6 +25,7 @@ const selectView = (state: BackupStore) => ({
   current: state.current,
   lastBackupAt: state.lastBackupAt,
   refreshedAt: state.refreshedAt,
+  exportNote: state.exportNote,
   mode: state.mode,
   acknowledged: state.acknowledged,
   fileName: state.fileName,
@@ -36,6 +39,8 @@ const selectView = (state: BackupStore) => ({
 
 export function BackupDialog() {
   const view = useBackupStore(useShallow(selectView));
+  // 누를 수 없는 이유는 툴팁만으로는 키보드·스크린리더 사용자에게 닿지 않는다(§5, 리뷰 Minor-6).
+  const blockedReasonId = useId();
   const closeDialog = useBackupStore((state) => state.closeDialog);
   const exportBackup = useBackupStore((state) => state.exportBackup);
   const selectFile = useBackupStore((state) => state.selectFile);
@@ -62,6 +67,7 @@ export function BackupDialog() {
             loading={importing}
             aria-disabled={!view.importable}
             title={view.blockedReason ?? undefined}
+            aria-describedby={view.blockedReason === null ? undefined : blockedReasonId}
           >
             가져오기
           </Button>
@@ -73,6 +79,7 @@ export function BackupDialog() {
           counts={view.current}
           lastBackupAt={view.lastBackupAt}
           now={view.refreshedAt ?? ''}
+          note={view.exportNote}
           busy={view.phase === 'exporting'}
           disabled={!view.exportable}
           onExport={() => void exportBackup()}
@@ -90,6 +97,11 @@ export function BackupDialog() {
           onModeChange={setMode}
           onAcknowledgedChange={setAcknowledged}
         />
+        {view.blockedReason === null ? null : (
+          <p id={blockedReasonId} className="text-sm text-muted">
+            {view.blockedReason}
+          </p>
+        )}
         {view.error === null ? null : (
           <p role="alert" className="text-sm text-danger">
             {view.error}

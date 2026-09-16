@@ -60,10 +60,23 @@ describe('planMerge (R6)', () => {
     expect(result.counts).toEqual({ added: 1, updated: 0, kept: 0 });
   });
 
-  it('로컬에만 있는 항목은 그대로 남는다', () => {
+  it('로컬에만 있는 항목은 그대로 남는다 — 개수에는 세지 않는다 (R12)', () => {
     const result = planMerge<Todo>(makeTodos(3), []);
     expect(result.rows).toHaveLength(3);
-    expect(result.counts).toEqual({ added: 0, updated: 0, kept: 3 });
+    // 개수는 **파일 내용**을 분해한 값이라(§2 예시 `20+3+289 = 312`) 파일에 없는 로컬 행은 0 이다.
+    expect(result.counts).toEqual({ added: 0, updated: 0, kept: 0 });
+  });
+
+  it('추가+갱신+유지 는 파일의 행 수와 같다 (R12·§2 예시의 셈법)', () => {
+    const local = makeTodos(5);
+    const incoming = [
+      makeTodo({ seq: 1, title: '파일이 최신', updatedAt: LATER }),
+      makeTodo({ seq: 2 }),
+      makeTodo({ seq: 9 }),
+    ];
+    const { counts } = planMerge<Todo>(local, incoming);
+    expect(counts).toEqual({ added: 1, updated: 1, kept: 1 });
+    expect(counts.added + counts.updated + counts.kept).toBe(incoming.length);
   });
 
   it('로컬 툼스톤이 더 최근이면 삭제가 유지되고 그 툼스톤이 결과에 실린다', () => {

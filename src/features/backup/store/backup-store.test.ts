@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BACKUP_MAX_BYTES } from '@/domain/backup/backup-document';
 import { serializeBackup } from '@/domain/backup/export-backup';
+import { BACKUP_WARN_MIN_TODOS } from '@/domain/backup/stale-backup';
 import type { DatasetSnapshot } from '@/domain/dataset';
 import type { Meta, Persistable } from '@/domain/meta';
 
@@ -12,10 +13,13 @@ import { createMemoryRepositories } from '@/repositories/memory/repositories';
 import type { BackupDeps, BackupIo } from '@/features/backup/store/backup-actions';
 import {
   EXPORT_FAILED,
+  EXPORT_UNCONFIRMED,
   IMPORT_FAILED,
   importResultMessage,
+  LOAD_FAILED,
 } from '@/features/backup/store/backup-state';
 import { createBackupStore } from '@/features/backup/store/backup-store';
+import type { BackupTarget } from '@/features/backup/store/browser-file';
 import { useTodoStore } from '@/features/todo';
 import { makeCategory } from '@/test/fixtures/category';
 import { FIXTURE_INSTANT, fixtureId } from '@/test/fixtures/deps';
@@ -59,10 +63,31 @@ let repositories: Repositories;
 let downloads: { fileName: string; text: string }[];
 let store: ReturnType<typeof createBackupStore>;
 
+/** 저장 완료를 **관측할 수 있는** 자리(파일 피커가 있는 브라우저). 기본 대역이다. */
+function confirmedTarget(fileName: string): BackupTarget {
+  return {
+    confirmable: true,
+    save: (text) => {
+      downloads.push({ fileName, text });
+      return Promise.resolve();
+    },
+  };
+}
+
+/** 저장 완료를 확인할 수 없는 자리(앵커 내려받기). 파일은 나가지만 결과를 모른다. */
+function unconfirmedTarget(fileName: string): BackupTarget {
+  return { ...confirmedTarget(fileName), confirmable: false };
+}
+
 const io: BackupIo = {
-  download: (fileName, text) => downloads.push({ fileName, text }),
+  openTarget: (fileName) => Promise.resolve(confirmedTarget(fileName)),
   read: (file) => file.text(),
 };
+
+/** 파일 입출력만 바꾼 스토어. 나머지 배선은 같다. */
+function storeWith(over: Partial<BackupIo>): ReturnType<typeof createBackupStore> {
+  return createBackupStore(deps, { ...io, ...over });
+}
 
 async function seed(snapshot: DatasetSnapshot): Promise<void> {
   await repositories.dataset.restore({
@@ -156,11 +181,12 @@ describe('exportBackup (R1·R2·R10)', () => {
   });
 
   it('내려받기가 실패하면 lastBackupAt 을 갱신하지 않는다 (R10)', async () => {
-    const failing = createBackupStore(deps, {
-      download: () => {
-        throw new Error('사용자가 저장을 취소했다');
-      },
-      read: (file) => file.text(),
+    const failing = storeWith({
+      openTarget: (fileName) =>
+        Promise.resolve({
+          ...confirmedTarget(fileName),
+          save: () => Promise.reject(new Error('디스크가 가득 찼다')),
+        }),
     });
     await failing.getState().refresh();
     expect(await failing.getState().exportBackup()).toBe(false);
@@ -245,7 +271,7 @@ describe('selectFile — 손상된 파일 주입 (R4·R8·R9)', () => {
 
   it('20MB 를 넘으면 본문을 읽지 않는다 (R9)', async () => {
     const read = vi.fn(() => Promise.resolve('{}'));
-    const guarded = createBackupStore(deps, { download: () => undefined, read });
+    const guarded = storeWith({ read });
     await guarded.getState().selectFile(fakeFile('huge.json', '{}', BACKUP_MAX_BYTES + 1));
     expect(read).not.toHaveBeenCalled();
   });
@@ -293,8 +319,8 @@ describe('runImport — 병합 (R6·R11·R12)', () => {
     const after = await repositories.dataset.readAll();
     expect(after.todos).toHaveLength(4);
     expect(after.todos.find((todo) => todo.id === updated.id)?.title).toBe('파일이 최신');
-    // 로컬 5행(카테고리 1 · 투두 3 · 세션 1) 중 1건이 갱신되고 1건이 추가된다.
-    expect(store.getState().result?.counts).toEqual({ added: 1, updated: 1, kept: 4 });
+    // 개수는 **파일**을 분해한다: 카테고리 1(로컬과 동시각 → 유지) · 투두 2(갱신 1 · 추가 1).
+    expect(store.getState().result?.counts).toEqual({ added: 1, updated: 1, kept: 1 });
   });
 
   it('로컬 툼스톤은 파일의 옛 비삭제 버전으로 부활하지 않는다 (ADR-0009 규칙 3)', async () => {
@@ -318,14 +344,14 @@ describe('runImport — 병합 (R6·R11·R12)', () => {
     expect(after.todos.map((todo) => todo.categoryId)).toEqual([deleted.id]);
   });
 
-  it('결과 토스트 문구에 추가·갱신·유지 개수가 들어간다 (R12)', async () => {
+  it('결과 토스트 문구에 추가·갱신·유지 개수가 들어간다 — 합계가 앞머리와 같다 (R12)', async () => {
     await store.getState().selectFile(fakeFile('same.json', fileTextOf(baseSnapshot())));
     await store.getState().runImport();
     const result = store.getState().result;
     expect(result).not.toBeNull();
     if (result !== null) {
       expect(importResultMessage(result)).toBe(
-        '카테고리 1개, 할 일 3개를 가져왔어요 (추가 0 · 갱신 0 · 유지 5)',
+        '카테고리 1개, 할 일 3개를 가져왔어요 (추가 0 · 갱신 0 · 유지 4)',
       );
     }
   });
@@ -465,7 +491,7 @@ describe('runImport — 예상 밖의 실패에도 변화 0', () => {
     expect(await repositories.dataset.readAll()).toEqual(before);
   });
 
-  it('현재 스냅샷의 로우가 Meta 형식을 어기면 아무것도 쓰지 않는다 (adopt)', async () => {
+  it('현재 스냅샷의 로우가 Meta 형식을 어겨도 **파일 탓을 하지 않는다** (adopt)', async () => {
     const before = await repositories.dataset.readAll();
     await store.getState().selectFile(fakeFile('ok.json', fileTextOf(baseSnapshot())));
 
@@ -475,6 +501,8 @@ describe('runImport — 예상 밖의 실패에도 변화 0', () => {
     }));
 
     expect(await store.getState().runImport()).toBe(false);
+    // 파일은 멀쩡하다 — "파일 형식이 올바르지 않아요" 가 아니라 저장 실패 문구를 쓴다(§2).
+    expect(store.getState().error).toBe(IMPORT_FAILED);
     setRepositories(repositories);
     expect(await repositories.dataset.readAll()).toEqual(before);
   });
@@ -535,5 +563,195 @@ describe('다이얼로그 상태 (§2 로딩)', () => {
     store.getState().openDialog();
     store.getState().closeDialog();
     expect(store.getState().open).toBe(false);
+  });
+});
+
+/** 백업이 오래된 상태(투두 20개 + lastBackupAt 없음)를 만든다 — 경고 점이 켜지는 조건이다. */
+async function seedStale(): Promise<void> {
+  const category = makeCategory();
+  await seed(
+    baseSnapshot({
+      categories: [category],
+      todos: makeTodos(BACKUP_WARN_MIN_TODOS, () => ({ categoryId: category.id })),
+    }),
+  );
+}
+
+describe('exportBackup — 저장을 확인할 수 없을 때 (R10·R14)', () => {
+  it('사용자가 저장을 취소하면 경고 점이 그대로 남는다', async () => {
+    await seedStale();
+    const canceled = storeWith({ openTarget: () => Promise.resolve(null) });
+    await canceled.getState().refresh();
+    expect(canceled.getState().warnStale).toBe(true);
+
+    expect(await canceled.getState().exportBackup()).toBe(false);
+
+    // 백업하지 않았으므로 점이 꺼지면 안 된다 — 저장 대화상자 Esc 한 번이 30일치 경고를 끄는 경로다.
+    expect(canceled.getState().warnStale).toBe(true);
+    expect(canceled.getState().lastBackupAt).toBeUndefined();
+    expect((await repositories.settings.get())?.lastBackupAt).toBeUndefined();
+    expect(downloads).toHaveLength(0);
+    // 취소는 실패가 아니다.
+    expect(canceled.getState().error).toBeNull();
+  });
+
+  it('저장 완료를 관측할 수 없으면 파일은 내보내되 lastBackupAt 을 찍지 않고 이유를 말한다', async () => {
+    await seedStale();
+    const anchor = storeWith({
+      openTarget: (fileName) => Promise.resolve(unconfirmedTarget(fileName)),
+    });
+    await anchor.getState().refresh();
+
+    expect(await anchor.getState().exportBackup()).toBe(true);
+
+    expect(downloads).toHaveLength(1);
+    expect((await repositories.settings.get())?.lastBackupAt).toBeUndefined();
+    expect(anchor.getState().warnStale).toBe(true);
+    expect(anchor.getState().exportNote).toBe(EXPORT_UNCONFIRMED);
+  });
+
+  it('저장할 자리를 본문보다 **먼저** 잡는다 (파일 피커는 사용자 제스처 안에서만 열린다)', async () => {
+    const order: string[] = [];
+    const real = repositories.dataset;
+    setRepositories({
+      ...repositories,
+      dataset: {
+        readAll: async () => {
+          order.push('read');
+          return real.readAll();
+        },
+        write: (writes) => real.write(writes),
+        restore: (snapshot) => real.restore(snapshot),
+      },
+    });
+    const ordered = storeWith({
+      openTarget: (fileName) => {
+        order.push('open');
+        return Promise.resolve(confirmedTarget(fileName));
+      },
+    });
+    await ordered.getState().refresh();
+
+    expect(await ordered.getState().exportBackup()).toBe(true);
+    expect(order).toEqual(['open', 'read']);
+    setRepositories(repositories);
+  });
+});
+
+describe('refreshWarning — 앱 시작 경로 (ADR-0009 규칙 4, R14)', () => {
+  it('전량 읽기(dataset.readAll)를 부르지 않는다', async () => {
+    const readAll = vi.spyOn(repositories.dataset, 'readAll');
+    await store.getState().refreshWarning();
+    expect(readAll).not.toHaveBeenCalled();
+    readAll.mockRestore();
+  });
+
+  it('마지막 백업이 최신이면 투두를 한 건도 읽지 않는다', async () => {
+    await seed(baseSnapshot({ settings: makeSettings({ lastBackupAt: NOW }) }));
+    const search = vi.spyOn(repositories.todos, 'search');
+    const listAll = vi.spyOn(repositories.todos, 'listAll');
+
+    await store.getState().refreshWarning();
+
+    expect(store.getState().warnStale).toBe(false);
+    expect(search).not.toHaveBeenCalled();
+    expect(listAll).not.toHaveBeenCalled();
+    search.mockRestore();
+    listAll.mockRestore();
+  });
+
+  it('오래됐으면 개수를 보되 임계값까지만 받는다', async () => {
+    const category = makeCategory();
+    await seed(
+      baseSnapshot({
+        categories: [category],
+        todos: makeTodos(50, () => ({ categoryId: category.id })),
+      }),
+    );
+    const search = vi.spyOn(repositories.todos, 'search');
+
+    await store.getState().refreshWarning();
+
+    expect(store.getState().warnStale).toBe(true);
+    expect(search).toHaveBeenCalledWith('', BACKUP_WARN_MIN_TODOS);
+    expect(await search.mock.results[0]?.value).toHaveLength(BACKUP_WARN_MIN_TODOS);
+    search.mockRestore();
+  });
+
+  it('개수를 읽지 못해도 내보내기 문구를 쓰지 않는다 (refresh)', async () => {
+    setRepositories({
+      ...repositories,
+      todos: { ...repositories.todos, listAll: () => Promise.reject(new Error('boom')) },
+    });
+    await store.getState().refresh();
+    // 사용자는 아무것도 누르지 않았다 — "내보내지 못했어요" 는 틀린 말이다.
+    expect(store.getState().error).toBe(LOAD_FAILED);
+    expect(store.getState().error).not.toBe(EXPORT_FAILED);
+    setRepositories(repositories);
+  });
+
+  it('개수를 읽지 못해도 내보내기 문구를 쓰지 않는다 (refreshWarning)', async () => {
+    setRepositories({
+      ...repositories,
+      settings: {
+        get: () => Promise.reject(new Error('boom')),
+        upsert: (settings) => repositories.settings.upsert(settings),
+      },
+    });
+    await store.getState().refreshWarning();
+    expect(store.getState().error).toBe(LOAD_FAILED);
+    expect(store.getState().error).not.toBe(EXPORT_FAILED);
+    setRepositories(repositories);
+  });
+});
+
+describe('runImport — 파일은 신뢰하지 않는다', () => {
+  it('교체 모드에서도 실행 중 세션은 하나만 남는다 (timer R5)', async () => {
+    const older = makeFocusSession({ seq: 1, status: 'running', updatedAt: EARLIER });
+    const newer = makeFocusSession({ seq: 2, status: 'paused', updatedAt: LATER });
+    await store.getState().selectFile(
+      fakeFile(
+        'two-active.json',
+        fileTextOf({
+          categories: [],
+          todos: [],
+          focusSessions: [older, newer],
+          settings: makeSettings(),
+        }),
+      ),
+    );
+    store.getState().setMode('replace');
+    store.getState().setAcknowledged(true);
+    expect(await store.getState().runImport()).toBe(true);
+
+    const after = await repositories.dataset.readAll();
+    const active = after.focusSessions.filter(
+      (session) => session.status === 'running' || session.status === 'paused',
+    );
+    expect(active).toHaveLength(1);
+    // 남는 것은 더 최근 쪽이고, 나머지는 취소된다.
+    expect(active[0]?.id).toBe(newer.id);
+    expect(after.focusSessions.find((session) => session.id === older.id)?.status).toBe('canceled');
+  });
+
+  it('파일을 다시 고르면 교체 확인 체크가 풀린다', async () => {
+    store.getState().setMode('replace');
+    store.getState().setAcknowledged(true);
+    await store.getState().selectFile(fakeFile('ok.json', fileTextOf(baseSnapshot())));
+    expect(store.getState().acknowledged).toBe(false);
+  });
+
+  it('성공하면 dataRevision 이 오른다 — 캐시를 가진 다른 feature 의 재조회 신호다 (R11)', async () => {
+    const before = store.getState().dataRevision;
+    await store.getState().selectFile(fakeFile('same.json', fileTextOf(baseSnapshot())));
+    expect(await store.getState().runImport()).toBe(true);
+    expect(store.getState().dataRevision).toBe(before + 1);
+  });
+
+  it('실패하면 dataRevision 이 오르지 않는다', async () => {
+    const before = store.getState().dataRevision;
+    await store.getState().selectFile(fakeFile('broken.json', 'nope'));
+    expect(await store.getState().runImport()).toBe(false);
+    expect(store.getState().dataRevision).toBe(before);
   });
 });

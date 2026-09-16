@@ -24,6 +24,17 @@ export function daysSinceBackup(lastBackupAt: string | undefined, now: string): 
 }
 
 /**
+ * 마지막 백업이 30일을 **넘었거나 아예 없는가**. 정확히 30일째는 "초과" 가 아니므로 거짓이다.
+ *
+ * 투두 개수와 분리해 둔 이유는 값이 비싸기 때문이다 — 이 조건이 거짓이면 경고 점은 개수와 무관하게
+ * 꺼지므로, 호출부가 투두를 한 건도 읽지 않고 끝낼 수 있다(리뷰 라운드 1 Major-4).
+ */
+export function isBackupStale(lastBackupAt: string | undefined, now: string): boolean {
+  const days = daysSinceBackup(lastBackupAt, now);
+  return days === null || days > BACKUP_STALE_DAYS;
+}
+
+/**
  * 경고 점을 보일지 (§2). 마지막 백업이 30일을 **넘었거나 아예 없으면서** 투두가 20개 이상일 때만 참이다.
  * 정확히 30일째는 "초과" 가 아니므로 거짓이다.
  */
@@ -35,6 +46,5 @@ export function shouldWarnStaleBackup(input: {
   if (input.todoCount < BACKUP_WARN_MIN_TODOS) {
     return false;
   }
-  const days = daysSinceBackup(input.lastBackupAt, input.now);
-  return days === null || days > BACKUP_STALE_DAYS;
+  return isBackupStale(input.lastBackupAt, input.now);
 }

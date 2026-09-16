@@ -1,10 +1,12 @@
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { hydrateRoot } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Meta, Persistable } from '@/domain/meta';
 
-import { setRepositories } from '@/repositories/container';
+import { getRepositories, setRepositories } from '@/repositories/container';
 import { createMemoryTables } from '@/repositories/memory/live';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
@@ -35,10 +37,26 @@ beforeEach(() => {
 });
 
 describe('BackupLauncher (§2·R14)', () => {
-  it('마운트하면 현재 상태를 읽는다', async () => {
+  it('마운트는 경고 점만 판정하고 개수는 읽지 않는다 (ADR-0009 규칙 4)', async () => {
     await seedTodos(3);
+    const readAll = vi.spyOn(getRepositories().dataset, 'readAll');
     render(<BackupLauncher />);
     await screen.findByRole('button', { name: /백업\/복원/ });
+    await waitForWarningCheck();
+
+    // 개수는 다이얼로그를 열 때 읽는다 — 앱이 뜰 때 전량을 메모리로 끌어올리지 않는다.
+    expect(useBackupStore.getState().current).toBeNull();
+    expect(readAll).not.toHaveBeenCalled();
+    readAll.mockRestore();
+  });
+
+  it('다이얼로그를 열면 그때 개수를 읽는다 (§2)', async () => {
+    const user = userEvent.setup();
+    await seedTodos(3);
+    render(<BackupLauncher />);
+    await waitForWarningCheck();
+
+    await user.click(screen.getByRole('button', { name: /백업\/복원/ }));
     expect(await waitForCounts()).toEqual({ categories: 1, todos: 3 });
   });
 
@@ -51,8 +69,28 @@ describe('BackupLauncher (§2·R14)', () => {
   it('투두가 적으면 경고 점이 없다', async () => {
     await seedTodos(3);
     render(<BackupLauncher />);
-    await waitForCounts();
+    await waitForWarningCheck();
     expect(screen.queryByText('백업한 지 오래됐어요')).toBeNull();
+  });
+
+  // 서버 HTML 에 없는 노드를 첫 클라이언트 렌더에 넣으면 React 19 가 트리를 통째로 다시 만든다
+  // (실 Chromium PAGEERROR — 리뷰 라운드 1 Major-1). `ToastViewport` 가 그 노드였다.
+  it('서버가 그린 HTML 에 그대로 하이드레이션된다 (콘솔 에러 0)', async () => {
+    await seedTodos(3);
+    const container = document.createElement('div');
+    container.innerHTML = renderToString(<BackupLauncher />);
+    document.body.append(container);
+
+    const errors: string[] = [];
+    const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(String(args[0]));
+    });
+    const root = await act(async () => hydrateRoot(container, <BackupLauncher />));
+    spy.mockRestore();
+
+    expect(errors).toEqual([]);
+    await act(async () => root.unmount());
+    container.remove();
   });
 
   it('경고 점 옆에 그것을 끄는 조작이 없다 (R14)', async () => {
@@ -67,7 +105,7 @@ describe('BackupLauncher (§2·R14)', () => {
     const user = userEvent.setup();
     await seedTodos(3);
     render(<BackupLauncher />);
-    await waitForCounts();
+    await waitForWarningCheck();
 
     expect(screen.queryByRole('dialog')).toBeNull();
     await user.tab();
@@ -80,7 +118,7 @@ describe('BackupLauncher (§2·R14)', () => {
   it('가져오기 결과를 토스트로 알린다 (R12)', async () => {
     await seedTodos(3);
     render(<BackupLauncher />);
-    await waitForCounts();
+    await waitForWarningCheck();
 
     act(() => {
       useBackupStore.setState({
@@ -99,14 +137,22 @@ describe('BackupLauncher (§2·R14)', () => {
   });
 });
 
-/** `refresh()` 가 끝나 개수가 들어올 때까지 기다린다. */
-async function waitForCounts(): Promise<{ categories: number; todos: number }> {
+/** 어떤 비동기 상태가 들어올 때까지 기다린다. */
+async function waitFor<T>(read: () => T | null, label: string): Promise<T> {
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    const current = useBackupStore.getState().current;
-    if (current !== null) {
-      return current;
+    const value = read();
+    if (value !== null) {
+      return value;
     }
     await new Promise((resolve) => setTimeout(resolve, 1));
   }
-  throw new Error('refresh() 가 끝나지 않았습니다');
+  throw new Error(`${label} 가 끝나지 않았습니다`);
 }
+
+/** `refreshWarning()` 이 끝날 때까지 — 경고 점 판정 시각이 찍히면 끝이다. */
+const waitForWarningCheck = (): Promise<string> =>
+  waitFor(() => useBackupStore.getState().refreshedAt, 'refreshWarning()');
+
+/** `refresh()` 가 끝나 개수가 들어올 때까지 기다린다. */
+const waitForCounts = (): Promise<{ categories: number; todos: number }> =>
+  waitFor(() => useBackupStore.getState().current, 'refresh()');

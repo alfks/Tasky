@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BACKUP_MAX_BYTES,
+  BACKUP_SCHEMA_VERSION,
   backupIssueMessage,
   checkBackupSize,
   type BackupIssue,
@@ -56,6 +57,20 @@ describe('validateBackup — 봉투 검사 (R2·R3)', () => {
 
   it('미래 스키마 버전은 거부한다 (R3)', () => {
     expect(issueOf(validateBackup(rawDocument({ schemaVersion: 99 }))).code).toBe('FUTURE_VERSION');
+  });
+
+  // **경계에서 본다.** 99 하나만 보면 `> VER` 를 `> VER + 5` 로 바꿔도 아무 테스트가 깨지지 않는다
+  // (리뷰 라운드 1 Major-5(a) 실측: 224건 전부 통과). 막으려던 사고는 스키마가 한 칸 오른 직후,
+  // 옛 앱이 새 파일을 "그냥 옛 버전" 으로 읽어 조용히 데이터를 깨뜨리는 것이다.
+  it('현재보다 정확히 한 칸 높은 버전을 거부한다 (R3 경계)', () => {
+    const next = BACKUP_SCHEMA_VERSION + 1;
+    expect(issueOf(validateBackup(rawDocument({ schemaVersion: next }))).code).toBe(
+      'FUTURE_VERSION',
+    );
+  });
+
+  it('현재 버전은 통과한다 (R3 경계의 반대쪽)', () => {
+    expect(validateBackup(rawDocument({ schemaVersion: BACKUP_SCHEMA_VERSION })).ok).toBe(true);
   });
 
   it.each([0, -1, 1.5, '2', null])('schemaVersion 이 %s 면 형식 오류다', (version) => {
