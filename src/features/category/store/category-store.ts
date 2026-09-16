@@ -5,10 +5,10 @@
 // 검증·정렬·재매김·시드는 전부 `@/domain/category/*` 의 순수 함수가 하고(복제 금지 — 복제하면
 // memory·indexeddb·화면이 갈린다), 저장은 `@/repositories/container` 로 주입된 인터페이스로만 한다.
 //
-// **T-12b(삭제 대화상자·되돌리기)가 이어받는 파일이다.** 삭제 액션은 여기서 스프레드 한 줄로 더한다:
-// `...createRemovalActions({ set, get, deps })` — 그 액션들이 쓸 것은 이미 열려 있다(고칠 파일 없음).
-// `CategoryWriter.applyWrites`(단일 트랜잭션 + 맵 반영), `CategoryState.pendingRemoval`(6초 창의
-// 삭제 직전 값), `withCategories`(툼스톤은 맵에서 내린다). 자세한 것은 핸드오프 문서.
+// 삭제 대화상자·되돌리기(R10~R16)의 액션은 `category-removal.ts` 에 있고 여기서 한 줄로 붙는다.
+// **`CategoryActions` 에 합치지 않고 따로 둔다**: 합치면 그 타입을 필드 단위로 조립하는
+// `useCategoryActions`(T-12a 소유)가 컴파일되지 않는다. 삭제 액션이 필요한 쪽은
+// `CategoryRemovalActions` 를 따로 구독한다(`useCategoryRemoval`).
 import { create } from 'zustand';
 
 import type { MetaDeps } from '@/domain/meta';
@@ -17,15 +17,19 @@ import {
   createCategoryActions,
   type CategoryActions,
 } from '@/features/category/store/category-actions';
+import {
+  createRemovalActions,
+  type CategoryRemovalActions,
+} from '@/features/category/store/category-removal';
 import type { CategoryState } from '@/features/category/store/category-state';
 
 import { nowIso } from '@/lib/date';
 import { newId } from '@/lib/id';
 
-export type { CategoryActions };
+export type { CategoryActions, CategoryRemovalActions };
 
-/** 상태 + 액션. 컴포넌트는 selector 로 필요한 조각만 구독한다. */
-export type CategoryStore = CategoryState & CategoryActions;
+/** 상태 + 액션(생성·수정·정렬 + 삭제·되돌리기). 컴포넌트는 selector 로 필요한 조각만 구독한다. */
+export type CategoryStore = CategoryState & CategoryActions & CategoryRemovalActions;
 
 /** 아직 아무것도 읽지 않은 상태. */
 const initialState: CategoryState = {
@@ -46,6 +50,7 @@ export function createCategoryStore(deps: MetaDeps = defaultDeps) {
   return create<CategoryStore>()((set, get) => ({
     ...initialState,
     ...createCategoryActions({ set, get, deps }),
+    ...createRemovalActions({ set, get, deps }),
   }));
 }
 
