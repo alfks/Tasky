@@ -4,7 +4,7 @@
 # 사용법:
 #   bash scripts/check.sh [base]                모든 검사를 순서대로 실행, 요약 출력 (base 기본값 main)
 #   bash scripts/check.sh <step> [base 또는 인자]  검사 하나만 실행, 그 검사의 exit code 그대로 반환
-# step 이름: forbidden-words | agents-md | author | wt | arch | lint | typecheck | test
+# step 이름: forbidden-words | env-secrets | agents-md | author | wt | arch | lint | typecheck | test
 #
 # 이 스크립트가 검사 목록의 단일 소스다. .github/workflows/ci.yml 은 guard/build 각 잡에서
 # 이 스크립트를 `--guard`/`--build` 로 한 번씩만 호출한다(로직 중복 없음). 스텝을 검사마다
@@ -22,6 +22,9 @@ skip_pnpm() { echo "SKIP: package.json 없음(스캐폴딩 전) 또는 pnpm 미�
 # skip_pnpm(rc=0)으로 실패를 덮어 false green 이 된다(AGENTS.md 규칙 6 위반). if/else로 분리한다.
 
 step_forbidden_words() { bash scripts/check-forbidden-words.sh "$@"; }
+# env-secrets: 추적 파일 전체를 본다(이미 들어간 것 탐지). 커밋 **전** 차단은 .githooks/pre-commit 이
+# 같은 스크립트를 --staged 로 부르는 쪽이다 — 여기서만 보면 이미 늦는다.
+step_env_secrets()     { bash scripts/check-env-secrets.sh; }
 step_agents_md()       { bash scripts/check-agents-md.sh; }
 step_author()          { bash scripts/check-author.sh "${1:-main}"; }
 # arch: 레이어 경계 픽스처 + 아키텍처 규칙 2차 패스(--no-inline-config, ADR-0008). node_modules 가 필요하므로
@@ -37,7 +40,7 @@ step_wt()              { bash scripts/test-wt.sh; }
 # 그 스크립트가 존재하지 않으므로, 개별 pnpm 명령을 직접 호출하는 현재 형태를 유지한다.
 
 case "${1:-}" in
-  forbidden-words|agents-md|author|arch|lint|typecheck|test|format|wt)
+  forbidden-words|env-secrets|agents-md|author|arch|lint|typecheck|test|format|wt)
     step="$1"; shift
     "step_${step//-/_}" "$@"
     exit $?
@@ -69,6 +72,7 @@ run_step() { # $1 라벨, 나머지는 명령
 
 run_guard() {
   run_step "금지어 검사"              step_forbidden_words
+  run_step "자격증명 파일(.env) 검사"   step_env_secrets
   run_step "AGENTS.md 구조 검사"       step_agents_md
   run_step "author/커밋 메시지 검사 ($BASE)" step_author "$BASE"
 }
