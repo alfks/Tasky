@@ -23,3 +23,16 @@ export function createIndexedDbRepositories(store: Store = tables): Repositories
     dataset: createIndexedDbDatasetRepository(store),
   };
 }
+
+/**
+ * 스키마를 **명시적으로** 연다 (TECH_PLAN §5 규칙 4). 조립 지점(`src/app/providers.tsx`)이 주입 직후
+ * 한 번 부른다 — 그것이 이 함수의 유일한 호출처이고, `providers.test.tsx` 가 그 호출을 고정한다.
+ *
+ * 왜 조립과 붙어 있어야 하는가: Dexie 는 첫 조회·쓰기에서야 DB 를 여는 지연 오픈이라, 이 호출이 없으면
+ * 업그레이드 실패가 **아무 호출에서나** raw Dexie 에러로 터진다. 화면은 "할 일을 불러오지 못했어요" 를
+ * 띄우지만 실제로는 그 기기에서 아무것도 저장할 수 없는 상태다. 실패는
+ * `RepositoryError('SCHEMA_UPGRADE_FAILED')` 로 나가고 조립 지점이 그 code 로 분기한다.
+ */
+export function openIndexedDb(store: Store = tables): Promise<void> {
+  return store.open();
+}

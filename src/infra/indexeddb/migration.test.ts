@@ -192,6 +192,24 @@ describe('스키마 업그레이드 실패 (TECH_PLAN §5 규칙 4)', () => {
     await expect(storeOn(healthy()).open()).resolves.toBeUndefined();
   });
 
+  it('스키마와 무관한 실패는 감싸지 않는다 — indexedDB 가 없으면 MissingAPIError 그대로다', async () => {
+    // 사생활 보호 모드/차단. 이것을 SCHEMA_UPGRADE_FAILED 로 바꾸면 앱 셸이 "백업 내보내기만 가능한
+    // 모드"(스키마가 못 올라갔다는 뜻)를 잘못 띄운다.
+    const saved = Dexie.dependencies.indexedDB;
+    // @ts-expect-error 실패 주입 — 테스트 계층이라 전역 조작이 허용된다.
+    Dexie.dependencies.indexedDB = undefined;
+    try {
+      const error: unknown = await storeOn(healthy())
+        .open()
+        .then(() => undefined, catchValue);
+
+      expect((error as Error).name).toBe('MissingAPIError');
+      expect(isRepositoryError(error), '스키마 실패가 아닌데 저장소 에러로 감쌌다').toBe(false);
+    } finally {
+      Dexie.dependencies.indexedDB = saved;
+    }
+  });
+
   it('대조군 ② 지연 오픈으로 들어가면 같은 실패가 raw Dexie 에러로 샌다 — 그래서 명시적 open 이 있다', async () => {
     await seedCurrent();
 

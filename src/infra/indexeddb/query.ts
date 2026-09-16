@@ -110,10 +110,34 @@ export type Store = {
 
 /** 열기 실패의 `detail` — **에러 이름만** 싣는다. 메시지에는 업그레이드 콜백이 넣은 값이 섞일 수 있다. */
 function openFailureDetail(error: unknown): string {
+  return `open 실패 name=${errorName(error) ?? typeof error}`;
+}
+
+function errorName(error: unknown): string | undefined {
   const name: unknown =
     typeof error === 'object' && error !== null ? (error as { name?: unknown }).name : undefined;
-  return `open 실패 name=${typeof name === 'string' ? name : typeof name}`;
+  return typeof name === 'string' ? name : undefined;
 }
+
+/**
+ * **스키마와 무관한** 열기 실패의 Dexie 에러 이름. 이런 실패는 감싸지 않고 원본 그대로 올린다 —
+ * `SCHEMA_UPGRADE_FAILED` 로 바꾸면 앱 셸이 "백업 내보내기만 가능한 모드"(스키마가 못 올라갔다는 뜻)를
+ * **잘못** 띄운다.
+ *
+ * 왜 이 방향(허용 목록이 아니라 제외 목록)인가 — 실측이 그렇게 시켰다(fake-indexeddb, 탐침 4종):
+ *   · 업그레이드 콜백이 던지면 Dexie 는 **콜백이 던진 에러를 그대로** 거절 값으로 준다(`name=Error`).
+ *     즉 "업그레이드 실패" 를 이름으로 **알아볼 수 없다** — 허용 목록은 잡아야 할 그 케이스를 놓친다.
+ *   · `indexedDB` 가 없으면(사생활 보호 모드) `MissingAPIError` 다 — 재현됨, 아래 목록에 있다.
+ *   · 저장 버전이 선언보다 높은 롤백 배포는 이 하네스에서 **거절 자체가 나지 않았다**(fake-indexeddb 가
+ *     낮은 선언으로도 열어 준다). 실제 브라우저의 `VersionError` 는 여기서 재현할 수 없어 목록에 넣지
+ *     않았다 — 테스트 없는 분기를 추가하지 않는다는 뜻이다(PR #34 리뷰 라운드 1 Minor).
+ * 전용 code(`DB_OPEN_FAILED`)를 두는 편이 더 낫지만 `repositories/repository-error.ts` 가 이 티켓
+ * owns 밖이라 이번에는 원본을 그대로 올린다.
+ */
+const NOT_SCHEMA_FAILURES: ReadonlySet<string> = new Set([
+  'MissingAPIError',
+  'DatabaseClosedError',
+]);
 
 /**
  * 임의의 Dexie 인스턴스를 묶음으로 감싼다. 앱 코드는 아래 `tables` 하나만 쓰고, `createStore(name)` 와
@@ -139,6 +163,10 @@ export function storeOn(database: TaskyDb): Store {
       try {
         await database.open();
       } catch (error) {
+        const name = errorName(error);
+        if (name !== undefined && NOT_SCHEMA_FAILURES.has(name)) {
+          throw error;
+        }
         throw new RepositoryError('SCHEMA_UPGRADE_FAILED', openFailureDetail(error));
       }
     },
