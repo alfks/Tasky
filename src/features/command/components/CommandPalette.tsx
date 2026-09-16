@@ -73,6 +73,9 @@ const SEARCH_LIMIT = 20;
 /** R10 의 디바운스. 스피너는 없다(§2). */
 const SEARCH_DEBOUNCE_MS = 80;
 
+/** **답이 도착한** 질의와 그 결과. 지금 질의가 이것과 다르면 아직 답이 없는 것이다. */
+type SettledSearch = { query: string; todos: readonly Todo[] };
+
 /** 검색의 한 순간. `pending` 은 **지금 질의에 대한 답이 아직 없다**는 뜻이다. */
 type TodoSearchState = { todos: readonly Todo[]; pending: boolean };
 
@@ -85,26 +88,27 @@ type TodoSearchState = { todos: readonly Todo[]; pending: boolean };
  * (리뷰 Major 3). 글자를 더 친 질의의 결과는 대개 직전 결과의 부분집합이라, 남겨 두는 편이
  * "보이는 것이 곧 실행되는 것" 을 깨지 않는다.
  *
+ * **`pending` 을 상태가 아니라 파생으로 두는 것이 핵심이다.** 효과에서 `setPending(true)` 를 하면
+ * 새 질의의 **첫 렌더 한 프레임**이 "아직 pending 이 아닌 채" 지나가고, 그 한 프레임에 빈 결과
+ * 문구가 그려진다(실측: 입력 14ms 시점 MutationObserver 표본에 `결과가 없어요`). 답이 도착한 질의를
+ * 들고 있다가 지금 질의와 비교하면 첫 렌더부터 정확하다.
+ *
  * 질의가 바뀌면 이전 요청의 응답은 버린다. 버리지 않으면 느린 응답 하나가 나중 질의의 결과를 덮는다.
  */
 function useTodoSearch(query: string): TodoSearchState {
   const trimmed = query.trim();
-  const [state, setState] = useState<TodoSearchState>({ todos: [], pending: false });
+  const [settled, setSettled] = useState<SettledSearch>({ query: '', todos: [] });
   useEffect(() => {
-    if (trimmed === '') {
-      setState({ todos: [], pending: false });
-      return undefined;
-    }
-    setState((previous) => ({ todos: previous.todos, pending: true }));
+    if (trimmed === '') return undefined;
     let alive = true;
     const timer = setTimeout(() => {
       getRepositories()
         .todos.search(trimmed, SEARCH_LIMIT)
         .then((found) => {
-          if (alive) setState({ todos: found, pending: false });
+          if (alive) setSettled({ query: trimmed, todos: found });
         })
         .catch(() => {
-          if (alive) setState({ todos: [], pending: false });
+          if (alive) setSettled({ query: trimmed, todos: [] });
         });
     }, SEARCH_DEBOUNCE_MS);
     return () => {
@@ -112,7 +116,9 @@ function useTodoSearch(query: string): TodoSearchState {
       clearTimeout(timer);
     };
   }, [trimmed]);
-  return state;
+
+  if (trimmed === '') return { todos: [], pending: false };
+  return { todos: settled.todos, pending: settled.query !== trimmed };
 }
 
 /**

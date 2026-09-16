@@ -110,7 +110,7 @@ function PaletteRow({ option, id, selected, index, onRun, onHover, isMac }: Pale
         // 자손 규칙 둘: 선택 행 안의 모든 글자는 행의 전경색을 물려받고(`text-muted` 였던 메타·구분
         // 기호 포함), `<kbd>` 는 전경색을 옅게 깐 배경으로 한 단계 눌러 강조색 위에서도 알약으로 읽힌다.
         selected
-          ? 'bg-accent text-on-accent [&_kbd]:border-on-accent/35 [&_kbd]:bg-on-accent/15 [&_span]:text-inherit'
+          ? 'bg-accent text-on-accent [&_kbd]:border-on-accent/55 [&_kbd]:bg-on-accent/22 [&_span]:text-inherit'
           : 'hover:bg-surface-2',
       )}
     >
