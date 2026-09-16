@@ -34,8 +34,25 @@ function preloadAsyncChunks(): Plugin {
   };
 }
 
+/**
+ * 산출물 HTML 에서만 주석을 걷어낸다(소스 `index.html` 의 14줄짜리 설명 주석이 그대로 실려 나갔다).
+ *
+ * 걷어낸 뒤에도 문서 배선이 살아 있는지는 `scripts/check-dist.mjs` 가 **나간 사본**에서 확인한다
+ * (manifest 링크·`<div id="root">`·`<title>`·동기 테마 스크립트) — 이 변환이 언젠가 과하게 지우면 빌드가 실패한다.
+ */
+function stripHtmlComments(): Plugin {
+  return {
+    name: 'tasky:strip-html-comments',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler: (html) => html.replace(/\n?[ \t]*<!--[\s\S]*?-->/g, ''),
+    },
+  };
+}
+
 const config = defineConfig({
-  plugins: [react(), preloadAsyncChunks()],
+  plugins: [react(), preloadAsyncChunks(), stripHtmlComments()],
   // tsconfig.json 의 paths 와 한 쌍이다(vitest.config.ts 도 같은 별칭을 따로 건다).
   resolve: { alias: { '@': src } },
   build: {
@@ -44,6 +61,7 @@ const config = defineConfig({
     outDir: 'dist/client',
     emptyOutDir: true,
     // public/_headers 의 immutable 규칙이 이 디렉토리 이름과 한 쌍이다 — 바꾸면 그 파일도 같이 바꾼다.
+    // scripts/check-dist.mjs 가 매 빌드 산출물 경로 하나하나를 _headers 글롭에 대조하므로 한쪽만 바꾸면 빌드가 실패한다.
     assetsDir: 'assets',
   },
 });

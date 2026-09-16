@@ -69,21 +69,40 @@ ADR-0010 은 "`src/app` App Router 규약을 버리지 않는 것"을 Vinext 채
 
 ### 번들 (같은 방법: `dist/client` 의 JS 를 파일별로 `gzip -9` 해 합산)
 
-|                                         | 전 (`4640485`, Vinext) | 후 (이 PR)                            |
-| --------------------------------------- | ---------------------- | ------------------------------------- |
-| **첫 로드 JS**(문서가 가리키는 청크 합) | **167,387 B**          | **77,429 B** (−53.7%)                 |
-| 지연 청크(Dexie + infra)                | —                      | 32,535 B (modulepreload 로 병렬 수신) |
-| dist/client JS 전부                     | 181,430 B              | 109,964 B                             |
-| CSS                                     | 5,685 B                | 5,680 B                               |
+| 축                                                | 전 (`4640485`, Vinext) | 후 (이 PR)    | 변화       |
+| ------------------------------------------------- | ---------------------- | ------------- | ---------- |
+| **첫 로드 네트워크 JS**(문서가 받는 모든 청크 합) | **167,389 B**          | **109,964 B** | **−34.3%** |
+| **첫 로드 파싱·실행 블로킹 JS**(진입 청크)        | 167,389 B              | **77,429 B**  | −53.7%     |
+| 지연 청크(Dexie + infra)                          | —                      | 32,535 B      | —          |
+| dist/client JS 전부                               | 181,430 B              | 109,964 B     | −39.4%     |
+| CSS                                               | 5,685 B                | 5,680 B       | ±0         |
+
+**두 축을 반드시 같이 읽는다.** Vinext 판에서는 지연 청크가 없어 두 축이 같은 값이지만, 이 PR 에서는
+Dexie 청크가 같은 `<head>` 의 `modulepreload` 로 **동시에 내려온다** — 네트워크로는 109,964 B 를 받고,
+그중 진입 청크 77,429 B 만 첫 페인트 경로에서 파싱·실행된다. `−53.7%` 한 숫자만 인용하면
+"네트워크 전송량이 반으로 줄었다"는 오독을 부른다.
 
 첫 로드 77,429 B 의 구성(같은 코드를 수동 분할해 잰 값):
 React+ReactDOM+scheduler 67,368 B · tailwind-merge+clsx 8,513 B · 앱 코드 1,729 B + 런타임 397 B.
 
-주의(과대 해석 금지): 앱 코드가 32,342 B → 1,729 B 로 준 것은 코드가 줄어서가 아니다. Vinext 는
-`'use client'` 컴포넌트를 **진입점에서 도달하지 못해도** 전부 클라이언트 청크로 냈고, Vite 는 진입점에서
-도달 가능한 모듈만 낸다. 지금 `page.tsx` 가 아직 feature 화면을 렌더하지 않으므로 그 몫이 빠져 있다 —
-기능 티켓이 붙으면 이 항목은 다시 는다. **줄어든 것이 확정인 항목은 Vinext 런타임 33,204 B(전액)와
-첫 로드에서 빠진 Dexie 32,594 B 다.**
+**확정(구조적) 감소는 65,234 B 다** — Vinext 런타임 32,365 B + RSC 클라이언트 런타임 32,488 B(main 의
+`index-*.js`). 그 청크를 한때 "앱 코드"로 셌지만 실제 정체는 RSC 런타임이다: `createFromReadableStream`·
+`hydrateRoot` 가 들어 있고 **한글 문자열이 0개**다(앱의 한글 문자열은 전부 1,611 B 짜리
+`settings.rules-*.js` 에 있었다). 이 65 kB 는 기능이 붙어도 돌아오지 않는다.
+
+**과대 해석 금지 — 기능이 붙으면 다시 느는 몫.** Vinext 는 `'use client'` 컴포넌트를 진입점에서 도달하지
+못해도 전부 클라이언트 청크로 냈고, Vite 는 도달 가능한 모듈만 낸다. 지금 `page.tsx` 가 화면을 거의
+렌더하지 않으므로 그 몫이 빠져 있다. 다만 **되돌아올 몫은 32 kB 가 아니다** — 이미 머지된
+`components/ui/*` 14종 + 테마 스토어를 전부 도달 가능하게 만들어 재 보니 진입 청크 77,429 → **86,720 B**
+(+9,291), 네트워크 합 **119,710 B** 였다. 즉 미머지 feature 코드 없이도 아래 §재검토 트리거의 120 kB 에
+사실상 도달한다.
+
+새로 생긴 비용도 적어 둔다: 지연 로드 때문에 `Providers` 가 `Skeleton` 을 렌더하게 되면서
+`tailwind-merge`+`clsx` **8,720 B** 가 진입 청크로 들어왔다(Vinext 판에서는 도달 불가라 lazy 청크에 있었다).
+Dexie 지연 로드의 순효과는 −32.5 kB 가 아니라 **−23.8 kB** 다.
+
+> 측정 방법: `dist/client` 의 JS 를 파일별 `gzip -9` 해 합산. `scripts/check-dist.mjs` 는 같은 값을
+> Node `zlib.gzipSync({level:9})` 로 재므로 CLI 값보다 파일당 40~80 B 크게 나온다(헤더 차이).
 
 ### 첫 페인트(theme R6·R11) — 실제 Chromium 141 프레임 캡처
 
@@ -119,13 +138,26 @@ React+ReactDOM+scheduler 67,368 B · tailwind-merge+clsx 8,513 B · 앱 코드 1
 ### 배포
 
 `wrangler deploy --config wrangler.jsonc` 하나로 통일했다(빌드가 wrangler 설정을 다시 만들지 않는다).
-`--dry-run` 은 자격증명 없이 rc=0 (실측: `Read 14 files from the assets directory`, `No bindings found`).
+`--dry-run` 은 자격증명 없이 rc=0 (실측: `dist/client` 12 파일 업로드 대상, `No bindings found`.
+wrangler 로그는 `Read 14 files` 라고 찍지만 실제 파일은 12개다 — 내부 카운트가 달라 근거 수치로 쓰지 않는다).
 
 ### 잃는 것 (되돌릴 때 필요한 정보)
 
 - **프리렌더 HTML 이 없다.** `/` 의 초기 HTML 은 빈 `<div id="root">` 다. 첫 _콘텐츠_ 페인트가 JS 실행 뒤로
-  밀린다(실측: Fast 3G 상당에서 h1 이 약 1.5 s). 첫 **배경** 페인트는 CSS 만으로 되므로 테마 깜빡임과는 무관하다.
-  SEO·OG 미리보기가 필요해지면 이 항목이 먼저 걸린다.
+  밀린다. 콜드 FCP 실측(5회 중앙값, 캐시 비활성, 같은 `wrangler dev`):
+
+  | 조건                           | 전(프리렌더) | 후(SPA)    |
+  | ------------------------------ | ------------ | ---------- |
+  | Fast 3G(1.6 Mbps) + CPU 6× FCP | 596 ms       | 1,524 ms   |
+  | 〃 첫 **배경**(테마) 페인트    | 596 ms       | **556 ms** |
+  | 광대역(20 Mbps) + CPU 1× FCP   | 188 ms       | **176 ms** |
+
+  **타깃 프로필에서는 회귀가 아니다** — 이 앱은 데스크탑 웹앱이고 광대역에서는 오히려 12 ms 빠르다.
+  느린 회선에서 늘어난 928 ms 는 "흰 화면 → 어두운 화면" 이 아니라 **"올바른 테마 색의 빈 화면"** 시간이다
+  (첫 배경 페인트는 프리렌더 판보다 오히려 40 ms 빠르다 — 받을 HTML 이 작아서다).
+  그리고 잃은 프리렌더의 내용물은 `<main><h1>Tasky</h1></main>` 뿐이다 — 실제 투두·날짜 스트립은
+  IndexedDB 에서 오므로 어느 스택이든 JS 뒤다. SEO·OG 미리보기가 필요해지면 이 항목이 먼저 걸린다.
+
 - **Next.js API 호환이 전부 사라졌다.** `metadata`/`generateMetadata`, route handler, middleware,
   server action, `next/font`, `next/image`, 파일 기반 라우팅 — 하나도 없다. 되돌리려면 ADR-0010 의
   실측표를 다시 읽는 것으로 시작한다(그 문서는 지우지 않았다).
@@ -135,7 +167,7 @@ React+ReactDOM+scheduler 67,368 B · tailwind-merge+clsx 8,513 B · 앱 코드 1
 
 ### 얻는 것
 
-첫 로드 −89,958 B(gzip, −53.7%) · experimental 의존 3개 제거(`vinext`·`@vinext/cloudflare`·`@vitejs/plugin-rsc`)
+첫 로드 네트워크 JS −57,425 B(−34.3%) / 진입 청크 −89,958 B(−53.7%) · 그중 **확정 65,234 B** 는 Vinext+RSC 런타임이라 기능이 붙어도 돌아오지 않는다 · experimental 의존 3개 제거(`vinext`·`@vinext/cloudflare`·`@vitejs/plugin-rsc`)
 
 - `next`·`react-server-dom-webpack`·`@cloudflare/vite-plugin` 제거(설치 패키지 87개 감소) · 빌드 10.2 s → 1.8 s ·
   Worker 코드 0(정적 자산 전용 배포) · manifest 가 **정적 파일이 되어 이제 프리캐시에 들어간다**(ADR-0010 에서는
@@ -152,12 +184,17 @@ React+ReactDOM+scheduler 67,368 B · tailwind-merge+clsx 8,513 B · 앱 코드 1
 4. `wrangler.jsonc` 에 `main` 을 되살리지 않는다. Worker 코드가 생기면 그것은 "서버 기능이 생겼다"는 뜻이고
    ADR 이 필요하다.
 5. `public/_headers` 의 `/assets/*` 와 `vite.config.ts` 의 `build.assetsDir` 은 **한 쌍**이다. 한쪽만 바꾸면
-   콘텐츠 해시 자산이 1년 immutable 캐시를 잃는다 — `scripts/check-dist.mjs` 가 빌드마다 잡는다.
+   콘텐츠 해시 자산이 1년 immutable 캐시를 잃는다. `scripts/check-dist.mjs` 가 매 빌드 `dist/client` 의
+   `.js`·`.css`·`.woff2` **파일 하나하나**를 `_headers` 글롭에 대조한다 — 규칙 줄의 존재가 아니라
+   **경로 커버리지**를 본다(그래야 `assetsDir` 만 바꾸는 경우도 걸린다. 음성 대조 실측: 양쪽 변이 모두 rc=1).
 6. **오프라인 보장 대상은 프리캐시된 정적 파일뿐이다.** 오프라인에 필요한 파일은 `public/` 에 둔다.
    프리캐시 목록에 `index.html`·`manifest.webmanifest`·아이콘 3개·woff2·CSS 가 있는지는
    `scripts/check-dist.mjs` 가 매 빌드 확인한다(`pnpm build` 의 마지막 단계).
 7. **`providers.tsx` 의 infra import 는 동적이어야 한다.** 정적으로 되돌리면 Dexie 가 진입 청크로 돌아온다
-   (실측: 77,429 B → 109,245 B). 동적 청크의 modulepreload 도 같이 유지한다(규칙 8 아님 — 위 §결과 표).
+   (실측: 진입 청크 gzip 77,429 B → 109,025 B). lint·tsc·기존 테스트·빌드는 그래도 전부 초록이었으므로
+   장치를 둘 달았다 — `build-stack.test.ts` 가 소스 표기를, `check-dist.mjs` 가 산출물에서
+   **진입 청크에 Dexie 가 없는지 + 진입 청크 gzip ≤ 100 kB** 를 잰다(음성 대조 실측: 둘 다 rc=1).
+   동적 청크의 modulepreload(규칙 8)도 `check-dist.mjs` 가 같이 본다.
 8. **배포 명령의 단일 소스는 `package.json` 의 `deploy` 스크립트**다(ADR-0010 규칙 8을 그대로 승계).
    `deploy:dry-run` 은 거기에 `--dry-run --outdir` 만 얹고, 배포 워크플로는 두 스크립트를 그대로 호출한다.
    워크플로에 wrangler 명령을 따로 적으면 로컬에서 확인한 명령과 CI 가 실행하는 명령이 갈라진다.
@@ -170,8 +207,11 @@ React+ReactDOM+scheduler 67,368 B · tailwind-merge+clsx 8,513 B · 앱 코드 1
 - **서버 기능(동기화 API·인증·OG 이미지 생성)이 필요해질 때** — `wrangler.jsonc` 에 `main` 이 돌아오고,
   그때가 Next.js/Vinext 복귀를 다시 저울질할 시점이다. ADR-0010 의 실측표가 그 비교의 출발점이다.
 - **SEO·링크 미리보기가 요구사항이 될 때** — 프리렌더가 없다는 것이 바로 걸린다.
-- 첫 로드 JS gzip 이 **120 kB 를 넘을 때** — 이 ADR 이 산 예산(약 100 kB 여유)을 다 쓴 것이다. 그때는
-  청크 분해를 다시 재고, 무엇이 늘었는지부터 본다.
+- **예산을 넘을 때 — `scripts/check-dist.mjs` 가 매 빌드 재고 빌드를 실패시킨다.** 축을 둘로 나눠 적는다:
+  **진입 청크 gzip 100 kB**(파싱·실행 블로킹 — 현재 77.4 kB)와 **첫 로드 네트워크 JS gzip 120 kB**
+  (현재 110.0 kB). 두 번째 값은 **이미 임박했다** — 기존 머지 코드를 화면에 붙이기만 해도 119.7 kB 다.
+  그러니 이 트리거가 걸리는 것은 "사고"가 아니라 예정된 일이고, 걸리면 청크 분해를 다시 재고
+  무엇이 늘었는지부터 본 뒤 예산을 올릴지 코드를 줄일지 고른다(그때 이 ADR 을 고친다).
 
 ## 롤백
 
