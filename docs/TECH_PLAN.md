@@ -106,10 +106,19 @@ T-17이 만드는 `<CommandLayer/>`(도움말 + 팔레트 슬롯)를 T-20이 1�
 
 ## 5. 데이터 스키마와 마이그레이션 전략
 
-MVP 스키마 v1 (`src/infra/indexeddb/db.ts`, DB 이름 `tasky`):
+MVP 스키마 (`src/infra/indexeddb/db.ts`, DB 이름 `tasky`). **현재 버전은 v2**(ADR-0011)이고 v1 은 세 테이블이었다 — 아래 두 블록은 `db.ts` 의 `STORES_V1`·`STORES` 와 문자열이 같아야 한다(규칙 1: v1 블록은 이미 나간 브라우저에 있으므로 절대 고치지 않는다):
 
 ```ts
+// v1 — 세 테이블. `focusSessions` 는 없었고 `categories` 는 `order` 하나만 색인했다.
 db.version(1).stores({
+  todos: 'id, date, categoryId, [date+categoryId], updatedAt',
+  categories: 'id, order',
+  settings: 'id',
+});
+
+// v2 (ADR-0011) — `focusSessions` 신설 + `categories` 에 `status`·`updatedAt` 인덱스 추가.
+// 기존 로우의 **값이 바뀌지 않으므로** `.upgrade()` 를 달지 않는다(규칙 3, ADR-0011 규칙 3).
+db.version(2).stores({
   todos: 'id, date, categoryId, [date+categoryId], updatedAt',
   categories: 'id, order, status, updatedAt',
   settings: 'id',
@@ -132,7 +141,7 @@ ARCHITECTURE §4 대비 **MVP 타입 확정(델타)**:
 
 1. 위 표의 `Todo`·`Category`·`Settings` 추가 필드.
 2. `FocusSession` 타입 **신규 추가**(§4 타입 블록에 한 줄).
-3. IndexedDB 인덱스 줄: `categories: id, order` → `id, order, status, updatedAt`, **`focusSessions: id, todoId, date, status, updatedAt` 줄 신설**(위 `db.version(1)` 블록과 문자열이 같아야 한다).
+3. IndexedDB 인덱스 줄: `categories: id, order` → `id, order, status, updatedAt`, **`focusSessions: id, todoId, date, status, updatedAt` 줄 신설**(위 `db.version(2)` 블록과 문자열이 같아야 한다).
 4. §4 본문의 "소프트 삭제 필터는 `query.ts`·`memory/live.ts` 한 곳씩" 문장에 **툼스톤을 읽는 유일한 경로가 `DatasetRepository.readAll()`**(§6, ADR-0009 규칙 4)이라는 한 줄 추가.
 5. **§1 다이어그램의 `RI` 노드와 §2 트리의 레포지토리 파일 줄**(둘 다 지금 레포지토리 3개다): `FocusSessionRepository`·`DatasetRepository`를 더해 §6의 다섯과 맞춘다 — §2는 `focus-session-repository.ts`·`dataset-repository.ts` 두 파일명을 같은 줄에 추가하고, §1 `RI` 노드 라벨에 두 이름을 넣는다. 이 두 줄 외의 §1·§2 변경은 T-05 범위 밖이다(§4 소유권 표).
 
