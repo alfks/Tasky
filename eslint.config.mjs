@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 
 import { FlatCompat } from '@eslint/eslintrc';
 import eslintConfigPrettier from 'eslint-config-prettier';
+import importPlugin from 'eslint-plugin-import';
 
 import {
   ALLOW,
@@ -334,6 +335,11 @@ const config = [
   // --- 공통 규칙 ---
   {
     files: [LINTED],
+    // import 플러그인을 **여기서 직접** 등록한다(직접 devDependency). 예전에는 위 next 프리셋이 딸려 오는 것에
+    // 얹혀 있었는데, 순환 검출(import/no-cycle)이 무관한 죽은 의존(eslint-config-next, ADR-0013)에 매달려
+    // 있다는 뜻이었다 — 그 프리셋을 걷어내는 순간 가드가 같이 사라진다(T-33). 같은 모듈 인스턴스이므로
+    // 프리셋이 등록하는 것과 충돌하지 않고, 프리셋이 사라져도 import/* 규칙은 그대로 돈다.
+    plugins: { import: importPlugin },
     linterOptions: { reportUnusedDisableDirectives: 'error' },
     rules: {
       ...ARCH_RULES_COMMON, // 아키텍처 규칙(2차 패스가 다시 검사) — 설정의 단일 소스는 scripts/arch-layers.mjs
@@ -681,6 +687,18 @@ const notArch = HELPER_RULES.filter((id) => !ARCH_RULES.includes(id));
 if (notArch.length) {
   throw new Error(
     `eslint.config.mjs: 경계 규칙 ${notArch.join(', ')} 가 scripts/arch-layers.mjs 의 ARCH_RULES 에 없습니다 — 2차 패스가 검사하지 않아 eslint-disable 로 꺼집니다 (ADR-0008).`,
+  );
+}
+
+// --- 설정 자체의 가드 7: 아키텍처 규칙이 쓰는 import/* 규칙이 등록된 플러그인에 실제로 있는지 ---
+// import/no-cycle 은 이 레포의 유일한 순환 가드다. 플러그인이 빠지거나 규칙 이름이 바뀌면 ESLint 가
+// "Could not find plugin" 으로 죽기도 하지만, 프리셋이 같은 이름을 다시 등록해 주는 동안에는 조용히
+// **다른 구현**을 쓸 수도 있다. 설정 로드 시점에 규칙 존재를 확인해 둔다(T-33).
+const importRuleIds = ARCH_RULES.filter((id) => id.startsWith('import/')).map((id) => id.slice(7));
+const missingImportRules = importRuleIds.filter((id) => !(id in (importPlugin.rules ?? {})));
+if (missingImportRules.length) {
+  throw new Error(
+    `eslint.config.mjs: eslint-plugin-import 에 규칙 ${missingImportRules.join(', ')} 가 없습니다 — 아키텍처 가드(순환 검출 포함)가 조용히 무력화됩니다 (T-33).`,
   );
 }
 
