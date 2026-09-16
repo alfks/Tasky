@@ -4,6 +4,18 @@ import path from 'node:path';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
+// 느린 스위트(`*.slow.test.ts`) 실행 스위치 — `pnpm test:slow` 가 `VITEST_SLOW=1` 로 켠다.
+//
+// **왜 설정에서 가르는가**: vitest 5 의 CLI `--exclude` 는 설정값을 덮어쓰지 않고 **더하기만** 한다(실측).
+// 즉 명령줄로는 `test.exclude` 의 느린 스위트 글롭을 풀 방법이 없고, 그래서 이 스위치가 없던 동안
+// 느린 스위트는 **어디서도 돌지 않았다** — `pnpm test` 에서 제외되고, CI 는 `scripts/check.sh` 의
+// `pnpm test` 만 부르므로 CI 에서도 돌지 않았다. code-style §166 · TECH_PLAN §309 의 "느린 테스트는
+// 분리(CI만)" 가 아무 데서도 참이 아니었다(PR #34 리뷰 라운드 1 Major 11).
+//
+// 켜면 **느린 것만** 돈다(`include` 가 뒤집힌다). 기본 실행에는 영향이 없다 — 환경 변수가 없으면 아래
+// 두 줄은 스위치 이전과 글자 그대로 같은 값이다.
+const slowOnly = process.env.VITEST_SLOW === '1';
+
 const config = defineConfig({
   plugins: [react()],
   test: {
@@ -19,8 +31,14 @@ const config = defineConfig({
     pool: 'vmThreads',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}'],
-    exclude: ['**/*.slow.test.*', '**/__arch__/**', 'tests/**', 'node_modules/**', '.worktrees/**'],
+    include: slowOnly ? ['src/**/*.slow.test.{ts,tsx}'] : ['src/**/*.test.{ts,tsx}'],
+    exclude: [
+      ...(slowOnly ? [] : ['**/*.slow.test.*']),
+      '**/__arch__/**',
+      'tests/**',
+      'node_modules/**',
+      '.worktrees/**',
+    ],
     coverage: {
       provider: 'v8',
       include: [

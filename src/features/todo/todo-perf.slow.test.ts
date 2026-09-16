@@ -2,26 +2,18 @@
 //
 // 예산: **한 날짜 200개(완료 100 포함)에서 토글 → 이동 시작 50ms, 재정렬 계산 5ms.**
 //
-// **`*.slow.test.ts` 라 `pnpm test` 에서 빠진다**(`vitest.config.ts` 의 `exclude`). 100번 토글하며
-// 재는 파일이라 기본 실행에 넣으면 모두가 손해다.
+// **돌리는 법: `pnpm test:slow`** (= `VITEST_SLOW=1 vitest run`). 그 스위치가 `vitest.config.ts` 의
+// `include`/`exclude` 를 뒤집어 **느린 것만** 돌린다. 기본 `pnpm test` 에는 계속 빠진다(실측:
+// `pnpm test` 126파일 1606건 16.4s 에 이 파일 없음 / `pnpm test:slow` 1파일 3건 0.76s).
+// vitest 5 의 CLI `--exclude` 로는 설정의 제외 글롭을 풀 수 없어(더하기만 한다) 설정에서 갈랐다.
 //
-// **돌리는 법**: vitest 5 의 `--exclude` 는 설정값을 **덮어쓰지 않고 더하기만** 하고(실측: CLI 로는
-// `test.exclude` 를 풀 방법이 없다), 이 레포에는 아직 느린 테스트 전용 실행 경로가 없다
-// (`vitest.config.ts`·`package.json` 을 건드려야 하는데 이 티켓의 이번 라운드 범위 밖이다 — 핸드오프의
-// 후속 항목). 지금은 설정을 임시로 하나 만들어 돌린다:
-//
-//   cat > vitest.slow.config.ts <<'EOF'
-//   import base from './vitest.config';
-//   export default {
-//     ...base,
-//     test: { ...base.test, exclude: (base.test?.exclude ?? []).filter((g) => !g.includes('slow')) },
-//   };
-//   EOF
-//   pnpm exec vitest run -c vitest.slow.config.ts src/features/todo/todo-perf.slow.test.ts
-//   rm vitest.slow.config.ts
+// **누가 언제 돌리나**: CI 잡은 아직 없다(`.github/workflows/ci.yml` 이 이 티켓 owns 밖 — 판단 근거는
+// PR #34 본문). 그래서 **아래 경로를 건드리는 PR 의 구현자가 `pnpm test:slow` 를 돌리고 수치를 PR 에
+// 적는다**: `src/features/todo/store/**`, `src/features/todo/hooks/**`,
+// `src/domain/todo/{ordering,completion-rate}.ts`, `src/domain/category/category.rules.ts`.
 //
 // **무엇을 재는가 — 이 파일의 함정**: 200개를 만들어 놓고 몇 개만 건드리면 아무것도 재지 않는다.
-// 그래서 (1) 미완료 100개를 **전부** 토글하고 그중 **최댓값**을 예산과 견주며, (2) 매 측정마다
+// 그래서 (1) 미완료 100개를 **전부** 토글하고 그 분포의 p95 를 예산과 견주며, (2) 매 측정마다
 // 그 항목이 실제로 완료 블록으로 내려갔는지 확인하고, (3) 마지막에 200개가 전부 완료인지 센다.
 // 셋 중 하나라도 빠지면 "빠른 no-op" 이 통과한다.
 //
