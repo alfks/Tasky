@@ -184,7 +184,7 @@ describe('디자인 토큰: 폰트 스택(§3-F R10)', () => {
 
   it('tokens.css 는 @font-face 를 갖지 않는다(폰트 파일 선언은 fonts.css 한 곳)', () => {
     // 임시 상태가 아니라 유지할 분리다: @font-face 는 src/styles/fonts.css 에만 두고
-    // globals.css 가 import 한다(next/font 는 ADR-0010 으로 폐기). tokens.css 는 값만 갖는다.
+    // globals.css 가 import 한다(next/font 경로는 빌드 스택에 없다 — ADR-0013). tokens.css 는 값만 갖는다.
     expect(CSS).not.toMatch(/@font-face/);
     expect(GLOBALS).toMatch(/@import\s+'\.\/fonts\.css';/);
   });

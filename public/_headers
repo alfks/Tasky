@@ -1,11 +1,10 @@
 # 읽기 조건: 배포된 정적 자산의 캐시 헤더를 바꿀 때. Cloudflare Workers Static Assets 가 읽는다.
-# 실측: 이 파일이 있으면 vinext 가 생성하는 dist/client/_headers 를 "덮어쓴다"(병합 아님).
-# 따라서 아래 /_next/static/* 규칙(원래 vinext 생성본)을 여기서 직접 유지해야 한다 — 지우면
-# 콘텐츠 해시가 붙은 자산이 1년 immutable 캐시를 잃는다.
-# 여기 규칙은 "정적 자산으로 서빙되는 경로"에만 걸린다. Worker 가 동적으로 만드는 응답
-# (/manifest.webmanifest 등 metadata 파일 라우트 — ADR-0010 §결과)에는 적용되지 않는다(실측:
-# 그 경로 응답은 Worker 의 max-age=0, must-revalidate 로 나온다). 그런 경로 규칙은 적지 않는다.
-/_next/static/*
+# Vite 가 public/ 을 그대로 dist/client 로 복사하므로 이 파일이 산출물에 실린다(ADR-0013).
+# 아래 /assets/* 는 vite.config.ts 의 build.assetsDir 과 **한 쌍**이다 — 한쪽만 바꾸면 콘텐츠 해시가
+# 붙은 번들 자산이 1년 immutable 캐시를 잃는다. scripts/check-dist.mjs 가 빌드마다 세 규칙을 확인한다.
+# Worker 스크립트가 없으므로(정적 자산 전용 배포) 모든 응답이 여기 규칙의 적용 대상이다 —
+# /manifest.webmanifest 도 이제 Worker 가 만드는 것이 아니라 public/ 의 정적 파일이다.
+/assets/*
   Cache-Control: public, max-age=31536000, immutable
 
 # 폰트는 번들러를 거치지 않아(public/) 해시가 자동으로 붙지 않는다. 그래서 theme.md R14 의

@@ -15,8 +15,12 @@ export const LAYERS = [
   'test',
 ];
 
-/** src/ 직속에 둘 수 있는 유일한 파일(Next.js 가 위치를 강제). lib 만 import 가능(ALLOW.root) */
-export const SRC_ROOT_FILES = ['middleware.ts', 'instrumentation.ts', 'sw.ts'];
+/**
+ * src/ 직속에 둘 수 있는 유일한 파일. lib 만 import 가능(ALLOW.root).
+ * `sw.ts` 는 서비스워커 진입점이고 serwist 가 이 경로를 읽는다(serwist.config.js 의 swSrc).
+ * 여기서 빼면 scripts/check-arch.sh 의 전수 분류가 그 파일을 미분류로 보고 실패한다.
+ */
+export const SRC_ROOT_FILES = ['sw.ts'];
 
 /** src/ 안에 존재할 수 있는 확장자. 늘릴 때는 ADR */
 export const SRC_EXT = ['ts', 'tsx', 'css', 'md'];

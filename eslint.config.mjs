@@ -236,11 +236,11 @@ const NO_DB_IMPORT = {
   message:
     '[infra] db.ts 는 src/infra/indexeddb/query.ts 만 import 한다. 조회·쓰기는 query.ts 의 헬퍼로 (ADR-0007).',
 };
-/** 조립 지점을 경유지로 쓰지 않는다: @/app/providers 를 import 할 수 있는 파일은 layout.tsx 하나 (ADR-0006 규칙 6) */
+/** 조립 지점을 경유지로 쓰지 않는다: @/app/providers 를 import 할 수 있는 파일은 main.tsx 하나 (ADR-0006 규칙 6) */
 const NO_PROVIDERS_IMPORT = {
   regex: '^@\\/app\\/(__arch__\\/)?providers$',
   message:
-    '[app] 조립 지점(app/providers)은 layout.tsx 만 import 한다 — 다른 app 파일이 경유하면 infra 에 2홉으로 닿는다 (ADR-0006 규칙 6).',
+    '[app] 조립 지점(app/providers)은 main.tsx 만 import 한다 — 다른 app 파일이 경유하면 infra 에 2홉으로 닿는다 (ADR-0006 규칙 6).',
 };
 /** 조립 지점의 재export 금지 — `export { db } from '@/infra/…'` 한 줄이면 허용 목록 밖 레이어가 그대로 새어나간다 */
 const NO_REEXPORT = {
@@ -317,10 +317,7 @@ const DOMAIN_PATTERNS = [TEST_FILE, NO_LIB_CLOCK, onlyPackages('domain', PACKAGE
 const config = [
   {
     ignores: [
-      '.next/**',
-      'out/**',
-      'dist/**', // Vinext 빌드 산출물
-      '.vinext/**',
+      'dist/**', // Vite 빌드 산출물
       '.wrangler/**',
       'coverage/**',
       'node_modules/**',
@@ -328,7 +325,6 @@ const config = [
       'test-results/**',
       '.worktrees/**',
       'public/sw.js',
-      'next-env.d.ts',
       'src/**/__arch__/**', // scripts/check-arch.sh 의 임시 픽스처(잔여물이 있어도 pnpm lint 는 무해)
     ],
   },
@@ -356,8 +352,6 @@ const config = [
           pathGroups: [
             { pattern: 'react', group: 'external', position: 'before' },
             { pattern: 'react-dom', group: 'external', position: 'before' },
-            { pattern: 'next', group: 'external', position: 'before' },
-            { pattern: 'next/**', group: 'external', position: 'before' },
             { pattern: '@/domain/**', group: 'internal', position: 'before' },
             { pattern: '@/repositories/**', group: 'internal', position: 'before' },
             { pattern: '@/infra/**', group: 'internal', position: 'before' },
@@ -366,7 +360,7 @@ const config = [
             { pattern: '@/lib/**', group: 'internal', position: 'after' },
             { pattern: '@/styles/**', group: 'internal', position: 'after' },
           ],
-          pathGroupsExcludedImportTypes: ['react', 'next'],
+          pathGroupsExcludedImportTypes: ['react'],
           'newlines-between': 'always',
           alphabetize: { order: 'asc', caseInsensitive: true },
         },
@@ -510,8 +504,9 @@ const config = [
     }),
   },
   {
-    // 조립 지점을 import 할 수 있는 유일한 파일(NO_PROVIDERS_IMPORT 해제). __arch__ 경로는 check-arch.sh 픽스처 전용.
-    files: ['src/app/layout.tsx', 'src/app/__arch__/layout.ts'],
+    // 조립 지점을 import 할 수 있는 유일한 파일(NO_PROVIDERS_IMPORT 해제). __arch__ 경로는 check-arch.sh
+    // 픽스처 전용이고 그 파일명은 scripts/check-arch.sh 와 한 쌍이다 — 바꾸려면 두 파일을 같이 바꾼다.
+    files: ['src/app/main.tsx', 'src/app/__arch__/layout.ts'],
     rules: layerRules({
       target: './src/app',
       label: 'app',
@@ -550,13 +545,9 @@ const config = [
 
   // --- 예외 ---
   {
-    files: [
-      'src/app/**',
-      '*.config.{ts,mjs,js}',
-      'next.config.ts',
-      'vitest.config.ts',
-      'playwright.config.ts',
-    ],
+    // 설정 파일만 default export 를 쓴다. src/app/** 은 더 이상 예외가 아니다 — App Router 가 강제하던
+    // default export 규약이 사라졌으므로(ADR-0013) 앱 코드는 전부 named export 다(code-style §3).
+    files: ['*.config.{ts,mjs,js}', 'vitest.config.ts', 'playwright.config.ts'],
     rules: { 'import/no-default-export': 'off' },
   },
   {

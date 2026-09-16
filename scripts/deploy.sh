@@ -98,7 +98,7 @@ fi
 # --- 산출물 검사 ------------------------------------------------------------
 # "빌드가 없는데 배포 성공" 을 막는다. **비어 있는 파일도 없는 것으로 친다** — 빈 index.html 이
 # 그대로 올라가면 배포는 성공하고 사이트만 빈다(CI deploy.yml 의 `-s` 와 같은 기준).
-for f in dist/server/wrangler.json dist/client/index.html dist/client/sw.js; do
+for f in dist/client/index.html dist/client/sw.js dist/client/manifest.webmanifest; do
   [ -s "$f" ] || {
     printf 'ERROR: 산출물이 없거나 비어 있습니다: %s — 먼저 pnpm build 를 실행하세요.\n' "$f" >&2
     exit 1
@@ -107,6 +107,6 @@ done
 
 # --- 실행 -------------------------------------------------------------------
 if [ "$DRY_RUN" -eq 1 ]; then
-  exec pnpm exec wrangler deploy --config dist/server/wrangler.json --dry-run --outdir dist/dry-run
+  exec pnpm exec wrangler deploy --config wrangler.jsonc --dry-run --outdir dist/dry-run
 fi
-exec pnpm exec wrangler deploy --config dist/server/wrangler.json
+exec pnpm exec wrangler deploy --config wrangler.jsonc

@@ -142,11 +142,17 @@ describe('THEME_INIT_SCRIPT: 어떤 실패도 렌더를 막지 않는다', () =>
   });
 });
 
-describe('layout.tsx 배선(R13·pwa R9)', () => {
-  const source = readFileSync(join(process.cwd(), 'src/app/layout.tsx'), 'utf-8');
-  // import 문에도 같은 이름이 나오므로 **렌더되는 JSX 부분만** 본다.
-  const layout = source.slice(source.indexOf('<html'));
+describe('index.html 배선(R13·pwa R9)', () => {
+  // `index.html` 이 실제로 나가는 <head> 다(ADR-0013 — 프리렌더 HTML 이 없다). 여기 있는 사본과
+  // 이 모듈의 상수가 갈라지면, 위 describe 들이 검증한 동작과 실제로 브라우저가 실행하는 코드가 달라진다.
+  const html = readFileSync(join(process.cwd(), 'index.html'), 'utf-8');
+  const head = html.slice(html.indexOf('<head>'), html.indexOf('</head>'));
   const fontsCss = readFileSync(join(process.cwd(), 'src/styles/fonts.css'), 'utf-8');
+  const inlineScript = /<script>([\s\S]*?)<\/script>/.exec(head);
+
+  it('첫 페인트 스크립트 본문이 THEME_INIT_SCRIPT 와 같다 — 사본이 갈라지면 여기서 잡힌다', () => {
+    expect(inlineScript?.[1]).toBe(THEME_INIT_SCRIPT);
+  });
 
   it('preload href 가 fonts.css 의 @font-face url() 과 같다(R13·R14)', () => {
     const url = /url\('([^']+\.woff2)'\)/.exec(fontsCss)?.[1];
@@ -154,25 +160,36 @@ describe('layout.tsx 배선(R13·pwa R9)', () => {
     expect(FONT_PRELOAD.href).toBe(url);
   });
 
-  it('preload 는 폰트 1건이고 CORS 모드다', () => {
+  it('preload 는 폰트 1건이고 CORS 모드다 — 값은 FONT_PRELOAD 와 같다', () => {
     expect(FONT_PRELOAD).toMatchObject({ rel: 'preload', as: 'font', crossOrigin: 'anonymous' });
-    expect(layout.match(/<link\b/g)?.length).toBe(1);
-    expect(layout).toMatch(/<link \{\.\.\.FONT_PRELOAD\} \/>/);
+    const preloads = head.match(/<link[^>]*rel="preload"[^>]*>/g) ?? [];
+    expect(preloads).toHaveLength(1);
+    const tag = (preloads[0] ?? '').replace(/\s+/g, ' ');
+    for (const [key, value] of [
+      ['rel', FONT_PRELOAD.rel],
+      ['as', FONT_PRELOAD.as],
+      ['type', FONT_PRELOAD.type],
+      ['href', FONT_PRELOAD.href],
+      ['crossorigin', FONT_PRELOAD.crossOrigin],
+    ]) {
+      expect(tag).toContain(`${key}="${value}"`);
+    }
   });
 
   it('theme-color 메타가 스크립트보다 먼저 나온다 — 순서가 바뀌면 스크립트가 못 찾는다', () => {
-    const metaAt = layout.indexOf('name="theme-color"');
-    const scriptAt = layout.indexOf('THEME_INIT_SCRIPT');
+    const metaAt = head.indexOf('name="theme-color"');
+    const scriptAt = head.indexOf('<script>');
     expect(metaAt).toBeGreaterThan(-1);
     expect(scriptAt).toBeGreaterThan(metaAt);
   });
 
   it('<html> 에 data-theme 을 박아 두지 않는다 — 박으면 스크립트·시스템 추종이 무력해진다', () => {
-    expect(layout).not.toMatch(/<html[^>]*data-theme=/);
+    expect(html).not.toMatch(/<html[^>]*data-theme=/);
+    expect(html).toMatch(/<html lang="ko">/);
   });
 
-  it('스크립트는 동기다(async·defer·src 금지 — 첫 페인트를 놓친다)', () => {
-    const tag = /<script[^>]*>/.exec(layout)?.[0] ?? '';
-    expect(tag).not.toMatch(/\basync\b|\bdefer\b|\bsrc=/);
+  it('스크립트는 동기다(async·defer·type=module·src 금지 — 첫 페인트를 놓친다)', () => {
+    const tag = /<script[^>]*>/.exec(head)?.[0] ?? '';
+    expect(tag).toBe('<script>');
   });
 });
