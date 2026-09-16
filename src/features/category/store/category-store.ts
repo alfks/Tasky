@@ -22,6 +22,7 @@ import {
   type CategoryRemovalActions,
 } from '@/features/category/store/category-removal';
 import type { CategoryState } from '@/features/category/store/category-state';
+import { createCategoryWriter } from '@/features/category/store/category-writes';
 
 import { nowIso } from '@/lib/date';
 import { newId } from '@/lib/id';
@@ -47,11 +48,17 @@ const defaultDeps: MetaDeps = { now: nowIso, id: newId };
  * 테스트가 결정적인 `deps` 로 격리된 인스턴스를 만들 수 있도록 팩토리를 열어 둔다.
  */
 export function createCategoryStore(deps: MetaDeps = defaultDeps) {
-  return create<CategoryStore>()((set, get) => ({
-    ...initialState,
-    ...createCategoryActions({ set, get, deps }),
-    ...createRemovalActions({ set, get, deps }),
-  }));
+  return create<CategoryStore>()((set, get) => {
+    const ctx = { set, get, deps };
+    // 쓰기 큐 **하나**를 만들어 두 액션 묶음에 같이 넘긴다. 각자 만들면 생성 저장이 진행 중일 때
+    // 시작된 삭제가 한 건 낡은 모집단으로 계획을 세운다(R2 이름 유일성·R5 order).
+    const writer = createCategoryWriter(ctx);
+    return {
+      ...initialState,
+      ...createCategoryActions(ctx, writer),
+      ...createRemovalActions(ctx, writer),
+    };
+  });
 }
 
 /** 앱이 쓰는 단 하나의 카테고리 스토어. 컴포넌트는 selector 로 필요한 조각만 구독한다. */

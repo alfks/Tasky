@@ -23,11 +23,7 @@ import { createSettings } from '@/domain/theme/settings.rules';
 import { getRepositories } from '@/repositories/container';
 
 import { indexCategories, messageOf } from '@/features/category/store/category-state';
-import {
-  createCategoryWriter,
-  type CategoryContext,
-  type CategoryWriter,
-} from '@/features/category/store/category-writes';
+import type { CategoryContext, CategoryWriter } from '@/features/category/store/category-writes';
 
 /** 스토어의 액션 부분. 쓰기 액션은 성공 여부를 돌려준다 — 다이얼로그가 닫을지 판단한다. */
 export type CategoryActions = {
@@ -169,9 +165,18 @@ function createOrderActions(
   };
 }
 
-/** 액션 전부. 스토어는 이 결과를 상태에 펼쳐 넣기만 한다. */
-export function createCategoryActions(ctx: CategoryContext): CategoryActions {
-  const writer = createCategoryWriter(ctx);
+/**
+ * 액션 전부. 스토어는 이 결과를 상태에 펼쳐 넣기만 한다.
+ *
+ * **`writer` 를 주입받는다** — 안에서 만들면 삭제 액션(`createRemovalActions`)이 자기 writer 를
+ * 만들게 되고, 두 갈래 큐가 서로의 결과를 못 본다. 생성이 저장 중일 때 삭제가 시작되면
+ * 이름 유일성(R2)·`order` 모집단(R5)이 한 건 낡은 채로 계획이 선다. 스토어가 큐 하나를 만들어
+ * 두 묶음에 같이 넘긴다.
+ */
+export function createCategoryActions(
+  ctx: CategoryContext,
+  writer: CategoryWriter,
+): CategoryActions {
   return {
     ...createLoadAction(ctx, writer),
     ...createEntryActions(ctx, writer),

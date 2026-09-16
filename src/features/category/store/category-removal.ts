@@ -11,11 +11,11 @@
 //  · 새로고침하면 메모는 사라진다. 소프트 삭제된 값은 엔티티 조회로 다시 읽히지 않으므로(ADR-0007 결정 4)
 //    되돌리기 창은 **그 세션 안에서만** 유효하다 — 스펙의 "스토어가 6초 창 동안 메모리에 들고 있는다"(R15).
 //
-// **T-12a 와 쓰기 큐가 다르다(알려진 한계)**: `createCategoryActions` 가 자기 writer 를 안에서 만들기
-// 때문에(그 파일은 T-12a 소유) 삭제 액션은 별도 큐를 탄다. 생성이 저장 중인 **바로 그 사이에** 삭제를
-// 실행하면 `categories` 모집단이 한 건 낡을 수 있다(R2 이름 유일성·R5 order). 두 동작 모두 대화상자·메뉴를
-// 거치므로 실사용 창은 수 ms 이고, 없애려면 `createCategoryActions(ctx, writer)` 로 writer 를 주입받게
-// 고쳐야 한다(T-12a 소유 파일 — 후속 티켓).
+// **쓰기 큐는 생성·수정 액션과 하나를 공유한다**: writer 를 여기서 만들지 않고 스토어에서 주입받는다.
+// 각자 만들던 시절에는 두 갈래 큐가 서로의 결과를 보지 못해, 생성이 저장 중인 **바로 그 사이에**
+// 삭제를 실행하면 `categories` 모집단이 한 건 낡은 채로 계획이 섰다(R2 이름 유일성·R5 order —
+// ② 즉석 생성이 방금 만들어진 카테고리와 같은 이름·같은 order 를 발급할 수 있었다).
+// 투두 스토어가 같은 유형의 경쟁으로 `orders=[0,0]` 을 냈던 전례가 있고, 그때도 한 줄 큐가 답이었다.
 import type { Category } from '@/domain/category/category';
 import {
   planCategoryRemoval,
@@ -27,10 +27,7 @@ import type { DatasetWrite } from '@/domain/dataset';
 import { getRepositories } from '@/repositories/container';
 
 import type { CategoryRemovalMemo } from '@/features/category/store/category-state';
-import {
-  createCategoryWriter,
-  type CategoryContext,
-} from '@/features/category/store/category-writes';
+import type { CategoryContext, CategoryWriter } from '@/features/category/store/category-writes';
 
 /** 삭제·되돌리기 액션. 스토어는 이 결과를 상태에 펼쳐 넣기만 한다. */
 export type CategoryRemovalActions = {
@@ -99,10 +96,11 @@ async function planRemoval(
   return writes;
 }
 
-/** 삭제·되돌리기 액션 묶음. 스토어 하나마다 한 번 만든다. */
-export function createRemovalActions(ctx: CategoryContext): CategoryRemovalActions {
-  const writer = createCategoryWriter(ctx);
-
+/** 삭제·되돌리기 액션 묶음. 스토어 하나마다 한 번 만들고, `writer` 는 생성·수정 액션과 **같은 것**이다. */
+export function createRemovalActions(
+  ctx: CategoryContext,
+  writer: CategoryWriter,
+): CategoryRemovalActions {
   return {
     removeCategory: async ({ category, choice }) => {
       const box: { memo?: CategoryRemovalMemo } = {};
