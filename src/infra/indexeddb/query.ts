@@ -8,7 +8,15 @@
 //   - 범위 조회       liveBetween(table, index, a, b)    listByDateRange(양끝 포함)
 //   - 정렬 조회       liveOrderBy(table, index)          order asc 목록
 //   - 전량            liveAll(table)                     검색·통계처럼 인덱스를 탈 수 없는 경우만
+//   - 쓰기            put(table, entity)                 브랜드가 붙은 값 한 건
 // 인덱스를 타지 않는 정렬·필터(`done`, 부분 문자열 검색)는 위 헬퍼가 좁혀 준 배열 위에서 레포지토리가 한다.
+//
+// 아래 넷은 **`DatasetRepository` 전용 통로**다(ADR-0009 결정 2·4). 툼스톤을 감추지 않거나 물리 삭제를
+// 하므로 엔티티 레포지토리 구현은 부르지 않는다 — 이름에 `live` 가 없는 것이 그 표식이다:
+//   - allRows(table)                 툼스톤 **포함** 전량(id asc)        readAll
+//   - clear(table)                   물리 삭제                           restore
+//   - bulkPut(table, entities)       청크 쓰기                           restore
+//   - transaction(run)               네 테이블 rw 트랜잭션               write · restore
 import { type EntityTable, type IDType, type IndexableType } from 'dexie';
 
 import { isTombstone, type Meta, type Persistable } from '@/domain/meta';
@@ -52,7 +60,11 @@ export const tables = {
   todos: brand(db.todos, STORES.todos),
   categories: brand(db.categories, STORES.categories),
   settings: brand(db.settings, STORES.settings),
+  focusSessions: brand(db.focusSessions, STORES.focusSessions),
 };
+
+/** `id` 오름차순 비교. 두 구현(memory `allRows`)이 같은 순서를 내도록 여기서도 명시적으로 정렬한다. */
+const byId = (a: Meta, b: Meta): number => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 /** 툼스톤을 제외한 전체 조회. 인덱스를 탈 수 없는 조회(부분 문자열 검색·통계)에만 쓴다. */
 export async function liveAll<T extends Meta>(table: LiveTable<T, string>): Promise<T[]> {
@@ -111,4 +123,42 @@ export async function put<T extends Meta>(
   entity: Persistable<T>,
 ): Promise<void> {
   await raw(table).put(entity);
+}
+
+/**
+ * **`DatasetRepository.readAll` 전용** — 툼스톤을 **포함한** 전량을 `id` 오름차순으로 (ADR-0009 규칙 4).
+ * IndexedDB 오브젝트 스토어는 기본 키 순서로 순회하지만, 순서를 계약으로 삼는 쪽이 memory 구현과
+ * 갈리지 않도록 여기서 한 번 더 정렬한다(비용은 전량 읽기에 묻힌다).
+ */
+export async function allRows<T extends Meta>(table: LiveTable<T, string>): Promise<T[]> {
+  return (await raw(table).toArray()).sort(byId);
+}
+
+/**
+ * **`DatasetRepository.restore` 전용** — 테이블을 물리적으로 비운다. 앱에 물리 삭제가 있는 유일한 자리이며,
+ * 뒤이어 들어가는 스냅샷이 툼스톤을 포함한 최종 전량이라 안전하다(ADR-0009 결정 4).
+ * 계약 테스트의 `ContractTarget.create()`(빈 상태로 시작)도 이 함수를 쓴다.
+ */
+export async function clear<T extends Meta>(table: LiveTable<T, string>): Promise<void> {
+  await raw(table).clear();
+}
+
+/** **`DatasetRepository.restore` 전용** — 브랜드가 붙은 로우 여러 건을 한 번에. 청크 크기는 호출처가 정한다. */
+export async function bulkPut<T extends Meta>(
+  table: LiveTable<T, string>,
+  entities: readonly Persistable<T>[],
+): Promise<void> {
+  await raw(table).bulkPut([...entities]);
+}
+
+/**
+ * **`DatasetRepository.write`·`restore` 전용** — 네 테이블을 묶는 rw 트랜잭션. 중간에 던지면 Dexie 가
+ * 전부 롤백한다(ADR-0009 결정 2 가 이 둘에만 허용한 예외).
+ *
+ * **`run` 안에서는 이 파일의 헬퍼만 부른다.** Dexie 트랜잭션은 존(zone)으로 동작해서, 콜백 안에서
+ * Dexie 가 아닌 프라미스를 `await` 하면 그 사이에 트랜잭션이 커밋돼 버린다(조용한 실패). 값 검증처럼
+ * Dexie 와 무관한 일은 트랜잭션에 **들어가기 전에** 끝낸다 — 그래야 검증 실패에서도 부분 쓰기가 0 이다.
+ */
+export function transaction(run: () => Promise<void>): Promise<void> {
+  return db.transaction('rw', db.todos, db.categories, db.settings, db.focusSessions, run);
 }
