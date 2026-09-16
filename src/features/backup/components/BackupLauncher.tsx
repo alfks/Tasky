@@ -33,13 +33,18 @@ export function BackupLauncher() {
   const dismissResult = useBackupStore((state) => state.dismissResult);
 
   /**
-   * 토스트 뷰포트는 **하이드레이션 이후에만** 띄운다.
+   * 토스트 뷰포트는 **마운트 이후에만** 띄운다 — 첫 렌더는 서버가 그릴 수 있는 것만 낸다.
    *
-   * `ToastViewport` 는 `document` 가 없으면 `null` 이라 SSR HTML 에 없다. 그것을 첫 렌더에 그대로 두면
-   * 서버 HTML 과 클라이언트 트리가 달라 React 19 가 트리를 통째로 다시 만든다(실 Chromium PAGEERROR —
-   * 리뷰 라운드 1 Major-1). `toasts` 가 빌 때 아예 렌더하지 않는 방법도 있지만, 그러면 라이브 영역과
-   * 문구가 같은 순간에 삽입되어 상당수 스크린리더가 읽지 않는다(`Toast.tsx` 주석). 그래서 **비어 있는
-   * 뷰포트를 마운트 직후에 미리 띄워 둔다** — 첫 렌더는 서버와 같고, 영역은 문구보다 먼저 있다.
+   * `ToastViewport` 는 `document` 가 없으면 `null` 이라 서버 렌더 결과에 없다. 그것을 첫 렌더에 그대로
+   * 두면 서버 HTML 과 클라이언트 트리가 달라 React 19 가 트리를 통째로 다시 만든다 — 리뷰 라운드 1
+   * Major-1 이 실 Chromium 에서 잡은 PAGEERROR 가 그것이다.
+   *
+   * **지금 스택에는 서버 렌더가 없다**(ADR-0013 이 순수 Vite SPA 로 되돌렸다). 그러니 이 가드는 오늘의
+   * 버그를 막는 게 아니라 프리렌더가 돌아올 때를 위한 보험이고, 값은 마운트 때 렌더 한 번이다.
+   * `BackupLauncher.test.tsx` 가 `renderToString` → `hydrateRoot` 로 그 성질을 고정한다.
+   *
+   * `toasts` 가 빌 때 아예 렌더하지 않는 방법도 있지만, 그러면 라이브 영역과 문구가 같은 순간에 삽입되어
+   * 상당수 스크린리더가 읽지 않는다(`Toast.tsx` 주석). 그래서 **비어 있는 뷰포트를 먼저 띄워 둔다**.
    */
   const [mounted, setMounted] = useState(false);
 

@@ -75,6 +75,7 @@ describe('BackupLauncher (§2·R14)', () => {
 
   // 서버 HTML 에 없는 노드를 첫 클라이언트 렌더에 넣으면 React 19 가 트리를 통째로 다시 만든다
   // (실 Chromium PAGEERROR — 리뷰 라운드 1 Major-1). `ToastViewport` 가 그 노드였다.
+  // 지금 스택은 서버 렌더를 하지 않으므로(ADR-0013) 이 테스트는 프리렌더가 돌아왔을 때를 위한 고정이다.
   it('서버가 그린 HTML 에 그대로 하이드레이션된다 (콘솔 에러 0)', async () => {
     await seedTodos(3);
     const container = document.createElement('div');
