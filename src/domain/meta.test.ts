@@ -34,7 +34,10 @@ const makePlainTodo = (): Todo => ({
 const noopRepository: TodoRepository = {
   getById: async () => undefined,
   listByDate: async () => [],
+  listByDateRange: async () => [],
+  listByCategory: async () => [],
   listAll: async () => [],
+  search: async () => [],
   upsert: async () => undefined,
 };
 

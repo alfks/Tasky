@@ -1,14 +1,18 @@
 // 레포지토리 주입 컨테이너(배럴이 아니다 — ADR-0006). 런타임 조립은 src/app/providers.tsx,
-// 테스트 조립은 src/test/setup.ts 가 한다.
+// 테스트 조립은 src/test/setup.ts 가 한다. 여기서 구현을 import 하지 않는 것이 요점이다.
 import type { CategoryRepository } from '@/repositories/category-repository';
+import type { DatasetRepository } from '@/repositories/dataset-repository';
+import type { FocusSessionRepository } from '@/repositories/focus-session-repository';
 import type { SettingsRepository } from '@/repositories/settings-repository';
 import type { TodoRepository } from '@/repositories/todo-repository';
 
-/** 앱이 쓰는 저장소 묶음. */
+/** 앱이 쓰는 저장소 묶음. 넷은 엔티티 저장소이고 `dataset` 은 별개 계약이다 (ADR-0009). */
 export type Repositories = {
   todos: TodoRepository;
   categories: CategoryRepository;
   settings: SettingsRepository;
+  focusSessions: FocusSessionRepository;
+  dataset: DatasetRepository;
 };
 
 let current: Repositories | undefined;
