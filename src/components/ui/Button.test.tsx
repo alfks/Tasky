@@ -1,3 +1,5 @@
+import { createRef } from 'react';
+
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -58,5 +60,21 @@ describe('Button', () => {
     render(<Button>저장</Button>);
 
     expect(screen.getByRole('button', { name: '저장' })).toHaveAttribute('type', 'button');
+  });
+
+  // Dialog.initialFocusRef·Popover.anchorRef 가 이 버튼을 직접 가리켜야 한다(T-07·T-12b·T-15).
+  it('ref 로 실제 button 요소를 돌려준다', () => {
+    const ref = createRef<HTMLButtonElement>();
+    render(<Button ref={ref}>저장</Button>);
+
+    expect(ref.current).toBe(screen.getByRole('button', { name: '저장' }));
+    ref.current?.focus();
+    expect(screen.getByRole('button', { name: '저장' })).toHaveFocus();
+  });
+
+  it('outline variant 는 테두리형 보조 버튼이다(확인 대화상자의 [취소])', () => {
+    render(<Button variant="outline">취소</Button>);
+
+    expect(screen.getByRole('button', { name: '취소' })).toHaveClass('border', 'border-border');
   });
 });

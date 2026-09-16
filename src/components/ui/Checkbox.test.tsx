@@ -50,4 +50,21 @@ describe('Checkbox', () => {
 
     expect(onCheckedChange).not.toHaveBeenCalled();
   });
+
+  it('공백뿐인 label 은 컴파일에서 막히고 개발 모드에서 throw 한다', () => {
+    const silence = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(() =>
+      render(
+        <Checkbox
+          checked={false}
+          onCheckedChange={vi.fn()}
+          // @ts-expect-error 공백뿐인 리터럴은 NonBlank 에 걸려 컴파일되지 않는다
+          label=""
+        />,
+      ),
+    ).toThrow(/공백/);
+
+    silence.mockRestore();
+  });
 });

@@ -1,13 +1,19 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ComponentPropsWithRef, ReactNode } from 'react';
 
 import { cn } from '@/lib/cn';
 
-/** 주 동작(강조색) · 보조 동작(배경 없음) · 파괴 동작(theme.md 3-A `--color-danger`). */
-type ButtonVariant = 'primary' | 'ghost' | 'danger';
+/**
+ * 주 동작(강조색) · 보조 동작(테두리형) · 보조 동작(배경 없음) · 파괴 동작(theme.md 3-A `--color-danger`).
+ * `outline` 은 파괴적 확인 대화상자의 `[취소]` 처럼 파괴 버튼과 나란히 서서 "여기가 안전한 쪽"임을
+ * 형태로 보여야 하는 자리에 쓴다.
+ */
+type ButtonVariant = 'primary' | 'outline' | 'ghost' | 'danger';
 /** `md` = 컨트롤 기본 높이 36px, `sm` = 최소 클릭 영역 32px (theme.md 3-D 컨트롤). */
 type ButtonSize = 'sm' | 'md';
 
-type ButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & {
+// ComponentPropsWithRef 는 React 19 에서 ref 를 평범한 prop 으로 포함한다(forwardRef 불필요).
+// 대화상자의 initialFocusRef·팝오버의 anchorRef 가 이 버튼들을 직접 가리켜야 하므로 필수다.
+type ButtonProps = Omit<ComponentPropsWithRef<'button'>, 'children'> & {
   variant?: ButtonVariant;
   size?: ButtonSize;
   /** 진행 중 표시. 중복 실행을 막기 위해 비활성이 되고 `aria-busy` 가 붙는다. */
@@ -17,6 +23,7 @@ type ButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & {
 
 const VARIANT: Record<ButtonVariant, string> = {
   primary: 'bg-accent text-on-accent hover:enabled:opacity-90',
+  outline: 'border border-border bg-surface text-text hover:enabled:bg-surface-2',
   ghost: 'bg-transparent text-text hover:enabled:bg-surface-2',
   danger: 'bg-danger text-on-accent hover:enabled:opacity-90',
 };
