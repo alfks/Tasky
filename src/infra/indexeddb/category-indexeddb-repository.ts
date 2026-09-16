@@ -3,7 +3,7 @@ import { activeCategories, sortCategoriesForDisplay } from '@/domain/category/ca
 
 import type { CategoryRepository } from '@/repositories/category-repository';
 
-import { liveOne, liveOrderBy, put, type Store } from '@/infra/indexeddb/query';
+import { deletedByIds, liveOne, liveOrderBy, put, type Store } from '@/infra/indexeddb/query';
 
 /**
  * Dexie 테이블 위에서 동작하는 카테고리 저장소.
@@ -22,6 +22,7 @@ export function createIndexedDbCategoryRepository(store: Store): CategoryReposit
         ? sortCategoriesForDisplay(rows)
         : activeCategories(rows);
     },
+    listDeletedByIds: (ids) => deletedByIds(table, ids),
     upsert: (category) => put(table, category),
   };
 }

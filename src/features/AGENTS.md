@@ -4,7 +4,7 @@
 
 ## 목적
 
-기능 슬라이스. 각 feature = `components/` + `hooks/` + `store/` + `index.ts`. MVP: `todo`, `category`, `date-strip`, `stats`, `theme`. 화면 조립은 `todo/components/HomeScreen.tsx`.
+기능 슬라이스. 각 feature = `index.ts` + 하위 디렉토리(보통 `components/` `hooks/` `store/`, 필요하면 더 — 아래 '하위 구조'). MVP: `todo`, `category`, `date-strip`, `stats`, `theme`. 화면 조립은 `todo/components/HomeScreen.tsx`.
 
 ## 규칙
 
@@ -15,7 +15,9 @@
 
 ## 하위 구조
 
-각 feature 는 `components/` `hooks/` `store/` 세 하위 디렉토리 + `index.ts`를 갖는다. `관할:`은 직계 자식만 면제하므로 여기서 `todo/`를 선언해도 그 아래 `components/`는 면제되지 않는다 — 그래서 `src/features/<f>/AGENTS.md`(5개)를 관할 선언 전용 최소 파일로 둔다. 규칙 본문은 이 문서가 전담(중복 금지).
+각 feature 는 `index.ts` + 필요한 만큼의 하위 디렉토리를 갖는다. 기본은 `components/` `hooks/` `store/` 셋이고, **여기서 끝나야 한다는 규칙은 없다** — `code-style.md` §2("넘으면 하위 폴더로 분할, feature 안이면 index 에 재export 하지 않아도 된다")가 분할을 명문으로 허용하므로 순수 헬퍼를 모으는 `lib/` 같은 디렉토리를 더 둘 수 있다(예: `date-strip/lib/`). 새 하위 디렉토리에도 `AGENTS.md`가 필요하다(루트 헌법 §1-4) — 아래 관할 선언이 그 부담을 없앤다.
+
+`관할:`은 직계 자식만 면제하므로 여기서 `todo/`를 선언해도 그 아래 `components/`는 면제되지 않는다 — 그래서 `src/features/<f>/AGENTS.md`(5개)를 관할 선언 전용 최소 파일로 둔다. 규칙 본문은 이 문서가 전담(중복 금지).
 
 ## 검증
 

@@ -10,7 +10,12 @@ import {
   type ContractTarget,
 } from '@/repositories/contract';
 
-type ReadName = Exclude<keyof CategoryRepository, 'upsert'>;
+/**
+ * `READS` 전수 대조(ADR-0007 결정 6)의 모집단. **툼스톤을 감추는 조회만** 여기 들어간다.
+ * `listDeletedByIds` 는 툼스톤을 내는 것이 계약이므로 이 한 줄에서 **이름으로** 빠진다 —
+ * 툼스톤을 내는 조회를 또 만들려면 이 `Exclude` 를 고쳐야 하고, 그 diff 는 리뷰에 보인다(ADR-0014).
+ */
+type ReadName = Exclude<keyof CategoryRepository, 'upsert' | 'listDeletedByIds'>;
 type ReadCall = (
   repo: CategoryRepository,
   category: Category,
@@ -118,6 +123,49 @@ export function runCategoryRepositoryContract(target: ContractTarget): void {
       ]);
     });
 
+    it('listDeletedByIds 는 툼스톤을 돌려준다 (ADR-0014, date-strip R7)', async () => {
+      const deps = contractDeps();
+      const alive = contractCategory(deps, { order: 0 });
+      const removed = contractCategory(deps, { order: 1, color: '#FFB38A' });
+      await repo.upsert(alive);
+      await repo.upsert(removed);
+      await repo.upsert(markDeleted(removed, T1));
+
+      const rows = await repo.listDeletedByIds([removed.id, alive.id]);
+
+      // 음성 대조: 구현이 툼스톤을 빼면 여기서 죽는다.
+      expect(idsOf(rows)).toEqual([removed.id]);
+      // 색이 살아 있어야 날짜 스트립이 점을 복원할 수 있다 (R7).
+      expect(rows[0]?.color).toBe('#FFB38A');
+      expect(rows[0]?.deletedAt).toBe(T1);
+    });
+
+    it('listDeletedByIds 는 살아 있는 카테고리를 절대 돌려주지 않는다 (일반 조회 대용 금지)', async () => {
+      const deps = contractDeps();
+      const active = contractCategory(deps, { order: 0 });
+      const closed = contractCategory(deps, { order: 1, status: 'completed', closedAt: T1 });
+      await repo.upsert(active);
+      await repo.upsert(closed);
+
+      expect(await repo.listDeletedByIds([active.id, closed.id])).toEqual([]);
+      expect(await repo.listDeletedByIds([])).toEqual([]);
+    });
+
+    it('listDeletedByIds 는 id 오름차순이라 두 구현이 갈리지 않는다', async () => {
+      const deps = contractDeps();
+      const first = contractCategory(deps, { id: 'a0000000-0000-4000-8000-000000000001' });
+      const second = contractCategory(deps, { id: 'b0000000-0000-4000-8000-000000000002' });
+      for (const category of [second, first]) {
+        await repo.upsert(category);
+        await repo.upsert(markDeleted(category, T1));
+      }
+
+      expect(idsOf(await repo.listDeletedByIds([second.id, first.id]))).toEqual([
+        first.id,
+        second.id,
+      ]);
+    });
+
     it('어느 옵션으로도 툼스톤은 나오지 않는다 (includeDeleted 는 없다)', async () => {
       const deps = contractDeps();
       const alive = contractCategory(deps, { order: 0 });
@@ -129,6 +177,9 @@ export function runCategoryRepositoryContract(target: ContractTarget): void {
 
       expect(idsOf(await repo.list())).toEqual([alive.id]);
       expect(idsOf(await repo.list({ includeClosed: true }))).toEqual([alive.id]);
+      // ADR-0014 가 결정 4 를 개정했어도 기존 조회는 그대로다 — 개정이 구멍을 내지 않았는지 본다.
+      expect(await repo.getById(removed.id)).toBeUndefined();
+      expect(await repo.getById(alive.id)).toBeDefined();
     });
   });
 }

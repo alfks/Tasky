@@ -2,7 +2,13 @@
 import { activeCategories, sortCategoriesForDisplay } from '@/domain/category/category.rules';
 
 import type { CategoryRepository } from '@/repositories/category-repository';
-import { liveOne, liveOrderBy, put, type MemoryTables } from '@/repositories/memory/live';
+import {
+  deletedByIds,
+  liveOne,
+  liveOrderBy,
+  put,
+  type MemoryTables,
+} from '@/repositories/memory/live';
 
 /**
  * 주어진 테이블 묶음 위에서 동작하는 카테고리 저장소.
@@ -21,6 +27,7 @@ export function createMemoryCategoryRepository(tables: MemoryTables): CategoryRe
         ? sortCategoriesForDisplay(rows)
         : activeCategories(rows);
     },
+    listDeletedByIds: (ids) => deletedByIds(table, ids),
     upsert: (category) => put(table, category),
   };
 }

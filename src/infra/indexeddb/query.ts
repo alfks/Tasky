@@ -11,6 +11,9 @@
 //   - 쓰기            put(table, entity)                 브랜드가 붙은 값 한 건
 // 인덱스를 타지 않는 정렬·필터(`done`, 부분 문자열 검색)는 위 헬퍼가 좁혀 준 배열 위에서 레포지토리가 한다.
 //
+// 여기에 더해 `deletedByIds(table, ids)` 가 **툼스톤만** 돌려주는 유일한 엔티티 조회다(ADR-0014) —
+// 이름에 `live` 가 없는 헬퍼는 전부 툼스톤을 감추지 않는다는 뜻이다.
+//
 // 아래 넷은 **`DatasetRepository` 전용 통로**다(ADR-0009 결정 2·4). 툼스톤을 감추지 않거나 물리 삭제를
 // 하므로 엔티티 레포지토리 구현은 부르지 않는다 — 이름에 `live` 가 없는 것이 그 표식이다:
 //   - allRows(table)                 툼스톤 **포함** 전량(id asc)        readAll
@@ -175,6 +178,20 @@ export async function put<T extends Meta>(
   entity: Persistable<T>,
 ): Promise<void> {
   await raw(table).put(entity);
+}
+
+/**
+ * **툼스톤 전용 조회**(ADR-0014) — `ids` 중 **툼스톤인 것만** `id` 오름차순으로. 기본 키 `bulkGet` 이라
+ * 인덱스 전수 스캔이 없다. 살아 있는 로우는 나오지 않으므로 `liveOne`·`liveAll` 을 대신할 수 없고,
+ * 이름에 `live` 가 없는 것이 "여기는 툼스톤이 나온다" 는 표식이다.
+ * 호출처는 `CategoryRepository.listDeletedByIds` 하나다.
+ */
+export async function deletedByIds<T extends Meta>(
+  table: LiveTable<T, string>,
+  ids: readonly IDType<T, 'id'>[],
+): Promise<T[]> {
+  const rows = await raw(table).bulkGet([...ids]);
+  return rows.filter((row): row is T => row !== undefined && isTombstone(row)).sort(byId);
 }
 
 /**

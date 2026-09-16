@@ -101,8 +101,8 @@ export function DateCell({
       className={cn(
         'flex h-[72px] w-[56px] shrink-0 snap-center flex-col items-center justify-center gap-[var(--space-1)]',
         // 날짜를 바꿀 때 실제로 움직이는 것이 이 색 전환이라, R10 의 120ms 상한이 걸리는 자리도 여기다.
-        // `--motion-fast`(150ms)는 상한을 넘으므로 쓰지 않는다. 전용 토큰은 테마 티켓이 만든다.
-        'rounded-[var(--radius-lg)] motion-safe:transition-colors motion-safe:duration-[120ms] motion-safe:ease-[var(--motion-ease)]',
+        // 수치는 `--motion-xfast`(theme.md §3-D) 한 곳에만 산다 — `--motion-fast`(150ms)는 상한을 넘는다.
+        'rounded-[var(--radius-lg)] motion-safe:transition-colors motion-safe:duration-[var(--motion-xfast)] motion-safe:ease-[var(--motion-ease)]',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
         'disabled:cursor-not-allowed disabled:opacity-40',
         isSelected
@@ -131,7 +131,7 @@ export function DateCell({
 
 /**
  * 카테고리 색 점과 완료 배지 (R7·R8). 전부 `aria-hidden` — 같은 정보가 셀 접근성 이름에 문장으로 있다(§5).
- * 요약이 늦게 도착하므로 자리는 미리 잡아 두고 채워질 때만 120ms 페이드로 나타난다(R10 의 상한).
+ * 요약이 늦게 도착하므로 자리는 미리 잡아 두고 채워질 때만 `--motion-xfast` 페이드로 나타난다(R10 의 상한).
  */
 function DaySummaryMarks({ summary }: { summary?: DaySummary }) {
   return (
@@ -139,7 +139,7 @@ function DaySummaryMarks({ summary }: { summary?: DaySummary }) {
       aria-hidden="true"
       className={cn(
         'flex h-[var(--space-2)] items-center justify-center gap-[3px]',
-        'motion-safe:transition-opacity motion-safe:duration-[120ms] motion-safe:ease-[var(--motion-ease)]',
+        'motion-safe:transition-opacity motion-safe:duration-[var(--motion-xfast)] motion-safe:ease-[var(--motion-ease)]',
         summary === undefined ? 'opacity-0' : 'opacity-100',
       )}
     >

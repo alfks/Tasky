@@ -128,3 +128,21 @@ describe('R13. 미완료 투두를 셀에 놓으면 그 날짜로 옮긴다', ()
     expect(onDropTodo).not.toHaveBeenCalled();
   });
 });
+
+describe('R10. 모션 수치는 --motion-xfast 토큰 한 곳에만 산다', () => {
+  it('셀 색 전환과 점 페이드가 같은 토큰을 참조하고 리터럴 ms 가 남아 있지 않다', () => {
+    const { container } = renderCell({ summary: makeSummary() });
+    const cell = screen.getByRole('radio');
+    const marks = container.querySelector('[aria-hidden="true"]');
+
+    // R10 이 걸리는 자리는 날짜를 바꿀 때 실제로 움직이는 셀 색 전환이다.
+    expect(cell.className).toContain('motion-safe:transition-colors');
+    expect(cell.className).toContain('motion-safe:duration-[var(--motion-xfast)]');
+    expect(marks?.className).toContain('motion-safe:duration-[var(--motion-xfast)]');
+    // 음성 대조: 리터럴로 되돌리면(또는 --motion-fast 로 바꾸면) 여기서 죽는다.
+    for (const node of [cell.className, marks?.className ?? '']) {
+      expect(node).not.toMatch(/duration-\[\d+ms\]/);
+      expect(node).not.toContain('--motion-fast');
+    }
+  });
+});
