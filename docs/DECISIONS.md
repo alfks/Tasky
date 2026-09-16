@@ -18,6 +18,8 @@
 | [ADR-0009](./decisions/ADR-0009-dataset-operations-and-adopt-write-path.md)    | 데이터셋 단위 연산은 별개 계약 — `DatasetRepository`와 채택(`adopt`) 쓰기 경로(ADR-0005 규칙 5·ADR-0007 규칙 2의 적용 범위 한정) | accepted | 2026-09-15 | `src/domain/meta.ts`, `src/domain/backup`, `src/repositories/dataset-repository.ts`, `src/infra/indexeddb` |
 | [ADR-0010](./decisions/ADR-0010-vinext-build-and-cloudflare-workers.md)        | 빌드 스택 Vinext(Next.js API on Vite) + 배포 Cloudflare Workers(ADR-0001의 빌드·PWA 통합 지점 보정)                              | accepted | 2026-09-15 | `package.json`, `vite.config.ts`, `wrangler.jsonc`, `serwist.config.js`, `src/sw.ts`, `.github/workflows`  |
 
+| [ADR-0011](./decisions/ADR-0011-schema-v2-focus-sessions.md) | 스키마 v2 — `focusSessions` 테이블 신설과 `categories` 인덱스 확장 | accepted | 2026-09-16 | `src/infra/indexeddb/db.ts`, 마이그레이션 테스트 |
+
 ## 예정(초안 필요 시 번호 예약 없이 작성)
 
 - 동기화 어댑터 설계(Phase 2, ADR-0005·0007·0009를 supersede) · SNS 데이터 모델(Phase 2) · E2E 도입 범위
