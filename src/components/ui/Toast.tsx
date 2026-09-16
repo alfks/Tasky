@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 
 import { createPortal } from 'react-dom';
 
+import { OVERLAY_ALWAYS_LIVE_ATTR } from '@/components/ui/overlay-rules';
+
 import { cn } from '@/lib/cn';
 
 /** 액션이 있는 토스트는 6초, 없는 토스트는 3초 뒤 자동으로 닫힌다(app-shell R8). */
@@ -46,6 +48,10 @@ type ToastViewportProps = {
  * 붙이면 영역과 문구가 같은 순간에 삽입되어 상당수 스크린리더 조합에서 낭독되지 않는다(리뷰 M-4).
  * 그래서 영역 두 개(polite·assertive)를 토스트가 없을 때도 비워 둔 채 띄워 놓고, 토스트는 그 안에
  * 자식으로 들어간다. 세로로 쌓이므로 두 개가 동시에 떠도 겹치지 않는다(todo R10 + R13).
+ *
+ * 뷰포트는 `OVERLAY_ALWAYS_LIVE_ATTR` 를 달아 **모달이 배경을 `inert` 로 덮을 때 비켜 간다**.
+ * 달지 않으면 대화상자가 떠 있는 동안 토스트가 AX 트리에서 사라지고 `[되돌리기]` 에 포커스가
+ * 가지 않는다(리뷰 Major 2 실측) — 카테고리 삭제 되돌리기(category R15)가 바로 그 경로다.
  */
 export function ToastViewport({ toasts, onClose, className }: ToastViewportProps) {
   if (typeof document === 'undefined') return null;
@@ -58,6 +64,7 @@ export function ToastViewport({ toasts, onClose, className }: ToastViewportProps
 
   return createPortal(
     <div
+      {...{ [OVERLAY_ALWAYS_LIVE_ATTR]: '' }}
       className={cn(
         'pointer-events-none fixed inset-x-0 bottom-[var(--space-6)] z-[var(--z-toast)]',
         'flex flex-col items-center gap-[var(--space-2)] px-[var(--space-4)]',

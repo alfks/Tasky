@@ -5,6 +5,7 @@ import type { ReactNode, RefObject } from 'react';
 
 import { createPortal } from 'react-dom';
 
+import { applyOverlayEnterRule } from '@/components/ui/overlay-rules';
 import { isTopOverlayLayer, pushOverlayLayer } from '@/components/ui/overlay-stack';
 import type { OverlayLayer } from '@/components/ui/overlay-stack';
 
@@ -25,9 +26,9 @@ type PopoverProps = {
   /** Esc·바깥 클릭으로 닫으려 할 때. */
   onClose: () => void;
   /**
-   * 위치 기준이 되는 요소(보통 여는 버튼). 닫힐 때 포커스도 여기로 돌아가고,
-   * 열려 있는 동안 `aria-haspopup`·`aria-expanded`·`aria-controls` 가 이 요소에 붙는다.
-   * 앵커 쪽에서 같은 속성을 직접 쓰지 않는다(두 벌이 되면 어긋난다).
+   * 위치 기준이 되는 요소(보통 여는 버튼). 닫힐 때 포커스도 여기로 돌아간다.
+   * `aria-haspopup`·`aria-expanded` 는 **열려 있든 닫혀 있든** 이 요소에 붙고(`aria-controls`
+   * 만 열렸을 때), 앵커 쪽에서 같은 속성을 직접 쓰지 않는다(두 벌이 되면 어긋난다).
    */
   anchorRef: RefObject<HTMLElement | null>;
   /**
@@ -50,7 +51,14 @@ type PopoverProps = {
   className?: string;
 };
 
-/** 앵커에 붙는 비모달 오버레이. Esc·바깥 클릭으로 닫고, 닫히면 앵커로 포커스를 돌려준다(app-shell R7). */
+/**
+ * 앵커에 붙는 비모달 오버레이. Esc·바깥 클릭으로 닫고, 닫히면 앵커로 포커스를 돌려준다(app-shell R7).
+ *
+ * **항상 마운트하고 `open` 만 토글한다.** `{open ? <Popover …/> : null}` 처럼 조건부로 마운트하면
+ * 닫혀 있는 동안 앵커에 `aria-haspopup`·`aria-expanded` 가 붙지 않아, 스크린리더는 그 버튼이
+ * 무엇을 여는지 모른 채 "버튼"으로만 읽는다(리뷰 M-4 가 그대로 재발하는 경로다).
+ * 닫혀 있으면 패널을 렌더하지 않으므로 항상 마운트해도 DOM 비용은 없다.
+ */
 export function Popover({
   open,
   onClose,
@@ -66,8 +74,12 @@ export function Popover({
   const panelRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+  // traps=false: 팝오버는 비모달이라 스스로 가두지 않는다. 대신 아래에 모달이 있으면 그 모달이
+  // 이 패널까지 순환 집합에 넣어 함께 가둔다(Dialog 의 trapTab, app-shell R14).
   const layerRef = useRef<OverlayLayer>({
     contains: (node) => panelRef.current?.contains(node) ?? false,
+    traps: false,
+    element: () => panelRef.current,
   });
 
   // 콜백은 렌더마다 새 값일 수 있어 효과 의존성에 넣지 않는다(넣으면 리스너가 매 렌더 재설치된다).
@@ -113,6 +125,15 @@ export function Popover({
     const popLayer = pushOverlayLayer(layer);
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Enter 규칙(app-shell R14)은 팝오버 안의 <form> 에도 걸린다 — 날짜 선택 팝오버(date-strip.md)나
+      // 인라인 편집 폼이 한글 확정 Enter 한 번에 암묵 제출되면 안 된다. 범위는 이 패널 안뿐이다.
+      if (e.key === 'Enter') {
+        const target = e.target;
+        if (target instanceof Node && panelRef.current?.contains(target) === true) {
+          applyOverlayEnterRule(e);
+        }
+        return;
+      }
       if (e.key !== 'Escape' || isImeKey(e)) return;
       // 맨 위 레이어만 Esc 를 소비한다 — 대화상자 안의 팝오버는 자기만 닫고 대화상자는 남긴다.
       if (!isTopOverlayLayer(layer)) return;

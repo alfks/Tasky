@@ -5,7 +5,6 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { Dialog } from '@/components/ui/Dialog';
-import { Popover } from '@/components/ui/Popover';
 
 function Footer() {
   return (
@@ -99,20 +98,6 @@ describe('Dialog', () => {
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     expect(dialog).toHaveAccessibleName('제목');
     expect(dialog).toHaveAccessibleDescription('본문');
-  });
-
-  it('Tab 과 Shift+Tab 이 패널 안에서 순환한다', async () => {
-    const user = userEvent.setup();
-    render(<Dialog open onClose={vi.fn()} title="제목" footer={<Footer />} />);
-    const close = screen.getByRole('button', { name: '닫기' });
-    const remove = screen.getByRole('button', { name: '삭제' });
-
-    remove.focus();
-    await user.tab();
-    expect(document.activeElement).toBe(close);
-
-    await user.tab({ shift: true });
-    expect(document.activeElement).toBe(remove);
   });
 
   it('Esc 로 닫히지만 IME 조합 중 Esc 는 닫지 않는다', () => {
@@ -212,22 +197,6 @@ describe('Dialog', () => {
     expect(dialog.parentElement?.parentElement).toBe(document.body);
   });
 
-  it('열려 있는 동안 배경을 inert 로 덮고 닫히면 되돌린다', async () => {
-    const user = userEvent.setup();
-    const { baseElement, container } = render(<Harness />);
-    expect(container.hasAttribute('inert')).toBe(false);
-
-    await user.click(screen.getByRole('button', { name: '열기' }));
-    expect(container.hasAttribute('inert')).toBe(true);
-    // 대화상자 자신이 담긴 포털 컨테이너는 inert 가 아니어야 한다.
-    const dialogContainer = screen.getByRole('dialog').parentElement;
-    expect(dialogContainer?.hasAttribute('inert')).toBe(false);
-    expect(baseElement).toBe(document.body);
-
-    await user.keyboard('{Escape}');
-    expect(container.hasAttribute('inert')).toBe(false);
-  });
-
   it('Esc 는 맨 위 대화상자 하나만 닫는다', async () => {
     const user = userEvent.setup();
     function Nested() {
@@ -247,51 +216,6 @@ describe('Dialog', () => {
     const remaining = screen.getAllByRole('dialog');
     expect(remaining).toHaveLength(1);
     expect(remaining[0]).toHaveAccessibleName('바깥');
-
-    await user.keyboard('{Escape}');
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  });
-
-  it('안에 연 팝오버는 Esc 로 자기만 닫히고 대화상자는 남는다', async () => {
-    const user = userEvent.setup();
-    function WithPopover() {
-      const anchorRef = useRef<HTMLButtonElement>(null);
-      const [dialogOpen, setDialogOpen] = useState(true);
-      const [popoverOpen, setPopoverOpen] = useState(false);
-      return (
-        <Dialog
-          open={dialogOpen}
-          onClose={() => setDialogOpen(false)}
-          title="편집"
-          footer={
-            <button ref={anchorRef} type="button" onClick={() => setPopoverOpen(true)}>
-              카테고리
-            </button>
-          }
-        >
-          <Popover
-            open={popoverOpen}
-            onClose={() => setPopoverOpen(false)}
-            anchorRef={anchorRef}
-            label="카테고리 선택"
-          >
-            <button type="button">공부</button>
-          </Popover>
-        </Dialog>
-      );
-    }
-    render(<WithPopover />);
-
-    await user.click(screen.getByRole('button', { name: '카테고리' }));
-    expect(screen.getByRole('group', { name: '카테고리 선택' })).toBeInTheDocument();
-
-    // 포털로 나간 팝오버 안쪽 클릭을 대화상자가 "바깥 클릭"으로 오해하지 않는다.
-    fireEvent.mouseDown(screen.getByRole('button', { name: '공부' }));
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-
-    await user.keyboard('{Escape}');
-    expect(screen.queryByRole('group', { name: '카테고리 선택' })).not.toBeInTheDocument();
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
 
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

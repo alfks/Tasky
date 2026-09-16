@@ -6,9 +6,11 @@ import type { ReactNode, RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
 import { IconButton } from '@/components/ui/IconButton';
+import { OVERLAY_ALWAYS_LIVE_ATTR, applyOverlayEnterRule } from '@/components/ui/overlay-rules';
 import {
   isInsideLayerAbove,
   isTopOverlayLayer,
+  overlayLayersAbove,
   pushOverlayLayer,
 } from '@/components/ui/overlay-stack';
 import type { OverlayLayer } from '@/components/ui/overlay-stack';
@@ -50,15 +52,92 @@ function focusablesIn(root: HTMLElement | null): HTMLElement[] {
 /**
  * 모달이 열린 동안 배경을 보조기술에서 걷어낸다. `aria-modal` 만으로는 부족하다 — 지원이 조합마다
  * 들쭉날쭉하고 브라우저 페이지 내 검색·가상 커서는 막지 못한다(리뷰 M-6). 되돌리는 함수를 준다.
+ *
+ * 두 가지는 덮지 않는다.
+ * 1. `OVERLAY_ALWAYS_LIVE_ATTR` 를 단 형제 = 토스트 뷰포트. 덮으면 모달이 떠 있는 동안 토스트가
+ *    AX 트리에서 사라지고 `[되돌리기]` 에 포커스가 가지 않는다(app-shell §5·R8, 리뷰 Major 2).
+ * 2. **열린 뒤에 body 에 붙는 형제.** 스냅샷만 덮으므로 나중에 마운트되는 포털은 대상이 아닌데,
+ *    그게 맞다 — 나중에 붙는 것은 이 모달보다 **위** 레이어(팝오버 패널·중첩 대화상자)이고
+ *    토스트 뷰포트는 마운트 시점과 무관하게 1번 규칙으로 살아남는다.
+ * 이미 `inert` 인 형제는 건드리지도 기록하지도 않으므로, 중첩 대화상자의 안쪽을 닫아도 바깥
+ * 대화상자가 걸어 둔 `inert` 는 남는다.
  */
 function makeBackgroundInert(container: HTMLElement | null): () => void {
   if (container === null) return () => {};
   const marked = Array.from(container.ownerDocument.body.children).filter(
     (el): el is HTMLElement =>
-      el instanceof HTMLElement && el !== container && !el.hasAttribute('inert'),
+      el instanceof HTMLElement &&
+      el !== container &&
+      !el.hasAttribute(OVERLAY_ALWAYS_LIVE_ATTR) &&
+      !el.hasAttribute('inert'),
   );
   marked.forEach((el) => el.setAttribute('inert', ''));
   return () => marked.forEach((el) => el.removeAttribute('inert'));
+}
+
+/**
+ * Tab 을 오버레이 안에 가둔다(app-shell R14).
+ *
+ * 위 레이어가 **스스로 가두면**(중첩 대화상자) 그쪽에 맡기고 물러난다. 하지만 위에 있는 것이
+ * 가두지 않는 레이어(팝오버)뿐이라면 여기서 물러나는 순간 **아무도 가두지 않는다** — 실제로
+ * 모달 안에서 팝오버를 열고 Tab 6회를 누르면 포커스가 `body` 로 떨어졌다(리뷰 Major 1). 그래서
+ * 그런 레이어들은 순환 집합에 **합쳐서** 여기서 함께 가둔다.
+ */
+function trapTab(e: KeyboardEvent, layer: OverlayLayer, panel: HTMLElement | null): void {
+  const above = overlayLayersAbove(layer);
+  if (above.some((other) => other.traps === true)) return;
+  const roots = [panel, ...above.map((other) => other.element?.() ?? null)];
+  const items = roots.flatMap(focusablesIn);
+  if (items.length === 0) {
+    e.preventDefault();
+    panel?.focus();
+    return;
+  }
+  const active = document.activeElement;
+  const edge = e.shiftKey ? items[0] : items[items.length - 1];
+  const inside = active instanceof Node && roots.some((root) => root?.contains(active) === true);
+  if (!inside || active === edge) {
+    e.preventDefault();
+    (e.shiftKey ? items[items.length - 1] : items[0]).focus();
+  }
+}
+
+/** 오버레이가 캡처 단계에서 받는 키. Enter(R14) · Esc(맨 위 레이어만) · Tab(트랩) 셋만 다룬다. */
+function handleDialogKey(
+  e: KeyboardEvent,
+  layer: OverlayLayer,
+  panel: HTMLElement | null,
+  onClose: () => void,
+): void {
+  if (e.key === 'Enter') {
+    // 위 레이어(팝오버 등)는 자기 패널 안의 Enter 를 스스로 본다.
+    const target = e.target;
+    if (target instanceof Node && panel?.contains(target) === true) applyOverlayEnterRule(e);
+    return;
+  }
+  if (e.key === 'Escape') {
+    // 맨 위 레이어만 Esc 를 소비한다 — 안에 열린 팝오버가 있으면 그것부터 닫힌다.
+    if (isImeKey(e) || !isTopOverlayLayer(layer)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onClose();
+    return;
+  }
+  if (e.key === 'Tab') trapTab(e, layer, panel);
+}
+
+/** 포털로 body 에 나간 위 레이어(팝오버 패널) 안쪽 클릭은 "바깥"이 아니다. */
+function isOutsideClick(e: MouseEvent, layer: OverlayLayer, panel: HTMLElement | null): boolean {
+  const target = e.target;
+  if (!(target instanceof Node)) return false;
+  if (panel?.contains(target) === true) return false;
+  return !isInsideLayerAbove(layer, target);
+}
+
+/** 닫힐 때 — 열었던 요소가 살아 있으면 그리로, 사라졌을 때만 호출자에게 대체 대상을 묻는다(R14). */
+function restoreFocus(previous: HTMLElement | null, fallback?: () => HTMLElement | null): void {
+  const next = previous?.isConnected === true ? previous : (fallback?.() ?? null);
+  next?.focus();
 }
 
 type DialogProps = {
@@ -116,6 +195,8 @@ export function Dialog({
   // 레이어 신원은 컴포넌트 인스턴스마다 하나로 고정한다(스택이 동일성으로 비교한다).
   const layerRef = useRef<OverlayLayer>({
     contains: (node) => containerRef.current?.contains(node) ?? false,
+    traps: true,
+    element: () => panelRef.current,
   });
 
   // 콜백·ref prop 은 렌더마다 새 값일 수 있다. 아래 효과의 의존성에 넣으면 열려 있는 동안 트랩이
@@ -139,62 +220,10 @@ export function Dialog({
     const bodyOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target;
-      const inPanel = target instanceof Node && (panelRef.current?.contains(target) ?? false);
-
-      // Enter 규칙(app-shell R14). 위 레이어(팝오버 등)가 있으면 그쪽 몫이므로 패널 안에서만 본다.
-      if (e.key === 'Enter' && inPanel) {
-        if (isImeKey(e)) {
-          // 한글 조합을 확정하는 Enter. 여기서 끊지 않으면 폼 암묵 제출이 파괴 버튼을 누른다.
-          e.preventDefault();
-          e.stopPropagation();
-          return;
-        }
-        // 포커스가 버튼·링크에 있으면 "그 버튼만" 실행 — 기본 동작을 그대로 둔다.
-        if (target instanceof HTMLButtonElement || target instanceof HTMLAnchorElement) return;
-        // 여러 줄 입력의 Enter 는 줄바꿈이다.
-        if (target instanceof HTMLTextAreaElement) return;
-        // 나머지(텍스트 입력 등)의 Enter 는 전부 막는다. 폼 암묵 제출도 이 기본 동작을 타고 온다.
-        e.preventDefault();
-        return;
-      }
-
-      if (e.key === 'Escape') {
-        if (isImeKey(e)) return;
-        // 맨 위 레이어만 Esc 를 소비한다 — 안에 열린 팝오버가 있으면 그것부터 닫힌다.
-        if (!isTopOverlayLayer(layer)) return;
-        e.preventDefault();
-        e.stopPropagation();
-        latestRef.current.onClose();
-        return;
-      }
-
-      if (e.key !== 'Tab') return;
-      // 위 레이어가 떠 있는 동안에는 그 레이어가 탭을 다룬다(트랩이 포커스를 빼앗지 않게).
-      if (!isTopOverlayLayer(layer)) return;
-      const items = focusablesIn(panelRef.current);
-      if (items.length === 0) {
-        e.preventDefault();
-        panelRef.current?.focus();
-        return;
-      }
-      const active = document.activeElement;
-      const edge = e.shiftKey ? items[0] : items[items.length - 1];
-      const inside = active instanceof Node && (panelRef.current?.contains(active) ?? false);
-      if (!inside || active === edge) {
-        e.preventDefault();
-        (e.shiftKey ? items[items.length - 1] : items[0]).focus();
-      }
-    };
-
+    const handleKeyDown = (e: KeyboardEvent) =>
+      handleDialogKey(e, layer, panelRef.current, latestRef.current.onClose);
     const handleMouseDown = (e: MouseEvent) => {
-      const target = e.target;
-      if (!(target instanceof Node)) return;
-      if (panelRef.current?.contains(target) === true) return;
-      // 포털로 body 에 나간 위 레이어(팝오버 패널) 안쪽 클릭은 "바깥"이 아니다.
-      if (isInsideLayerAbove(layer, target)) return;
-      latestRef.current.onClose();
+      if (isOutsideClick(e, layer, panelRef.current)) latestRef.current.onClose();
     };
 
     document.addEventListener('keydown', handleKeyDown, true);
@@ -205,11 +234,7 @@ export function Dialog({
       restoreInert();
       popLayer();
       document.body.style.overflow = bodyOverflow;
-      const previous = openerRef.current;
-      // 열었던 요소가 살아 있으면 그리로. 사라졌을 때만 호출자에게 대체 대상을 묻는다(R14).
-      const next =
-        previous?.isConnected === true ? previous : (latestRef.current.returnFocus?.() ?? null);
-      next?.focus();
+      restoreFocus(openerRef.current, latestRef.current.returnFocus);
     };
   }, [open]);
 

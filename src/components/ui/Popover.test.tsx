@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { createEvent, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -170,5 +170,73 @@ describe('Popover', () => {
     expect(screen.queryByRole('group', { name: '설정' })).not.toBeInTheDocument();
     expect(document.activeElement).not.toBe(document.body);
     expect(document.activeElement).toBe(screen.getByRole('button', { name: '다음 행' }));
+  });
+
+  // app-shell R14 의 Enter 규칙은 Dialog 전용이 아니다. 팝오버 안의 <form> 도 한글 확정 Enter 한 번에
+  // 암묵 제출돼서는 안 된다 — 실제 Chromium 에서 그대로 관통했다(리뷰 X1·X2).
+  it('안에 든 폼이 Enter 로 암묵 제출되지 않는다(조합 중이든 아니든)', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn((e: { preventDefault: () => void }) => e.preventDefault());
+    function WithForm() {
+      const anchorRef = useRef<HTMLButtonElement>(null);
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button ref={anchorRef} type="button" onClick={() => setOpen(true)}>
+            이름 바꾸기
+          </button>
+          <Popover open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} label="이름">
+            <form onSubmit={onSubmit}>
+              <input aria-label="새 이름" />
+              {/* type 을 생략한 버튼은 submit 이다 — 암묵 제출이 이 버튼을 누른다. */}
+              <button>확인</button>
+            </form>
+          </Popover>
+        </>
+      );
+    }
+    render(<WithForm />);
+    await user.click(screen.getByRole('button', { name: '이름 바꾸기' }));
+    const input = screen.getByLabelText('새 이름');
+    input.focus();
+
+    for (const init of [{ isComposing: true }, { keyCode: 229 }, {}]) {
+      const event = createEvent.keyDown(input, { key: 'Enter', ...init });
+      fireEvent(input, event);
+      expect(event.defaultPrevented).toBe(true);
+    }
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    // 버튼 위의 Enter 는 그 버튼만 실행한다(기본 동작 유지).
+    const confirm = screen.getByRole('button', { name: '확인' });
+    confirm.focus();
+    const onButton = createEvent.keyDown(confirm, { key: 'Enter' });
+    fireEvent(confirm, onButton);
+    expect(onButton.defaultPrevented).toBe(false);
+  });
+
+  // 항상 마운트하고 open 만 토글하는 것이 계약이다. `{open ? <Popover/> : null}` 로 쓰면 닫힌 동안
+  // 앵커에 아무 ARIA 도 없어 M-4(앵커가 무엇을 여는지 모름)가 그대로 재발한다.
+  it('닫혀 있어도 앵커에 ARIA 가 붙는다 — 조건부 마운트가 필요 없다', () => {
+    function AlwaysMounted() {
+      const anchorRef = useRef<HTMLButtonElement>(null);
+      return (
+        <>
+          <button ref={anchorRef} type="button">
+            더 보기
+          </button>
+          <Popover open={false} onClose={vi.fn()} anchorRef={anchorRef} hasPopup="menu">
+            <Menu label="행 메뉴" items={[{ id: 'del', label: '삭제', onSelect: vi.fn() }]} />
+          </Popover>
+        </>
+      );
+    }
+    render(<AlwaysMounted />);
+    const anchor = screen.getByRole('button', { name: '더 보기' });
+
+    expect(anchor).toHaveAttribute('aria-haspopup', 'menu');
+    expect(anchor).toHaveAttribute('aria-expanded', 'false');
+    // 닫혀 있으면 패널은 렌더하지 않는다 — 항상 마운트해도 DOM 비용이 없다.
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 });

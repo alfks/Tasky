@@ -13,6 +13,14 @@
 export type OverlayLayer = {
   /** 이 레이어가 그린 DOM 이 이 노드를 품고 있는지(포털된 패널 포함). */
   contains: (node: Node) => boolean;
+  /**
+   * 이 레이어가 **스스로 포커스를 가두는가**(모달 대화상자 true, 팝오버 false).
+   * 아래 레이어는 이 값을 보고 "내가 물러나도 누군가 가두는가"를 판단한다 — 아무도 가두지 않는
+   * 구간이 생기면 Tab 한 번에 포커스가 `body` 로 떨어진다(app-shell R14, 리뷰 F2).
+   */
+  traps?: boolean;
+  /** 이 레이어가 그린 루트 요소. 아래 레이어가 순환 집합을 넓힐 때 쓴다. */
+  element?: () => HTMLElement | null;
 };
 
 const stack: OverlayLayer[] = [];
@@ -31,14 +39,19 @@ export function isTopOverlayLayer(layer: OverlayLayer): boolean {
   return stack.length > 0 && stack[stack.length - 1] === layer;
 }
 
+/** 이 레이어보다 **위**에 쌓인 레이어들(아래 → 위 순서). 스택에 없으면 빈 배열. */
+export function overlayLayersAbove(layer: OverlayLayer): readonly OverlayLayer[] {
+  const index = stack.indexOf(layer);
+  if (index === -1) return [];
+  return stack.slice(index + 1);
+}
+
 /**
  * 이 레이어보다 **위**에 있는 레이어가 그 노드를 품고 있는지.
  * 포털로 body 에 나간 팝오버 안을 클릭한 것을 대화상자가 "바깥 클릭"으로 오해하지 않게 한다.
  */
 export function isInsideLayerAbove(layer: OverlayLayer, node: Node): boolean {
-  const index = stack.indexOf(layer);
-  if (index === -1) return false;
-  return stack.slice(index + 1).some((above) => above.contains(node));
+  return overlayLayersAbove(layer).some((above) => above.contains(node));
 }
 
 /** 테스트용 — 열린 레이어 수. */
