@@ -48,8 +48,18 @@ type CategoryRemoveDialogProps = {
  * 카테고리 삭제 대화상자 + 되돌리기 토스트 (category §2-C, R10~R16).
  *
  * **토스트 뷰포트가 이 컴포넌트에 함께 있는 이유**: 되돌리기 토스트는 대화상자가 닫힌 **뒤에** 뜬다.
- * 대화상자 안에 두면 같이 사라진다. 뷰포트는 `data-overlay-always-live` 를 달고 있어 모달이 배경을
- * `inert` 로 덮어도 [되돌리기] 에 Tab 으로 닿는다(overlay-rules).
+ * 대화상자 안에 두면 같이 사라진다.
+ *
+ * 뷰포트의 `data-overlay-always-live` 가 보장하는 것은 **`inert` 면제까지** 다(overlay-rules).
+ * 즉 다른 모달이 배경을 덮는 동안에도 토스트는 AX 트리에 남고 마우스로 누를 수 있다. 그러나
+ * **Tab 으로는 닿지 않는다** — `Dialog.trapTab` 의 순환 집합은 `[panel, ...위 레이어]` 뿐이라
+ * 토스트 뷰포트가 들어가지 않기 때문이다. Chromium 실측(이 트리, 토스트가 뜬 채 두 번째 삭제
+ * 대화상자를 열고 Tab 16회): 순환은 `옮길 카테고리 → 취소 → 삭제 → 닫기` 안에서만 돌고 도달 0,
+ * 뷰포트는 `inert` 없이 살아 있으며 히트테스트는 통과한다. `Esc` 로 모달을 닫으면 토스트가 남고
+ * 그때부터 Tab 두 번에 [되돌리기] 에 닿는다.
+ *
+ * 키보드만 쓰는 사용자에게 이 창을 열어 주려면 `trapTab` 의 순환 집합에 뷰포트를 넣어야 하는데,
+ * 그 코드는 공용 프리미티브(`components/ui/Dialog.tsx`)라 이 티켓의 소유가 아니다 — 별도 티켓.
  *
  * N/M 을 세는 동안(`counts === null`)에는 아무것도 열지 않는다 — M 을 모르면 축약(R11)인지 3선택지인지
  * 정할 수 없고, 열어 두었다가 모양이 바뀌면 초기 포커스가 엉뚱한 곳에 남는다. 세기에 실패하면 훅이
@@ -84,7 +94,15 @@ type PromptProps = {
   returnFocus?: () => HTMLElement | null;
 };
 
-/** 대상마다 새로 마운트된다(`key`) — 폼 초기값을 effect 로 다시 넣지 않기 위해서다. */
+/**
+ * 대상마다 새로 마운트된다 — 폼 초기값을 effect 로 다시 넣지 않기 위해서다.
+ *
+ * 실제로 마운트를 보장하는 것은 위의 `counts === null` 이다: 대상이 바뀌면 개수를 다시 세는 동안
+ * `counts` 가 `null` 이 되어 이 컴포넌트가 한 번 내려간다. `key={target.id}` 는 그 위에 덧댄 것이라,
+ * 지워도 지금 화면은 달라지지 않는다(변이로 확인 — 테스트가 죽지 않는다). 그래도 남기는 이유는
+ * "세는 동안 뼈대를 먼저 연다" 로 바꾸는 순간 `key` 가 유일한 방어가 되기 때문이다. 폼이 남으면
+ * 지우려던 카테고리 A 에 쓰던 새 이름이 B 의 대화상자에 그대로 떠 있다.
+ */
 function RemovalPrompt({ category, counts, controller, returnFocus }: PromptProps) {
   const targets = useActiveCategories().filter((other) => other.id !== category.id);
   const setStatus = useCategoryStore((state) => state.setStatus);

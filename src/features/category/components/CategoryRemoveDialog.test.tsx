@@ -31,7 +31,9 @@ import { CategoryRemoveDialog } from '@/features/category/components/CategoryRem
 import { useCategoryRemoval } from '@/features/category/hooks/useCategoryRemoval';
 import { indexCategories } from '@/features/category/store/category-state';
 import { useCategoryStore } from '@/features/category/store/category-store';
-import { makeCategory } from '@/test/fixtures/category';
+import { useTodoStore } from '@/features/todo';
+import { makeCategories, makeCategory } from '@/test/fixtures/category';
+import { FIXTURE_DATE } from '@/test/fixtures/deps';
 import { makeTodo } from '@/test/fixtures/todo';
 
 const [CORAL, PEACH, ORANGE, YELLOW] = PALETTE;
@@ -91,6 +93,9 @@ function seed(categories: readonly Category[], todos = 할일): void {
 
 beforeEach(() => {
   seed([공부, 운동, 독서, 쉼]);
+  // 되돌리기 뒤 목록 재조회(`refreshTodos`)를 볼 수 있게 날짜를 올려 둔다 — 날짜가 `null` 이면
+  // 재조회 자체가 일어나지 않아 그 배선이 있으나 없으나 같아진다.
+  useTodoStore.setState({ byId: {}, date: FIXTURE_DATE, status: 'ready', error: null });
 });
 
 afterEach(() => {
@@ -110,11 +115,29 @@ function Harness({ category = 공부 }: { category?: Category }) {
   );
 }
 
+/** 대상을 바꿔 가며 열 수 있는 하네스 — `key={target.id}` 로 폼이 새로 마운트되는지 본다. */
+function TwoTargets() {
+  const controller = useCategoryRemoval();
+  return (
+    <>
+      <button type="button" onClick={() => controller.requestRemove(공부)}>
+        공부 삭제
+      </button>
+      <button type="button" onClick={() => controller.requestRemove(운동)}>
+        운동 삭제
+      </button>
+      <CategoryRemoveDialog controller={controller} />
+    </>
+  );
+}
+
 /** 대기 중인 저장(마이크로태스크 + 타이머)을 전부 흘려보낸다. "실행되지 않았다" 를 단언하기 전에 반드시 부른다. */
-async function flush(): Promise<void> {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
+async function flush(rounds = 1): Promise<void> {
+  for (let i = 0; i < rounds; i += 1) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
 }
 
 /** 대화상자를 연다(개수를 세는 비동기가 끝날 때까지 기다린다). */
@@ -127,6 +150,23 @@ async function open(category?: Category): Promise<ReturnType<typeof userEvent.se
 }
 
 const dialog = (): HTMLElement => screen.getByRole('alertdialog');
+
+/** `dataset.write` 호출 횟수만 센다(막지 않는다). "쓰기가 아예 안 나갔다" 를 단언할 때 쓴다. */
+function countWrites(): () => number {
+  const repositories = createMemoryRepositories(tables);
+  let count = 0;
+  setRepositories({
+    ...repositories,
+    dataset: {
+      ...repositories.dataset,
+      write: (writes) => {
+        count += 1;
+        return repositories.dataset.write(writes);
+      },
+    },
+  } satisfies Repositories);
+  return () => count;
+}
 
 /** 저장소의 로우 그대로(툼스톤 포함). */
 function todoRow(id: string) {
@@ -499,5 +539,124 @@ describe('키보드만으로 (§5·app-shell R14)', () => {
 
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
     expect(tables.categories.rows.get(공부.id)?.deletedAt).toBeDefined();
+  });
+});
+
+describe('연타·중복 실행 방지 (R13)', () => {
+  // 3선택지 화면의 [삭제] 는 `loading` 으로 비활성이 되지만, **축약(R11)** 은 공용 `ConfirmDialog`
+  // 라 [삭제] 가 끝까지 눌린다 — 저장이 끝나기 전 두 번째 실행을 막는 것은 `confirm()` 의
+  // `removing` 가드 하나뿐이다.
+  //
+  // 세는 자리를 `dataset.write` 가 아니라 **스토어 액션**으로 잡은 이유: 두 번째 실행은 쓰기 큐에서
+  // 기다렸다가 이미 지워진 카테고리로 계획을 세우므로 write 가 비어 흡수된다(실측 — 저장소 수준에서는
+  // 1회로 똑같이 보인다). 막아야 하는 것은 "두 번째 파괴적 실행을 **시작하는 것**" 이고, 그 경계가
+  // 여기다. 계획이 비지 않는 순간(예: 큐 순서가 바뀌거나 계획이 멱등이 아니게 되는 순간) 같은 삭제가
+  // 두 번 저장된다.
+  it('축약 화면에서 [삭제] 를 두 번 눌러도 삭제 실행은 한 번만 시작된다', async () => {
+    seed([공부, 운동], [할일[1], 할일[3]]);
+    const calls: unknown[] = [];
+    let release = (): void => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const real = useCategoryStore.getState().removeCategory;
+    useCategoryStore.setState({
+      removeCategory: async (input) => {
+        calls.push(input);
+        await gate;
+        return real(input);
+      },
+    });
+
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: '삭제 열기' }));
+    await screen.findByRole('alertdialog');
+
+    const remove = within(dialog()).getByRole('button', { name: '삭제' });
+    fireEvent.click(remove);
+    await flush();
+    // 저장이 아직 끝나지 않았는데도 버튼은 그대로 눌린다 — 여기서 가드가 유일한 방어다.
+    expect(remove).toBeEnabled();
+    fireEvent.click(remove);
+    await flush(3);
+
+    expect(calls).toHaveLength(1);
+
+    release();
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    await flush(3);
+    expect(calls).toHaveLength(1);
+  });
+});
+
+describe('되돌리기 뒤 목록 재조회 (R15)', () => {
+  // 카테고리 스토어는 투두를 모른다 — 되돌려 놓은 투두가 화면에 다시 나타나려면 보고 있는 날짜를
+  // 다시 읽어야 한다. 이 배선이 빠지면 "되돌렸는데 목록은 그대로" 가 된다(저장소만 복구된다).
+  it('되돌리면 보고 있는 날짜의 투두가 메모리로 돌아온다', async () => {
+    const user = await open();
+    await user.click(screen.getByRole('radio', { name: '함께 삭제' }));
+    await user.click(screen.getByRole('button', { name: '삭제' }));
+    const undo = await screen.findByRole('button', { name: '되돌리기' });
+
+    // 삭제 직후: 지워진 미완료 3건이 메모리에서 내려가 있다.
+    await waitFor(() => {
+      expect(useTodoStore.getState().byId[할일[0].id]).toBeUndefined();
+    });
+
+    await user.click(undo);
+
+    await waitFor(() => {
+      expect(useTodoStore.getState().byId[할일[0].id]).toBeDefined();
+    });
+    expect(useTodoStore.getState().byId[할일[2].id]).toBeDefined();
+    expect(useTodoStore.getState().byId[할일[4].id]).toBeDefined();
+  });
+});
+
+describe('빈틈 메우기 — 리뷰가 생존 변이로 짚은 자리', () => {
+  it('② 즉석 생성도 50개 상한을 지킨다 (R12 → R6)', async () => {
+    // 활성 50개를 채운 상태에서 그 중 하나를 지우며 ②를 고르면, 만들 자리가 없다.
+    // (모집단은 **삭제 시점의 전량** 이라 지우는 카테고리 자신도 아직 세어진다.)
+    const many = makeCategories(50, (index) => ({ name: `그룹${index + 1}` }));
+    seed(many, [makeTodo({ seq: 1, categoryId: many[0].id, order: 0, done: false })]);
+    const user = await open(many[0]);
+    // 도메인도 같은 문구를 던지므로 **문구만으로는** 화면 검사의 유무가 갈리지 않는다.
+    // 갈리는 것은 "저장을 시도했는가" 다 — 화면에서 걸리면 쓰기가 한 번도 나가지 않는다.
+    const writes = countWrites();
+
+    await user.click(screen.getByRole('radio', { name: '새 카테고리를 만들어 옮기기' }));
+    await user.type(screen.getByLabelText('이름'), '한 개 더');
+    await user.click(screen.getByRole('button', { name: '삭제' }));
+
+    expect(within(dialog()).getByRole('alert')).toHaveTextContent(
+      '카테고리는 50개까지 만들 수 있어요',
+    );
+    await flush(3);
+    expect(writes()).toBe(0);
+    // 도메인도 같은 문구를 던지지만 그 길로 가면 실행이 시작돼 스토어에 실패가 남는다.
+    // 화면이 먼저 걸렀다면 실행 자체가 없었으므로 스토어는 깨끗하다.
+    expect(useCategoryStore.getState().error).toBeNull();
+    expect(tables.categories.rows.get(many[0].id)?.deletedAt).toBeUndefined();
+  });
+
+  it('삭제 대상을 바꿔 다시 열면 ② 의 이름·색이 남아 있지 않다', async () => {
+    const user = userEvent.setup();
+    render(<TwoTargets />);
+
+    await user.click(screen.getByRole('button', { name: '공부 삭제' }));
+    await screen.findByRole('alertdialog');
+    await user.click(screen.getByRole('radio', { name: '새 카테고리를 만들어 옮기기' }));
+    await user.type(screen.getByLabelText('이름'), '남으면 안 되는 이름');
+    await user.click(screen.getByRole('radio', { name: '민트' }));
+    await user.click(within(dialog()).getByRole('button', { name: '취소' }));
+
+    await user.click(screen.getByRole('button', { name: '운동 삭제' }));
+    await screen.findByRole('alertdialog');
+
+    // 대상이 바뀌면 폼이 통째로 새로 마운트된다 — 기본값은 ①(옮기기)이라 이름 입력이 없다.
+    expect(screen.queryByLabelText('이름')).toBeNull();
+    await user.click(screen.getByRole('radio', { name: '새 카테고리를 만들어 옮기기' }));
+    expect(screen.getByLabelText('이름')).toHaveValue('');
+    expect(screen.getByRole('radio', { name: '민트' })).not.toBeChecked();
   });
 });

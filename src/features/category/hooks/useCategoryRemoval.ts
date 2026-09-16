@@ -1,5 +1,10 @@
 // 삭제 대화상자의 흐름 한 벌 (category R10~R16): 열기 → N/M 세기 → 실행 → 되돌리기 토스트.
 //
+// 흐름이 셋으로 갈린다(code-style §51 길이 상한이 계기였지만, 갈라 놓고 보니 관심사도 셋이다):
+//  · `useRemovalToast` — 토스트 **슬롯 하나**와 되돌리기 실행.
+//  · `useRemovalTarget` — 지금 무엇을 지우려는지와 그 N/M 세기(늦게 온 응답 버리기 포함).
+//  · `useCategoryRemoval` — 위 둘을 엮고 실행(저장 중 잠금·실패 문구)을 맡는다.
+//
 // **되돌리기 토스트를 슬롯 하나로 두는 이유**: 스토어의 `pendingRemoval` 도 슬롯 하나라, 삭제가
 // 연달아 일어나면 뒤의 메모가 앞의 것을 덮는다. 토스트를 배열로 쌓으면 화면에 남은 앞 토스트의
 // [되돌리기] 가 **뒤의 삭제**를 되감는다 — 눌린 것과 다른 일이 일어난다. 슬롯 하나면 화면의
@@ -57,17 +62,15 @@ function refreshTodos(): void {
   }
 }
 
-export function useCategoryRemoval(): CategoryRemovalController {
-  const [target, setTarget] = useState<Category | null>(null);
-  const [counts, setCounts] = useState<CategoryRemovalCounts | null>(null);
-  const [removing, setRemoving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+/** 토스트 슬롯 하나 + 되돌리기 실행. 실패하면 되돌리기 대신 오류 토스트가 그 자리를 차지한다. */
+function useRemovalToast(): {
+  toast: ToastItem | null;
+  show: (item: Omit<ToastItem, 'id'>) => void;
+  showUndo: (name: string) => void;
+  dismissToast: () => void;
+} {
   const [toast, setToast] = useState<ToastItem | null>(null);
-  // 늦게 도착한 이전 요청의 개수를 버린다(연속으로 다른 카테고리의 삭제를 열었을 때).
-  const requestSeq = useRef(0);
   const toastSeq = useRef(0);
-
-  const removeCategory = useCategoryStore((state) => state.removeCategory);
   const undoRemoval = useCategoryStore((state) => state.undoRemoval);
   const clearPendingRemoval = useCategoryStore((state) => state.clearPendingRemoval);
 
@@ -76,26 +79,47 @@ export function useCategoryRemoval(): CategoryRemovalController {
     setToast({ id: `category-removal-${toastSeq.current}`, ...item });
   };
 
-  const dismissToast = (): void => {
-    setToast(null);
-    clearPendingRemoval();
-  };
-
   const undo = async (): Promise<void> => {
     setToast(null);
     if (await undoRemoval()) {
+      // 저장소만 되돌려 놓으면 화면은 그대로다 — 보고 있는 날짜를 다시 읽어야 투두가 돌아온다.
       refreshTodos();
       return;
     }
     show({ message: useCategoryStore.getState().error ?? SAVE_FAILED, variant: 'error' });
   };
 
+  return {
+    toast,
+    show,
+    showUndo: (name) =>
+      show({
+        message: removalToastMessage(name),
+        action: { label: '되돌리기', onAction: () => void undo() },
+      }),
+    dismissToast: () => {
+      setToast(null);
+      clearPendingRemoval();
+    },
+  };
+}
+
+/** 지금 지우려는 대상과 그 N/M. 연속으로 다른 카테고리를 열었을 때 늦게 온 응답은 버린다. */
+function useRemovalTarget(onCountFailed: () => void): {
+  target: Category | null;
+  counts: CategoryRemovalCounts | null;
+  requestRemove: (category: Category) => void;
+  cancel: () => void;
+} {
+  const [target, setTarget] = useState<Category | null>(null);
+  const [counts, setCounts] = useState<CategoryRemovalCounts | null>(null);
+  const requestSeq = useRef(0);
+
   const requestRemove = (category: Category): void => {
     requestSeq.current += 1;
     const seq = requestSeq.current;
     setTarget(category);
     setCounts(null);
-    setError(null);
     void getRepositories()
       .todos.listByCategory(category.id)
       .then((todos) => {
@@ -112,18 +136,43 @@ export function useCategoryRemoval(): CategoryRemovalController {
           return;
         }
         setTarget(null);
-        show({ message: COUNT_FAILED, variant: 'error' });
+        onCountFailed();
       });
   };
 
-  const cancel = (): void => {
-    requestSeq.current += 1;
-    setTarget(null);
-    setCounts(null);
+  return {
+    target,
+    counts,
+    requestRemove,
+    // 취소도 요청 번호를 올린다. **지금은 도달하지 않는 방어선**이다 — 대화상자는 개수가 온 뒤에야
+    // 그려지므로 세는 중에는 누를 [취소] 가 없고, 취소한 시점에는 이미 응답이 도착해 있다. 그래도
+    // 남기는 이유: "세는 동안 뼈대를 먼저 연다" 로 바꾸는 순간 이 줄이 없으면 취소한 대화상자가
+    // 혼자 다시 열린다. 회귀 테스트는 없다(밟을 경로가 없어 만들 수 없다) — 지우려면 여기를 읽을 것.
+    cancel: () => {
+      requestSeq.current += 1;
+      setTarget(null);
+      setCounts(null);
+    },
+  };
+}
+
+export function useCategoryRemoval(): CategoryRemovalController {
+  const [removing, setRemoving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { toast, show, showUndo, dismissToast } = useRemovalToast();
+  const { target, counts, requestRemove, cancel } = useRemovalTarget(() => {
+    show({ message: COUNT_FAILED, variant: 'error' });
+  });
+  const removeCategory = useCategoryStore((state) => state.removeCategory);
+
+  const close = (): void => {
     setError(null);
+    cancel();
   };
 
   const confirm = async (choice: CategoryRemovalChoice): Promise<boolean> => {
+    // `removing` 은 저장이 끝날 때까지 두 번째 실행을 막는다. 3선택지 화면의 [삭제] 는 `loading`
+    // 으로 비활성이 되지만 축약(R11)은 공용 `ConfirmDialog` 라 버튼이 끝까지 눌린다.
     if (target === null || removing) {
       return false;
     }
@@ -134,12 +183,9 @@ export function useCategoryRemoval(): CategoryRemovalController {
       setError(useCategoryStore.getState().error ?? SAVE_FAILED);
       return false;
     }
-    cancel();
+    close();
     refreshTodos();
-    show({
-      message: removalToastMessage(target.name),
-      action: { label: '되돌리기', onAction: () => void undo() },
-    });
+    showUndo(target.name);
     return true;
   };
 
@@ -148,8 +194,11 @@ export function useCategoryRemoval(): CategoryRemovalController {
     counts,
     removing,
     error,
-    requestRemove,
-    cancel,
+    requestRemove: (category) => {
+      setError(null);
+      requestRemove(category);
+    },
+    cancel: close,
     confirm,
     toast,
     dismissToast,
