@@ -102,10 +102,19 @@ function PaletteRow({ option, id, selected, index, onRun, onHover, isMac }: Pale
       className={cn(
         'flex cursor-pointer items-center gap-[var(--space-2)] px-[var(--space-3)] py-[var(--space-2)]',
         'rounded-[var(--radius-md)] text-base text-text',
-        selected && 'bg-surface-2',
+        // **선택은 앱의 다른 곳과 같은 말로 한다**: 날짜 스트립의 선택 셀이 `bg-accent text-on-accent`
+        // 다(date-strip `DateCell`). 이전의 `bg-surface-2` 는 패널 배경 대비 1.11:1 이라 "선택" 이
+        // 아니라 "거의 안 보이는 회색" 이었고, 같은 회색을 쓰는 `<kbd>` 칩이 선택된 행에서만
+        // 배경에 녹아 사라졌다(대비 1.00:1 — 리뷰 Major 4 실측).
+        //
+        // 자손 규칙 둘: 선택 행 안의 모든 글자는 행의 전경색을 물려받고(`text-muted` 였던 메타·구분
+        // 기호 포함), `<kbd>` 는 전경색을 옅게 깐 배경으로 한 단계 눌러 강조색 위에서도 알약으로 읽힌다.
+        selected
+          ? 'bg-accent text-on-accent [&_kbd]:border-on-accent/35 [&_kbd]:bg-on-accent/15 [&_span]:text-inherit'
+          : 'hover:bg-surface-2',
       )}
     >
-      <PaletteRowBody option={option} />
+      <PaletteRowBody option={option} selected={selected} />
       {option.kind === 'command' && option.shortcutId !== undefined ? (
         <ShortcutKeys chords={chordsOf(option.shortcutId)} isMac={isMac} className="shrink-0" />
       ) : null}
@@ -113,20 +122,36 @@ function PaletteRow({ option, id, selected, index, onRun, onHover, isMac }: Pale
   );
 }
 
-/** 줄의 본문. 투두는 "제목 + 카테고리 · 날짜", 나머지는 한 줄 문구다. */
-function PaletteRowBody({ option }: { option: PaletteOption }) {
+/**
+ * 줄의 본문. 투두는 "제목 + 카테고리 · 날짜".
+ *
+ * **좁은 화면에서는 메타가 제목 아래로 내려간다.** 한 줄에 붙여 두면 400px 에서 메타가 자리를 먹어
+ * 제목이 절반쯤 잘렸다(리뷰 Minor). 예전 주석은 "제목 아래(좁은 화면) 또는 오른쪽" 이라고 적어 놓고
+ * 구현은 언제나 한 줄이었다 — 주석이 거짓이었고, 이제 구현이 그 말대로 한다.
+ */
+function PaletteRowBody({ option, selected }: { option: PaletteOption; selected: boolean }) {
   if (option.kind !== 'todo') {
     return <span className="min-w-0 flex-1 truncate">{option.label}</span>;
   }
   return (
     <span className="flex min-w-0 flex-1 items-baseline gap-[var(--space-2)]">
-      <span aria-hidden="true" className="shrink-0 text-muted">
+      <span aria-hidden="true" className={cn('shrink-0', !selected && 'text-muted')}>
         {option.todo.done ? '◉' : '○'}
       </span>
-      <span className={cn('min-w-0 truncate', option.todo.done && 'text-muted line-through')}>
-        {option.todo.title}
+      <span className="flex min-w-0 flex-1 flex-col gap-0 sm:flex-row sm:items-baseline sm:gap-[var(--space-2)]">
+        <span
+          className={cn(
+            'min-w-0 truncate',
+            option.todo.done && 'line-through',
+            option.todo.done && !selected && 'text-muted',
+          )}
+        >
+          {option.todo.title}
+        </span>
+        <span className={cn('shrink-0 truncate text-xs', !selected && 'text-muted')}>
+          {option.meta}
+        </span>
       </span>
-      <span className="shrink-0 text-xs text-muted">{option.meta}</span>
       {option.todo.done ? <span className="sr-only">완료됨</span> : null}
     </span>
   );

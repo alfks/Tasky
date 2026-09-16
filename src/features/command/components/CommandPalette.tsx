@@ -73,36 +73,67 @@ const SEARCH_LIMIT = 20;
 /** R10 의 디바운스. 스피너는 없다(§2). */
 const SEARCH_DEBOUNCE_MS = 80;
 
+/** 검색의 한 순간. `pending` 은 **지금 질의에 대한 답이 아직 없다**는 뜻이다. */
+type TodoSearchState = { todos: readonly Todo[]; pending: boolean };
+
 /**
  * 제목 부분 일치 검색(R9·R10). 실패하면 빈 배열 — 투두 섹션이 사라지고 명령만 남는다(§2 에러).
  *
+ * **답이 오기 전의 결과는 직전 것을 그대로 둔다**(stale-while-revalidate). 비워 버리면 80ms 디바운스 +
+ * 저장소 왕복 동안 화면이 "결과가 없어요" 로 갔다가 돌아온다 — 실측으로 106ms 에 그 문구가 떠서
+ * 약 150ms 동안 **자기 질의에 "없다"는 답**을 보여 줬고 패널 높이가 435 → 150 → 435px 로 두 번 튀었다
+ * (리뷰 Major 3). 글자를 더 친 질의의 결과는 대개 직전 결과의 부분집합이라, 남겨 두는 편이
+ * "보이는 것이 곧 실행되는 것" 을 깨지 않는다.
+ *
  * 질의가 바뀌면 이전 요청의 응답은 버린다. 버리지 않으면 느린 응답 하나가 나중 질의의 결과를 덮는다.
  */
-function useTodoSearch(query: string): readonly Todo[] {
-  const [todos, setTodos] = useState<readonly Todo[]>([]);
+function useTodoSearch(query: string): TodoSearchState {
+  const trimmed = query.trim();
+  const [state, setState] = useState<TodoSearchState>({ todos: [], pending: false });
   useEffect(() => {
-    const trimmed = query.trim();
     if (trimmed === '') {
-      setTodos([]);
+      setState({ todos: [], pending: false });
       return undefined;
     }
+    setState((previous) => ({ todos: previous.todos, pending: true }));
     let alive = true;
     const timer = setTimeout(() => {
       getRepositories()
         .todos.search(trimmed, SEARCH_LIMIT)
         .then((found) => {
-          if (alive) setTodos(found);
+          if (alive) setState({ todos: found, pending: false });
         })
         .catch(() => {
-          if (alive) setTodos([]);
+          if (alive) setState({ todos: [], pending: false });
         });
     }, SEARCH_DEBOUNCE_MS);
     return () => {
       alive = false;
       clearTimeout(timer);
     };
-  }, [query]);
-  return todos;
+  }, [trimmed]);
+  return state;
+}
+
+/**
+ * 여는 요소가 **명령의 결과로 사라졌을 때** 돌아갈 곳(R11 · `Dialog` 의 `returnFocus`).
+ *
+ * 등록된 명령 9개 중 날짜 이동 5개가 이 경로다: 주를 옮기면 스트립의 셀 7개가 통째로 갈리고,
+ * 셀이나 그 날짜의 투두 행에서 팔레트를 열었으면 돌아갈 요소가 없다. `Dialog` 는 그때
+ * `returnFocus` 를 묻고, 주지 않으면 포커스가 `<body>` 로 떨어진다(리뷰 Major 1 실측 4경로).
+ *
+ * **고르는 순서와 이유.**
+ * 1. 지금 선택된 날짜 칸. 날짜를 옮긴 직후라면 그 칸이 곧 "방금 일어난 일" 이고, 거기서 `Tab` 을
+ *    이으면 화면 순서대로 내려간다.
+ * 2. `<main>`. 랜드마크라 어떤 화면에도 있고 셸이 `tabIndex=-1` 을 달아 둔다.
+ *
+ * 남의 feature 의 마크업을 알고 있지만 **둘 다 공개 계약**이다 — `radio`/`aria-checked` 는
+ * radiogroup 이 지켜야 하는 ARIA 이고 `main` 은 HTML 랜드마크다. `data-flip-id` 같은 사적인
+ * 표식과 달리 바뀌면 접근성 자체가 깨지므로 조용히 어긋날 여지가 작다.
+ */
+function paletteReturnFocus(): HTMLElement | null {
+  const selectedDay = document.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]');
+  return selectedDay ?? document.querySelector<HTMLElement>('main');
 }
 
 export function CommandPalette() {
@@ -120,7 +151,7 @@ export function CommandPalette() {
 
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
-  const todos = useTodoSearch(query);
+  const { todos, pending } = useTodoSearch(query);
 
   const jumpDate = parseDateQuery(query, today);
   const dateJump: CommandOption | null =
@@ -153,6 +184,9 @@ export function CommandPalette() {
     // optionId 는 렌더마다 새 함수지만 baseId 가 같으면 같은 문자열을 만든다.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- baseId·safeIndex 가 실제 의존성이다.
   }, [baseId, safeIndex]);
+
+  // 응답 전에는 결과 수를 알리지 않는다 — "결과가 없어요" 를 먼저 읽어 버리면 화면과 같은 거짓말이다.
+  const liveText = pending && options.length === 0 ? '' : resultCountText(options.length);
 
   const runOption = (option: PaletteOption): void => {
     if (option.kind === 'todo') {
@@ -192,32 +226,40 @@ export function CommandPalette() {
       title={<span className="sr-only">명령 팔레트</span>}
       closeLabel="팔레트 닫기"
       initialFocusRef={inputRef}
+      returnFocus={paletteReturnFocus}
       className="mt-[var(--space-4)] mb-auto max-h-[75vh] max-w-[560px] overflow-y-hidden p-[var(--space-2)] sm:mt-[15vh]"
     >
-      <div className="flex flex-col">
-        <input
-          ref={inputRef}
-          type="text"
-          role="combobox"
-          aria-label="할 일 검색 또는 명령"
-          aria-expanded={options.length > 0}
-          aria-controls={listId}
-          aria-autocomplete="list"
-          aria-activedescendant={options.length > 0 ? optionId(safeIndex) : undefined}
-          placeholder="할 일 검색 또는 명령…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
-          className="w-full rounded-[var(--radius-md)] bg-surface-2 px-[var(--space-3)] py-[var(--space-2)] text-base text-text outline-none placeholder:text-muted focus-visible:outline-2 focus-visible:outline-focus"
-        />
+      <div className="-mt-[var(--control-hit-min)] flex flex-col">
+        {/*
+          `Dialog` 의 머리줄(✕)과 **같은 줄에** 입력칸을 올린다. 그냥 두면 ✕ 하나만 든 빈 띠가
+          53px 생겨서 첫눈에 들어오는 것이 검색창이 아니라 닫기 버튼이 된다(리뷰 Minor).
+          음수 여백과 오른쪽 안전 여백은 둘 다 `--control-hit-min`(= IconButton 크기)이라 토큰이
+          바뀌면 함께 움직인다. ✕ 자체를 없애는 것은 `Dialog` 수정이라 이 티켓의 owns 밖이다.
+        */}
+        <div className="flex items-center gap-[var(--space-2)] pr-[var(--control-hit-min)]">
+          <span aria-hidden="true" className="pl-[var(--space-2)] text-base text-muted">
+            🔍
+          </span>
+          <input
+            ref={inputRef}
+            type="text"
+            role="combobox"
+            aria-label="할 일 검색 또는 명령"
+            aria-expanded={options.length > 0}
+            aria-controls={listId}
+            aria-autocomplete="list"
+            aria-activedescendant={options.length > 0 ? optionId(safeIndex) : undefined}
+            placeholder="할 일 검색 또는 명령…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            className="min-w-0 flex-1 rounded-[var(--radius-md)] bg-surface-2 px-[var(--space-3)] py-[var(--space-2)] text-base text-text outline-none placeholder:text-muted focus-visible:outline-2 focus-visible:outline-focus"
+          />
+        </div>
         <p role="status" aria-live="polite" className="sr-only">
-          {resultCountText(options.length)}
+          {liveText}
         </p>
-        {options.length === 0 ? (
-          <p className="px-[var(--space-3)] py-[var(--space-4)] text-base text-muted">
-            결과가 없어요
-          </p>
-        ) : (
+        {options.length > 0 ? (
           <CommandPaletteList
             listId={listId}
             sections={sections}
@@ -227,7 +269,30 @@ export function CommandPalette() {
             onHover={setActiveIndex}
             isMac={isMacPlatform()}
           />
-        )}
+        ) : null}
+        {options.length === 0 && !pending ? (
+          // 라이브 영역이 같은 뜻을 이미 읽는다 — 여기까지 읽히면 낭독기가 두 번 말한다(리뷰 Minor).
+          <p
+            aria-hidden="true"
+            className="px-[var(--space-3)] py-[var(--space-4)] text-base text-muted"
+          >
+            결과가 없어요 — 다른 말로 찾아보거나 Esc 로 닫아요
+          </p>
+        ) : null}
+        {/*
+          빈 질의 첫 화면이 "팔레트로만 할 수 있는 일" 을 하나도 안 보여 준다는 지적(리뷰 Minor).
+          지금 등록된 명령은 전부 이미 보이는 UI·단축키의 중복이고, 팔레트의 고유 가치인 투두 검색과
+          날짜 질의는 **입력해야만** 나타난다. 그 한 줄을 여기서 알린다.
+          `aria-hidden` 인 이유: 키 조작은 이미 `?` 도움말과 combobox 역할이 알려 준다.
+        */}
+        <p
+          aria-hidden="true"
+          className="border-t border-border px-[var(--space-3)] pt-[var(--space-2)] text-xs text-muted"
+        >
+          {query.trim() === ''
+            ? '할 일 제목이나 날짜(9/18)를 입력해 찾아보세요'
+            : '↑↓ 이동 · Enter 실행 · Esc 닫기'}
+        </p>
       </div>
     </Dialog>
   );

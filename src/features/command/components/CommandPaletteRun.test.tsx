@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -65,5 +67,26 @@ describe('goToTodo (§2)', () => {
     await vi.advanceTimersByTimeAsync(2000);
     await expect(pending).resolves.toBeUndefined();
     expect(useDateStripStore.getState().selectedDate).toBe('2026-09-03');
+  });
+});
+
+describe('TODO_ROW_ATTR — 남의 feature 와의 DOM 계약', () => {
+  /**
+   * `@/features/todo` 배럴이 `FLIP_ATTR` 을 내보내지 않아 값을 복제했다(`CommandPaletteRun.tsx`).
+   * import 로 묶으면 `command → todo → command` 순환이라 **파일을 읽어서** 대조한다 —
+   * `src/test/tokens.test.ts` 가 `tokens.css` 를, 테마가 `index.html` 을 그렇게 대조하는 것과 같다.
+   *
+   * 이 가드가 없을 때 무슨 일이 났는지 리뷰어가 실측했다: `todo-focus.ts` 의 값을 바꿔도
+   * `vitest run src` 1794건이 전부 초록이었고, 팔레트의 투두 점프만 **조용히** 포커스를 잃는다.
+   * 배럴이 `FLIP_ATTR` 을 내보내면(T-34) 이 테스트와 복제 상수를 함께 지운다.
+   */
+  it('todo-focus.ts 의 FLIP_ATTR 과 같은 값이다', () => {
+    const source = readFileSync('src/features/todo/components/todo-focus.ts', 'utf-8');
+    const match = /export const FLIP_ATTR = '([^']+)'/.exec(source);
+    expect(
+      match,
+      'todo-focus.ts 에서 FLIP_ATTR 선언을 찾지 못했습니다 — 정규식을 고치세요',
+    ).not.toBeNull();
+    expect(TODO_ROW_ATTR).toBe(match?.[1]);
   });
 });
