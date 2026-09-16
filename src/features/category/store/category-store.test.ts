@@ -232,6 +232,38 @@ describe('순서 (R5)', () => {
   });
 });
 
+describe('동시 쓰기 직렬화 (R2·R5)', () => {
+  // `category-writes.ts` 의 쓰기 큐가 지키는 문장을 테스트로 옮긴다. 큐가 없으면 두 액션이 **같은
+  // 스냅샷**을 읽는다 — `await` 한 번 뒤에 `build()` 가 도는 구조라 두 번째 액션이 첫 번째의 결과를
+  // 보지 못한다. 현실 트리거: 추가 버튼 더블클릭, Enter 연타, 셸이 붙일 단축키 연타.
+  it('동시에 두 개를 만들어도 `order` 가 중복 발급되지 않는다 (R5)', async () => {
+    await seedThree();
+
+    await Promise.all([
+      state().createCategory({ name: '요리', color: CORAL.light }),
+      state().createCategory({ name: '청소', color: PEACH.light }),
+    ]);
+
+    expect(activeNames()).toEqual(['todo', '공부', '운동', '독서', '요리', '청소']);
+    // 직렬화가 없으면 둘 다 활성 최대 order 를 같은 값으로 읽어 [0,1,2,3,4,4] 가 된다.
+    expect(activeOrders()).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  it('같은 이름을 동시에 두 번 만들면 하나만 통과한다 (R2)', async () => {
+    await state().load();
+
+    const results = await Promise.all([
+      state().createCategory({ name: '요리', color: CORAL.light }),
+      state().createCategory({ name: '요리', color: PEACH.light }),
+    ]);
+
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(state().error).toBe('같은 이름이 이미 있어요');
+    expect(activeNames()).toEqual(['todo', '요리']);
+    await expect(getRepositories().categories.list()).resolves.toHaveLength(2);
+  });
+});
+
 describe('상태 전이 (R7·R9)', () => {
   it('종료하면 `closedAt` 이 남고 재개하면 사라진다', async () => {
     await seedThree();

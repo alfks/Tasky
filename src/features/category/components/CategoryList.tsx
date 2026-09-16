@@ -62,6 +62,9 @@ export function CategoryList({ onSelect, onRemove }: CategoryListProps) {
   };
 
   const empty = status === 'ready' && active.length === 0 && closed.length === 0;
+  // 적재 중에는 목록 자리도 추가 버튼도 내보내지 않는다(§2-D 는 로딩을 스켈레톤 3행으로만 규정한다).
+  // 아직 안 읽힌 목록 위에서 만들기를 열면 이름 유일성(R2)·개수 제한(R6)이 빈 모집단으로 돈다.
+  const loading = status === 'loading';
 
   return (
     <section aria-labelledby="category-list-heading" className="flex flex-col">
@@ -69,7 +72,7 @@ export function CategoryList({ onSelect, onRemove }: CategoryListProps) {
         카테고리
       </h2>
 
-      {status === 'loading' ? (
+      {loading ? (
         <div aria-busy="true" className="mt-[var(--space-2)] flex flex-col gap-[var(--space-2)]">
           <Skeleton className="h-[var(--control-height)]" />
           <Skeleton className="h-[var(--control-height)]" />
@@ -90,7 +93,7 @@ export function CategoryList({ onSelect, onRemove }: CategoryListProps) {
         </ul>
       )}
 
-      {empty ? (
+      {loading ? null : empty ? (
         <div className="flex flex-col items-start gap-[var(--space-2)] px-[var(--space-2)] py-[var(--space-3)]">
           <p className="text-base text-muted">아직 카테고리가 없어요</p>
           <Button ref={addRef} size="sm" onClick={openCreate}>

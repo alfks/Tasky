@@ -151,7 +151,10 @@ describe('한글 조합 중의 Enter (app-shell R14)', () => {
     expect(names()).toContain('독서');
   });
 
-  it('이모지 입력의 Enter 는 제출하지 않는다', async () => {
+  // 막는 주체는 이 컴포넌트가 아니라 `Dialog` 의 `applyOverlayEnterRule`(입력 위 Enter 의 기본 동작을
+  // 막고, 제출은 이름 입력의 `onKeyDown` 만 한다)이다. 단언하는 것은 그 기전이 아니라 §5 의 계약 —
+  // "이모지 입력에서 Enter 를 눌러도 만들어지지 않는다" — 이고, 바로 위 양성 대조와 같은 키다.
+  it('이모지 입력의 Enter 는 제출하지 않는다 (§5)', async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
     render(<CategoryFormDialog open mode={{ kind: 'create' }} onClose={onClose} />);
@@ -199,7 +202,9 @@ describe('수정', () => {
     expect(useCategoryStore.getState().byId[공부.id].status).toBe('active');
   });
 
-  it('종료된 카테고리는 재개 버튼을 준다 (R9)', async () => {
+  // 종료 카테고리를 `mode` 로 직접 넘긴다 — 사이드바의 종료 행 메뉴에는 §2-A 대로 "수정" 이 없어서
+  // 지금은 이 경로로만 열린다(§2-B 는 그래도 [재개] 를 규정한다). 셸이 수정 진입점을 붙일 때의 계약이다.
+  it('종료된 카테고리를 수정 모드로 열면 재개 버튼을 준다 (§2-B·R9)', async () => {
     const user = userEvent.setup();
     const closed = makeCategory({
       seq: 3,

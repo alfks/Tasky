@@ -80,15 +80,15 @@ export function CategoryFormDialog({ open, mode, onClose, returnFocus }: Categor
         <div className="flex items-end gap-[var(--space-3)]">
           <label className="flex w-[72px] shrink-0 flex-col gap-[var(--space-1)] text-sm text-muted">
             이모지
+            {/*
+              이모지 입력에는 Enter 핸들러를 두지 않는다 — 제출은 **이름 입력의 `onKeyDown` 만** 한다.
+              `Dialog` 의 `applyOverlayEnterRule` 이 입력 위의 Enter 기본 동작을 이미 막으므로
+              여기서 `preventDefault` 를 한 번 더 하면 아무것도 바꾸지 못하는 코드가 남는다
+              (테스트로 고정할 수 없는 코드는 두지 않는다). 규약은 category §5 "Enter 제출(이모지 입력 제외)".
+            */}
             <input
               value={form.emoji}
               onChange={(e) => form.setEmoji(e.target.value)}
-              // 이모지 입력의 Enter 는 제출이 아니다(category §5) — 조합·선택 중일 수 있다.
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                }
-              }}
               className="h-[var(--control-height)] w-full rounded-[var(--radius-md)] border border-border bg-surface px-[var(--space-2)] text-center text-base text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             />
           </label>
@@ -146,7 +146,15 @@ export function CategoryFormDialog({ open, mode, onClose, returnFocus }: Categor
   );
 }
 
-/** 수정 모드 하단 좌측: 활성이면 종료 두 갈래, 종료 상태면 재개 (R7·R9). */
+/**
+ * 수정 모드 하단 좌측: 활성이면 종료 두 갈래, 종료 상태면 재개 (§2-B "종료 상태면 [재개]", R7·R9).
+ *
+ * **종료 분기는 지금 사이드바에서 열리지 않는다**: 종료된 행의 `⋯` 는 §2-A 대로 재개 · 상태 바꾸기 ·
+ * 삭제만 주고 수정을 주지 않기 때문이다(그쪽이 한 번에 끝나 더 짧다). 그래도 분기를 남기는 이유는
+ * §2-B 가 수정 다이얼로그의 모습을 그렇게 규정했고, 셸(T-20)·팔레트가 카테고리 id 로 수정 다이얼로그를
+ * 여는 경로를 붙이면 종료 카테고리가 그대로 들어오기 때문이다. 아래 테스트도 그 진입 경로를 흉내 낸
+ * 것이지 사이드바에서 재현되는 시나리오가 아니다.
+ */
 function StatusButtons({
   status,
   categoryId,
