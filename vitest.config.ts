@@ -23,7 +23,13 @@ const config = defineConfig({
     exclude: ['**/*.slow.test.*', '**/__arch__/**', 'tests/**', 'node_modules/**', '.worktrees/**'],
     coverage: {
       provider: 'v8',
-      include: ['src/domain/**', 'src/repositories/**', 'src/lib/**'],
+      include: [
+        'src/domain/**/*.{ts,tsx}',
+        'src/repositories/**/*.{ts,tsx}',
+        'src/lib/**/*.{ts,tsx}',
+      ],
+      // 글롭에 확장자를 박지 않으면 디렉토리의 `AGENTS.md` 까지 소스로 넘어가 v8 이 파싱하려다
+      // PARSE_ERROR 를 뱉는다(수치·exit code 에는 영향이 없지만 로그를 더럽혀 진짜 오류를 묻는다).
       reporter: ['text-summary'],
     },
   },
