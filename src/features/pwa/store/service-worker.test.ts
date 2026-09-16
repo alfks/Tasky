@@ -4,7 +4,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { UpdateStage } from '@/features/pwa/store/pwa-state';
-import { watchServiceWorker, type ServiceWorkerEnv } from '@/features/pwa/store/service-worker';
+import {
+  SW_URL,
+  watchServiceWorker,
+  type ServiceWorkerEnv,
+} from '@/features/pwa/store/service-worker';
 
 class FakeWorker extends EventTarget {
   state: ServiceWorkerState = 'installing';
@@ -118,6 +122,38 @@ describe('업데이트 감지', () => {
     watcher.stop();
   });
 
+  it('첫 설치 중 워커가 대기로 가도 업데이트가 아니다 — active 가 아직 없다', async () => {
+    // controller 도 active 도 없는 첫 방문. serwist 의 skipWaiting:false 때문에 첫 설치도 잠깐
+    // `waiting` 을 거치는데, 여기서 토스트를 띄우면 **처음 온 사용자에게** 업데이트 알림이 뜬다.
+    container.registration.waiting = new FakeWorker();
+    const watcher = start();
+    await settled();
+    expect(stages).toEqual([]);
+    watcher.stop();
+  });
+
+  it('대기 중인 워커가 또 교체돼도 알림은 한 번만 올린다', async () => {
+    // 실브라우저 S2c: 토스트가 떠 있는 채로 또 배포되면 대기 워커만 최신으로 바뀐다.
+    alreadyControlled();
+    container.registration.waiting = new FakeWorker();
+    const watcher = start();
+    await settled();
+    expect(stages).toEqual(['waiting']);
+    container.registration.install().moveTo('installed');
+    expect(stages).toEqual(['waiting']);
+    watcher.stop();
+  });
+
+  it('등록 경로는 serwist 의 swDest 와 같은 /sw.js 다', async () => {
+    // 이 값이 어긋나면 등록이 404 로 조용히 실패해 오프라인·업데이트가 통째로 죽는다.
+    // `scripts/check-dist.mjs` 가 산출물에 `sw.js` 가 있는지를 보고, 여기서 요청 경로를 본다.
+    const watcher = start();
+    await settled();
+    expect(SW_URL).toBe('/sw.js');
+    expect(container.register).toHaveBeenCalledWith('/sw.js');
+    watcher.stop();
+  });
+
   it('등록이 실패해도 throw 하지 않는다(오프라인만 못 쓸 뿐이다)', async () => {
     container.register = vi.fn(() => Promise.reject(new Error('등록 실패')));
     const watcher = start();
@@ -144,6 +180,22 @@ describe('[새로고침] — 순서가 틀리면 옛 버전이 다시 뜬다', (
     expect(reload).not.toHaveBeenCalled();
     container.claim();
     expect(reload).toHaveBeenCalledTimes(1);
+    watcher.stop();
+  });
+
+  it('워커가 즉시 장악해도 리로드한다 — applying 표시가 postMessage 보다 먼저여야 한다', async () => {
+    // skipWaiting 응답이 빠르면 `controllerchange` 가 postMessage **도중 동기로** 들어온다.
+    // 그때 applying 이 아직 false 면 리로드 대신 'activated' 토스트로 새어 사용자가 한 번 더
+    // 눌러야 한다. 파일 머리말이 단언하는 순서를 실제로 강제하는 테스트다.
+    alreadyControlled();
+    const waiting = new FakeWorker();
+    waiting.postMessage = vi.fn(() => container.claim());
+    container.registration.waiting = waiting;
+    const watcher = start();
+    await settled();
+    watcher.apply();
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(stages).toEqual(['waiting']); // 'activated' 로 새지 않았다
     watcher.stop();
   });
 

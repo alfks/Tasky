@@ -3,10 +3,12 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { usePwaLifecycle } from '@/features/pwa/hooks/usePwaLifecycle';
+import { createServiceWorkerEnv, usePwaLifecycle } from '@/features/pwa/hooks/usePwaLifecycle';
 import { PWA_MEMORY_KEY } from '@/features/pwa/store/pwa-state';
 import { usePwaStore } from '@/features/pwa/store/pwa-store';
 import { useTodoStore } from '@/features/todo';
+
+import { pushOverlayLayer } from '@/components/ui/overlay-stack';
 
 const persist = vi.fn();
 const estimate = vi.fn();
@@ -69,6 +71,51 @@ describe('서비스워커 등록 (R5)', () => {
   });
 });
 
+describe('조용한 새로고침 가드 (R4)', () => {
+  /**
+   * 다른 탭이 업데이트를 적용했을 때 **이 탭을 묻지 않고 리로드해도 되는가**. 뒤집히면 사용자가
+   * 입력하던 화면이 말없이 날아간다.
+   *
+   * 실브라우저로는 칠 수 없는 분기다 — 헤드리스 Chromium 이 `visibilityState` 를 `hidden` 으로
+   * 만들지 못한다(`usePwaLifecycle.ts` 의 같은 주석에 시도한 수단이 전부 적혀 있다). 그래서
+   * **프로덕션이 실제로 넘기는 env** 를 그대로 받아 그 함수를 직접 부른다. 목으로 갈아 끼우면
+   * 이 가드는 한 번도 실행되지 않은 채 초록불이 된다.
+   */
+  function canReloadSilently(): boolean {
+    return createServiceWorkerEnv({} as unknown as ServiceWorkerContainer).canReloadSilently();
+  }
+
+  it('보고 있는 탭은 말없이 새로고침하지 않는다', () => {
+    visibility = 'visible';
+    expect(canReloadSilently()).toBe(false);
+  });
+
+  it('숨겨져 있고 열린 오버레이가 없을 때만 조용히 새로고침한다', () => {
+    visibility = 'hidden';
+    expect(canReloadSilently()).toBe(true);
+  });
+
+  it('숨겨져 있어도 편집 패널·대화상자가 열려 있으면 새로고침하지 않는다', () => {
+    visibility = 'hidden';
+    const pop = pushOverlayLayer({ contains: () => false });
+    try {
+      expect(canReloadSilently()).toBe(false);
+    } finally {
+      pop();
+    }
+  });
+
+  it('보이는 데다 오버레이까지 열려 있으면 당연히 안 된다', () => {
+    visibility = 'visible';
+    const pop = pushOverlayLayer({ contains: () => false });
+    try {
+      expect(canReloadSilently()).toBe(false);
+    } finally {
+      pop();
+    }
+  });
+});
+
 describe('용량 확인 (R7)', () => {
   it('앱 시작 시 1회 읽어 상태에 넣는다', async () => {
     renderHook(() => usePwaLifecycle());
@@ -92,6 +139,18 @@ describe('지속성 요청 (R6)', () => {
     act(() => {
       useTodoStore.setState({ status: 'loading', byId: {} });
       useTodoStore.setState({ status: 'ready', byId: { a: { id: 'a' } as never } });
+    });
+    await waitFor(() => expect(estimate).toHaveBeenCalled());
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it('ready 인 채 날짜만 바뀌는 전이는 저장이 아니다 — byId 참조가 그대로다', async () => {
+    renderHook(() => usePwaLifecycle());
+    act(() => {
+      useTodoStore.setState({ status: 'ready', date: '2026-09-16' });
+    });
+    act(() => {
+      useTodoStore.setState({ date: '2026-09-17' });
     });
     await waitFor(() => expect(estimate).toHaveBeenCalled());
     expect(persist).not.toHaveBeenCalled();
@@ -136,6 +195,15 @@ describe('지속성 요청 (R6)', () => {
     });
     expect(usePwaStore.getState().isStorageNoticeDismissed).toBe(true);
     expect(localStorage.getItem(PWA_MEMORY_KEY)).toContain('"noticeDismissed":true');
+  });
+
+  it('배너를 닫는다고 "물어봤다" 로 기록하지는 않는다', async () => {
+    // 닫기가 persistAsked 까지 켜 버리면, 아직 묻지 않은 기기에서 R6 요청이 통째로 건너뛰어진다.
+    const { result } = renderHook(() => usePwaLifecycle());
+    act(() => {
+      result.current.dismissStorageNotice();
+    });
+    expect(localStorage.getItem(PWA_MEMORY_KEY)).toContain('"persistAsked":false');
   });
 });
 

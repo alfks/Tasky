@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { PWA_MEMORY_KEY } from '@/features/pwa/store/pwa-state';
 import {
+  getStorageEnv,
   readEstimate,
   readMemory,
   requestPersistence,
@@ -83,5 +84,21 @@ describe('기기별 기억', () => {
     expect(() =>
       writeMemory(env(null, throwingStorage), { persistAsked: true, noticeDismissed: true }),
     ).not.toThrow();
+  });
+});
+
+describe('getStorageEnv', () => {
+  it('navigator.storage 가 undefined 면 manager 를 null 로 접는다', () => {
+    // 속성만 있고 값이 없는 환경. 여기서 그대로 통과시키면 readEstimate 가 마운트 중에 throw 한다.
+    Object.defineProperty(navigator, 'storage', { configurable: true, value: undefined });
+    expect(getStorageEnv().manager).toBeNull();
+    // 접혔으므로 그 값을 그대로 써도 앱이 멈추지 않는다.
+    return expect(readEstimate(getStorageEnv())).resolves.toBeNull();
+  });
+
+  it('있으면 그대로 돌려준다', () => {
+    const manager = { estimate: async () => ({ usage: 1, quota: 2 }) };
+    Object.defineProperty(navigator, 'storage', { configurable: true, value: manager });
+    expect(getStorageEnv().manager).toBe(manager);
   });
 });

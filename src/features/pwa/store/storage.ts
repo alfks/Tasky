@@ -25,7 +25,10 @@ export function getStorageEnv(): StorageEnv {
   let manager: StorageManager | null = null;
   let memory: Storage | null = null;
   try {
-    manager = typeof navigator !== 'undefined' && 'storage' in navigator ? navigator.storage : null;
+    // `'storage' in navigator` 만으로는 부족하다 — 속성은 있는데 값이 `undefined` 인 환경(주입한
+    // 목·구형 브라우저)에서 `manager === null` 검사가 빗나가 `readEstimate` 가 마운트 effect 안에서
+    // throw 하고, R6 지속성 요청과 R8 재조회 배선이 통째로 죽는다. 값으로 판정한다.
+    manager = typeof navigator !== 'undefined' ? (navigator.storage ?? null) : null;
   } catch {
     manager = null;
   }

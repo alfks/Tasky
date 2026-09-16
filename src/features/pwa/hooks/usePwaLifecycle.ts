@@ -10,6 +10,7 @@ import {
   getServiceWorkerContainer,
   isProductionRuntime,
   watchServiceWorker,
+  type ServiceWorkerEnv,
   type UpdateWatcher,
 } from '@/features/pwa/store/service-worker';
 import {
@@ -31,9 +32,29 @@ type Store = {
  * 이 탭을 **묻지 않고** 새로고침해도 되는가.
  * 화면에 보이지 않고(사용자가 보고 있지 않다) 열린 오버레이도 없을 때만 참이다 — 편집 패널이
  * 열린 채로 다른 탭이 업데이트를 적용했다고 입력 중인 내용을 날려 버리면 안 된다(R4 의 "미룬다").
+ *
+ * **이 분기는 실브라우저로 칠 수 없다.** 헤드리스 Chromium 은 `visibilityState` 를 `hidden` 으로
+ * 만들 수단이 없다 — `page.bringToFront()`·`window.open` 으로 연 탭·CDP
+ * `Page.setWebLifecycleState({state:'frozen'})`·`Emulation.setFocusEmulationEnabled(false)` 가
+ * 전부 `visible` 그대로였고 `Emulation.setPageVisibilityOverride` 는 프로토콜에 없다(리뷰 R2).
+ * 그래서 `usePwaLifecycle.test.tsx` 의 "조용한 새로고침 가드" 가 이 함수를 **직접** 부른다 —
+ * 조건을 뒤집거나 오버레이 검사를 빼면 거기서 죽는다.
  */
 function canReloadSilently(): boolean {
   return document.visibilityState === 'hidden' && overlayLayerCount() === 0;
+}
+
+/**
+ * `watchServiceWorker` 에 넘기는 환경. **프로덕션이 실제로 쓰는 그 객체**를 테스트도 그대로
+ * 받아 갈 수 있게 따로 뺐다 — 목으로 `canReloadSilently` 를 갈아 끼우면 위 가드가 한 번도
+ * 실행되지 않은 채 초록불이 된다(대칭 픽스처).
+ */
+export function createServiceWorkerEnv(container: ServiceWorkerContainer): ServiceWorkerEnv {
+  return {
+    container,
+    reload: () => window.location.reload(),
+    canReloadSilently,
+  };
 }
 
 /** 서비스워커 등록 + 업데이트 감시 (R4·R5). 개발 모드·미지원 브라우저에서는 아무것도 하지 않는다. */
@@ -41,13 +62,8 @@ function startServiceWorker(store: Store): UpdateWatcher | null {
   if (!isProductionRuntime()) return null;
   const container = getServiceWorkerContainer();
   if (container === null) return null;
-  return watchServiceWorker(
-    {
-      container,
-      reload: () => window.location.reload(),
-      canReloadSilently,
-    },
-    (stage) => store.getState().setUpdateStage(stage),
+  return watchServiceWorker(createServiceWorkerEnv(container), (stage) =>
+    store.getState().setUpdateStage(stage),
   );
 }
 
@@ -133,7 +149,10 @@ export function usePwaLifecycle(): PwaLifecycle {
 
   const dismissStorageNotice = useCallback(() => {
     usePwaStore.getState().dismissStorageNotice();
-    writeMemory(getStorageEnv(), { persistAsked: true, noticeDismissed: true });
+    // 닫기는 "배너를 닫았다" 만 기록한다. 물었는지 여부는 요청 경로가 따로 남긴다 —
+    // 여기서 `persistAsked: true` 를 덮어쓰면 아직 묻지 않은 기기에서 R6 요청이 통째로 건너뛰어진다.
+    const env = getStorageEnv();
+    writeMemory(env, { ...readMemory(env), noticeDismissed: true });
   }, []);
 
   return { applyUpdate, dismissStorageNotice };

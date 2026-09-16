@@ -16,8 +16,11 @@ import { ToastViewport } from '@/components/ui/Toast';
 import type { ToastItem } from '@/components/ui/Toast';
 
 /**
- * 업데이트 토스트는 자동으로 닫히지 않는다(R4 §2). `Toast` 의 타이머는 끌 수 없으므로 32비트
- * 상한(약 24.8일)을 넣는다 — `Infinity` 를 주면 `setTimeout` 이 0 으로 접혀 **즉시** 닫힌다.
+ * 업데이트 토스트는 사실상 자동으로 닫히지 않아야 한다(R4 §2). `Toast` 의 타이머는 끌 수 없어
+ * 32비트 상한을 넣는다 — **정확히는 안 닫히는 게 아니라 약 24.8일 뒤에 닫힌다.** 한 세션 안에서는
+ * 도달하지 않는 값이라 지금은 충분하다(실브라우저에서 8초·30초 유지 확인).
+ * `Infinity` 를 주면 `setTimeout` 이 비유한값을 0 으로 클램프해 **즉시** 닫히므로 쓸 수 없다.
+ * 근본 해법은 `Toast` 의 `durationMs?: number | null` 이고, ✕ 버튼과 함께 T-07 후속 티켓이 맡는다.
  */
 const NO_AUTO_DISMISS_MS = 2_147_483_647;
 
@@ -55,7 +58,9 @@ export function PwaNotices({ onBackup }: PwaNoticesProps) {
   return (
     <>
       {/* 영역에 이름을 붙인다: 토스트 뷰포트도 assertive 영역(role="alert")을 하나 갖고 있어
-          이름이 없으면 둘을 구분할 수 없다. 스크린리더에서도 어느 알림인지가 먼저 들린다. */}
+          이름이 없으면 개발 도구·AX 트리에서 둘을 구분할 수 없다. 다만 **낭독을 이 이름에 기대지
+          않는다** — 라이브 영역의 `aria-label` 은 스크린리더 조합에 따라 읽히지 않는다. 사용자가
+          들어야 하는 내용은 전부 배너 본문에 있다. */}
       <div
         role="alert"
         aria-live="assertive"
