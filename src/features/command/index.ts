@@ -9,6 +9,10 @@
 // - 팔레트(T-19)는 `registerCommands` 로 명령을 등록하고, `<CommandLayer palette={…}/>` 로 화면을 끼운다.
 //   검색·정렬·최근 실행은 `matchCommands`·`orderByRecent`·`recentCommandIds` 가 이미 있다.
 export { CommandLayer } from '@/features/command/components/CommandLayer';
+// 셸이 `<CommandLayer palette={<CommandPalette/>}/>` 로 끼운다(T-19). 이 한 줄이 없으면 `Mod+K` 는
+// 상태만 바꾸고 아무것도 그리지 않는다 — 배선은 셸 파일이라 T-19 의 `owns` 밖이다(핸드오프 참조).
+export { CommandPalette } from '@/features/command/components/CommandPalette';
+export { PALETTE_COMMANDS } from '@/features/command/components/CommandPaletteCommands';
 export { ShortcutHelpDialog } from '@/features/command/components/ShortcutHelpDialog';
 export { ShortcutKeys } from '@/features/command/components/ShortcutKeys';
 
