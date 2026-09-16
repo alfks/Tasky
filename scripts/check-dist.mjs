@@ -186,8 +186,16 @@ if (doc !== '') {
 // --- 진입 청크 예산(ADR-0013 규칙 7 · 재검토 트리거) ---------------------------
 // Dexie 지연 로드는 "진입 청크에서 뺀다"가 전부다. 정적 import 로 되돌리면 lint·tsc·테스트·빌드가
 // 전부 초록인 채로 진입 청크가 77 kB → 110 kB 로 는다(리뷰 변이 M16). 그래서 여기서 바이트로 잰다.
-const ENTRY_BUDGET = 100_000; // gzip. 현재 77,429 B — Dexie 가 돌아오면 110 kB 대라 바로 걸린다.
-const NETWORK_BUDGET = 120_000; // gzip. ADR-0013 재검토 트리거를 그대로 자동화한 값.
+// 예산 숫자는 **워터마크**이지 보장이 아니다. Dexie 가 진입 청크로 돌아오는 것을 실제로 막는 건
+// 아래 198행의 `IDBKeyRange|Dexie` 검사이고, 그건 바이트 수와 무관하게 문다(음성 대조로 확인).
+// 그래서 기능이 화면에 붙으면서 숫자를 올려도 그 보장은 그대로 산다.
+//
+// 120 kB 는 SPA 전환 직후(진입 77 kB) 잡은 재검토 트리거였고, T-15·T-17 이 마운트되면서
+// 그 트리거가 예정대로 울렸다 — 카테고리 + CommandLayer 만으로 120,955 B.
+// **여기서 한 번 의도적으로 올린다.** 기준은 `docs/TECH_PLAN.md` §8 의 제품 계약 "첫 로드 JS ≤ 200KB" 다.
+// 다시 올려야 할 상황이 오면 그건 또 한 번의 명시적 결정이어야 한다 — 조용히 늘리지 마라.
+const ENTRY_BUDGET = 150_000; // gzip. 진입 청크만. 지연 청크는 NETWORK_BUDGET 이 본다.
+const NETWORK_BUDGET = 200_000; // gzip. = TECH_PLAN §8 제품 계약값.
 const entryUrl = /<script[^>]+type="module"[^>]+src="([^"]+)"/.exec(doc)?.[1];
 const entryFile = distFiles.find((f) => f.url === entryUrl);
 if (doc !== '' && entryFile === undefined) {
