@@ -94,6 +94,16 @@ describe('표시 문구 (§5)', () => {
   it('낭독 문구는 링 문구보다 짧은 "달성률 n%"다', () => {
     expect(completionAnnouncement(summarizeCompletion(todosFor('c', 2, 3, 1)))).toBe('달성률 67%');
   });
+
+  it('100%일 때만 축하 문구를 함께 낭독한다 (R4)', () => {
+    // 99% 와 100% 가 갈려야 한다 — 축하를 상수로 붙이거나 떼면 둘 중 하나가 깨진다.
+    expect(completionAnnouncement(summarizeCompletion(todosFor('c', 3, 3, 1)))).toBe(
+      '달성률 100%, 다 했어요',
+    );
+    expect(completionAnnouncement(summarizeCompletion(todosFor('c', 2, 3, 1)))).not.toContain(
+      '다 했어요',
+    );
+  });
 });
 
 /** 활성 2 + 종료 1 + 삭제 1 + 이름조차 없는 것 1. 비율이 전부 달라 순서가 섞이면 드러난다. */

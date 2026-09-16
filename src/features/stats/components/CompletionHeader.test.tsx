@@ -88,10 +88,14 @@ describe('CompletionHeader', () => {
     unmount();
 
     seed([1, 2, 3].map((seq) => makeTodo({ seq, categoryId: STUDY.id, done: true })));
-    render(<CompletionHeader />);
+    const { container } = render(<CompletionHeader />);
 
     expect(screen.getByText('다 했어요 🎉')).toBeInTheDocument();
     expect(screen.getByText('100%')).toBeInTheDocument();
+    // 보상 문구는 정보다 — 화면의 `<span>` 은 라이브 영역 밖이라 여기까지 와야 스크린리더에 닿는다.
+    expect(container.querySelector('[aria-live="polite"]')).toHaveTextContent(
+      '달성률 100%, 다 했어요',
+    );
   });
 
   it('반올림이 100이 되어도 전부 완료가 아니면 99%다 (R2)', () => {
