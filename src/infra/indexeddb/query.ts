@@ -16,12 +16,18 @@
 //   - allRows(table)                 툼스톤 **포함** 전량(id asc)        readAll
 //   - clear(table)                   물리 삭제                           restore
 //   - bulkPut(table, entities)       청크 쓰기                           restore
-//   - transaction(run)               네 테이블 rw 트랜잭션               write · restore
+//   - store.transaction(run)         네 테이블 rw 트랜잭션               write · restore
+//
+// 테이블 넷과 그 트랜잭션은 `Store` 하나로 묶여 있고 레포지토리 구현이 **주입받는다**(아래 `Store` 주석).
 import { type EntityTable, type IDType, type IndexableType } from 'dexie';
 
+import type { Category } from '@/domain/category/category';
+import type { FocusSession } from '@/domain/focus/focus-session';
 import { isTombstone, type Meta, type Persistable } from '@/domain/meta';
+import type { Settings } from '@/domain/theme/settings';
+import type { Todo } from '@/domain/todo/todo';
 
-import { db, STORES } from '@/infra/indexeddb/db';
+import { createDb, db, STORES, type TaskyDb } from '@/infra/indexeddb/db';
 
 /** 런타임 흔적 없는 브랜드 키. LiveTable 은 실제로는 Dexie 테이블 그 자체다. */
 declare const LIVE_TABLE: unique symbol;
@@ -55,13 +61,59 @@ const raw = <T extends Meta>(table: LiveTable<T, string>): EntityTable<T, 'id'> 
 
 const live = <T extends Meta>(rows: T[]): T[] => rows.filter((row) => !isTombstone(row));
 
-/** 레포지토리 구현이 쓰는 테이블 묶음. db.ts 를 직접 import 하지 않게 하는 통로다. */
-export const tables = {
-  todos: brand(db.todos, STORES.todos),
-  categories: brand(db.categories, STORES.categories),
-  settings: brand(db.settings, STORES.settings),
-  focusSessions: brand(db.focusSessions, STORES.focusSessions),
+/**
+ * **한 Dexie 인스턴스**에 묶인 테이블 넷과 그 인스턴스의 트랜잭션. 레포지토리 구현이 db.ts 를 직접
+ * import 하지 않게 하는 통로이자, 구현이 어느 DB 위에서 도는지를 정하는 유일한 손잡이다.
+ *
+ * 묶음을 인자로 주고받는 이유는 **테스트 격리**다. IndexedDB 는 브라우저당 이름 하나에 DB 하나라,
+ * 예전 계약 테스트처럼 "네 테이블을 비우고 같은 인스턴스를 다시 내주는" 방식은 격리가 아니라 전역
+ * 리셋이었다(먼저 만든 묶음의 데이터까지 지워진다 — memory 구현과 의미가 갈리는 자리였다).
+ * 지금은 `createStore()` 가 이름이 다른 DB 를 열어 주므로 두 묶음이 서로를 건드리지 않는다.
+ */
+export type Store = {
+  readonly todos: LiveTable<Todo, IndexOf<typeof STORES.todos>>;
+  readonly categories: LiveTable<Category, IndexOf<typeof STORES.categories>>;
+  readonly settings: LiveTable<Settings, IndexOf<typeof STORES.settings>>;
+  readonly focusSessions: LiveTable<FocusSession, IndexOf<typeof STORES.focusSessions>>;
+  /**
+   * **`DatasetRepository.write`·`restore` 전용** — 이 묶음의 네 테이블을 묶는 rw 트랜잭션. 중간에 던지면
+   * Dexie 가 전부 롤백한다(ADR-0009 결정 2 가 이 둘에만 허용한 예외).
+   *
+   * **`run` 안에서는 이 파일의 헬퍼만 부른다.** Dexie 트랜잭션은 존(zone)으로 동작해서, 콜백 안에서
+   * Dexie 가 아닌 프라미스를 `await` 하면 그 사이에 트랜잭션이 커밋돼 버린다(조용한 실패). 값 검증처럼
+   * Dexie 와 무관한 일은 트랜잭션에 **들어가기 전에** 끝낸다.
+   */
+  readonly transaction: (run: () => Promise<void>) => Promise<void>;
 };
+
+function storeOf(database: TaskyDb): Store {
+  return {
+    todos: brand(database.todos, STORES.todos),
+    categories: brand(database.categories, STORES.categories),
+    settings: brand(database.settings, STORES.settings),
+    focusSessions: brand(database.focusSessions, STORES.focusSessions),
+    transaction: (run) =>
+      database.transaction(
+        'rw',
+        database.todos,
+        database.categories,
+        database.settings,
+        database.focusSessions,
+        run,
+      ),
+  };
+}
+
+/** 앱이 쓰는 묶음(DB 이름 `tasky`). `createIndexedDbRepositories()` 의 기본값이다. */
+export const tables: Store = storeOf(db);
+
+/**
+ * **이름이 다른 DB** 위의 별도 묶음. 테스트가 서로 격리된 저장소를 여러 개 만들 때만 쓴다 —
+ * 앱 코드는 위 `tables` 하나만 쓴다(DB 가 여러 개 생기면 백업·마이그레이션의 단일 소스가 깨진다).
+ */
+export function createStore(name: string): Store {
+  return storeOf(createDb(name));
+}
 
 /** `id` 오름차순 비교. 두 구현(memory `allRows`)이 같은 순서를 내도록 여기서도 명시적으로 정렬한다. */
 const byId = (a: Meta, b: Meta): number => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
@@ -149,16 +201,4 @@ export async function bulkPut<T extends Meta>(
   entities: readonly Persistable<T>[],
 ): Promise<void> {
   await raw(table).bulkPut([...entities]);
-}
-
-/**
- * **`DatasetRepository.write`·`restore` 전용** — 네 테이블을 묶는 rw 트랜잭션. 중간에 던지면 Dexie 가
- * 전부 롤백한다(ADR-0009 결정 2 가 이 둘에만 허용한 예외).
- *
- * **`run` 안에서는 이 파일의 헬퍼만 부른다.** Dexie 트랜잭션은 존(zone)으로 동작해서, 콜백 안에서
- * Dexie 가 아닌 프라미스를 `await` 하면 그 사이에 트랜잭션이 커밋돼 버린다(조용한 실패). 값 검증처럼
- * Dexie 와 무관한 일은 트랜잭션에 **들어가기 전에** 끝낸다 — 그래야 검증 실패에서도 부분 쓰기가 0 이다.
- */
-export function transaction(run: () => Promise<void>): Promise<void> {
-  return db.transaction('rw', db.todos, db.categories, db.settings, db.focusSessions, run);
 }

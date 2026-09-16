@@ -3,7 +3,7 @@ import { activeCategories, sortCategoriesForDisplay } from '@/domain/category/ca
 
 import type { CategoryRepository } from '@/repositories/category-repository';
 
-import { liveOne, liveOrderBy, put, tables } from '@/infra/indexeddb/query';
+import { liveOne, liveOrderBy, put, type Store } from '@/infra/indexeddb/query';
 
 /**
  * Dexie 테이블 위에서 동작하는 카테고리 저장소.
@@ -12,8 +12,8 @@ import { liveOne, liveOrderBy, put, tables } from '@/infra/indexeddb/query';
  * `order` 가 같은 로우의 순서는 IndexedDB 인덱스가 기본 키(`id`) 오름차순으로 끊으므로
  * memory 의 `liveOrderBy`(명시적 id 타이브레이크)와 같은 결과가 된다.
  */
-export function createIndexedDbCategoryRepository(): CategoryRepository {
-  const table = tables.categories;
+export function createIndexedDbCategoryRepository(store: Store): CategoryRepository {
+  const table = store.categories;
   return {
     getById: (id) => liveOne(table, id),
     list: async (options) => {

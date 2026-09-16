@@ -1,5 +1,9 @@
-// Dexie 스키마·버전의 단일 소스 (docs/ARCHITECTURE.md §4). 이 파일을 import 할 수 있는 파일은
-// src/infra/indexeddb/query.ts 하나뿐이다(린트) — 툼스톤 필터와 쓰기 경로가 그 한 곳에 있다(ADR-0007).
+// Dexie 스키마·버전의 단일 소스 (docs/ARCHITECTURE.md §4). 이 파일을 import 할 수 있는 **비테스트** 파일은
+// src/infra/indexeddb/query.ts 하나뿐이다 — 툼스톤 필터와 쓰기 경로가 그 한 곳에 있다(ADR-0007).
+// 강제 범위를 정확히 적는다: `eslint.config.mjs` 의 `no-restricted-imports` 가 막는 것은 비테스트 파일뿐이고,
+// 테스트 파일(`**/*.test.ts`)은 같은 파일의 테스트 블록이 그 규칙을 리셋하므로 **예외다**(`migration.test.ts`
+// 가 스키마 문자열을 직접 읽어 v1→v2 를 재현하는 것이 그 예외를 쓰는 유일한 자리다 — 실측: 그 파일에
+// eslint 를 돌리면 rc=0).
 import Dexie, { type EntityTable } from 'dexie';
 
 import type { Category } from '@/domain/category/category';
@@ -42,16 +46,30 @@ export const STORES = {
 /** 현재 스키마 버전. 백업 파일의 `schemaVersion` 은 이 상수에서 파생한다(TECH_PLAN §5 규칙 6). */
 export const DB_VERSION = 2;
 
-// Dexie 는 스토어 선언 후 테이블을 동적으로 붙이므로 타입 단언이 필요하다(역직렬화 경계 — code-style.md §9).
-export const db = new Dexie('tasky') as TaskyDb;
+/** 앱 DB 이름. 브라우저에는 이 이름의 DB 하나만 생긴다. */
+export const DB_NAME = 'tasky';
 
-db.version(1).stores(STORES_V1);
 /**
- * v2 (ADR-0011): `focusSessions` 테이블 신설 + `categories` 에 `status`·`updatedAt` 인덱스 추가.
+ * 같은 스키마를 가진 Dexie 인스턴스를 **이름을 받아** 만든다.
  *
+ * 앱은 아래 `db`(= `DB_NAME`) 하나만 쓴다. 이름을 인자로 받는 이유는 테스트 격리다: IndexedDB 는
+ * 이름이 다르면 완전히 별개의 DB 이므로, 계약 테스트가 묶음마다 다른 이름으로 열면 "한 묶음을 건드려도
+ * 다른 묶음은 안 변한다" 가 memory 구현과 같은 의미로 성립한다(테이블 비우기로는 그게 안 된다 —
+ * 그건 격리가 아니라 전역 리셋이고, 먼저 만든 묶음의 데이터까지 지운다).
+ *
+ * `v2` (ADR-0011): `focusSessions` 테이블 신설 + `categories` 에 `status`·`updatedAt` 인덱스 추가.
  * `.upgrade(tx => …)` 를 달지 않는다: 두 변경 모두 **기존 로우의 값을 바꾸지 않는다**. 테이블 신설은
  * 빈 스토어를 만들 뿐이고, 인덱스 추가는 Dexie/IndexedDB 가 기존 로우를 자동으로 재색인한다
  * (`migration.test.ts` 가 v1 로 넣은 카테고리가 v2 의 `status` 인덱스로 조회되는지를 단언한다).
  * 값 변환이 필요한 다음 버전업은 규칙대로 `.upgrade()` 를 단다(TECH_PLAN §5 규칙 1·4).
  */
-db.version(DB_VERSION).stores(STORES);
+export function createDb(name: string): TaskyDb {
+  // Dexie 는 스토어 선언 후 테이블을 동적으로 붙이므로 타입 단언이 필요하다(역직렬화 경계 — code-style.md §9).
+  const database = new Dexie(name) as TaskyDb;
+  database.version(1).stores(STORES_V1);
+  database.version(DB_VERSION).stores(STORES);
+  return database;
+}
+
+/** 앱이 쓰는 인스턴스. 생성자는 `indexedDB` 를 건드리지 않는다(첫 조회·쓰기에서 연다 — providers.tsx 주석). */
+export const db = createDb(DB_NAME);

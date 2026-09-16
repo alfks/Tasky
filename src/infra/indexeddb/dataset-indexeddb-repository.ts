@@ -2,12 +2,14 @@
 // 물리 삭제(`restore`)를 한다 — 그 예외의 근거와 안전 조건은 ADR-0009 결정 2·4 다.
 //
 // 원자성은 Dexie 트랜잭션 롤백이 준다. 그 위에 memory 구현과 같은 2단계 구조(검증 → 적용)를 얹되,
-// **검증이 무엇을 벌어 주는지는 재어 보고 적는다**: 검증을 통째로 지워도 계약 55건이 전부 통과한다
-// (Dexie 가 `put(불량값)` 에서 던지고 트랜잭션이 롤백하므로 "변화 0" 은 그대로다 — 실측).
-// 그러니 검증의 값은 "부분 쓰기 방지" 가 아니라 둘이다:
+// **검증이 무엇을 벌어 주는지는 재어 보고 적는다**: 검증 본문을 통째로 지워도 계약 55건이 전부 통과한다
+// (Dexie 가 `put(불량값)` 에서 던지고 트랜잭션이 롤백하므로 "변화 0" 은 그대로다 — 구현자·리뷰어가 각각 실측).
+// **계약은 이 검증을 강제하지 않는다.** 검증이 실제로 버는 것은 둘뿐이고, 둘 다 계약 밖이라
+// `dataset-atomicity.test.ts` 가 단언한다(그 6건이 없으면 이 함수는 지워도 아무도 모른다):
 //   (1) 실패가 Dexie 내부 에러가 아니라 `RepositoryError('DATASET_WRITE_INVALID')` 로 나간다(UI 가 code 로 분기).
-//   (2) 트랜잭션을 열기 전에 끝나므로 잘못된 목록이 DB 에 닿지 않고, 에러 detail 에 사용자 데이터가 실리지 않는다.
-// 이 둘은 계약이 단언하지 않으므로 `dataset-atomicity.test.ts` 가 단언한다 — 아니면 이 함수는 죽은 코드다.
+//   (2) 에러 detail 에 제목·메모 같은 사용자 데이터가 실리지 않고 `table=…` 만 실린다.
+// 검증이 트랜잭션 **밖**(1단계)이라는 것 자체는 위 둘과 별개 축이다 — 안으로 옮겨도 (1)·(2)는 성립하므로,
+// 그 축은 `dataset-atomicity.test.ts` 의 "트랜잭션을 한 번도 열지 않는다"(스파이) 1건이 따로 고정한다.
 import type { DatasetWrite } from '@/domain/dataset';
 import type { Meta, Persistable } from '@/domain/meta';
 import { SETTINGS_ID } from '@/domain/theme/settings';
@@ -15,17 +17,14 @@ import { SETTINGS_ID } from '@/domain/theme/settings';
 import type { DatasetRepository } from '@/repositories/dataset-repository';
 import { RepositoryError } from '@/repositories/repository-error';
 
-import {
-  allRows,
-  bulkPut,
-  clear,
-  put,
-  tables,
-  transaction,
-  type LiveTable,
-} from '@/infra/indexeddb/query';
+import { allRows, bulkPut, clear, put, type LiveTable, type Store } from '@/infra/indexeddb/query';
 
-/** 백업 가져오기의 청크 크기(TECH_PLAN §6·§8 — 5만 행에서 메인 스레드 블로킹을 50ms 단위로 쪼갠다). */
+/**
+ * 백업 가져오기의 청크 크기. **미측정 값**이다 — 한 번의 `bulkPut` 이 지나치게 커지지 않게 하는 선일 뿐,
+ * 프레임 단위 블로킹 시간을 재서 고른 값이 아니다(게다가 `replaceRows` 는 한 트랜잭션 **안**에서 돌므로
+ * 청크가 메인 스레드를 양보한다는 보장도 없다). 5만 행 가져오기가 실제 화면에서 문제가 되면
+ * TECH_PLAN §8 예산으로 재서 고친다.
+ */
 const CHUNK = 500;
 
 /**
@@ -67,26 +66,26 @@ function checkedEntity<W extends DatasetWrite>(write: W): W['entity'] {
  * (`entity` 축)도 여기서 던지므로, 목록 전체를 먼저 이 함수에 통과시키면 두 축 모두에서
  * "중간 실패 시 아무것도 쓰지 않는다" 가 트랜잭션 없이도 성립한다.
  */
-function planWrite(write: DatasetWrite): () => Promise<void> {
+function planWrite(store: Store, write: DatasetWrite): () => Promise<void> {
   if (typeof write !== 'object' || write === null) {
     throw new RepositoryError('DATASET_WRITE_INVALID', writeDetail(write, '원소가 객체가 아니다'));
   }
   switch (write.table) {
     case 'todos': {
       const entity = checkedEntity(write);
-      return () => put(tables.todos, entity);
+      return () => put(store.todos, entity);
     }
     case 'categories': {
       const entity = checkedEntity(write);
-      return () => put(tables.categories, entity);
+      return () => put(store.categories, entity);
     }
     case 'focusSessions': {
       const entity = checkedEntity(write);
-      return () => put(tables.focusSessions, entity);
+      return () => put(store.focusSessions, entity);
     }
     case 'settings': {
       const entity = checkedEntity(write);
-      return () => put(tables.settings, entity);
+      return () => put(store.settings, entity);
     }
     default:
       throw new RepositoryError(
@@ -107,39 +106,43 @@ async function replaceRows<T extends Meta>(
   }
 }
 
-/** Dexie 테이블 위에서 동작하는 데이터셋 저장소. */
-export function createIndexedDbDatasetRepository(): DatasetRepository {
+/** 주어진 묶음(= 하나의 Dexie 인스턴스) 위에서 동작하는 데이터셋 저장소. */
+export function createIndexedDbDatasetRepository(store: Store): DatasetRepository {
   return {
     readAll: async () => {
       // 단일 행의 정의는 **`SETTINGS_ID` 하나**다 — `SettingsRepository.get()` 과 같은 기준으로 읽는다.
       // `id` 오름차순 첫 행을 쓰면 다른 id 의 설정 행이 들어왔을 때 두 API 의 답이 갈린다(계약이 단언한다).
-      const settings = (await allRows(tables.settings)).find((row) => row.id === SETTINGS_ID);
+      const settings = (await allRows(store.settings)).find((row) => row.id === SETTINGS_ID);
       if (settings === undefined) {
         throw new RepositoryError('SETTINGS_MISSING');
       }
       return {
-        todos: await allRows(tables.todos),
-        categories: await allRows(tables.categories),
-        focusSessions: await allRows(tables.focusSessions),
+        todos: await allRows(store.todos),
+        categories: await allRows(store.categories),
+        focusSessions: await allRows(store.focusSessions),
         settings,
       };
     },
     write: async (writes) => {
       // 1단계: 전량 해석·검증(쓰기 없음, 트랜잭션 밖). 2단계: 트랜잭션 안에서 적용 — 여기서 나는
       // 실패는 Dexie 가 롤백한다. 콜백 안에는 Dexie 가 아닌 `await` 가 없다(query.ts 의 transaction 주석).
-      const appliers = writes.map(planWrite);
-      await transaction(async () => {
+      const appliers = writes.map((write) => planWrite(store, write));
+      // 쓸 것이 없으면 트랜잭션도 열지 않는다(빈 배열도 계약상 성공이다).
+      if (appliers.length === 0) {
+        return;
+      }
+      await store.transaction(async () => {
         for (const apply of appliers) {
           await apply();
         }
       });
     },
     restore: async (snapshot) => {
-      await transaction(async () => {
-        await replaceRows(tables.todos, snapshot.todos);
-        await replaceRows(tables.categories, snapshot.categories);
-        await replaceRows(tables.focusSessions, snapshot.focusSessions);
-        await replaceRows(tables.settings, [snapshot.settings]);
+      await store.transaction(async () => {
+        await replaceRows(store.todos, snapshot.todos);
+        await replaceRows(store.categories, snapshot.categories);
+        await replaceRows(store.focusSessions, snapshot.focusSessions);
+        await replaceRows(store.settings, [snapshot.settings]);
       });
     },
   };

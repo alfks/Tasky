@@ -97,7 +97,7 @@ Tasky/
     │   ├── memory/           in-memory 구현(테스트) + live.ts(툼스톤 필터 헬퍼)
     │   └── container.ts      컨테이너(get/setRepositories)
     ├── infra/          → src/infra/AGENTS.md
-    │   ├── indexeddb/        db.ts(Dexie 스키마·버전) · query.ts(조회 liveAll/liveOne/liveBy/liveBetween/liveOrderBy · 쓰기 put · DatasetRepository 전용 allRows/clear/bulkPut/transaction) · *-indexeddb-repository.ts · repositories.ts(조립)
+    │   ├── indexeddb/        db.ts(Dexie 스키마·버전) · query.ts(조회 liveAll/liveOne/liveBy/liveBetween/liveOrderBy · 쓰기 put · DatasetRepository 전용 allRows/clear/bulkPut/store.transaction · 묶음 Store/tables/createStore) · *-indexeddb-repository.ts · repositories.ts(조립)
     │   └── sync/             (Phase 2 — 지금은 만들지 않음)
     ├── lib/            → src/lib/AGENTS.md            cn.ts, date.ts(nowIso), id.ts(newId)
     ├── styles/         → src/styles/AGENTS.md         tokens.css, globals.css (.css 만)

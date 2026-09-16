@@ -6,7 +6,7 @@ import type { Todo } from '@/domain/todo/todo';
 import { compareSearchResults, matchesTodoQuery } from '@/repositories/ordering';
 import type { TodoRepository } from '@/repositories/todo-repository';
 
-import { liveAll, liveBetween, liveBy, liveOne, put, tables } from '@/infra/indexeddb/query';
+import { liveAll, liveBetween, liveBy, liveOne, put, type Store } from '@/infra/indexeddb/query';
 
 /**
  * Dexie 테이블 위에서 동작하는 투두 저장소.
@@ -15,8 +15,8 @@ import { liveAll, liveBetween, liveBy, liveOne, put, tables } from '@/infra/inde
  * `search` 만 `liveAll` 로 전량을 읽는다 — 부분 문자열 일치는 IndexedDB 인덱스가 다루지 못한다
  * (TECH_PLAN §8 의 "팔레트 검색 10,000개 ≤ 150ms" 가 이 경로의 예산이다).
  */
-export function createIndexedDbTodoRepository(): TodoRepository {
-  const table = tables.todos;
+export function createIndexedDbTodoRepository(store: Store): TodoRepository {
+  const table = store.todos;
   return {
     getById: (id) => liveOne(table, id),
     listByDate: async (date) => sortTodos(await liveBy(table, 'date', date)),

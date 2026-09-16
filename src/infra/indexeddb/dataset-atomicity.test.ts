@@ -5,6 +5,14 @@
 // 인덱스 조회(`listByDate`·`listByCategory`·복합 인덱스)가 유령 로우를 돌려줄 수 있다. 앱의 조회는
 // 대부분 인덱스 경로이므로, 그 축을 보지 않으면 원자성 단언이 화면과 무관해진다.
 //
+// **이 파일이 고정하지 못하는 것(한계를 먼저 적는다 — ADR-0011 "측정한 것/측정하지 않은 것" 과 같은 정직함):**
+// 위 "로우와 인덱스의 괴리" 는 실제 브라우저 엔진의 성질이고 `fake-indexeddb` 로는 **재현할 수 없다**
+// (인덱스 조회가 같은 인메모리 레코드에서 파생되므로 로우가 되돌아가면 인덱스도 같이 되돌아간다).
+// 여기서 고정하는 것은 "롤백 뒤에 **인덱스 경로의 조회**도 실패 전과 같은 답을 낸다" 까지다.
+// 또 실제 회귀(`write` 의 트랜잭션 제거)에서는 83행의 전량 스캔 단언이 **먼저** 트립해서 85~88행의
+// 인덱스 단언은 실행되지 않는다(리뷰 실측). 그렇다고 인덱스 단언이 무력한 것은 아니다 — 83행을 지우고
+// 같은 교란을 걸면 85행(`listByDate(D2)`, date 인덱스 경로)이 잡는다(리뷰 실측).
+//
 // 실패 주입은 1단계 검증을 **통과하는** 값으로 한다(객체이고 `id` 가 있다). 구조적 복제가 불가능한
 // 함수 필드를 실어 Dexie 가 트랜잭션 안에서 던지게 만든다 — 그래야 검증이 아니라 **롤백**이 시험된다.
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -18,7 +26,7 @@ import type { Todo } from '@/domain/todo/todo';
 import type { Repositories } from '@/repositories/container';
 import { isRepositoryError } from '@/repositories/repository-error';
 
-import { clear, liveBy, tables, transaction } from '@/infra/indexeddb/query';
+import { createStore, liveBy, type Store } from '@/infra/indexeddb/query';
 import { createIndexedDbRepositories } from '@/infra/indexeddb/repositories';
 
 const D1 = '2026-01-15' as DateKey;
@@ -51,19 +59,19 @@ function uncloneableTodo(): Persistable<Todo> {
   return { ...todo, title: (() => 'boom') as unknown as string } as Persistable<Todo>;
 }
 
+/** 테스트마다 이름이 다른 DB — 계약 테스트와 같은 방식의 격리다(`query.ts` 의 `createStore` 주석). */
+let bundle = 0;
+const freshStore = (): Store => createStore(`tasky-atomicity-${++bundle}`);
+
 describe('IndexedDB 트랜잭션 롤백 뒤의 인덱스 상태 (계약이 보지 않는 축)', () => {
+  let store: Store;
   let repos: Repositories;
   let existing: Persistable<Todo>;
 
   beforeEach(async () => {
     seq = 0;
-    await transaction(async () => {
-      await clear(tables.todos);
-      await clear(tables.categories);
-      await clear(tables.settings);
-      await clear(tables.focusSessions);
-    });
-    repos = createIndexedDbRepositories();
+    store = freshStore();
+    repos = createIndexedDbRepositories(store);
     existing = todoOf({});
     await repos.todos.upsert(existing);
     await repos.settings.upsert(settingsOf());
@@ -84,7 +92,7 @@ describe('IndexedDB 트랜잭션 롤백 뒤의 인덱스 상태 (계약이 보�
     // 인덱스 경로(계약이 보지 않는 축) — 셋 다 실패 전 상태여야 한다.
     expect(await repos.todos.listByDate(D2)).toEqual([]);
     expect(await repos.todos.listByCategory(CAT_B)).toEqual([]);
-    expect(await liveBy(tables.todos, '[date+categoryId]', [D2, CAT_B])).toEqual([]);
+    expect(await liveBy(store.todos, '[date+categoryId]', [D2, CAT_B])).toEqual([]);
     expect((await repos.todos.listByDateRange(D1, D2)).map((t) => t.id)).toEqual([existing.id]);
   });
 
@@ -101,7 +109,7 @@ describe('IndexedDB 트랜잭션 롤백 뒤의 인덱스 상태 (계약이 보�
     expect((await repos.todos.listByDate(D1)).map((t) => t.id)).toEqual([existing.id]);
     expect((await repos.todos.listByCategory(CAT_A)).map((t) => t.id)).toEqual([existing.id]);
     expect(await repos.todos.listByDate(D2)).toEqual([]);
-    expect(await liveBy(tables.todos, '[date+categoryId]', [D1, CAT_A])).toHaveLength(1);
+    expect(await liveBy(store.todos, '[date+categoryId]', [D1, CAT_A])).toHaveLength(1);
   });
 
   it('실패한 트랜잭션 뒤에도 저장소는 계속 쓸 수 있다 — DB 가 잠기지 않는다', async () => {
@@ -117,22 +125,19 @@ describe('IndexedDB 트랜잭션 롤백 뒤의 인덱스 상태 (계약이 보�
 });
 
 describe('dataset.write 1단계 검증의 값 (계약이 보지 않는 축: 에러 타입)', () => {
-  // 실측: 이 검증을 통째로 지워도 계약 55건이 **전부 통과한다**(Dexie 가 `put(불량값)` 에서 던지고
-  // 트랜잭션이 롤백하므로 "변화 0" 이 그대로 성립한다). 즉 검증이 사는 이유는 "부분 쓰기 방지" 가
-  // 아니라 아래 둘이다 — 그래서 그 둘을 여기서 단언한다. 단언하지 않으면 검증은 죽은 코드다.
+  // 실측(구현자·리뷰어 각각): 이 검증 본문을 통째로 지워도 계약 55건이 **전부 통과한다**(Dexie 가
+  // `put(불량값)` 에서 던지고 트랜잭션이 롤백하므로 "변화 0" 이 그대로 성립한다). 즉 **계약은 이 검증을
+  // 강제하지 않는다.** 검증이 사는 이유는 아래 둘뿐이고, 그래서 그 둘을 여기서 단언한다 — 단언하지
+  // 않으면 검증은 지워도 아무도 모르는 죽은 코드다.
   //   (1) 저장소 밖으로 나가는 실패가 Dexie 내부 에러가 아니라 `RepositoryError` 다(UI 가 code 로 분기한다).
-  //   (2) 트랜잭션을 열기 전에 끝나므로 detail 에 사용자 데이터가 실리지 않는다.
+  //   (2) 에러 detail 에 제목·메모 같은 사용자 데이터가 실리지 않고 `table=…` 만 실린다.
+  // 검증이 트랜잭션 **밖**이라는 것은 위 둘과 다른 축이다(안으로 옮겨도 (1)·(2)는 성립한다 — 리뷰 실측).
+  // 그 축은 이 describe 마지막의 스파이 1건이 따로 고정한다.
   let repos: Repositories;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     seq = 0;
-    await transaction(async () => {
-      await clear(tables.todos);
-      await clear(tables.categories);
-      await clear(tables.settings);
-      await clear(tables.focusSessions);
-    });
-    repos = createIndexedDbRepositories();
+    repos = createIndexedDbRepositories(freshStore());
   });
 
   const broken = (entity: unknown): DatasetWrite =>
@@ -168,5 +173,28 @@ describe('dataset.write 1단계 검증의 값 (계약이 보지 않는 축: 에�
     expect(isRepositoryError(error)).toBe(true);
     expect(String(error)).not.toContain(secret);
     expect(isRepositoryError(error) ? (error.detail ?? '') : '').toContain('table=todos');
+  });
+
+  it('검증에서 걸린 write 는 트랜잭션을 한 번도 열지 않는다 (2단계 구조의 "트랜잭션 밖" 축)', async () => {
+    // 위 단언들은 검증이 트랜잭션 **안**에 있어도 전부 통과한다 — 이 축을 구별하는 것은 이 1건뿐이다.
+    const base = freshStore();
+    let opened = 0;
+    const spied: Store = {
+      ...base,
+      transaction: (run) => {
+        opened += 1;
+        return base.transaction(run);
+      },
+    };
+    const spiedRepos = createIndexedDbRepositories(spied);
+
+    await expect(
+      spiedRepos.dataset.write([{ table: 'todos', entity: todoOf({}) }, broken(null)]),
+    ).rejects.toThrow();
+
+    expect(opened, '검증 실패인데 트랜잭션이 열렸다 — 검증이 트랜잭션 안으로 들어갔다').toBe(0);
+    // 대조군: 정상 쓰기는 실제로 트랜잭션을 연다(스파이가 항상 0 을 세는 게 아니다).
+    await spiedRepos.dataset.write([{ table: 'todos', entity: todoOf({}) }]);
+    expect(opened).toBe(1);
   });
 });
