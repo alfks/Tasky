@@ -21,7 +21,6 @@ permissions:
   contents: read
 
 env:
-  NEXT_TELEMETRY_DISABLED: "1"
   CI: "true"
 
 jobs:

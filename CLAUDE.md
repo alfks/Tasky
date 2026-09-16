@@ -2,16 +2,16 @@
 
 # Tasky — 루트 헌법
 
-**Tasky**: 레퍼런스 앱(국내 인기 감성 투두 앱)의 GUI/UX/기능을 매우 흡사하게 재현하는 **감성 투두/일정 관리 데스크탑 웹앱**. App Router + TypeScript + PWA, **로컬 우선(IndexedDB, repository 패턴)**. SNS(친구·피드·반응)는 Phase 2.
+**Tasky**: 레퍼런스 앱(국내 인기 감성 투두 앱)의 GUI/UX/기능을 매우 흡사하게 재현하는 **감성 투두/일정 관리 데스크탑 웹앱**. React SPA(Vite) + TypeScript + PWA, **로컬 우선(IndexedDB, repository 패턴)**. SNS(친구·피드·반응)는 Phase 2.
 1차 MVP: 날짜 스트립 + 카테고리별 투두 CRUD + 체크/달성률 + 테마/색상.
 
 > **현재 상태(단일 소스 — 상태가 바뀌면 여기만 고친다)**
 >
-> 아래 수치는 전부 **`f187472`(PR #12 머지) + 테스트 333건** 기준 실측이다. main 이 움직이면 다시 재서 고친다.
+> 아래 수치는 전부 **`3d83207`(PR #21 머지) + T-27(빌드 스택 전환) 기준 실측**이다 — 테스트 **726건** / `pnpm check` 10개 검사. main 이 움직이면 다시 재서 고친다.
 >
-> - 스캐폴딩 완료 + **빌드 스택 Vinext 전환/Cloudflare Workers 배포 배선 완료**(ADR-0010). 앱 셸 + `src/` 레이어 트리 + `pnpm check`(10개 검사) + `pnpm build`(프리렌더 2 라우트 + 서비스워커 프리캐시 17 URL/949 kB) 동작 — 기능 티켓 착수 가능. 도메인 코어·`lib/` 유틸·레포지토리 인터페이스 5종과 **memory 구현 + 계약 테스트**(계약 60건 / 전체 306건)·디자인 토큰·Pretendard 서브셋 폰트까지 머지됨. 아직 비어 있는 것: **IndexedDB 구현**(T-10 리뷰 중), feature 코드 전부(`src/features/*` 는 빈 배럴), `src/components/ui/` 의 오버레이 6종(T-07 리뷰 중 — 프리미티브 A 6종은 머지됨), 서비스워커 **등록·업데이트 토스트 UI**(pwa.md R4·R5).
-> - **배포는 아직 실행되지 않았다.** 자격증명은 **`.env`**(git 제외, `cp .env.example .env` 후 채움)에서 읽는다 — `CLOUDFLARE_ACCOUNT_ID`·`CLOUDFLARE_API_TOKEN`, 선택 `DEPLOY_URL`. 발급 방법은 `.env.example` 주석에 있다. CI 는 같은 이름의 레포 Secrets/Variables 를 쓴다. 없으면 `scripts/deploy.sh` 가 실제 배포를 `rc=1` 로 멈춘다(조용히 건너뛰지 않는다 — `--dry-run` 은 자격증명 없이 돈다). 배선은 `pnpm run deploy:dry-run`(= CI 와 같은 명령, 29 assets / 68 modules / 820 KiB, gzip 242 KiB)까지 확인됨. **`pnpm deploy` 는 pnpm 내장 명령이라 우리 스크립트가 돌지 않는다 — 반드시 `pnpm run deploy`.**
-> - **pwa.md R9 의 `theme-color` 메타는 T-11(테마) 소관**이다 — manifest 와 같은 PR 이 아니다. 현재 렌더된 HTML 에는 없다(의도된 상태).
+> - 스캐폴딩 완료 + **빌드 스택 순수 Vite + React SPA / Cloudflare Workers 정적 자산 배포**(ADR-0013 — ADR-0010 supersede). 앱 셸 + `src/` 레이어 트리 + `pnpm check`(10개 검사) + `pnpm build`(Vite + 서비스워커 프리캐시 10 URL/848 kB + `scripts/check-dist.mjs` 산출물 계약 검사) 동작 — 기능 티켓 착수 가능. 첫 로드 JS gzip **77.4 kB**(Dexie 32.5 kB 는 지연 로드 청크). 도메인 코어·`lib/` 유틸·레포지토리 인터페이스 5종과 **memory 구현 + 계약 테스트**·디자인 토큰·Pretendard 서브셋 폰트·테마(T-11)·날짜 스트립까지 머지됨. 아직 비어 있는 것: **IndexedDB 구현**(T-10 리뷰 중), feature 코드 전부(`src/features/*` 는 빈 배럴), `src/components/ui/` 의 오버레이 6종(T-07 리뷰 중 — 프리미티브 A 6종은 머지됨), 서비스워커 **등록·업데이트 토스트 UI**(pwa.md R4·R5).
+> - **배포는 아직 실행되지 않았다.** 자격증명은 **`.env`**(git 제외, `cp .env.example .env` 후 채움)에서 읽는다 — `CLOUDFLARE_ACCOUNT_ID`·`CLOUDFLARE_API_TOKEN`, 선택 `DEPLOY_URL`. 발급 방법은 `.env.example` 주석에 있다. CI 는 같은 이름의 레포 Secrets/Variables 를 쓴다. 없으면 `scripts/deploy.sh` 가 실제 배포를 `rc=1` 로 멈춘다(조용히 건너뛰지 않는다 — `--dry-run` 은 자격증명 없이 돈다). 배선은 `pnpm run deploy:dry-run`(= CI 와 같은 명령, Worker 코드 없이 `dist/client` 정적 자산만 — `No bindings found`)까지 확인됨. **`pnpm deploy` 는 pnpm 내장 명령이라 우리 스크립트가 돌지 않는다 — 반드시 `pnpm run deploy`.**
+> - 문서 `<head>`(메타·`theme-color`·폰트 preload·첫 페인트 테마 스크립트)의 단일 소스는 **루트 `index.html`** 이다. PWA manifest 는 **`public/manifest.webmanifest` 정적 파일**이고 이제 프리캐시에 들어간다.
 > - **CI 임시 미작동**: 계정/레포 차원의 Actions 실행 불가로 추정(워크플로 자체는 정상 — PR의 빨간 X는 코드 문제가 아니다). **`bash scripts/check.sh` 통과가 PR 전 실질 게이트**이며, CI 초록불을 머지 조건으로 삼지 않는다. 복구되면 이 항목을 지운다.
 
 ## 0. 절대 금지어 (최우선 규칙)
@@ -70,8 +70,8 @@ bash scripts/check-author.sh main         # main 이후 커밋 author 검증
 bash scripts/check-agents-md.sh           # AGENTS.md 누락 검사
 bash scripts/check-arch.sh                # 레이어 경계 린트 + 아키텍처 2차 패스(스캐폴딩 후)
 pnpm dev | pnpm build | pnpm test -- <pattern>
-pnpm start                                # 빌드 산출물을 wrangler dev 로 로컬 서빙(서비스워커 확인용)
-pnpm build && pnpm deploy:dry-run         # CI 배포와 **같은 명령**을 --dry-run 으로(업로드 파일 목록·바인딩 확인). 자격증명 불필요 — `--dry-run` 은 네트워크를 타지 않아 스크립트가 자격증명 검사를 건너뛴다. 단 빌드 산출물은 있어야 한다
+pnpm start                                # 빌드 산출물(dist/client)을 wrangler dev 로 로컬 서빙(서비스워커 확인용)
+pnpm build && pnpm run deploy:dry-run     # CI 배포와 **같은 명령**을 --dry-run 으로(업로드 파일 목록 확인). 자격증명 불필요 — `--dry-run` 은 네트워크를 타지 않아 스크립트가 자격증명 검사를 건너뛴다. 단 빌드 산출물은 있어야 한다
 CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… pnpm run deploy   # 실제 배포. 평소엔 main push 시 워크플로가 한다
 ```
 
@@ -109,7 +109,7 @@ CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… pnpm run deploy   # 실제 �
 
 ## 9. 환경
 
-Node 22 / pnpm 10 / **Vinext 1.0.0-beta.10**(Next.js API on Vite 8, App Router) / React 19 / TypeScript 5 strict / Tailwind CSS 4 / Zustand / Dexie / Vitest 5 / Playwright / Serwist 9(PWA) / Cloudflare Workers(배포). `next` 15.5.25 는 **타입 전용 devDependency** — 지우면 `tsc` 가 깨진다. 패키지 매니저는 **pnpm만** (`npm`, `yarn` 금지). 경로 별칭 `@/*` → `src/*`. 상세·제약: [ADR-0010](docs/decisions/ADR-0010-vinext-build-and-cloudflare-workers.md).
+Node 22 / pnpm 10 / **Vite 8**(순수 Vite + React SPA, 라우터 없음) / React 19 / TypeScript 5 strict / Tailwind CSS 4 / Zustand / Dexie(지연 로드) / Vitest 5 / Playwright / Serwist 9(PWA) / Cloudflare Workers 정적 자산(배포). `next`·`vinext` 계열 의존은 **없다**(ADR-0013). 패키지 매니저는 **pnpm만** (`npm`, `yarn` 금지). 경로 별칭 `@/*` → `src/*`. E2E 브라우저는 이미 설치돼 있다(`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`) — `playwright install` 은 네트워크 정책에 막히므로 쓰지 않는다. 상세·제약: [ADR-0013](docs/decisions/ADR-0013-plain-vite-react-and-lazy-dexie.md).
 
 ## 10. 티켓 수명주기 (한눈에)
 

@@ -1,4 +1,5 @@
-// 첫 페인트에 필요한 <head> 조각들 (theme R6·R13). `layout.tsx` 가 이 둘만 가져다 심는다.
+// 첫 페인트에 필요한 <head> 조각들 (theme R6·R13). 실제로 나가는 <head> 는 `index.html` 이고(ADR-0013),
+// 이 둘은 그 사본을 **테스트가 실행·대조할 수 있는 형태**로 들고 있는 단일 소스다.
 //
 // 1) THEME_INIT_SCRIPT — 동기 인라인 스크립트.
 //
@@ -9,7 +10,8 @@
 // 2) FONT_PRELOAD — 폰트 preload 링크 속성(R13).
 //
 // 이 스크립트와 `theme-state.ts`/`theme-dom.ts` 는 같은 규칙을 두 언어로 적은 셈이라 드리프트가
-// 유일한 위험이다 — `theme-init-script.test.ts` 가 스크립트를 실제로 실행해 두 경로의 결과를 대조한다.
+// 유일한 위험이다 — `theme-head.test.ts` 가 스크립트를 실제로 실행해 두 경로의 결과를 대조하고,
+// 같은 파일이 `index.html` 의 사본과 본문이 같은지까지 본다.
 import { THEME_COLOR, THEME_MIRROR_KEY } from '@/features/theme/store/theme-state';
 
 // JSON.stringify 로 넣어 따옴표·이스케이프를 맞춘다(값은 상수지만 손으로 따옴표를 붙이지 않는다).

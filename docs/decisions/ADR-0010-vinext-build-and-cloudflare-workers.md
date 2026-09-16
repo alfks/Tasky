@@ -2,9 +2,9 @@
 
 # ADR-0010: 빌드 스택 Vinext(Next.js API on Vite) + 배포 Cloudflare Workers
 
-- 상태: accepted
+- 상태: **superseded by [ADR-0013](./ADR-0013-plain-vite-react-and-lazy-dexie.md)** (2026-09-16) — 빌드 스택은 순수 Vite + React SPA 로 되돌렸다. 배포 대상(Cloudflare Workers)과 PWA 통합 방식(`serwist build` 후처리)은 ADR-0013 이 그대로 승계한다. 이 문서는 **기록으로 남긴다**: 아래 커버 범위 실측표는 Next.js/Vinext 복귀를 저울질할 때의 출발점이다.
 - 날짜: 2026-09-15
-- 관련: ADR-0001(보정), docs/specs/pwa.md, docs/TECH_PLAN.md §1·§10
+- 관련: ADR-0001(보정), ADR-0013(supersede), docs/specs/pwa.md, docs/TECH_PLAN.md §1·§10
 
 ## 맥락
 

@@ -1,15 +1,14 @@
-// 읽기 조건: Cloudflare Workers 배포 대상(이름·호환성 날짜·정적 자산 경로)을 바꿀 때.
-// 실제 배포에 쓰이는 파일은 빌드가 생성하는 dist/server/wrangler.json 이다(이 파일을 재작성한 것).
+// 읽기 조건: Cloudflare Workers 배포 대상(이름·정적 자산 경로)을 바꿀 때.
+// 이 파일이 배포에 그대로 쓰인다 — 빌드가 wrangler 설정을 다시 만들지 않는다(ADR-0013).
+// Worker 스크립트가 없다("main" 없음): SPA 라 서버에서 할 일이 0 이고, 정적 자산만으로 배포된다.
+// not_found_handling=single-page-application 이 모든 미매칭 경로에 index.html 을 돌려준다.
 // account_id 는 여기 적지 않는다 — CLOUDFLARE_ACCOUNT_ID 환경변수로 넘긴다(레포에 계정 ID 비커밋).
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "tasky",
   "compatibility_date": "2026-09-15",
-  "compatibility_flags": ["nodejs_compat"],
-  "main": "vinext/server/fetch-handler",
   "assets": {
     "directory": "dist/client",
-    "not_found_handling": "none",
-    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
   },
 }

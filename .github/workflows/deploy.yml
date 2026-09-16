@@ -23,7 +23,6 @@ permissions:
   contents: read
 
 env:
-  NEXT_TELEMETRY_DISABLED: "1"
   CI: "true"
 
 jobs:
@@ -74,18 +73,18 @@ jobs:
       - name: 배포 전 검사 (금지어 · AGENTS.md · author · arch · lint · typecheck · format · test)
         run: bash scripts/check.sh "${{ github.event.before || 'main' }}"
 
-      - name: 빌드 (vinext build + 서비스워커 프리캐시 주입)
+      - name: 빌드 (vite build + 서비스워커 프리캐시 주입 + 산출물 계약 검사)
         run: pnpm build
 
       - name: 빌드 산출물 확인 (조용한 빈 배포 방지)
         run: |
-          for f in dist/client/index.html dist/client/sw.js dist/server/wrangler.json; do
+          for f in dist/client/index.html dist/client/sw.js dist/client/manifest.webmanifest; do
             if [ ! -s "$f" ]; then
               echo "::error title=빌드 산출물 누락::$f 가 없거나 비어 있습니다 — 배포를 중단합니다."
               exit 1
             fi
           done
-          echo "OK: index.html · sw.js · wrangler.json 존재"
+          echo "OK: index.html · sw.js · manifest.webmanifest 존재"
 
       - name: 빌드 산출물에 금지어 없음 확인 (생성 파일 포함)
         run: bash scripts/check-forbidden-words.sh --paths dist/client public

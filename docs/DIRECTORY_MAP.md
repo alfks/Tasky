@@ -7,21 +7,22 @@
 
 ## 루트
 
-| 경로                                           | 한 줄                                               | AGENTS.md                                       | 언제 읽어야 하는가                               |
-| ---------------------------------------------- | --------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------ |
-| `CLAUDE.md`                                    | 루트 헌법                                           | —                                               | 모든 세션 시작                                   |
-| `AGENTS.md`                                    | 역할 프로토콜·핸드오프·리뷰 루프·락                 | —                                               | 오케스트레이터/리뷰어 역할, 핸드오프 주고받을 때 |
-| `README.md`                                    | 사람용 소개                                         | —                                               | 읽지 않아도 됨                                   |
-| `.github/`                                     | CI, PR/이슈 템플릿, CODEOWNERS, 라벨                | [.github/AGENTS.md](../.github/AGENTS.md)       | CI가 실패했을 때, 템플릿/라벨을 바꿀 때          |
-| `.githooks/`                                   | pre-commit(금지어·author), commit-msg(트레일러)     | [.githooks/AGENTS.md](../.githooks/AGENTS.md)   | 커밋이 훅에 막혔을 때                            |
-| `.worktrees/`                                  | 워크트리 + 로컬 BOARD/tickets/handoffs/reviews      | [.worktrees/AGENTS.md](../.worktrees/AGENTS.md) | 워크트리 만들기 전, 티켓/핸드오프 쓰기 전        |
-| `scripts/`                                     | setup, wt, check-*, arch-layers.mjs                 | [scripts/AGENTS.md](../scripts/AGENTS.md)       | 스크립트가 실패했거나 수정할 때                  |
-| `eslint.config.mjs` · `eslint.arch.config.mjs` | 린트 설정(1차) · 아키텍처 규칙만 남긴 2차 패스 설정 | —                                               | 린트·레이어 경계 규칙을 바꿀 때 (ADR-0006·0008)  |
-| `vite.config.ts` · `next.config.ts`            | Vinext 빌드 파이프라인 · 정적 추출 설정             | —                                               | 빌드 설정을 바꿀 때 (ADR-0010)                   |
-| `wrangler.jsonc`                               | Cloudflare Workers 배포 대상                        | —                                               | 배포 대상·호환성 날짜를 바꿀 때 (ADR-0010)       |
-| `serwist.config.js` · `src/sw.ts`              | 서비스워커 프리캐시 설정 · 서비스워커 소스          | —                                               | 프리캐시 대상·상한·오프라인 동작을 바꿀 때       |
-| `public/`                                      | PWA 아이콘 · `_headers`(캐시 헤더) 등 정적 자산     | `public/AGENTS.md`                              | PWA 아이콘·캐시 헤더 교체 시                     |
-| `tests/e2e/` (예정)                            | Playwright 스모크                                   | `tests/AGENTS.md`                               | E2E 작성 시                                      |
+| 경로                                           | 한 줄                                                                 | AGENTS.md                                       | 언제 읽어야 하는가                               |
+| ---------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------ |
+| `CLAUDE.md`                                    | 루트 헌법                                                             | —                                               | 모든 세션 시작                                   |
+| `AGENTS.md`                                    | 역할 프로토콜·핸드오프·리뷰 루프·락                                   | —                                               | 오케스트레이터/리뷰어 역할, 핸드오프 주고받을 때 |
+| `README.md`                                    | 사람용 소개                                                           | —                                               | 읽지 않아도 됨                                   |
+| `.github/`                                     | CI, PR/이슈 템플릿, CODEOWNERS, 라벨                                  | [.github/AGENTS.md](../.github/AGENTS.md)       | CI가 실패했을 때, 템플릿/라벨을 바꿀 때          |
+| `.githooks/`                                   | pre-commit(금지어·author), commit-msg(트레일러)                       | [.githooks/AGENTS.md](../.githooks/AGENTS.md)   | 커밋이 훅에 막혔을 때                            |
+| `.worktrees/`                                  | 워크트리 + 로컬 BOARD/tickets/handoffs/reviews                        | [.worktrees/AGENTS.md](../.worktrees/AGENTS.md) | 워크트리 만들기 전, 티켓/핸드오프 쓰기 전        |
+| `scripts/`                                     | setup, wt, check-*, arch-layers.mjs                                   | [scripts/AGENTS.md](../scripts/AGENTS.md)       | 스크립트가 실패했거나 수정할 때                  |
+| `eslint.config.mjs` · `eslint.arch.config.mjs` | 린트 설정(1차) · 아키텍처 규칙만 남긴 2차 패스 설정                   | —                                               | 린트·레이어 경계 규칙을 바꿀 때 (ADR-0006·0008)  |
+| `index.html`                                   | SPA 진입점 · 문서 `<head>`(메타·테마 첫 페인트 스크립트·폰트 preload) | —                                               | `<head>`·진입점을 바꿀 때 (ADR-0013)             |
+| `vite.config.ts`                               | Vite 빌드 파이프라인                                                  | —                                               | 빌드 설정을 바꿀 때 (ADR-0013)                   |
+| `wrangler.jsonc`                               | Cloudflare Workers 배포 대상(정적 자산 전용)                          | —                                               | 배포 대상·자산 경로를 바꿀 때 (ADR-0013)         |
+| `serwist.config.js` · `src/sw.ts`              | 서비스워커 프리캐시 설정 · 서비스워커 소스                            | —                                               | 프리캐시 대상·상한·오프라인 동작을 바꿀 때       |
+| `public/`                                      | PWA 아이콘 · `_headers`(캐시 헤더) 등 정적 자산                       | `public/AGENTS.md`                              | PWA 아이콘·캐시 헤더 교체 시                     |
+| `tests/e2e/` (예정)                            | Playwright 스모크                                                     | `tests/AGENTS.md`                               | E2E 작성 시                                      |
 
 ## docs/
 
@@ -38,18 +39,18 @@
 
 ## src/ (예정 — 스캐폴딩 티켓에서 AGENTS.md와 함께 생성)
 
-| 경로                | 한 줄                                                         | AGENTS.md                           | 언제 읽어야 하는가                                                                                                                                           |
-| ------------------- | ------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `src/`              | 소스 루트                                                     | `src/AGENTS.md`                     | 새 최상위 디렉토리를 만들 때만                                                                                                                               |
-| `src/app/`          | App Router 라우트·레이아웃·providers(조립 지점)·`manifest.ts` | `src/app/AGENTS.md`                 | 라우트/레이아웃/메타데이터 수정 시                                                                                                                           |
-| `src/components/`   | 공용 무상태 UI 프리미티브(`ui/`)                              | `src/components/AGENTS.md`          | 새 프리미티브 추가, 기존 프리미티브 수정 시                                                                                                                  |
-| `src/features/`     | 기능 슬라이스: `todo` `category` `date-strip` `stats` `theme` | `src/features/AGENTS.md`(규칙 본문) | feature 코드 작성 시. 하위 `<f>/AGENTS.md`는 `components/hooks/store` 관할 선언 전용 최소 파일(관할은 직계 자식만 면제하므로 손자 디렉토리엔 별도 선언 필요) |
-| `src/domain/`       | 엔티티·규칙·순수 함수, 프레임워크 의존 0                      | `src/domain/AGENTS.md`              | 도메인 타입/규칙 추가·수정 시                                                                                                                                |
-| `src/repositories/` | 레포지토리 인터페이스, memory 구현, 컨테이너                  | `src/repositories/AGENTS.md`        | 저장소 계약 변경 시                                                                                                                                          |
-| `src/infra/`        | `indexeddb/`(Dexie), 후일 `sync/`                             | `src/infra/AGENTS.md`               | 스키마/마이그레이션/구현 수정 시                                                                                                                             |
-| `src/lib/`          | `cn.ts` `date.ts` `id.ts` 등 순수 유틸                        | `src/lib/AGENTS.md`                 | 유틸 추가 시(중복 방지)                                                                                                                                      |
-| `src/styles/`       | `tokens.css` `globals.css`(.css 만)                           | `src/styles/AGENTS.md`              | 토큰/테마 변경 시                                                                                                                                            |
-| `src/test/`         | Vitest setup, fixtures 팩토리                                 | `src/test/AGENTS.md`                | 테스트 작성 시 픽스처 확인                                                                                                                                   |
+| 경로                | 한 줄                                                                    | AGENTS.md                           | 언제 읽어야 하는가                                                                                                                                           |
+| ------------------- | ------------------------------------------------------------------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/`              | 소스 루트                                                                | `src/AGENTS.md`                     | 새 최상위 디렉토리를 만들 때만                                                                                                                               |
+| `src/app/`          | SPA 진입점(`main.tsx`)·providers(조립 지점)·단일 라우트 화면(`page.tsx`) | `src/app/AGENTS.md`                 | 진입점/조립/화면 수정 시 (`<head>`는 루트 `index.html`, manifest 는 `public/`)                                                                               |
+| `src/components/`   | 공용 무상태 UI 프리미티브(`ui/`)                                         | `src/components/AGENTS.md`          | 새 프리미티브 추가, 기존 프리미티브 수정 시                                                                                                                  |
+| `src/features/`     | 기능 슬라이스: `todo` `category` `date-strip` `stats` `theme`            | `src/features/AGENTS.md`(규칙 본문) | feature 코드 작성 시. 하위 `<f>/AGENTS.md`는 `components/hooks/store` 관할 선언 전용 최소 파일(관할은 직계 자식만 면제하므로 손자 디렉토리엔 별도 선언 필요) |
+| `src/domain/`       | 엔티티·규칙·순수 함수, 프레임워크 의존 0                                 | `src/domain/AGENTS.md`              | 도메인 타입/규칙 추가·수정 시                                                                                                                                |
+| `src/repositories/` | 레포지토리 인터페이스, memory 구현, 컨테이너                             | `src/repositories/AGENTS.md`        | 저장소 계약 변경 시                                                                                                                                          |
+| `src/infra/`        | `indexeddb/`(Dexie), 후일 `sync/`                                        | `src/infra/AGENTS.md`               | 스키마/마이그레이션/구현 수정 시                                                                                                                             |
+| `src/lib/`          | `cn.ts` `date.ts` `id.ts` 등 순수 유틸                                   | `src/lib/AGENTS.md`                 | 유틸 추가 시(중복 방지)                                                                                                                                      |
+| `src/styles/`       | `tokens.css` `globals.css`(.css 만)                                      | `src/styles/AGENTS.md`              | 토큰/테마 변경 시                                                                                                                                            |
+| `src/test/`         | Vitest setup, fixtures 팩토리                                            | `src/test/AGENTS.md`                | 테스트 작성 시 픽스처 확인                                                                                                                                   |
 
 ## 빠른 질문표
 

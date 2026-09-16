@@ -1,5 +1,5 @@
 /* 폰트 파일 선언(@font-face)의 유일한 자리. globals.css 가 import 한다(tokens.css 는 값만 갖는다).
-   next/font 는 쓰지 않는다 — 빌드 스택이 Vinext 라 그 경로가 없다(ADR-0010).
+   next/font 는 쓰지 않는다 — 빌드 스택이 순수 Vite + React 라 그런 경로가 없다(ADR-0013).
    docs/specs/theme.md §3-F: R10 셀프 호스팅 · R12 서브셋 범위 · R13 swap · R14 해시 파일명.
 
    파일명의 `-74f8c71d` 는 내용 해시다(scripts/subset-font.sh 가 붙인다). public/ 은 번들러를

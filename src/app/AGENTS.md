@@ -1,18 +1,21 @@
-<!-- 읽기 조건: 라우트·레이아웃·메타데이터·providers·PWA manifest를 수정할 때. -->
+<!-- 읽기 조건: SPA 진입점·조립 지점·단일 라우트 화면(`/`)을 수정할 때. 문서 <head> 는 루트 `index.html` 이다. -->
 
 # src/app/ — AGENTS
 
 ## 목적
 
-Next.js App Router 셸. `layout.tsx`(서버, 폰트·테마 속성), `page.tsx`(서버, `<HomeScreen/>` 렌더만), `providers.tsx`(client, `setRepositories` — 조립 지점), `manifest.ts`, `error.tsx`. 비즈니스 로직·상태·컴포넌트 구현은 `features`.
+SPA 셸(ADR-0013). `main.tsx`(진입점 — `createRoot` + 마운트), `providers.tsx`(조립 지점 — `setRepositories`, Dexie 지연 로드), `page.tsx`(단일 라우트 `/` 의 화면). 비즈니스 로직·상태·컴포넌트 구현은 `features`.
+
+문서 `<head>`(메타·`theme-color`·폰트 preload·첫 페인트 테마 스크립트)와 PWA manifest 는 **여기 없다** — 루트 `index.html` 과 `public/manifest.webmanifest` 다.
 
 ## 규칙
 
 1. `page.tsx`는 10줄 이내: feature 화면 컴포넌트 1개를 `@/features/<f>`(index.ts)에서 가져와 렌더.
-2. `'use client'`는 `providers.tsx`, `error.tsx`에만.
-3. 라우트 추가는 스펙 + 오케스트레이터 승인(MVP는 `/` 단일 페이지).
-4. 서비스워커 소스는 `src/sw.ts`, 설정은 루트 `serwist.config.js`다(ADR-0010). 여기서는 `manifest.ts`만. 아이콘은 `public/`(`src/app`에 이미지 파일 금지).
-5. 출처: `docs/ARCHITECTURE.md` §1·§6, `docs/conventions/code-style.md` §3.
+2. `@/app/providers`를 import 할 수 있는 파일은 `main.tsx` 하나다(ADR-0006 규칙 6 — `eslint.config.mjs`가 파일명을 박아 강제한다). 이름을 바꾸면 그 예외 블록도 같이 바꾼다.
+3. 라우트 추가는 스펙 + 오케스트레이터 승인(MVP는 `/` 단일 페이지, 라우터 없음). 라우터 도입은 ADR.
+4. `infra`를 import 할 수 있는 파일도 `providers.tsx` 하나다. 그 import는 **동적**이어야 한다 — 정적으로 되돌리면 Dexie 가 진입 청크로 돌아온다(gzip 77 kB → 109 kB, ADR-0013 규칙 7). 산문이 아니라 장치가 막는다: `build-stack.test.ts` 가 소스 표기를, `scripts/check-dist.mjs` 가 산출물의 진입 청크(Dexie 부재 + gzip 예산)를 본다.
+5. 서비스워커 소스는 `src/sw.ts`, 설정은 루트 `serwist.config.js`다. 아이콘·manifest 는 `public/`(`src/app`에 이미지·정적 파일 금지).
+6. 출처: `docs/ARCHITECTURE.md` §1·§6, `docs/conventions/code-style.md` §3.
 
 ## 검증
 
