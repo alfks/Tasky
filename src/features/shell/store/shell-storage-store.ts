@@ -25,8 +25,12 @@ export type ShellStorageState = {
   status: ShellStorageStatus;
   /** 저장소 열기에 실패했다. 이미 메모리 모드면 무시한다 — 되돌아갈 곳이 없다. */
   reportFailure: () => void;
-  /** 메모리 구현으로 갈아끼운다. 성공하면 `memory`. */
-  continueInMemory: () => Promise<boolean>;
+  /**
+   * 메모리 구현으로 갈아끼운다. **동기다** — `createMemoryRepositories()` 는 I/O 를 하지 않는다.
+   * 한때 `async` 로 두었더니 `await` 할 것이 없어 절대 실패하지 않는 Promise 가 되었고, 그것을
+   * 기다리는 화면의 `loading` 표시가 장식으로 남았다(리뷰 Minor).
+   */
+  continueInMemory: () => void;
 };
 
 export const useShellStorageStore = create<ShellStorageState>((set, get) => ({
@@ -35,9 +39,8 @@ export const useShellStorageStore = create<ShellStorageState>((set, get) => ({
     if (get().status === 'memory') return;
     set({ status: 'failed' });
   },
-  continueInMemory: async () => {
+  continueInMemory: () => {
     setRepositories(createMemoryRepositories());
     set({ status: 'memory' });
-    return true;
   },
 }));

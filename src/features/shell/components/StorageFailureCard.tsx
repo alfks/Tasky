@@ -1,8 +1,6 @@
 'use client';
 
 // 저장소 열기 실패 안내 (app-shell.md §2-C "에러(저장소 열기 실패)"). 메인 전체를 이 카드로 바꾼다.
-import { useState } from 'react';
-
 import { useShellStorageStore } from '@/features/shell/store/shell-storage-store';
 
 import { Button } from '@/components/ui/Button';
@@ -21,12 +19,10 @@ type StorageFailureCardProps = {
 
 export function StorageFailureCard({ onContinue }: StorageFailureCardProps) {
   const continueInMemory = useShellStorageStore((state) => state.continueInMemory);
-  const [switching, setSwitching] = useState(false);
 
-  const handleContinue = async (): Promise<void> => {
-    setSwitching(true);
-    await continueInMemory();
-    setSwitching(false);
+  // 갈아끼우기는 동기다(스토어 주석) — 진행 표시가 필요 없고, 그래서 굳을 `loading` 도 없다.
+  const handleContinue = (): void => {
+    continueInMemory();
     onContinue();
   };
 
@@ -37,9 +33,7 @@ export function StorageFailureCard({ onContinue }: StorageFailureCardProps) {
     >
       <h2 className="text-lg font-semibold text-text">저장 공간을 열 수 없어요</h2>
       <p className="text-base text-muted">{STORAGE_FAILURE_TEXT}</p>
-      <Button loading={switching} onClick={() => void handleContinue()}>
-        {MEMORY_MODE_CTA}
-      </Button>
+      <Button onClick={handleContinue}>{MEMORY_MODE_CTA}</Button>
     </div>
   );
 }

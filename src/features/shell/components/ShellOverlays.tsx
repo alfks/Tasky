@@ -31,6 +31,10 @@ type ShellOverlaysProps = {
   categoryFormOpen: boolean;
   onCategoryFormClose: () => void;
   removal: CategoryRemovalController;
+  /** `⋯ → 삭제`. 셸이 자리표를 뜬 뒤 제어기에 넘긴다. */
+  onRemoveCategory: (category: Category) => void;
+  /** 삭제로 사라진 행 대신 포커스를 받을 요소 (R14). 주지 않으면 포커스가 `<body>` 로 떨어진다. */
+  removalReturnFocus: () => HTMLElement | null;
   onSelectCategory: (id: CategoryId) => void;
 };
 
@@ -43,6 +47,8 @@ export function ShellOverlays({
   categoryFormOpen,
   onCategoryFormClose,
   removal,
+  onRemoveCategory,
+  removalReturnFocus,
   onSelectCategory,
 }: ShellOverlaysProps) {
   return (
@@ -61,7 +67,7 @@ export function ShellOverlays({
             onDrawerClose();
             onSelectCategory(id);
           }}
-          onRemoveCategory={removal.requestRemove}
+          onRemoveCategory={onRemoveCategory}
         />
       </Dialog>
 
@@ -72,7 +78,16 @@ export function ShellOverlays({
         closeLabel="오늘 요약 닫기"
         className="ml-auto h-full max-w-[340px] self-stretch"
       >
-        <aside id={INSIGHT_OVERLAY_ID} aria-label="오늘 요약" className="h-full">
+        {/*
+          오버레이 안에서도 패널은 **같은 모습**이어야 한다. 대화상자 본문은 높이가 내용만큼이라
+          그냥 두면 `[단축키 ?]` 를 아래로 미는 `mt-auto` 가 먹지 않아 `카테고리별` 바로 밑에
+          붙는다(리뷰 Minor). 최소 높이를 줘서 컬럼과 같은 배치가 되게 한다.
+        */}
+        <aside
+          id={INSIGHT_OVERLAY_ID}
+          aria-label="오늘 요약"
+          className="flex h-full min-h-[60vh] flex-col"
+        >
           <ShellInsights categories={categories} />
         </aside>
       </Dialog>
@@ -81,7 +96,7 @@ export function ShellOverlays({
         <CategoryFormDialog open mode={{ kind: 'create' }} onClose={onCategoryFormClose} />
       ) : null}
 
-      <CategoryRemoveDialog controller={removal} />
+      <CategoryRemoveDialog controller={removal} returnFocus={removalReturnFocus} />
     </>
   );
 }

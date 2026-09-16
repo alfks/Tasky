@@ -7,9 +7,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   TOAST_STACK_ATTR,
   TOAST_STACK_GAP_PX,
+  bottomReservedPx,
   observeToastViewports,
   restackToastViewports,
 } from '@/features/shell/lib/toast-stack';
+
+/** 옵저버가 다음 프레임으로 모아 계산한다 — 프레임 하나를 넘긴다. */
+async function nextFrame(): Promise<void> {
+  await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 import { OVERLAY_ALWAYS_LIVE_ATTR } from '@/components/ui/overlay-rules';
 
@@ -86,7 +93,7 @@ describe('observeToastViewports', () => {
     const second = addViewport(0, 50);
     const stop = observeToastViewports(document);
     second.children[0]?.append(document.createElement('div'));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await nextFrame();
     expect(second.style.bottom).toBe(`calc(var(--space-6) + ${50 + TOAST_STACK_GAP_PX}px)`);
     stop();
   });
@@ -98,5 +105,32 @@ describe('observeToastViewports', () => {
     expect(second.style.bottom).not.toBe('');
     stop();
     expect(second.style.bottom).toBe('');
+  });
+});
+
+describe('하단 고정 막대 비켜 가기 (400px 에서 토스트가 [+ 할 일] 라벨을 가리던 자리)', () => {
+  function addBottomBar(height: number): HTMLElement {
+    const bar = document.createElement('div');
+    bar.setAttribute('data-shell-bottom-bar', '');
+    vi.spyOn(bar, 'getBoundingClientRect').mockReturnValue({ height } as DOMRect);
+    document.body.append(bar);
+    return bar;
+  }
+
+  it('막대가 없으면 0', () => {
+    expect(bottomReservedPx(document)).toBe(0);
+  });
+
+  it('막대가 있으면 높이 + 간격', () => {
+    addBottomBar(53);
+    expect(bottomReservedPx(document)).toBe(53 + TOAST_STACK_GAP_PX);
+  });
+
+  it('토스트가 하나뿐이어도 막대 위로 올라간다', () => {
+    addBottomBar(53);
+    const only = addViewport(1, 55);
+    restackToastViewports(document);
+    expect(only.style.bottom).toBe(`calc(var(--space-6) + ${53 + TOAST_STACK_GAP_PX}px)`);
+    expect(only.hasAttribute(TOAST_STACK_ATTR)).toBe(true);
   });
 });

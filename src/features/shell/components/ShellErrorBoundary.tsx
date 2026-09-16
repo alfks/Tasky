@@ -18,21 +18,24 @@ type ShellErrorBoundaryProps = {
   onError?: (error: Error, info: ErrorInfo) => void;
 };
 
-type ShellErrorBoundaryState = { error: Error | null };
+type ShellErrorBoundaryState = { error: Error | null; attempts: number };
 
 export class ShellErrorBoundary extends Component<
   ShellErrorBoundaryProps,
   ShellErrorBoundaryState
 > {
-  state: ShellErrorBoundaryState = { error: null };
+  state: ShellErrorBoundaryState = { error: null, attempts: 0 };
 
-  static getDerivedStateFromError(error: Error): ShellErrorBoundaryState {
+  static getDerivedStateFromError(error: Error): Pick<ShellErrorBoundaryState, 'error'> {
     return { error };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    // 로그는 남긴다 — 화면은 복구되지만 원인은 사라지면 안 된다.
-    console.error('앱 셸에서 처리되지 않은 오류가 발생했습니다.', error, info.componentStack);
+    // 로그는 남긴다 — 화면은 복구되지만 원인은 사라지면 안 된다. 프로덕션 콘솔은 조용히 둔다
+    // (code-style §9 — `command-store.ts` 의 같은 규약).
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('앱 셸에서 처리되지 않은 오류가 발생했습니다.', error, info.componentStack);
+    }
     this.props.onError?.(error, info);
   }
 
@@ -40,6 +43,12 @@ export class ShellErrorBoundary extends Component<
     if (this.state.error === null) {
       return this.props.children;
     }
+    /*
+     * **되지 않는 복구를 약속하지 않는다.** `[다시 시도]` 는 같은 트리를 다시 그릴 뿐이라,
+     * 결정적인 오류(깨진 날짜 키 같은 것)에서는 즉시 다시 던져 같은 카드로 돌아온다. 한 번
+     * 해 보고 또 실패하면 문구를 바꾸고 재시도 버튼을 거둬 새로고침만 남긴다.
+     */
+    const retried = this.state.attempts > 0;
     return (
       <div
         role="alert"
@@ -47,12 +56,18 @@ export class ShellErrorBoundary extends Component<
       >
         <h2 className="text-lg font-semibold">화면을 그리지 못했어요</h2>
         <p className="text-base text-muted">
-          적어 둔 내용은 그대로 저장돼 있어요. 다시 시도하거나 새로고침해 주세요.
+          {retried
+            ? '다시 시도해도 같은 문제가 생겨요. 적어 둔 내용은 그대로 저장돼 있으니 새로고침해 주세요.'
+            : '적어 둔 내용은 그대로 저장돼 있어요. 다시 시도해 볼까요?'}
         </p>
         <div className="flex gap-[var(--space-2)]">
-          {/* 다시 그리기: 일시적인 오류라면 이것만으로 돌아온다. */}
-          <Button onClick={() => this.setState({ error: null })}>다시 시도</Button>
-          <Button variant="outline" onClick={() => window.location.reload()}>
+          {retried ? null : (
+            <Button onClick={() => this.setState({ error: null, attempts: 1 })}>다시 시도</Button>
+          )}
+          <Button
+            variant={retried ? 'primary' : 'outline'}
+            onClick={() => window.location.reload()}
+          >
             새로고침
           </Button>
         </div>

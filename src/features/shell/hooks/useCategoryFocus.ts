@@ -7,11 +7,7 @@ import { useCallback } from 'react';
 import type { Category } from '@/domain/category/category';
 import type { CategoryId } from '@/domain/ids';
 
-/** `prefers-reduced-motion` 을 존중한다(R13). `matchMedia` 가 없으면 "선호하지 않음". */
-function scrollBehavior(): ScrollBehavior {
-  if (typeof window.matchMedia !== 'function') return 'smooth';
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
-}
+import { revealAndFocus } from '@/features/shell/lib/focus-fallback';
 
 export function useCategoryFocus(categories: readonly Category[]): (id: CategoryId) => void {
   return useCallback(
@@ -23,9 +19,8 @@ export function useCategoryFocus(categories: readonly Category[]): (id: Category
         (section) => section.getAttribute('aria-label') === name,
       );
       if (target === undefined) return;
-      target.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
       // 목록 자체에 포커스를 주면(§5 의 `tabindex=-1` 목록) 다음 Tab 이 그 그룹 안에서 이어진다.
-      target.querySelector<HTMLElement>('ul[tabindex="-1"]')?.focus();
+      revealAndFocus(target.querySelector<HTMLElement>('ul[tabindex="-1"]') ?? target);
     },
     [categories],
   );

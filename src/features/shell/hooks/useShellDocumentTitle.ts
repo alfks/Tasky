@@ -1,19 +1,23 @@
 // 문서 제목 (app-shell.md R9).
 //
-// **타이머와 한 자리를 다툰다.** `useTimerSignals`(timer R11)는 설치 시점의 `document.title` 을 base 로
-// 붙잡고 타이머 스토어가 움직일 때마다 제목을 다시 쓴다 — 실행 중이면 `"18:42 · 장보기 · <base>"`,
-// 그 밖에는 `base` 그대로. 그래서 셸이 한 번만 쓰고 말면 타이머가 적재(`hydrate`)를 마치는 순간
-// 제목이 `index.html` 의 `"Tasky"` 로 되돌아간다(실 Chromium 실측: 부팅 1.2초 뒤 `document.title`
-// 이 `"Tasky"`).
+// **타이머와 한 자리를 나눠 쓴다.** `useTimerSignals`(timer R11)는 설치 시점의 `document.title` 을
+// base 로 붙잡고, 타이머 스토어가 움직일 때마다 실행 중이면 `"18:42 · 장보기 · <base>"` 를, 그
+// 밖에는 `base` 를 그대로 쓴다. R9 도 같은 것을 말한다 — **실행 중에는 timer R11 의 세 토막**이고
+// 그 밖에만 `"9월 17일 (목) · 3/5 · Tasky"` 다.
 //
-// 그래서 셸도 같은 스토어를 구독해 **타이머가 제목을 원하지 않는 국면에서만** 자기 제목을 다시
-// 세운다. 구독 순서가 이 배선을 성립시킨다: 칩(자식)의 설치가 먼저고 셸(부모)의 구독이 나중이라
-// 같은 `set` 에서 셸이 마지막에 쓴다.
+// 그래서 두 가지를 지킨다.
 //
-// 남는 한계: **세션이 실행 중인 동안**에는 타이머의 낡은 base 가 뒤에 붙는다(날짜를 옮겨도 제목의
-// 날짜 부분이 따라오지 않는다). 타이머가 base 를 매번 다시 읽거나 셸에서 주입받아야 풀리는데
-// 그 파일은 이 티켓의 `owns` 밖이다 — 핸드오프에 남긴다.
-import { useEffect, useLayoutEffect } from 'react';
+// 1. **셸은 절대 먼저 쓰지 않는다.** 여기가 `useEffect`(패시브)인 것이 그 장치다. 커밋 한 번의
+//    순서는 (레이아웃 효과 자식→부모) → (패시브 효과 자식→부모)이므로, 칩의 설치가 항상 셸의 쓰기
+//    **앞**이고 칩이 붙잡는 base 는 `index.html` 의 `"Tasky"` 로 남는다. 한때 이 자리를
+//    `useLayoutEffect` 로 올렸더니 base 가 날짜 제목이 되어 실행 중 제목이
+//    `"24:59 · 아침 스트레칭 · 9월 16일 (수) · Tasky"` 네 토막이 됐다(리뷰 실측 — R11 위반).
+// 2. **타이머가 제목을 쥔 국면에서는 손대지 않는다.** 실행 중이거나 완료 신호가 떠 있으면(R9 c의
+//    깜빡임) 셸의 쓰기를 건너뛴다. 이 가드가 없으면 실행 중 날짜를 옮기는 순간 남은 시간이 사라졌다.
+//
+// 그래서 첫 쓰기에도 예외를 두지 않는다. 세션 없이 열면 칩이 `"Tasky"` 를 쓴 뒤 셸이 날짜 제목을
+// 얹고, 세션이 복원되면 칩이 R11 제목을 쓰고 셸은 비켜선다 — 어느 쪽도 깜빡이지 않는다.
+import { useEffect } from 'react';
 
 import type { DateKey } from '@/domain/date/date-key';
 
@@ -30,14 +34,6 @@ export function useShellDocumentTitle(
   counts: { done: number; total: number },
 ): string {
   const title = shellDocumentTitle(date, counts);
-
-  // **`useLayoutEffect` 인 이유**: 커밋 한 번의 순서는 (레이아웃 효과 자식→부모) → (패시브 효과
-  // 자식→부모) 다. 타이머 신호 설치는 칩의 패시브 효과라, 셸이 레이아웃 단계에서 제목을 먼저 쓰면
-  // 칩이 **이미 갱신된 제목**을 base 로 붙잡는다. 패시브로 미루면 base 가 `index.html` 의 "Tasky" 로
-  // 굳어 실행 중 제목이 `"25:00 · Tasky"` 가 된다(실측).
-  useLayoutEffect(() => {
-    document.title = title;
-  }, [title]);
 
   useEffect(() => {
     const apply = (state: TimerState): void => {
