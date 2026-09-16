@@ -7,8 +7,10 @@
 
 > **현재 상태(단일 소스 — 상태가 바뀌면 여기만 고친다)**
 >
-> - 스캐폴딩 완료 + **빌드 스택 Vinext 전환/Cloudflare Workers 배포 배선 완료**(ADR-0010). 앱 셸 + `src/` 레이어 트리 + `pnpm check`(9개 검사) + `pnpm build`(프리렌더 + 서비스워커 프리캐시 15 URL/479 kB) 동작 — 기능 티켓 착수 가능. 아직 비어 있는 것: feature 코드(`index.ts` 는 빈 배럴), 레포지토리 구현(memory·indexeddb), `lib/` 유틸, 서비스워커 **등록·업데이트 토스트 UI**(pwa.md R4·R5), 폰트.
-> - **배포는 아직 실행되지 않았다.** 사용자가 레포에 등록해야 하는 것 3개(전부 없으면 배포 워크플로가 그 스텝에서 실패한다 — 조용히 건너뛰지 않는다): Secrets `CLOUDFLARE_API_TOKEN`·`CLOUDFLARE_ACCOUNT_ID`, Variables `DEPLOY_URL`(배포 후 스모크용, 예 `https://tasky.<subdomain>.workers.dev`). 배선은 `pnpm deploy:dry-run`(= CI 와 같은 `wrangler deploy … --dry-run`, 26 assets / 68 modules / 820 KiB)까지 확인됨.
+> 아래 수치는 전부 **`f187472`(PR #12 머지) + 테스트 333건** 기준 실측이다. main 이 움직이면 다시 재서 고친다.
+>
+> - 스캐폴딩 완료 + **빌드 스택 Vinext 전환/Cloudflare Workers 배포 배선 완료**(ADR-0010). 앱 셸 + `src/` 레이어 트리 + `pnpm check`(10개 검사) + `pnpm build`(프리렌더 2 라우트 + 서비스워커 프리캐시 17 URL/949 kB) 동작 — 기능 티켓 착수 가능. 도메인 코어·`lib/` 유틸·레포지토리 인터페이스 5종과 **memory 구현 + 계약 테스트**(계약 60건 / 전체 306건)·디자인 토큰·Pretendard 서브셋 폰트까지 머지됨. 아직 비어 있는 것: **IndexedDB 구현**(T-10 리뷰 중), feature 코드 전부(`src/features/*` 는 빈 배럴), `src/components/ui/` 의 오버레이 6종(T-07 리뷰 중 — 프리미티브 A 6종은 머지됨), 서비스워커 **등록·업데이트 토스트 UI**(pwa.md R4·R5).
+> - **배포는 아직 실행되지 않았다.** 자격증명은 **`.env`**(git 제외, `cp .env.example .env` 후 채움)에서 읽는다 — `CLOUDFLARE_ACCOUNT_ID`·`CLOUDFLARE_API_TOKEN`, 선택 `DEPLOY_URL`. 발급 방법은 `.env.example` 주석에 있다. CI 는 같은 이름의 레포 Secrets/Variables 를 쓴다. 없으면 `scripts/deploy.sh` 가 실제 배포를 `rc=1` 로 멈춘다(조용히 건너뛰지 않는다 — `--dry-run` 은 자격증명 없이 돈다). 배선은 `pnpm run deploy:dry-run`(= CI 와 같은 명령, 29 assets / 68 modules / 820 KiB, gzip 242 KiB)까지 확인됨. **`pnpm deploy` 는 pnpm 내장 명령이라 우리 스크립트가 돌지 않는다 — 반드시 `pnpm run deploy`.**
 > - **pwa.md R9 의 `theme-color` 메타는 T-11(테마) 소관**이다 — manifest 와 같은 PR 이 아니다. 현재 렌더된 HTML 에는 없다(의도된 상태).
 > - **CI 임시 미작동**: 계정/레포 차원의 Actions 실행 불가로 추정(워크플로 자체는 정상 — PR의 빨간 X는 코드 문제가 아니다). **`bash scripts/check.sh` 통과가 PR 전 실질 게이트**이며, CI 초록불을 머지 조건으로 삼지 않는다. 복구되면 이 항목을 지운다.
 
@@ -61,14 +63,15 @@ bash scripts/setup.sh                     # 최초 1회: author config + 훅 + p
 bash scripts/wt.sh new feature/<name>     # 워크트리 생성(+브랜치) → .worktrees/<name>
 bash scripts/wt.sh list                   # 워크트리/보드 상태
 bash scripts/wt.sh rm <name>              # 머지 후 워크트리+브랜치 정리
-pnpm check                                # = bash scripts/check.sh (금지어·AGENTS.md·author·wt·arch·lint·typecheck·format·test). PR 전 필수
+pnpm check                                # = bash scripts/check.sh (금지어·.env·AGENTS.md·author·wt·arch·lint·typecheck·format·test). PR 전 필수
 bash scripts/check-forbidden-words.sh     # 금지어 검사
+bash scripts/check-env-secrets.sh         # .env 계열이 추적/스테이징됐는지 (pre-commit 이 --staged 로도 호출)
 bash scripts/check-author.sh main         # main 이후 커밋 author 검증
 bash scripts/check-agents-md.sh           # AGENTS.md 누락 검사
 bash scripts/check-arch.sh                # 레이어 경계 린트 + 아키텍처 2차 패스(스캐폴딩 후)
 pnpm dev | pnpm build | pnpm test -- <pattern>
 pnpm start                                # 빌드 산출물을 wrangler dev 로 로컬 서빙(서비스워커 확인용)
-pnpm build && pnpm deploy:dry-run         # CI 배포와 **같은 명령**을 --dry-run 으로(업로드 파일 목록·바인딩 확인, 자격증명 불필요)
+pnpm build && pnpm deploy:dry-run         # CI 배포와 **같은 명령**을 --dry-run 으로(업로드 파일 목록·바인딩 확인). 자격증명 불필요 — `--dry-run` 은 네트워크를 타지 않아 스크립트가 자격증명 검사를 건너뛴다. 단 빌드 산출물은 있어야 한다
 CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… pnpm run deploy   # 실제 배포. 평소엔 main push 시 워크플로가 한다
 ```
 
