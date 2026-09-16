@@ -104,6 +104,21 @@ export async function put<T extends Meta>(
 }
 
 /**
+ * **툼스톤 전용 조회**(ADR-0014) — `ids` 중 **툼스톤인 것만** `id` 오름차순으로.
+ * 살아 있는 로우는 나오지 않으므로 `liveOne`·`liveAll` 을 대신할 수 없다. 이름에 `live` 가 없는 것이
+ * "여기는 툼스톤이 나온다" 는 표식이고, 호출처는 `CategoryRepository.listDeletedByIds` 하나다.
+ */
+export async function deletedByIds<T extends Meta>(
+  table: MemoryTable<T>,
+  ids: readonly string[],
+): Promise<T[]> {
+  const wanted = new Set<string>(ids);
+  return [...table.rows.values()]
+    .filter((row) => wanted.has(row.id) && isTombstone(row))
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/**
  * **`DatasetRepository` 전용** — 툼스톤을 **포함한** 전량을 `id` 오름차순으로 (ADR-0009 규칙 4).
  * 엔티티 레포지토리 구현은 이 함수를 부르지 않는다.
  */

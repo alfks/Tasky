@@ -73,7 +73,7 @@
 | 굵기      | §3-F: `--font-weight-regular` 400 · `--font-weight-semibold` 600 · `--font-weight-bold` 700                                                                                                                   |
 | 폰트      | `--font-sans` — 스택·서브셋·로딩 규칙은 §3-F                                                                                                                                                                  |
 | 그림자    | `--shadow-sm` `0 1px 2px rgb(0 0 0 / .06)` · `--shadow-md` `0 6px 20px rgb(0 0 0 / .08)`(다크: `.30`/`.45`)                                                                                                   |
-| 모션      | `--motion-fast` 150ms · `--motion-base` 200ms · `--motion-slow` 300ms · 이징 `cubic-bezier(.2,.8,.2,1)`                                                                                                       |
+| 모션      | `--motion-xfast` 120ms(날짜 스트립 R10 의 상한 — 그 스펙이 값을 정한다) · `--motion-fast` 150ms · `--motion-base` 200ms · `--motion-slow` 300ms · 이징 `cubic-bezier(.2,.8,.2,1)`                             |
 | z-index   | `--z-base` 0 · `--z-sticky` 10 · `--z-popover` 20 · `--z-modal` 30 · `--z-toast` 40                                                                                                                           |
 | 컨트롤    | 체크박스 22px 원형·테두리 2px `--color-muted`(미체크 상태의 유일한 식별선이라 R9 의 3:1 대상 — `--color-border` 는 1.24 로 미달, hover: 카테고리 색) · 버튼 높이 36px · 입력 높이 36px · 최소 클릭 영역 32×32 |
 

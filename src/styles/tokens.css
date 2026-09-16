@@ -58,6 +58,8 @@
   /* 3-D 그림자는 @theme 에 리터럴로 넣지 않는다 — 아래 :root/@theme inline 주석 참고. */
 
   /* 3-D 모션(R5: reduced-motion 에서 0ms — 하단에서 재정의) */
+  /* xfast 는 date-strip R10 의 "120ms 이하" 상한을 값이 아니라 토큰으로 지키기 위한 단계다. */
+  --motion-xfast: 120ms;
   --motion-fast: 150ms;
   --motion-base: 200ms;
   --motion-slow: 300ms;
@@ -167,6 +169,7 @@
 /* R5: 모션 축소 선호 시 모든 --motion-* 는 0ms(전역 애니메이션 정지는 globals.css 도 겹으로 처리). */
 @media (prefers-reduced-motion: reduce) {
   :root {
+    --motion-xfast: 0ms;
     --motion-fast: 0ms;
     --motion-base: 0ms;
     --motion-slow: 0ms;

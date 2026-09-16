@@ -155,13 +155,26 @@ describe('디자인 토큰: 형태·간격·타이포·모션·z-index(§3-D)', 
     expect(themeInline.get('shadow-md')).toBe('var(--elev-md)');
   });
 
-  it('모션 3단계 + 이징, reduced-motion 에서 전부 0ms(R5)', () => {
+  it('모션 4단계 + 이징, reduced-motion 에서 전부 0ms(R5)', () => {
+    // xfast 는 date-strip R10("애니메이션은 120ms 페이드 이하")을 토큰으로 지키는 단계다.
+    // 이 단언이 §3-D 표와 토큰을 묶어 둔다 — 한쪽만 바뀌면 여기서 죽는다.
+    expect(base.get('motion-xfast')).toBe('120ms');
     expect(base.get('motion-fast')).toBe('150ms');
     expect(base.get('motion-base')).toBe('200ms');
     expect(base.get('motion-slow')).toBe('300ms');
+    expect(reducedMotion.get('motion-xfast')).toBe('0ms');
     expect(reducedMotion.get('motion-fast')).toBe('0ms');
     expect(reducedMotion.get('motion-base')).toBe('0ms');
     expect(reducedMotion.get('motion-slow')).toBe('0ms');
+  });
+
+  it('120ms 상한을 지키는 모션 토큰이 정확히 하나다(R10 을 어디에 걸지 헷갈릴 자리가 없게)', () => {
+    const durations = [...base.entries()].filter(
+      ([token, value]) => token.startsWith('motion-') && value.endsWith('ms'),
+    );
+    expect(durations.filter(([, value]) => Number.parseInt(value, 10) <= 120)).toEqual([
+      ['motion-xfast', '120ms'],
+    ]);
   });
 
   it('z-index 5단계', () => {

@@ -6,7 +6,9 @@
 // 하나로 "아직 없음"을 표현한다(스켈레톤 없음, §2-C). 조회 실패도 같은 `undefined` 라 점이 사라진다.
 import { useEffect, useRef, useState } from 'react';
 
+import type { Category } from '@/domain/category/category';
 import type { DateKey } from '@/domain/date/date-key';
+import type { CategoryId } from '@/domain/ids';
 import { summarizeDays, type DaySummary } from '@/domain/todo/day-summary';
 
 import { getRepositories } from '@/repositories/container';
@@ -15,6 +17,31 @@ import { weekDays } from '@/features/date-strip/lib/week';
 
 /** 요약 조회 실패 시 앱 셸 토스트에 띄울 문구 (§2-C). 토스트 자체는 앱 셸 소관이다. */
 export const SUMMARY_ERROR_MESSAGE = '날짜별 요약을 불러오지 못했어요. 다시 시도해 주세요.';
+
+/**
+ * 한 주의 요약을 읽는다 (R7·R8).
+ *
+ * 카테고리를 두 번 묻는 이유: `list({ includeClosed: true })` 는 툼스톤을 감추는데(ADR-0007 결정 4)
+ * R7 은 **삭제된 카테고리의 색까지** 세라고 한다. 그래서 살아 있는 목록에서 못 찾은 id 만 모아
+ * `listDeletedByIds` 로 한 번 더 묻는다 — 지워진 카테고리를 참조하는 투두가 없으면 두 번째 조회는
+ * 아예 나가지 않고, 나갈 때도 "이미 못 찾은 id" 만 실린다(ADR-0014 가 남용을 막는 방식).
+ */
+async function loadWeekSummaries(days: readonly DateKey[]): Promise<Map<DateKey, DaySummary>> {
+  const { todos, categories } = getRepositories();
+  const [todoList, living] = await Promise.all([
+    todos.listByDateRange(days[0], days[days.length - 1]),
+    // 종료된 카테고리의 투두도 점으로 세야 한다 (R7).
+    categories.list({ includeClosed: true }),
+  ]);
+  const known = new Set<CategoryId>(living.map((category) => category.id));
+  const missing = [...new Set(todoList.map((todo) => todo.categoryId))].filter(
+    (id) => !known.has(id),
+  );
+  const deleted: Category[] =
+    missing.length === 0 ? [] : await categories.listDeletedByIds(missing);
+  // 순서(활성 → 종료 → 삭제됨)는 도메인 `sortCategoriesForDisplay` 가 정한다 — 여기서는 합치기만 한다.
+  return summarizeDays(days, todoList, [...living, ...deleted]);
+}
 
 /**
  * `weekStart` 가 속한 주 7일의 요약. 아직 못 읽었거나 실패하면 `undefined`.
@@ -34,15 +61,10 @@ export function useWeekSummaries(
     const days = weekDays(weekStart);
     setSummaries(undefined);
 
-    const { todos, categories } = getRepositories();
-    Promise.all([
-      todos.listByDateRange(days[0], days[days.length - 1]),
-      // 종료된 카테고리의 투두도 점으로 세야 한다 (R7).
-      categories.list({ includeClosed: true }),
-    ])
-      .then(([todoList, categoryList]) => {
+    loadWeekSummaries(days)
+      .then((next) => {
         if (cancelled) return;
-        setSummaries(summarizeDays(days, todoList, categoryList));
+        setSummaries(next);
       })
       .catch(() => {
         if (cancelled) return;

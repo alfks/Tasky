@@ -132,13 +132,20 @@ describe('R10. 애니메이션은 120ms 이하이고 reduced-motion 에서는 �
   it('셀의 전환은 120ms 이하이고 150ms 짜리 --motion-fast 를 쓰지 않는다', async () => {
     setReducedMotion(false);
     await renderStrip();
+    // 수치는 컴포넌트가 아니라 토큰에 산다(theme.md §3-D). 그래서 클래스에서 리터럴을 세지 않고
+    // 참조한 토큰을 tokens.css 에서 되짚어 값을 확인한다 — 한쪽만 바뀌면 여기서 죽는다.
+    const tokens = readFileSync('src/styles/tokens.css', 'utf8');
     for (const cell of screen.getAllByRole('radio')) {
-      const durations = [...cell.className.matchAll(/duration-\[(\d+)ms\]/g)].map((m) =>
-        Number(m[1]),
+      const referenced = [...cell.className.matchAll(/duration-\[var\((--motion-[\w-]+)\)\]/g)].map(
+        (m) => m[1] as string,
       );
-      expect(durations.length).toBeGreaterThan(0);
-      for (const ms of durations) expect(ms).toBeLessThanOrEqual(120);
-      expect(cell.className).not.toContain('duration-[var(--motion-fast)]');
+      expect(referenced.length).toBeGreaterThan(0);
+      expect(cell.className).not.toMatch(/duration-\[\d+ms\]/);
+      for (const token of referenced) {
+        const declared = new RegExp(`\\${token}:\\s*(\\d+)ms`).exec(tokens);
+        expect(declared, `${token} 이 tokens.css 에 없다`).not.toBeNull();
+        expect(Number(declared?.[1])).toBeLessThanOrEqual(120);
+      }
     }
   });
 

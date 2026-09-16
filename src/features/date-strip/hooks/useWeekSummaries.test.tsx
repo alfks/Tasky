@@ -179,6 +179,96 @@ describe('R7. 종료된 카테고리의 투두도 점을 받는다', () => {
   });
 });
 
+describe('R7. 삭제된 카테고리의 투두도 원래 색 점을 받는다', () => {
+  const ACTIVE = makeCategory({ seq: 1 });
+  const REMOVED = makeCategory({
+    seq: 2,
+    color: '#FFB38A',
+    deletedAt: '2026-09-02T00:00:00.000Z',
+  });
+
+  /** 살아 있는 조회는 툼스톤을 감추고, 툼스톤은 `listDeletedByIds` 로만 나오는 저장소 스텁. */
+  function stubWithDeleted() {
+    const askedFor: string[][] = [];
+    const base = createMemoryRepositories();
+    setRepositories({
+      ...base,
+      todos: {
+        ...base.todos,
+        listByDateRange: () =>
+          Promise.resolve([
+            makeTodo({ seq: 1, date: TODAY, categoryId: ACTIVE.id }),
+            makeTodo({ seq: 2, date: TODAY, categoryId: REMOVED.id }),
+          ]),
+      },
+      categories: {
+        ...base.categories,
+        // ADR-0007 결정 4 그대로 — 살아 있는 조회에는 툼스톤이 없다.
+        list: () => Promise.resolve([ACTIVE]),
+        listDeletedByIds: (ids) => {
+          askedFor.push([...ids]);
+          return Promise.resolve([REMOVED].filter((c) => ids.includes(c.id)));
+        },
+      },
+    });
+    return askedFor;
+  }
+
+  const colorsOf = (container: HTMLElement) =>
+    [...container.querySelectorAll<HTMLElement>('[style*="--cat-color"]')].map((el) =>
+      el.style.getPropertyValue('--cat-color'),
+    );
+
+  it('활성 1 + 삭제됨 1 이 점 2개가 되고 삭제된 쪽도 제 색을 유지한다', async () => {
+    stubWithDeleted();
+    useDateStripStore.setState({ selectedDate: TODAY, today: TODAY });
+
+    const { container } = render(<DateStrip />);
+
+    // 음성 대조: 저장소가 툼스톤을 감추던 시절에는 점이 1개뿐이었다.
+    await waitFor(() => expect(dotCount(container)).toBe(2));
+    // 순서는 활성 → 삭제됨 (R7). 중립색이 아니라 원래 색이어야 한다.
+    expect(colorsOf(container)).toEqual([ACTIVE.color, '#FFB38A']);
+  });
+
+  it('툼스톤 조회에는 살아 있는 목록에서 못 찾은 id 만 실린다', async () => {
+    const askedFor = stubWithDeleted();
+    useDateStripStore.setState({ selectedDate: TODAY, today: TODAY });
+
+    const { container } = render(<DateStrip />);
+    await waitFor(() => expect(dotCount(container)).toBe(2));
+
+    expect(askedFor).toEqual([[REMOVED.id]]);
+  });
+
+  it('지워진 카테고리를 참조하는 투두가 없으면 툼스톤 조회 자체가 나가지 않는다', async () => {
+    const askedFor: string[][] = [];
+    const base = createMemoryRepositories();
+    setRepositories({
+      ...base,
+      todos: {
+        ...base.todos,
+        listByDateRange: () =>
+          Promise.resolve([makeTodo({ seq: 1, date: TODAY, categoryId: ACTIVE.id })]),
+      },
+      categories: {
+        ...base.categories,
+        list: () => Promise.resolve([ACTIVE]),
+        listDeletedByIds: (ids) => {
+          askedFor.push([...ids]);
+          return Promise.resolve([]);
+        },
+      },
+    });
+    useDateStripStore.setState({ selectedDate: TODAY, today: TODAY });
+
+    const { container } = render(<DateStrip />);
+    await waitFor(() => expect(dotCount(container)).toBe(1));
+
+    expect(askedFor).toEqual([]);
+  });
+});
+
 describe('§2-C. 조회에 실패하면 앞 주의 점이 새어 나오지 않는다', () => {
   it('성공한 주에서 실패한 주로 옮기면 점이 남김없이 사라진다', async () => {
     const todos = makeTodos(2, () => ({ date: TODAY, categoryId: CATEGORY.id }));

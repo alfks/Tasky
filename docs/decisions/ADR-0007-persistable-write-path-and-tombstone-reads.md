@@ -4,7 +4,7 @@
 
 - 상태: accepted
 - 날짜: 2026-09-15
-- 관련: ADR-0005(규칙 4·5 를 구체화 — supersede 아님), ADR-0009(규칙 2·결정 1·4 의 적용 범위 한정 — supersede 아님), ADR-0002, docs/conventions/code-style.md §5·§11
+- 관련: ADR-0005(규칙 4·5 를 구체화 — supersede 아님), ADR-0009(규칙 2·결정 1·4 의 적용 범위 한정 — supersede 아님), **ADR-0014(결정 4 개정: 툼스톤 전용 조회 `listDeletedByIds` 추가 — supersede 아님)**, ADR-0002, docs/conventions/code-style.md §5·§11
 
 ## 맥락
 
