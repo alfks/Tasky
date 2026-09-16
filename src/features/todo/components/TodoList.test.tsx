@@ -1,0 +1,239 @@
+// 투두 목록 화면 (todo.md §2-A·§2-C, R7·R9·R10·R13·R15·R16·R19).
+//
+// 픽스처는 **비대칭**이다: 공부 3건(완료 2, `order` 가 2·0·1 로 뒤섞임) · 운동 1건 · 요리(삭제된
+// 카테고리) 1건 — 그룹마다 개수·완료 수·정렬 키가 달라서, 블록을 바꿔 넣거나 정렬을 빼면 화면이
+// 달라진다. 완료 2건의 `doneAt` 도 `order` 와 **반대로** 두어 두 정렬 키를 섞으면 드러난다.
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it } from 'vitest';
+
+import type { Category } from '@/domain/category/category';
+import type { Persistable } from '@/domain/meta';
+import type { Todo } from '@/domain/todo/todo';
+
+import { getRepositories, setRepositories } from '@/repositories/container';
+import { createMemoryRepositories } from '@/repositories/memory/repositories';
+
+import { CommandLayer } from '@/features/command';
+import { TodoList } from '@/features/todo/components/TodoList';
+import { useTodoStore } from '@/features/todo/store/todo-store';
+import { makeCategory } from '@/test/fixtures/category';
+import { FIXTURE_DATE } from '@/test/fixtures/deps';
+import { makeTodo } from '@/test/fixtures/todo';
+
+const 공부 = makeCategory({ seq: 1, name: '공부', order: 0, emoji: '📚', color: '#7cc6ff' });
+const 운동 = makeCategory({ seq: 2, name: '운동', order: 1, color: '#a8e6b0' });
+const 요리 = makeCategory({ seq: 3, name: '요리', order: 2 });
+const 카테고리: Category[] = [공부, 운동];
+
+const 수학 = makeTodo({ seq: 1, categoryId: 공부.id, title: '수학', order: 2 });
+const 영어 = makeTodo({
+  seq: 2,
+  categoryId: 공부.id,
+  title: '영어',
+  order: 0,
+  done: true,
+  doneAt: '2026-01-15T09:00:00.000Z',
+});
+const 국어 = makeTodo({
+  seq: 3,
+  categoryId: 공부.id,
+  title: '국어',
+  order: 1,
+  done: true,
+  doneAt: '2026-01-15T11:00:00.000Z',
+  memo: '문학 위주\n둘째 줄',
+});
+const 달리기 = makeTodo({ seq: 4, categoryId: 운동.id, title: '달리기', focusSeconds: 1500 });
+const 김치 = makeTodo({ seq: 5, categoryId: 요리.id, title: '김치찌개', done: true });
+
+const 투두들 = [수학, 영어, 국어, 달리기, 김치];
+
+beforeEach(async () => {
+  setRepositories(createMemoryRepositories());
+  useTodoStore.setState({ byId: {}, date: null, status: 'idle', error: null });
+  const repo = getRepositories().todos;
+  for (const todo of 투두들) {
+    await repo.upsert(todo as Persistable<Todo>);
+  }
+});
+
+function 화면() {
+  // `CommandLayer` 는 셸(T-20)이 한 번 마운트한다 — 단축키 디스패처가 거기 있어서 함께 띄운다.
+  return render(
+    <>
+      <CommandLayer />
+      <TodoList date={FIXTURE_DATE} categories={카테고리} />
+    </>,
+  );
+}
+
+/** 한 그룹 안의 행 제목을 화면 순서대로. 구분선·입력 행은 제목 버튼이 없어 빠진다. */
+function 행들(그룹이름: string): string[] {
+  const section = screen.getByRole('region', { name: 그룹이름 });
+  return within(section)
+    .getAllByRole('listitem')
+    .flatMap((item) => {
+      // 투두 행만 센다(입력 행·구분선 제외). 제목 버튼은 행에서 **유일하게 `aria-label` 이 없는**
+      // 버튼이다 — 손잡이·⋯ 는 아이콘 버튼이라 이름을 속성으로 갖는다.
+      if (within(item).queryByRole('checkbox') === null) return [];
+      const title = within(item)
+        .queryAllByRole('button')
+        .find((button) => !button.hasAttribute('aria-label'));
+      return title === undefined ? [] : [title.textContent ?? ''];
+    });
+}
+
+async function 목록이보일때까지(): Promise<void> {
+  await screen.findByRole('checkbox', { name: '수학' });
+}
+
+describe('배치 (R7·R15)', () => {
+  it('미완료는 order 순, 완료는 doneAt 내림차순으로 아래에 둔다', async () => {
+    화면();
+    await 목록이보일때까지();
+
+    // order 는 영어(0) → 국어(1) → 수학(2) 이지만 완료 둘은 아래로 내려가고,
+    // 그 안에서는 늦게 완료한 국어(11시)가 영어(9시)보다 위다.
+    expect(행들('공부')).toEqual(['수학', '국어', '영어']);
+  });
+
+  it('완료 항목이 있을 때만 "완료 n" 구분선을 둔다', async () => {
+    화면();
+    await 목록이보일때까지();
+
+    expect(
+      within(screen.getByRole('region', { name: '공부' })).getByRole('heading', { level: 3 }),
+    ).toHaveTextContent('완료 2');
+    expect(
+      within(screen.getByRole('region', { name: '운동' })).queryByRole('heading', { level: 3 }),
+    ).toBeNull();
+  });
+
+  it('그룹 헤더에 완료/전체를 그룹마다 따로 보여준다', async () => {
+    화면();
+    await 목록이보일때까지();
+
+    expect(screen.getByRole('region', { name: '공부' })).toHaveTextContent('2/3');
+    expect(screen.getByRole('region', { name: '운동' })).toHaveTextContent('0/1');
+  });
+
+  it('활성 카테고리 order 순으로 그룹을 놓고 삭제된 카테고리는 맨 뒤에 둔다', async () => {
+    화면();
+    await 목록이보일때까지();
+
+    expect(screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'))).toEqual([
+      '공부',
+      '운동',
+      '삭제된 카테고리',
+    ]);
+  });
+});
+
+describe('표시 (R9·R19)', () => {
+  it('완료 항목은 취소선이고 핸들이 없다', async () => {
+    화면();
+    await 목록이보일때까지();
+
+    expect(screen.getByRole('button', { name: '영어' })).toHaveClass('line-through');
+    expect(screen.getByRole('button', { name: '수학' })).not.toHaveClass('line-through');
+    expect(screen.queryByRole('button', { name: /영어 순서 변경/u })).toBeNull();
+    expect(screen.getByRole('button', { name: /수학 순서 변경/u })).toBeInTheDocument();
+  });
+
+  it('메모가 있으면 아이콘과 첫 줄 요약이, 집중 시간이 있으면 칩이 보인다', async () => {
+    화면();
+    await 목록이보일때까지();
+
+    expect(screen.getByRole('img', { name: '메모 있음' })).toBeInTheDocument();
+    expect(screen.getByText('문학 위주')).toBeInTheDocument();
+    expect(screen.queryByText(/둘째 줄/u)).toBeNull();
+    expect(screen.getByLabelText('집중 25분')).toHaveTextContent('⏱ 25분');
+  });
+});
+
+describe('삭제된 카테고리 그룹 (R16)', () => {
+  it('체크를 풀 수 없고 입력 행도 없다', async () => {
+    화면();
+    await 목록이보일때까지();
+    const group = screen.getByRole('region', { name: '삭제된 카테고리' });
+
+    expect(within(group).getByRole('checkbox', { name: '김치찌개' })).toBeDisabled();
+    expect(within(group).getByRole('button', { name: '김치찌개' })).toBeDisabled();
+    expect(within(group).queryByRole('button', { name: '+ 할 일 추가' })).toBeNull();
+  });
+
+  it('메뉴에는 옮기기와 삭제만 있다', async () => {
+    const user = userEvent.setup();
+    화면();
+    await 목록이보일때까지();
+
+    await user.click(screen.getByRole('button', { name: '김치찌개 메뉴' }));
+
+    expect(screen.getAllByRole('menuitem').map((i) => i.textContent)).toEqual([
+      '다른 카테고리로 옮기기',
+      '삭제',
+    ]);
+  });
+
+  it('다른 카테고리로 옮기면 그 그룹으로 간다', async () => {
+    const user = userEvent.setup();
+    화면();
+    await 목록이보일때까지();
+
+    await user.click(screen.getByRole('button', { name: '김치찌개 메뉴' }));
+    await user.click(screen.getByRole('menuitem', { name: '다른 카테고리로 옮기기' }));
+    await user.click(screen.getByRole('menuitem', { name: '📚 공부' }));
+
+    await waitFor(() => {
+      expect(행들('공부')).toContain('김치찌개');
+    });
+    expect(screen.queryByRole('region', { name: '삭제된 카테고리' })).toBeNull();
+  });
+});
+
+describe('날짜 이동 (R10)', () => {
+  it('"내일로" 는 목록에서 내리고 되돌리기 토스트를 띄운다', async () => {
+    const user = userEvent.setup();
+    화면();
+    await 목록이보일때까지();
+
+    await user.click(screen.getByRole('button', { name: '달리기 메뉴' }));
+    await user.click(screen.getByRole('menuitem', { name: '내일로' }));
+
+    expect(await screen.findByText('1월 16일로 옮겼어요')).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: '달리기' })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: '되돌리기' }));
+
+    expect(await screen.findByRole('checkbox', { name: '달리기' })).toBeInTheDocument();
+  });
+
+  it('옮긴 뒤 포커스가 body 로 떨어지지 않는다', async () => {
+    const user = userEvent.setup();
+    화면();
+    await 목록이보일때까지();
+
+    await user.click(screen.getByRole('button', { name: '수학 메뉴' }));
+    await user.click(screen.getByRole('menuitem', { name: '내일로' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('checkbox', { name: '수학' })).toBeNull();
+    });
+    await waitFor(() => {
+      expect(document.activeElement).not.toBe(document.body);
+    });
+  });
+});
+
+describe('단축키', () => {
+  it('N 은 첫 활성 카테고리의 입력 행을 연다', async () => {
+    const user = userEvent.setup();
+    화면();
+    await 목록이보일때까지();
+
+    await user.keyboard('n');
+
+    expect(screen.getByRole('textbox', { name: '공부에 할 일 추가' })).toHaveFocus();
+  });
+});
