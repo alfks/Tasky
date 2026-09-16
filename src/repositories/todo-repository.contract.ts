@@ -97,6 +97,17 @@ export function runTodoRepositoryContract(target: ContractTarget): void {
       await repo.upsert(plain);
     });
 
+    it('upsert 는 복사본을 저장한다 — 호출자가 나중에 인자를 변형해도 저장소가 오염되지 않는다', async () => {
+      const todo = contractTodo(contractDeps());
+      await repo.upsert(todo);
+
+      // indexeddb 는 구조적 복제라 이 변형이 저장된 로우에 닿지 않는다. memory 도 같은 보장이어야 한다.
+      const mutable = todo as { title: string };
+      mutable.title = '나중에 바뀐 제목';
+
+      expect((await repo.getById(todo.id))?.title).toBe('할 일');
+    });
+
     it('(e) READS 는 인터페이스의 조회 메서드를 하나도 빠뜨리지 않는다', () => {
       // 전수성 판정은 위 satisfies 가 tsc 에서 한다. 여기서는 그 이름들이 실제로 구현에 있는지만 본다.
       for (const name of Object.keys(READS)) {

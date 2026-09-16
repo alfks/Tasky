@@ -9,16 +9,17 @@
 
 ## 파일 지도
 
-| 파일                       | 무엇                                                                                   |
-| -------------------------- | -------------------------------------------------------------------------------------- |
-| `*-repository.ts`          | 엔티티 계약 4종(`Todo`·`Category`·`Settings`·`FocusSession`) + `dataset-repository.ts` |
-| `container.ts`             | 조립 지점(배럴이 아니다 — ADR-0006). 구현을 import 하지 않는다                         |
-| `ordering.ts`              | 계약이 고정하는 정렬 중 도메인에 자리가 없는 것(집중 세션·검색 결과)                   |
-| `repository-error.ts`      | `RepositoryError` — 도메인 규칙 위반(`DomainError`)과 구분되는 저장소 실패             |
-| `contract.ts`              | `ContractTarget` 과 계약 전용 엔티티 팩토리                                            |
-| `*-repository.contract.ts` | 계약 스위트 본문(`run<X>Contract(target)`). **테스트 파일이 아니다**                   |
-| `memory.contract.test.ts`  | memory 대상으로 스위트 다섯을 실행                                                     |
-| `memory/`                  | memory 구현(아래 규칙 3)                                                               |
+| 파일                          | 무엇                                                                                   |
+| ----------------------------- | -------------------------------------------------------------------------------------- |
+| `*-repository.ts`             | 엔티티 계약 4종(`Todo`·`Category`·`Settings`·`FocusSession`) + `dataset-repository.ts` |
+| `container.ts`                | 조립 지점(배럴이 아니다 — ADR-0006). 구현을 import 하지 않는다                         |
+| `ordering.ts`                 | 계약이 고정하는 정렬 중 도메인에 자리가 없는 것(집중 세션·검색 결과)                   |
+| `repository-error.ts`         | `RepositoryError` — 도메인 규칙 위반(`DomainError`)과 구분되는 저장소 실패             |
+| `contract.ts`                 | `ContractTarget` 과 계약 전용 엔티티 팩토리                                            |
+| `*.contract.ts`               | 계약 스위트 본문(`run<X>Contract(target)`). **테스트 파일이 아니다**                   |
+| `dataset-removal.contract.ts` | `planCategoryRemoval` → `write` 절(TECH_PLAN §6). 데이터셋 러너가 부른다               |
+| `memory.contract.test.ts`     | memory 대상으로 스위트 다섯을 실행                                                     |
+| `memory/`                     | memory 구현(아래 규칙 3)                                                               |
 
 ## 규칙
 
@@ -36,6 +37,8 @@
 6. 계약 스위트는 `*.contract.ts`(테스트 파일이 아님)에 두고 구현별 `*.contract.test.ts` 가 부른다.
    스위트를 테스트 파일로 두면 다른 구현이 import 할 때 memory 실행분이 딸려온다.
    그래서 스위트는 `src/test/fixtures` 를 쓸 수 없고(레이어 허용 목록 밖) `contract.ts` 의 팩토리를 쓴다.
+   스위트는 `describe`/`it`/`expect` 를 전역(`vitest/globals`)으로 쓰므로 **테스트 러너 안에서만**
+   import 한다 — 앱 코드가 부르면 런타임에 `describe is not defined` 다.
 7. 출처: `docs/conventions/code-style.md` §5·§11, ADR-0005 · ADR-0007 · ADR-0009.
 
 ## 관할: memory/

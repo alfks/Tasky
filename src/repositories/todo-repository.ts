@@ -23,6 +23,8 @@ export interface TodoRepository {
   /**
    * 제목 부분 일치 검색 (shortcuts R9): 대소문자 무시, 메모는 보지 않는다.
    * 정렬은 `date` 내림차순 → 미완료 우선 → 표준 정렬이고 `limit` 건까지 돌려준다.
+   * **빈 질의는 전량(`limit` 까지)이다** — `''.includes('')` 가 참이기 때문이며, "검색어가 없으면
+   * 부르지 않는다" 는 호출부(검색 UI)의 책임이다. shortcuts R9 에 빈 질의 규정이 없어 여기서 고정한다.
    */
   search(query: string, limit: number): Promise<Todo[]>;
   /** 도메인 함수가 만든 값만 저장한다. 삭제는 `markDeleted` 의 결과를 넘긴다. */

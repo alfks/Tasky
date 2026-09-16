@@ -10,7 +10,13 @@ import { isTombstone, type Meta, type Persistable } from '@/domain/meta';
 import type { Settings } from '@/domain/theme/settings';
 import type { Todo } from '@/domain/todo/todo';
 
-/** 한 테이블. 로우는 **복사본**으로 들고 있다 — IndexedDB 의 구조적 복제와 같은 격리를 준다. */
+/**
+ * 한 테이블. **쓰기가 복사본을 넣는다**(`put`·`replaceRows`) — 호출자가 넘긴 객체를 나중에 변형해도
+ * 저장소가 오염되지 않는다(계약이 단언한다). 읽기는 내부 객체를 그대로 돌려주므로 **IndexedDB 와
+ * 격리 수준이 같지 않다**: 조회 결과를 변형하면 memory 에서만 저장소가 따라 바뀐다. 조회 결과는
+ * 브랜드가 없어 그대로 `upsert` 할 수 없고(ADR-0007 규칙 3-d) 변형은 도메인 함수를 거치므로
+ * 앱 경로에서는 일어나지 않지만, memory 한정의 차이라는 점을 여기 적어 둔다.
+ */
 export type MemoryTable<T extends Meta> = { readonly rows: Map<string, T> };
 
 /** 네 테이블 묶음. 한 memory 인스턴스의 전체 상태다. */
@@ -34,6 +40,10 @@ export function createMemoryTables(): MemoryTables {
 /**
  * 툼스톤 판정이 일어나는 **유일한 자리**. 아래 조회 헬퍼는 전부 이 함수를 거치므로 필터를 빼먹을 수
  * 있는 코드 경로가 하나뿐이다. `DatasetRepository` 전용 통로(`allRows`·`replaceRows`)만 이 밖에 있다.
+ *
+ * 단, memory 에서 그 "하나뿐" 은 **관례**다(AGENTS.md 규칙 3) — `MemoryTable.rows` 가 공개 `Map` 이라
+ * `tables.todos.rows.get(id)` 로 툼스톤을 읽는 코드가 lint·tsc 를 통과한다. indexeddb 쪽은
+ * `LiveTable` 브랜드가 Dexie API 를 감춰 타입이 강제한다(ADR-0007 결정 5).
  */
 function live<T extends Meta>(table: MemoryTable<T>): T[] {
   return [...table.rows.values()].filter((row) => !isTombstone(row));

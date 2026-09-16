@@ -101,6 +101,27 @@ export function runFocusSessionRepositoryContract(target: ContractTarget): void 
       expect((await repo.getActive())?.id).toBe(paused.id);
     });
 
+    it('활성 세션이 둘이면 가장 늦게 시작한 것을 돌려준다 (인터페이스 주석의 타이브레이크)', async () => {
+      // 이 단언이 없던 동안 `.at(-1)` 을 `.at(0)` 으로 바꿔도 계약 44건이 전부 통과했다.
+      // timer R5 는 활성 최대 1개를 전제하지만, 데이터가 어긋났을 때 두 구현이 갈리지 않는 것이 계약이다.
+      const early = contractFocusSession(contractDeps({ seed: 1 }));
+      const late = contractFocusSession(contractDeps({ seed: 2 }), {
+        status: 'paused',
+        startedAt: T1,
+        pausedAt: T1,
+      });
+      await repo.upsert(early);
+      await repo.upsert(late);
+
+      expect((await repo.getActive())?.id).toBe(late.id);
+
+      // 삽입 순서에 기대지 않는다 — 거꾸로 넣어도 답이 같아야 한다.
+      const reversed = (await target.create()).focusSessions;
+      await reversed.upsert(late);
+      await reversed.upsert(early);
+      expect((await reversed.getActive())?.id).toBe(late.id);
+    });
+
     it('진행 중인 세션이 없으면 getActive 는 undefined 다', async () => {
       await repo.upsert(contractFocusSession(contractDeps(), { status: 'canceled', endedAt: T1 }));
 

@@ -3,9 +3,9 @@
 // ⑤ `restore(readAll 결과)` 컴파일 실패.
 //
 // `DatasetRepository` 는 엔티티 레포지토리가 아니므로 `READS` 전수 대조의 대상이 아니다(ADR-0007 규칙 2).
-import { planCategoryRemoval } from '@/domain/category/removal';
 import type { DatasetWrite } from '@/domain/dataset';
 import { markDeleted } from '@/domain/meta';
+import { SETTINGS_ID } from '@/domain/theme/settings';
 
 import type { Repositories } from '@/repositories/container';
 import {
@@ -17,12 +17,13 @@ import {
   idsOf,
   type ContractTarget,
 } from '@/repositories/contract';
+import { runCategoryRemovalContract } from '@/repositories/dataset-removal.contract';
 import { isRepositoryError } from '@/repositories/repository-error';
 
 const T1 = '2026-01-16T09:30:00.000Z';
 const OLD = '2025-12-01T00:00:00.000Z';
 
-/** 계약에 없는 테이블을 가리키는 쓰기 — `write` 중간에 실패를 주입하는 값이다. */
+/** `table` 축의 실패 주입 — 계약에 없는 테이블을 가리키는 쓰기. */
 function brokenWrite(): DatasetWrite {
   return {
     table: '없는테이블',
@@ -30,7 +31,18 @@ function brokenWrite(): DatasetWrite {
   } as unknown as DatasetWrite;
 }
 
+/**
+ * `entity` 축의 실패 주입 — 테이블은 맞고 로우가 불량이다. **두 축을 모두 걸어야** 하는 이유:
+ * memory 가 `table` 만 미리 검증하던 시절 이 축에서는 앞선 쓰기가 남았고(Dexie 는 트랜잭션이
+ * 롤백해 0), 계약이 그 축을 주입하지 않아 두 구현의 차이를 잡지 못했다.
+ */
+function brokenEntityWrite(entity: unknown): DatasetWrite {
+  return { table: 'todos', entity } as unknown as DatasetWrite;
+}
+
 export function runDatasetRepositoryContract(target: ContractTarget): void {
+  // 카테고리 삭제(§6)를 고정하는 절은 파일 길이 상한(300줄) 때문에 따로 있다 — 러너는 여전히 이 하나다.
+  runCategoryRemovalContract(target);
   describe(`DatasetRepository 계약 (${target.name})`, () => {
     let repos: Repositories;
 
@@ -94,6 +106,32 @@ export function runDatasetRepositoryContract(target: ContractTarget): void {
       expect(snapshot.categories).toEqual([]);
     });
 
+    it.each([
+      ['undefined', undefined],
+      ['null', null],
+      ['객체가 아닌 값', '투두'],
+      ['id 가 없는 객체', { title: '할 일' }],
+    ])(
+      '① write 는 entity 축(%s)의 실패에서도 아무것도 쓰지 않는다 — table 축과 같은 보장',
+      async (_label, entity) => {
+        const deps = contractDeps();
+        const before = contractTodo(deps);
+        const after = contractCategory(deps);
+
+        await expect(
+          repos.dataset.write([
+            { table: 'todos', entity: before },
+            brokenEntityWrite(entity),
+            { table: 'categories', entity: after },
+          ]),
+        ).rejects.toThrow();
+
+        const snapshot = await repos.dataset.readAll();
+        expect(snapshot.todos).toEqual([]);
+        expect(snapshot.categories).toEqual([]);
+      },
+    );
+
     it('② restore 는 스냅샷으로 왕복한다 — 기존 로우는 사라지고 스냅샷만 남는다', async () => {
       const deps = contractDeps();
       const stale = contractTodo(deps, { title: '지워질 것' });
@@ -149,30 +187,17 @@ export function runDatasetRepositoryContract(target: ContractTarget): void {
       await repos.dataset.restore(snapshot);
     });
 
-    it('planCategoryRemoval 의 writes 를 write 한 번으로 적용한다 (category R13)', async () => {
-      const deps = contractDeps();
-      const category = contractCategory(deps);
-      const open = contractTodo(deps, { categoryId: category.id, order: 0 });
-      const done = contractTodo(deps, { categoryId: category.id, order: 1, done: true });
-      await repos.categories.upsert(category);
-      await repos.todos.upsert(open);
-      await repos.todos.upsert(done);
-
-      const { writes, result } = planCategoryRemoval({
-        category,
-        todos: await repos.todos.listByCategory(category.id),
-        targetTodos: [],
-        choice: { incomplete: 'delete' },
-        deps: contractDeps({ now: T1 }),
-        categories: await repos.categories.list(),
+    it('설정 단일 행의 정의는 하나다 — readAll 과 settings.get() 이 같은 행을 가리킨다', async () => {
+      // `id` 오름차순 첫 행을 쓰던 시절에는 'default' 보다 앞서는 id 가 readAll 만 바꿔 두 API 가 갈렸다.
+      const rogue = contractSettings(contractDeps({ seed: 90 }), {
+        id: 'a0000000-0000-4000-8000-000000000009',
+        theme: 'dark',
       });
-      await repos.dataset.write(writes);
+      await repos.dataset.write([{ table: 'settings', entity: rogue }]);
 
-      expect(result.deletedTodoIds).toEqual([open.id]);
-      expect(await repos.categories.getById(category.id)).toBeUndefined();
-      expect(idsOf(await repos.todos.listAll())).toEqual([done.id]);
-      // 완료 투두는 한 글자도 건드리지 않는다 (category R14).
-      expect((await repos.todos.getById(done.id))?.rev).toBe(done.rev);
+      const snapshot = await repos.dataset.readAll();
+      expect(snapshot.settings.id).toBe(SETTINGS_ID);
+      expect(snapshot.settings.id).toBe((await repos.settings.get())?.id);
     });
   });
 }
