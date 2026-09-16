@@ -6,6 +6,8 @@
 //
 // 픽스처는 **비대칭**이다: 활성 3개를 서로 다른 `order` 로, 종료 1개를 더 두고, 공부에는 완료 2건 ·
 // 미완료 3건을 둔다. 대칭 픽스처였다면 "대상 목록에서 자기 자신·종료를 뺀다"(R10·R8)를 틀려도 통과한다.
+import { useRef } from 'react';
+
 import {
   act,
   cleanup,
@@ -35,6 +37,16 @@ import { useTodoStore } from '@/features/todo';
 import { makeCategories, makeCategory } from '@/test/fixtures/category';
 import { FIXTURE_DATE } from '@/test/fixtures/deps';
 import { makeTodo } from '@/test/fixtures/todo';
+
+import { ToastViewport, clearToasts, dismissToast, useToasts } from '@/components/ui/Toast';
+
+/**
+ * 전역 토스트 뷰포트. 앱에서는 셸이 한 번만 마운트한다(`ShellToasts`, app-shell R8) — 되돌리기
+ * 토스트는 T-30 부터 자기 뷰포트가 아니라 그 허브로 간다. 단독 테스트에서는 여기서 대신 세운다.
+ */
+function ToastHub() {
+  return <ToastViewport toasts={useToasts()} onClose={dismissToast} />;
+}
 
 const [CORAL, PEACH, ORANGE, YELLOW] = PALETTE;
 
@@ -92,6 +104,7 @@ function seed(categories: readonly Category[], todos = 할일): void {
 }
 
 beforeEach(() => {
+  clearToasts();
   seed([공부, 운동, 독서, 쉼]);
   // 되돌리기 뒤 목록 재조회(`refreshTodos`)를 볼 수 있게 날짜를 올려 둔다 — 날짜가 `null` 이면
   // 재조회 자체가 일어나지 않아 그 배선이 있으나 없으나 같아진다.
@@ -111,6 +124,35 @@ function Harness({ category = 공부 }: { category?: Category }) {
         삭제 열기
       </button>
       <CategoryRemoveDialog controller={controller} />
+      <ToastHub />
+    </>
+  );
+}
+
+/**
+ * 연 요소가 삭제의 결과로 **사라지는** 하네스 (app-shell R14 의 실제 경로). 위의 `Harness` 는 열기
+ * 버튼이 살아남아 `Dialog` 가 그리로 되돌려 보내므로 `returnFocus` 가 아예 불리지 않는다.
+ */
+function VanishingOpener() {
+  const controller = useCategoryRemoval();
+  // 실제 화면과 같은 조건: 카테고리가 목록에서 사라지면 그 행의 버튼도 사라진다.
+  const alive = useCategoryStore((state) => state.byId[공부.id] !== undefined);
+  const fallbackRef = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      {/* key 를 달리해 **DOM 노드가 실제로 교체되게** 한다 — 같은 노드를 재사용하면 `Dialog` 가
+          "연 요소가 아직 살아 있다" 고 보고 `returnFocus` 를 아예 묻지 않는다. */}
+      {alive ? (
+        <button key="opener" type="button" onClick={() => controller.requestRemove(공부)}>
+          삭제 열기
+        </button>
+      ) : (
+        <button key="fallback" type="button" ref={fallbackRef}>
+          다음 카테고리
+        </button>
+      )}
+      <CategoryRemoveDialog controller={controller} returnFocus={() => fallbackRef.current} />
+      <ToastHub />
     </>
   );
 }
@@ -127,6 +169,7 @@ function TwoTargets() {
         운동 삭제
       </button>
       <CategoryRemoveDialog controller={controller} />
+      <ToastHub />
     </>
   );
 }
@@ -452,6 +495,26 @@ describe('되돌리기 (R15)', () => {
     expect(todoRow(할일[0].id).deletedAt).toBeUndefined();
     expect(todoRow(할일[0].id).order).toBe(할일[0].order);
     expect(screen.queryByRole('button', { name: '되돌리기' })).toBeNull();
+  });
+
+  /**
+   * T-20 리뷰가 실측한 자리: `[되돌리기]` 까지 Tab **29회**인데 토스트 수명은 6,934ms 였다. 그래서
+   * 파괴 확인이 닫힐 때 그 버튼을 복귀 지점으로 삼는다(포커스가 들어가면 타이머도 멈춘다).
+   *
+   * T-30 이 토스트를 허브로 옮기면서 **토스트가 한 커밋 늦게 뜨게 됐다** — `Dialog` 가 복귀 지점을
+   * 묻는 시점에는 버튼이 아직 없다. 그 시차를 `useToastActionHandoff` 가 메운다. 이 테스트를 지우고
+   * 핸드오프를 빼면 실 Chromium 에서 포커스가 투두 행으로 떨어진다(음성 대조로 확인).
+   */
+  it('삭제 뒤 포커스가 [되돌리기] 로 간다 (R8 도달 가능성 · T-20 라운드 1)', async () => {
+    const user = userEvent.setup();
+    render(<VanishingOpener />);
+    await user.click(screen.getByRole('button', { name: '삭제 열기' }));
+    await screen.findByRole('alertdialog');
+    await user.click(screen.getByRole('radio', { name: '함께 삭제' }));
+    await user.click(screen.getByRole('button', { name: '삭제' }));
+
+    const undo = await screen.findByRole('button', { name: '되돌리기' });
+    await waitFor(() => expect(undo).toHaveFocus());
   });
 
   // 가짜 시계는 `userEvent` 와 섞지 않는다 — 섞으면 이 파일의 **뒤 테스트들이 전부 5초 타임아웃**으로

@@ -21,6 +21,8 @@ import { makeCategory } from '@/test/fixtures/category';
 import { FIXTURE_DATE } from '@/test/fixtures/deps';
 import { makeTodo } from '@/test/fixtures/todo';
 
+import { ToastViewport, dismissToast, useToasts } from '@/components/ui/Toast';
+
 const 공부 = makeCategory({ seq: 1, name: '공부', order: 0, emoji: '📚', color: '#7cc6ff' });
 const 운동 = makeCategory({ seq: 2, name: '운동', order: 1, color: '#a8e6b0' });
 const 요리 = makeCategory({ seq: 3, name: '요리', order: 2 });
@@ -58,12 +60,21 @@ beforeEach(async () => {
   }
 });
 
+/**
+ * 전역 토스트 뷰포트. 앱에서는 셸이 한 번만 마운트한다(`ShellToasts`, app-shell R8) — 이 컴포넌트를
+ * 단독으로 띄우는 테스트에서는 여기서 대신 세운다.
+ */
+function ToastHub() {
+  return <ToastViewport toasts={useToasts()} onClose={dismissToast} />;
+}
+
 function 화면() {
   // `CommandLayer` 는 셸(T-20)이 한 번 마운트한다 — 단축키 디스패처가 거기 있어서 함께 띄운다.
   return render(
     <>
       <CommandLayer />
       <TodoList date={FIXTURE_DATE} categories={카테고리} />
+      <ToastHub />
     </>,
   );
 }

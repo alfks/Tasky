@@ -19,6 +19,8 @@ import { makeCategory } from '@/test/fixtures/category';
 import { FIXTURE_DATE } from '@/test/fixtures/deps';
 import { makeTodo } from '@/test/fixtures/todo';
 
+import { ToastViewport, dismissToast, useToasts } from '@/components/ui/Toast';
+
 const 공부 = makeCategory({ seq: 1, name: '공부', order: 0 });
 const 카테고리: Category[] = [공부];
 
@@ -42,8 +44,21 @@ beforeEach(async () => {
   }
 });
 
+/**
+ * 전역 토스트 뷰포트. 앱에서는 셸이 한 번만 마운트한다(`ShellToasts`, app-shell R8) — 이 컴포넌트를
+ * 단독으로 띄우는 테스트에서는 여기서 대신 세운다.
+ */
+function ToastHub() {
+  return <ToastViewport toasts={useToasts()} onClose={dismissToast} />;
+}
+
 async function 화면() {
-  render(<TodoList date={FIXTURE_DATE} categories={카테고리} />);
+  render(
+    <>
+      <TodoList date={FIXTURE_DATE} categories={카테고리} />
+      <ToastHub />
+    </>,
+  );
   await screen.findByRole('checkbox', { name: '수학' });
 }
 
@@ -237,7 +252,12 @@ describe('삭제 뒤 포커스 복귀 (§5·app-shell R14)', () => {
 
   it('③ 마지막 한 건이면 목록 컨테이너로 가고 빈 상태 문구가 보인다', async () => {
     const user = userEvent.setup();
-    render(<TodoList date={FIXTURE_DATE} categories={카테고리} />);
+    render(
+      <>
+        <TodoList date={FIXTURE_DATE} categories={카테고리} />
+        <ToastHub />
+      </>,
+    );
     await screen.findByRole('checkbox', { name: '수학' });
     for (const title of ['수학', '영어', '국어', '과학']) {
       행(title).focus();
