@@ -22,9 +22,13 @@ import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { FlatCompat } from '@eslint/eslintrc';
+import tsPlugin from '@typescript-eslint/eslint-plugin';
+import tsParser from '@typescript-eslint/parser';
 import eslintConfigPrettier from 'eslint-config-prettier';
 import importPlugin from 'eslint-plugin-import';
+import jsxA11y from 'eslint-plugin-jsx-a11y';
+import reactPlugin from 'eslint-plugin-react';
+import reactHooks from 'eslint-plugin-react-hooks';
 
 import {
   ALLOW,
@@ -39,8 +43,9 @@ import {
 } from './scripts/arch-layers.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
-const compat = new FlatCompat({ baseDirectory: ROOT });
 const DOC = 'docs/ARCHITECTURE.md §1';
+/** eslint-plugin-import 가 의존 파일을 읽을 때 쓸 파서(설정 키가 모듈 경로여야 한다) */
+const TS_PARSER_PATH = fileURLToPath(import.meta.resolve('@typescript-eslint/parser'));
 
 /** 린트 대상 확장자(단일 정의). 레이어 블록은 확장자를 다시 열거하지 않는다. */
 const LINTED = '**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}';
@@ -330,7 +335,65 @@ const config = [
     ],
   },
 
-  ...compat.extends('next/core-web-vitals', 'next/typescript'),
+  // --- 파서·플러그인 직접 등록 (T-43) ---
+  // 예전에는 eslint-config-next 의 두 프리셋(core-web-vitals·typescript)을 FlatCompat 으로 확장해 파서와
+  // 플러그인 4종(@typescript-eslint·react·react-hooks·jsx-a11y)·resolver 설정을 한꺼번에 받아 왔다.
+  // 그 프리셋은 **`next` 패키지 자체**(next/dist/compiled/babel/eslint-parser)를 요구한다. ADR-0013 에서
+  // next 의존을 걷어낸 뒤로 깨끗한 설치에서는 설정이 통째로 로드 실패해 **lint 와 2차 패스가 죽어 있었고**,
+  // 워크트리에 남은 node_modules 잔재 덕분에 통과하는 것처럼 보였다. 이제 죽은 의존에 얹히지 않는다.
+  // 규칙 목록은 그때 켜져 있던 것과 1:1 로 맞췄다(@next/next/* 21개만 버린다 — Next 전용).
+  ...tsPlugin.configs['flat/recommended'],
+  {
+    files: [LINTED],
+    languageOptions: {
+      parser: tsParser,
+      ecmaVersion: 2026,
+      sourceType: 'module',
+      parserOptions: { ecmaFeatures: { jsx: true } },
+    },
+    plugins: { react: reactPlugin, 'react-hooks': reactHooks, 'jsx-a11y': jsxA11y },
+    settings: {
+      react: { version: 'detect' },
+      'import/parsers': { [TS_PARSER_PATH]: ['.ts', '.mts', '.cts', '.tsx', '.d.ts'] },
+      // '@/…' 는 tsconfig 의 paths 로만 해석된다 — typescript resolver 가 빠지면 import/no-restricted-paths 와
+      // import/no-cycle 이 경로를 못 찾아 **조용히** 아무것도 검사하지 않는다. 그것을 즉시 드러내는 카나리가
+      // ARCH_RULES_COMMON 의 import/no-unresolved(ignore: '^(?!@/)') 다 — '@/' 가 하나라도 안 풀리면 lint 가 붉어진다.
+      'import/resolver': {
+        node: { extensions: ['.js', '.jsx', '.ts', '.tsx'] },
+        typescript: { alwaysTryTypes: true },
+      },
+    },
+    // 프리셋이 켜 주던 규칙을 그대로 옮긴다(이름·심각도·옵션 대조는 T-43 핸드오프의 --print-config diff).
+    // react/jsx-key·no-array-index-key, jsx-a11y 인터랙션 3종은 이 레포가 직접 켜는 것이라 아래 공통 블록에 있다.
+    rules: {
+      'react/display-name': 'error',
+      'react/jsx-no-comment-textnodes': 'error',
+      'react/jsx-no-duplicate-props': 'error',
+      'react/jsx-no-undef': 'error',
+      'react/jsx-uses-react': 'error',
+      'react/jsx-uses-vars': 'error',
+      'react/no-children-prop': 'error',
+      'react/no-danger-with-children': 'error',
+      'react/no-deprecated': 'error',
+      'react/no-direct-mutation-state': 'error',
+      'react/no-find-dom-node': 'error',
+      'react/no-is-mounted': 'error',
+      'react/no-render-return-value': 'error',
+      'react/no-string-refs': 'error',
+      'react/no-unescaped-entities': 'error',
+      'react/require-render-return': 'error',
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+      // alt-text 의 img 옵션은 next/image 전용이었다 — 기본 옵션(img·object·area·input[type=image])으로 되돌린다.
+      'jsx-a11y/alt-text': 'warn',
+      'jsx-a11y/aria-props': 'warn',
+      'jsx-a11y/aria-proptypes': 'warn',
+      'jsx-a11y/aria-unsupported-elements': 'warn',
+      'jsx-a11y/role-has-required-aria-props': 'warn',
+      'jsx-a11y/role-supports-aria-props': 'warn',
+      'import/no-anonymous-default-export': 'warn',
+    },
+  },
 
   // --- 공통 규칙 ---
   {
