@@ -7,11 +7,13 @@
 
 > **현재 상태(단일 소스 — 상태가 바뀌면 여기만 고친다)**
 >
-> 아래 수치는 전부 **`3d83207`(PR #21 머지) + T-27(빌드 스택 전환) 기준 실측**이다 — 테스트 **726건** / `pnpm check` 10개 검사. main 이 움직이면 다시 재서 고친다.
+> 아래 수치는 전부 **`569d452` 기준 실측**이다 — 테스트 **1845건**(148파일) / `pnpm check` **10개 검사** / 진입 청크 gzip **128,870 B**(예산 150,000). main 이 움직이면 다시 재서 고친다.
 >
-> - 스캐폴딩 완료 + **빌드 스택 순수 Vite + React SPA / Cloudflare Workers 정적 자산 배포**(ADR-0013 — ADR-0010 supersede). 앱 셸 + `src/` 레이어 트리 + `pnpm check`(10개 검사) + `pnpm build`(Vite + 서비스워커 프리캐시 10 URL/848 kB + `scripts/check-dist.mjs` 산출물 계약 검사) 동작 — 기능 티켓 착수 가능. 첫 로드 JS gzip **77.4 kB**(Dexie 32.5 kB 는 지연 로드 청크). 도메인 코어·`lib/` 유틸·레포지토리 인터페이스 5종과 **memory 구현 + 계약 테스트**·디자인 토큰·Pretendard 서브셋 폰트·테마(T-11)·날짜 스트립까지 머지됨. 아직 비어 있는 것: **IndexedDB 구현**(T-10 리뷰 중), feature 코드 전부(`src/features/*` 는 빈 배럴), `src/components/ui/` 의 오버레이 6종(T-07 리뷰 중 — 프리미티브 A 6종은 머지됨), 서비스워커 **등록·업데이트 토스트 UI**(pwa.md R4·R5).
-> - **배포는 아직 실행되지 않았다.** 자격증명은 **`.env`**(git 제외, `cp .env.example .env` 후 채움)에서 읽는다 — `CLOUDFLARE_ACCOUNT_ID`·`CLOUDFLARE_API_TOKEN`, 선택 `DEPLOY_URL`. 발급 방법은 `.env.example` 주석에 있다. CI 는 같은 이름의 레포 Secrets/Variables 를 쓴다. 없으면 `scripts/deploy.sh` 가 실제 배포를 `rc=1` 로 멈춘다(조용히 건너뛰지 않는다 — `--dry-run` 은 자격증명 없이 돈다). 배선은 `pnpm run deploy:dry-run`(= CI 와 같은 명령, Worker 코드 없이 `dist/client` 정적 자산만 — `No bindings found`)까지 확인됨. **`pnpm deploy` 는 pnpm 내장 명령이라 우리 스크립트가 돌지 않는다 — 반드시 `pnpm run deploy`.**
-> - 문서 `<head>`(메타·`theme-color`·폰트 preload·첫 페인트 테마 스크립트)의 단일 소스는 **루트 `index.html`** 이다. PWA manifest 는 **`public/manifest.webmanifest` 정적 파일**이고 이제 프리캐시에 들어간다.
+> - **앱이 동작한다.** 9개 feature(투두·카테고리·날짜 스트립·달성률·테마·포커스 타이머·백업/복원·PWA·커맨드 팔레트)가 앱 셸에 조립돼 있고, `src/app/page.tsx` 가 실제 앱을 그린다. 실브라우저 완주 확인: 카테고리 생성 → 한글 투두 추가 → 체크(완료 블록 이동) → 편집 → 삭제(확인창) → 날짜 이동 → 타이머 → 달성률 → 새로고침 유지. Dexie(32.5 kB gzip)는 지연 로드 청크로 분리돼 있다.
+> - **아직 남은 것**: E2E 스모크(T-21) 미작성. 사용감 보고서(`docs/FEEL_REPORT.md`)가 낸 시각 항목 — 상시 카드에 고도(그림자)가 없고(카드 vs 배경 명도비 1.042:1, `--elev-*` 토큰 미사용), 세 컬럼에 경계가 없으며, 메인 영역 공백이 60.7%(1440) — 은 T-40 으로 분리돼 있다. 라이트 테마의 "선택됨" 이 배경과 1.77:1 로 WCAG 1.4.11(3:1) 미달인 것은 T-42. 커맨드 팔레트에 등록된 명령이 날짜·테마·도움말 9종뿐이라 새 할 일·타이머·백업 명령은 T-34(각 feature 가 자기 명령을 등록, R7).
+> - **배포는 아직 실행되지 않았다.** 자격증명은 **`.env`**(git 제외, `cp .env.example .env` 후 채움)에서 읽는다 — `CLOUDFLARE_ACCOUNT_ID`·`CLOUDFLARE_API_TOKEN`, 선택 `DEPLOY_URL`. 발급 방법은 `.env.example` 주석에 있다. CI 는 같은 이름의 레포 Secrets/Variables 를 쓴다. 없으면 `scripts/deploy.sh` 가 실제 배포를 `rc=1` 로 멈춘다(조용히 건너뛰지 않는다 — `--dry-run` 은 자격증명 없이 돈다). 배선은 `pnpm run deploy:dry-run` 까지 확인됨. **`pnpm deploy` 는 pnpm 내장 명령이라 우리 스크립트가 돌지 않는다 — 반드시 `pnpm run deploy`.**
+> - 문서 `<head>`(메타·`theme-color`·폰트 preload·첫 페인트 테마 스크립트)의 단일 소스는 **루트 `index.html`** 이다. PWA manifest 는 **`public/manifest.webmanifest` 정적 파일**이고 프리캐시(14 URL)에 들어간다.
+> - **검사 도구가 한동안 꺼져 있었다(T-43, PR #42).** `eslint-config-next` 프리셋이 `next` 패키지를 요구하는데 그것이 Vite 전환(#25)에서 빠져, **깨끗한 설치에서는 lint 와 아키텍처 2차 패스가 계속 죽어 있었다** — 통과하던 것은 워크트리 `node_modules` 의 `next` 잔재 덕분이었다. 지금은 플러그인을 직접 등록해 고쳤고 `import/no-unresolved` 를 카나리로 켜 두었다. → **린트 결과가 의심스러우면 `rm -rf node_modules && pnpm install --frozen-lockfile` 로 다시 확인해라.** 워크트리를 오래 쓰면 잔재로 속을 수 있다.
 > - **CI 임시 미작동**: 계정/레포 차원의 Actions 실행 불가로 추정(워크플로 자체는 정상 — PR의 빨간 X는 코드 문제가 아니다). **`bash scripts/check.sh` 통과가 PR 전 실질 게이트**이며, CI 초록불을 머지 조건으로 삼지 않는다. 복구되면 이 항목을 지운다.
 
 ## 0. 절대 금지어 (최우선 규칙)
