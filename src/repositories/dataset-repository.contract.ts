@@ -18,10 +18,25 @@ import {
   type ContractTarget,
 } from '@/repositories/contract';
 import { runCategoryRemovalContract } from '@/repositories/dataset-removal.contract';
-import { isRepositoryError } from '@/repositories/repository-error';
+import { isRepositoryError, type RepositoryErrorCode } from '@/repositories/repository-error';
 
 const T1 = '2026-01-16T09:30:00.000Z';
 const OLD = '2025-12-01T00:00:00.000Z';
+
+/**
+ * 거절의 **타입과 code 까지** 단언한다.
+ *
+ * `rejects.toThrow()` 는 "무엇이든 던지기만 하면" 통과한다 — 구현이 `TypeError` 를 흘리든
+ * `put()` 이 뱉은 Dexie 내부 에러를 그대로 올리든 계약이 초록이었다. 그러면 `RepositoryError.code`
+ * 로 분기하는 화면(§2-C 에러 카드·토스트)이 조용히 "알 수 없는 오류" 로 떨어진다.
+ * 두 구현이 **같은 code 로** 실패하는 것이 계약이므로 여기서 그것까지 본다.
+ */
+function rejectsWithCode(promise: Promise<unknown>, code: RepositoryErrorCode): Promise<void> {
+  return expect(promise).rejects.toSatisfy(
+    (error: unknown) => isRepositoryError(error) && error.code === code,
+    `RepositoryError('${code}') 가 아니다 — 계약은 실패의 타입과 code 를 고정한다`,
+  );
+}
 
 /** `table` 축의 실패 주입 — 계약에 없는 테이블을 가리키는 쓰기. */
 function brokenWrite(): DatasetWrite {
@@ -68,7 +83,7 @@ export function runDatasetRepositoryContract(target: ContractTarget): void {
     it('설정 행이 없으면 readAll 은 RepositoryError 다 — 레포지토리가 만들지 않는다', async () => {
       const empty = await target.create();
 
-      await expect(empty.dataset.readAll()).rejects.toSatisfy(isRepositoryError);
+      await rejectsWithCode(empty.dataset.readAll(), 'SETTINGS_MISSING');
     });
 
     it('write 는 여러 테이블을 한 번에 쓴다', async () => {
@@ -93,13 +108,14 @@ export function runDatasetRepositoryContract(target: ContractTarget): void {
       const before = contractTodo(deps);
       const after = contractCategory(deps);
 
-      await expect(
+      await rejectsWithCode(
         repos.dataset.write([
           { table: 'todos', entity: before },
           brokenWrite(),
           { table: 'categories', entity: after },
         ]),
-      ).rejects.toThrow();
+        'DATASET_WRITE_INVALID',
+      );
 
       const snapshot = await repos.dataset.readAll();
       expect(snapshot.todos).toEqual([]);
@@ -118,13 +134,14 @@ export function runDatasetRepositoryContract(target: ContractTarget): void {
         const before = contractTodo(deps);
         const after = contractCategory(deps);
 
-        await expect(
+        await rejectsWithCode(
           repos.dataset.write([
             { table: 'todos', entity: before },
             brokenEntityWrite(entity),
             { table: 'categories', entity: after },
           ]),
-        ).rejects.toThrow();
+          'DATASET_WRITE_INVALID',
+        );
 
         const snapshot = await repos.dataset.readAll();
         expect(snapshot.todos).toEqual([]);
