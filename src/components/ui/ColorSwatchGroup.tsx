@@ -4,15 +4,7 @@ import { useRef } from 'react';
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react';
 
 import { cn } from '@/lib/cn';
-
-/**
- * IME 조합 중에 생긴 키 이벤트인지. 조합 중의 방향키는 후보 목록을 고르는 입력이라
- * 색 선택을 옮겨서는 안 된다(app-shell R14). 브라우저에 따라 isComposing 또는 keyCode 229
- * 중 하나로만 알려 주므로 둘 다 본다.
- */
-function isImeKey(e: KeyboardEvent): boolean {
-  return e.isComposing || e.keyCode === 229;
-}
+import { isImeKey } from '@/lib/ime';
 
 type ColorSwatchOption = {
   /** 저장되는 값. 팔레트 프리셋 id(theme.md §3-C). */
@@ -98,14 +90,14 @@ export function ColorSwatchGroup({
             onKeyDown={(e) => handleKeyDown(e, index)}
             style={{ '--cat-color': option.color } as CSSProperties}
             className={cn(
-              'flex h-8 w-8 items-center justify-center rounded-full',
+              'flex size-[var(--control-hit-min)] items-center justify-center rounded-full',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
             )}
           >
             <span
               aria-hidden="true"
               className={cn(
-                'flex h-[28px] w-[28px] items-center justify-center rounded-full',
+                'flex size-[calc(var(--control-hit-min)-var(--space-1))] items-center justify-center rounded-full',
                 'bg-[var(--cat-color)] text-sm font-bold text-on-accent',
                 // 선택 표시는 색이 아니라 형태로도 드러나야 한다: 체크 문자 + 굵은 테두리.
                 isSelected ? 'border-2 border-text' : 'border border-border',

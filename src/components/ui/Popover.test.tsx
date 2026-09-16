@@ -4,22 +4,51 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
+import { Menu } from '@/components/ui/Menu';
 import { Popover } from '@/components/ui/Popover';
 
-function Harness({ onClose }: { onClose?: () => void }) {
+function Harness({
+  onClose,
+  returnFocus,
+}: {
+  onClose?: () => void;
+  returnFocus?: () => HTMLElement | null;
+}) {
   const anchorRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  // 메뉴에서 [삭제] 를 고르면 그 행(= 앵커)이 통째로 사라지는 T-15 의 주 경로를 흉내 낸다.
+  const [anchorGone, setAnchorGone] = useState(false);
   const close = () => {
     setOpen(false);
     onClose?.();
   };
   return (
     <>
-      <button ref={anchorRef} type="button" aria-expanded={open} onClick={() => setOpen(true)}>
-        설정
+      {anchorGone ? null : (
+        <button ref={anchorRef} type="button" onClick={() => setOpen(true)}>
+          설정
+        </button>
+      )}
+      <button type="button" id="다음-행">
+        다음 행
       </button>
-      <Popover open={open} onClose={close} anchorRef={anchorRef} label="설정">
+      <Popover
+        open={open}
+        onClose={close}
+        anchorRef={anchorRef}
+        label="설정"
+        returnFocus={returnFocus}
+      >
         <button type="button">다크 모드</button>
+        <button
+          type="button"
+          onClick={() => {
+            setAnchorGone(true);
+            close();
+          }}
+        >
+          행 삭제
+        </button>
       </Popover>
     </>
   );
@@ -64,9 +93,9 @@ describe('Popover', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('앵커 위치를 기준으로 좌표가 계산된다', async () => {
+  it('앵커 위치를 기준으로 좌표가 계산되고 패널은 body 로 포털된다', async () => {
     const user = userEvent.setup();
-    render(<Harness />);
+    const { container } = render(<Harness />);
     const anchor = screen.getByRole('button', { name: '설정' });
     anchor.getBoundingClientRect = () =>
       ({ top: 100, bottom: 140, left: 60, right: 160 }) as DOMRect;
@@ -74,5 +103,72 @@ describe('Popover', () => {
     await user.click(anchor);
     const panel = screen.getByRole('group', { name: '설정' });
     expect(panel).toHaveStyle({ top: '148px', left: '60px' });
+    // transform 조상 안에 있으면 fixed 좌표가 그 조상 기준이 되어 161×262px 어긋난다(리뷰 M-1).
+    expect(container.contains(panel)).toBe(false);
+    expect(panel.parentElement).toBe(document.body);
+  });
+
+  // 앵커가 무엇을 여는지 스크린리더가 알 수 있어야 한다(app-shell §5).
+  it('앵커에 aria-haspopup·aria-expanded·aria-controls 를 붙이고 닫히면 되돌린다', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const anchor = screen.getByRole('button', { name: '설정' });
+
+    expect(anchor).toHaveAttribute('aria-haspopup', 'true');
+    expect(anchor).toHaveAttribute('aria-expanded', 'false');
+    expect(anchor).not.toHaveAttribute('aria-controls');
+
+    await user.click(anchor);
+    expect(anchor).toHaveAttribute('aria-expanded', 'true');
+    expect(anchor.getAttribute('aria-controls')).toBe(
+      screen.getByRole('group', { name: '설정' }).id,
+    );
+
+    await user.keyboard('{Escape}');
+    expect(anchor).toHaveAttribute('aria-expanded', 'false');
+    expect(anchor).not.toHaveAttribute('aria-controls');
+  });
+
+  // 같은 이름이 button → group → menu 로 세 번 낭독되던 문제(리뷰 M-5).
+  it('label 을 생략하면 group 래퍼 없이 자식의 역할만 남는다', async () => {
+    const user = userEvent.setup();
+    function WithMenu() {
+      const anchorRef = useRef<HTMLButtonElement>(null);
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button ref={anchorRef} type="button" onClick={() => setOpen(true)}>
+            장보기 메뉴
+          </button>
+          <Popover open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} hasPopup="menu">
+            <Menu
+              label="장보기 메뉴"
+              items={[{ id: 'edit', label: '편집', onSelect: vi.fn() }]}
+              onClose={() => setOpen(false)}
+            />
+          </Popover>
+        </>
+      );
+    }
+    render(<WithMenu />);
+    const anchor = screen.getByRole('button', { name: '장보기 메뉴' });
+    expect(anchor).toHaveAttribute('aria-haspopup', 'menu');
+
+    await user.click(anchor);
+    expect(screen.queryByRole('group')).not.toBeInTheDocument();
+    expect(screen.getByRole('menu', { name: '장보기 메뉴' })).toBeInTheDocument();
+  });
+
+  // app-shell R14: 포커스가 body 로 떨어지는 경우는 없다.
+  it('앵커가 사라진 채 닫히면 returnFocus 가 준 요소로 간다', async () => {
+    const user = userEvent.setup();
+    render(<Harness returnFocus={() => document.getElementById('다음-행')} />);
+
+    await user.click(screen.getByRole('button', { name: '설정' }));
+    await user.click(screen.getByRole('button', { name: '행 삭제' }));
+
+    expect(screen.queryByRole('group', { name: '설정' })).not.toBeInTheDocument();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '다음 행' }));
   });
 });

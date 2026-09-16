@@ -4,18 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 
 import { cn } from '@/lib/cn';
+import { isImeKey } from '@/lib/ime';
 
 /** 타이핑 이동 버퍼가 살아 있는 시간(ms). 이 시간이 지나면 다음 글자는 새 검색으로 친다. */
 const TYPEAHEAD_RESET_MS = 500;
-
-/**
- * IME 조합 중에 생긴 키 이벤트인지. 조합 중의 방향키·글자는 후보 목록을 고르는 입력이라
- * 메뉴 항목을 옮겨서는 안 된다(app-shell R14). 브라우저에 따라 isComposing 또는 keyCode 229
- * 중 하나로만 알려 주므로 둘 다 본다.
- */
-function isImeKey(e: KeyboardEvent): boolean {
-  return e.isComposing || e.keyCode === 229;
-}
 
 type MenuItem = {
   /** 항목 식별자(key). */
@@ -55,11 +47,17 @@ export function Menu({ label, items, onClose, autoFocus = true, className }: Men
   }, [autoFocus]);
 
   const focusAt = (index: number) => {
+    if (items.length === 0) return;
     const next = (index + items.length) % items.length;
     setActiveIndex(next);
     itemRefs.current[next]?.focus();
   };
 
+  /**
+   * 타이핑 이동. **한국어 라벨에서는 사실상 동작하지 않는다**: 메뉴 항목은 편집 가능한 요소가
+   * 아니라 IME 조합이 걸리지 않고, 조합 없는 keydown 은 라틴 자판 문자로 도착한다(실측).
+   * 영문·숫자 라벨에서만 유효하다. 초성 매칭은 별도 티켓 건.
+   */
   const moveByTypeahead = (char: string) => {
     const now = Date.now();
     const state = typeaheadRef.current;
@@ -102,6 +100,7 @@ export function Menu({ label, items, onClose, autoFocus = true, className }: Men
   };
 
   return (
+    // Popover 안에 들어가면 위치·바깥 클릭·Esc 는 Popover 가 맡는다. 이름은 여기 하나만 둔다.
     <div role="menu" aria-label={label} className={cn('flex flex-col', className)}>
       {items.map((item, index) => (
         <button
@@ -124,7 +123,7 @@ export function Menu({ label, items, onClose, autoFocus = true, className }: Men
               : undefined
           }
           className={cn(
-            'flex h-[var(--control-height)] items-center rounded-md px-[var(--space-3)] text-left text-base text-text',
+            'flex h-[var(--control-height)] items-center rounded-[var(--radius-md)] px-[var(--space-3)] text-left text-base text-text',
             'hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
             item.disabled === true && 'cursor-not-allowed text-faint hover:bg-transparent',
           )}
