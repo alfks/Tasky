@@ -58,6 +58,30 @@ describe('selectTodos (R7 표준 정렬)', () => {
 });
 
 describe('selectGroup (R7 그룹 배치)', () => {
+  it('미완료 블록은 `order` 오름차순이다 — 삽입 순서가 어긋나 있어도', () => {
+    const state = snapshot(
+      makeTodo({ seq: 3, order: 2, title: 'C' }),
+      makeTodo({ seq: 1, order: 0, title: 'A' }),
+      makeTodo({ seq: 2, order: 1, title: 'B' }),
+    );
+
+    expect(titles(selectGroup(state, FIXTURE_CATEGORY_ID).incomplete)).toEqual(['A', 'B', 'C']);
+  });
+
+  it('`sequence` 는 완료를 포함한 그룹 전체 수열이다 (R11 `targetIndex` 좌표계)', () => {
+    const state = snapshot(
+      makeTodo({ seq: 3, order: 2, title: 'C' }),
+      makeTodo({ seq: 2, order: 1, done: true, doneAt: '2026-01-15T10:00:00.000Z', title: 'B' }),
+      makeTodo({ seq: 1, order: 0, title: 'A' }),
+    );
+
+    const group = selectGroup(state, FIXTURE_CATEGORY_ID);
+
+    // 가시 인덱스(미완료 블록)와 다르다 — 드롭 지점은 이 수열로 계산해야 한다.
+    expect(titles(group.sequence)).toEqual(['A', 'B', 'C']);
+    expect(titles(group.incomplete)).toEqual(['A', 'C']);
+  });
+
   it('완료 항목은 미완료 블록이 아니라 완료 블록에 들어간다', () => {
     const state = snapshot(
       makeTodo({ seq: 1, order: 0, done: true, doneAt: '2026-01-15T10:00:00.000Z', title: '끝' }),
@@ -99,6 +123,7 @@ describe('selectGroup (R7 그룹 배치)', () => {
     expect(titles(selectGroup(state, FIXTURE_CATEGORY_ID).incomplete)).toEqual(['내 것']);
     expect(selectGroup(state, makeCategory({ seq: 9 }).id)).toEqual({
       categoryId: makeCategory({ seq: 9 }).id,
+      sequence: [],
       incomplete: [],
       completed: [],
       counts: { done: 0, total: 0 },

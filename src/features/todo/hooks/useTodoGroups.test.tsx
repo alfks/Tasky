@@ -37,6 +37,25 @@ describe('useTodoGroups · useTodoGroup (R7)', () => {
     expect(result.current.group.counts).toEqual({ done: 0, total: 1 });
   });
 
+  it('그룹은 인자로 받은 `categories` 의 R15 순서로 나온다', async () => {
+    // 인자를 뒤집어 넘긴다 — 훅이 `categories` 를 버리면 투두가 있는 그룹 하나만 남아 순서가 깨진다.
+    const second = makeCategory({ seq: 2, order: 1 });
+    const { result } = renderHook(() => ({
+      groups: useTodoGroups([second, CATEGORY]),
+      actions: useTodoActions(),
+    }));
+
+    await act(async () => {
+      await result.current.actions.loadDate(FIXTURE_DATE);
+      await result.current.actions.addTodo({ categoryId: second.id, title: '둘째 그룹 것' });
+    });
+
+    expect(result.current.groups.map((group) => group.categoryId)).toEqual([
+      CATEGORY.id,
+      second.id,
+    ]);
+  });
+
   it('완료하면 미완료 블록에서 빠져 완료 블록으로 내려간다', async () => {
     const { result } = renderHook(() => ({
       group: useTodoGroup(FIXTURE_CATEGORY_ID),

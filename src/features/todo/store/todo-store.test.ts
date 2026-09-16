@@ -77,10 +77,17 @@ function failWrites(): void {
   } satisfies Repositories);
 }
 
-/** `upsert` 를 붙잡아 두는 저장소. 반환한 함수를 부를 때까지 저장이 끝나지 않는다. */
-function holdWrites(): () => void {
+/**
+ * `upsert` 를 붙잡아 두는 저장소. 반환한 함수는 **저장이 실제로 시작될 때까지 기다린 뒤** 흘려보낸다
+ * — 쓰기는 큐를 한 번 거치므로 호출 직후에는 아직 `upsert` 가 불리지 않았다.
+ */
+function holdWrites(): () => Promise<void> {
   const repos = getRepositories();
   let release = (): void => {};
+  let begun = (): void => {};
+  const started = new Promise<void>((resolve) => {
+    begun = resolve;
+  });
   setRepositories({
     ...repos,
     todos: {
@@ -90,12 +97,64 @@ function holdWrites(): () => void {
           release = () => {
             void repos.todos.upsert(todo).then(resolve);
           };
+          begun();
         }),
     },
   } satisfies Repositories);
-  return () => {
+  return async () => {
+    await started;
     release();
   };
+}
+
+/** 앞의 `count` 번 쓰기만 거절한다 — 한 액션은 실패하고 다음 액션은 성공하는 경로를 만든다. */
+function failNextWrites(count: number): void {
+  const repos = getRepositories();
+  let left = count;
+  setRepositories({
+    ...repos,
+    todos: {
+      ...repos.todos,
+      upsert: (todo: Persistable<Todo>) => {
+        if (left > 0) {
+          left -= 1;
+          return Promise.reject(new RepositoryError('DATASET_WRITE_INVALID', '테스트'));
+        }
+        return repos.todos.upsert(todo);
+      },
+    },
+  } satisfies Repositories);
+}
+
+/** `listByDate` 를 날짜별로 붙잡아 둔다. 반환한 함수로 그 날짜의 응답만 흘려보낸다. */
+function holdReads(): (date: DateKey) => void {
+  const repos = getRepositories();
+  const pending = new Map<DateKey, () => void>();
+  setRepositories({
+    ...repos,
+    todos: {
+      ...repos.todos,
+      listByDate: (date: DateKey) =>
+        new Promise<Todo[]>((resolve) => {
+          pending.set(date, () => {
+            void repos.todos.listByDate(date).then(resolve);
+          });
+        }),
+    },
+  } satisfies Repositories);
+  return (date) => pending.get(date)?.();
+}
+
+/** `listByDate` 를 전부 거절하는 저장소. */
+function failReads(): void {
+  const repos = getRepositories();
+  setRepositories({
+    ...repos,
+    todos: {
+      ...repos.todos,
+      listByDate: () => Promise.reject(new RepositoryError('SCHEMA_UPGRADE_FAILED')),
+    },
+  } satisfies Repositories);
 }
 
 describe('loadDate (R17 선택 날짜만 메모리에)', () => {
@@ -110,19 +169,41 @@ describe('loadDate (R17 선택 날짜만 메모리에)', () => {
   });
 
   it('읽기가 실패하면 status=error 와 문구를 남긴다', async () => {
-    const repos = getRepositories();
-    setRepositories({
-      ...repos,
-      todos: {
-        ...repos.todos,
-        listByDate: () => Promise.reject(new RepositoryError('SCHEMA_UPGRADE_FAILED')),
-      },
-    } satisfies Repositories);
+    failReads();
 
     await state().loadDate(FIXTURE_DATE);
 
     expect(state().status).toBe('error');
     expect(state().error).toBe(SAVE_FAILED);
+  });
+
+  it('읽기가 실패해도 이전 날짜의 목록이 화면에 남지 않는다 (R17)', async () => {
+    await seed('오늘 것');
+    expect(Object.values(state().byId)).toHaveLength(1);
+    failReads();
+
+    await state().loadDate(TOMORROW);
+
+    expect(Object.values(state().byId)).toHaveLength(0);
+    expect(state().status).toBe('error');
+  });
+
+  it('늦게 도착한 이전 날짜의 응답은 버린다 (날짜 스트립 연타)', async () => {
+    await seed('오늘 것');
+    await state().loadDate(TOMORROW);
+    await state().addTodo({ categoryId: FIXTURE_CATEGORY_ID, title: '내일 것' });
+    const release = holdReads();
+
+    const first = state().loadDate(FIXTURE_DATE);
+    const second = state().loadDate(TOMORROW);
+    release(TOMORROW);
+    await second;
+    release(FIXTURE_DATE);
+    await first;
+
+    expect(state().date).toBe(TOMORROW);
+    expect(state().status).toBe('ready');
+    expect(Object.values(state().byId).map((todo) => todo.title)).toEqual(['내일 것']);
   });
 });
 
@@ -140,6 +221,19 @@ describe('addTodo (R5 새 투두)', () => {
     await state().addTodo({ categoryId: OTHER_CATEGORY_ID, title: '다른 그룹' });
 
     expect(find('다른 그룹').order).toBe(0);
+  });
+
+  it('동시에 여러 건을 추가해도 `order` 가 겹치지 않는다 (R3 연속 입력 → R5)', async () => {
+    await state().loadDate(FIXTURE_DATE);
+    const titles = Array.from({ length: 10 }, (_, index) => `동시 ${index}`);
+
+    const results = await Promise.all(
+      titles.map((title) => state().addTodo({ categoryId: FIXTURE_CATEGORY_ID, title })),
+    );
+
+    expect(results.every(Boolean)).toBe(true);
+    expect(orders()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(new Set(orders()).size).toBe(titles.length);
   });
 
   it('제목이 비면 저장하지 않고 도메인 문구를 남긴다 (R1)', async () => {
@@ -173,7 +267,7 @@ describe('toggleDone (R6 낙관적 토글)', () => {
     const pending = state().toggleDone(id, true);
     expect(state().byId[id].done).toBe(true);
 
-    release();
+    await release();
     await expect(pending).resolves.toBe(true);
     expect((await getRepositories().todos.getById(id))?.done).toBe(true);
   });
@@ -191,6 +285,17 @@ describe('toggleDone (R6 낙관적 토글)', () => {
     expect(state().byId[id].order).toBe(1);
   });
 
+  it('`done` 인자는 목표 상태다 — 같은 값으로 두 번 불러도 완료로 남는다 (R6)', async () => {
+    await seed('할 일');
+    const id = find('할 일').id;
+
+    await expect(state().toggleDone(id, true)).resolves.toBe(true);
+    await expect(state().toggleDone(id, true)).resolves.toBe(true);
+
+    expect(state().byId[id].done).toBe(true);
+    expect((await getRepositories().todos.getById(id))?.done).toBe(true);
+  });
+
   it('저장이 실패하면 이전 값으로 되돌리고 문구를 남긴다', async () => {
     await seed('할 일');
     const id = find('할 일').id;
@@ -200,6 +305,39 @@ describe('toggleDone (R6 낙관적 토글)', () => {
     await expect(state().toggleDone(id, true)).resolves.toBe(false);
     expect(state().byId[id]).toEqual(before);
     expect(state().error).toBe(SAVE_FAILED);
+  });
+
+  it('저장에 실패한 토글의 롤백이 그 사이 성공한 편집을 덮지 않는다', async () => {
+    await seed('원래');
+    const id = find('원래').id;
+    failNextWrites(1);
+
+    const toggling = state().toggleDone(id, true);
+    const editing = state().editTodo(id, { title: '바뀐 제목' });
+
+    await expect(toggling).resolves.toBe(false);
+    await expect(editing).resolves.toBe(true);
+
+    // 화면과 저장소가 같은 값이어야 한다 — 롤백이 편집 결과를 덮으면 둘이 갈린다.
+    expect(state().byId[id].title).toBe('바뀐 제목');
+    expect(state().byId[id].done).toBe(false);
+    expect((await getRepositories().todos.getById(id))?.title).toBe('바뀐 제목');
+    expect((await getRepositories().todos.getById(id))?.done).toBe(false);
+  });
+
+  it('실패한 뒤 성공한 쓰기는 문구를 지운다 (§2-C)', async () => {
+    await seed('할 일');
+    const id = find('할 일').id;
+
+    await state().addTodo({ categoryId: FIXTURE_CATEGORY_ID, title: '   ' });
+    expect(state().error).not.toBeNull();
+    await expect(state().toggleDone(id, true)).resolves.toBe(true);
+    expect(state().error).toBeNull();
+
+    await state().addTodo({ categoryId: FIXTURE_CATEGORY_ID, title: '   ' });
+    expect(state().error).not.toBeNull();
+    await expect(state().editTodo(id, { title: '다시' })).resolves.toBe(true);
+    expect(state().error).toBeNull();
   });
 });
 
@@ -269,16 +407,49 @@ describe('moveToDate · changeCategory (R10·R12 대상 그룹 끝으로)', () =
     expect(orderedTitles()).toEqual(['B', 'C', 'A']);
   });
 
-  it('카테고리를 바꾸면 대상 카테고리 그룹 끝으로 가고 완료 상태는 유지된다', async () => {
+  it('다른 날짜로 옮긴 뒤 원래 날짜로 되돌릴 수 있다 (R10 되돌리기 토스트)', async () => {
+    await seed('옮길 것', '남을 것');
+    const id = find('옮길 것').id;
+    await state().moveToDate(id, TOMORROW);
+    expect(state().byId[id]).toBeUndefined();
+
+    // 되돌리기는 이미 메모리에서 내려간 투두를 다시 부른다 — 조용히 false 를 내면 안 된다.
+    await expect(state().moveToDate(id, FIXTURE_DATE)).resolves.toBe(true);
+
+    expect(state().byId[id]?.date).toBe(FIXTURE_DATE);
+    expect((await getRepositories().todos.getById(id))?.date).toBe(FIXTURE_DATE);
+    expect(state().error).toBeNull();
+  });
+
+  it('저장을 기다리는 사이 날짜가 바뀌면 끝난 시점의 날짜로 메모리 여부를 정한다 (R17)', async () => {
     await seed('옮길 것');
-    await state().addTodo({ categoryId: OTHER_CATEGORY_ID, title: '이미 있던 것' });
+    const id = find('옮길 것').id;
+    const release = holdWrites();
+
+    const pending = state().moveToDate(id, TOMORROW);
+    await state().loadDate(TOMORROW);
+    await release();
+    await expect(pending).resolves.toBe(true);
+
+    // 도착한 날짜를 보고 있으므로 메모리에 **남아야** 한다(출발 날짜 기준으로 보면 내려간다).
+    expect(state().date).toBe(TOMORROW);
+    expect(state().byId[id]?.date).toBe(TOMORROW);
+  });
+
+  it('카테고리를 바꾸면 **대상** 그룹 끝으로 가고 완료 상태는 유지된다 (R12)', async () => {
+    // 양쪽 그룹 크기를 다르게 둔다 — 크기가 같으면 원래 그룹으로 세도 같은 `order` 가 나온다.
+    await seed('옮길 것', '원래 그룹 둘째');
+    for (const title of ['X', 'Y', 'Z']) {
+      await state().addTodo({ categoryId: OTHER_CATEGORY_ID, title });
+    }
     const id = find('옮길 것').id;
     await state().toggleDone(id, true);
 
     await expect(state().changeCategory(id, OTHER_CATEGORY_ID)).resolves.toBe(true);
     expect(state().byId[id].categoryId).toBe(OTHER_CATEGORY_ID);
-    expect(state().byId[id].order).toBe(1);
+    expect(state().byId[id].order).toBe(3);
     expect(state().byId[id].done).toBe(true);
+    expect(orderedTitles(OTHER_CATEGORY_ID)).toEqual(['X', 'Y', 'Z', '옮길 것']);
   });
 });
 
@@ -330,6 +501,33 @@ describe('reorder · moveBy (R11 재매김)', () => {
     expect(orderedTitles()).toEqual(['A', 'B']);
   });
 
+  it('재정렬은 같은 카테고리 그룹만 재매김한다 (R11 그룹 경계)', async () => {
+    await seed('A', 'B', 'C');
+    for (const title of ['X', 'Y']) {
+      await state().addTodo({ categoryId: OTHER_CATEGORY_ID, title });
+    }
+
+    await expect(state().reorder(find('C').id, 0)).resolves.toBe(true);
+
+    expect(orderedTitles()).toEqual(['C', 'A', 'B']);
+    expect(orderedTitles(OTHER_CATEGORY_ID)).toEqual(['X', 'Y']);
+    expect(orders(OTHER_CATEGORY_ID)).toEqual([0, 1]);
+  });
+
+  it('`moveBy` 도 같은 카테고리 그룹만 재매김한다 (R11 그룹 경계)', async () => {
+    await seed('A', 'B');
+    for (const title of ['X', 'Y']) {
+      await state().addTodo({ categoryId: OTHER_CATEGORY_ID, title });
+    }
+
+    await expect(state().moveBy(find('B').id, -1)).resolves.toBe(true);
+
+    expect(orderedTitles()).toEqual(['B', 'A']);
+    expect(orders()).toEqual([0, 1]);
+    expect(orderedTitles(OTHER_CATEGORY_ID)).toEqual(['X', 'Y']);
+    expect(orders(OTHER_CATEGORY_ID)).toEqual([0, 1]);
+  });
+
   it('재매김 저장이 실패하면 건드린 투두 전부가 이전 `order` 로 돌아간다', async () => {
     await seed('A', 'B', 'C');
     const before = orderedTitles();
@@ -356,6 +554,19 @@ describe('없는 투두·clearError', () => {
     await expect(state().moveToDate(ghost, TOMORROW)).resolves.toBe(false);
     await expect(state().changeCategory(ghost, OTHER_CATEGORY_ID)).resolves.toBe(false);
     expect(state().error).toBeNull();
+  });
+
+  it('없는 id 의 `false` 는 문구를 남기지 않아 저장 실패와 구분된다 (R3 입력 행 판단)', async () => {
+    await seed('있는 것');
+    const id = find('있는 것').id;
+    const ghost = 'f0000000-0000-4000-8000-000000009999';
+
+    await expect(state().editTodo(ghost, { title: 'X' })).resolves.toBe(false);
+    expect(state().error).toBeNull();
+
+    failWrites();
+    await expect(state().editTodo(id, { title: 'X' })).resolves.toBe(false);
+    expect(state().error).toBe(SAVE_FAILED);
   });
 
   it('날짜를 읽기 전에는 추가할 수 없다', async () => {

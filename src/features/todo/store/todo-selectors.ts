@@ -19,6 +19,12 @@ import type { TodoSnapshot } from '@/features/todo/store/todo-state';
 /** 한 카테고리 그룹의 화면 배치 (R7). 구분선·"완료 n" 은 `completed.length` 로 그린다. */
 export type TodoGroup = {
   categoryId: CategoryId;
+  /**
+   * 완료 항목까지 포함해 `order` 로 정렬한 그룹 전체 수열 (R11). `reorder(id, targetIndex)` 의
+   * `targetIndex` 가 가리키는 좌표계가 바로 이것이다 — 드롭 지점을 이 배열의 인덱스로 계산하면
+   * 호출부가 `incomplete`/`completed` 를 다시 합쳐 역산하지 않아도 된다.
+   */
+  sequence: Todo[];
   /** 미완료 블록: `order` 오름차순(동률은 `createdAt` → `id`). */
   incomplete: Todo[];
   /** 완료 블록: `doneAt` 내림차순 — 방금 완료한 것이 구분선 바로 아래에 온다. */
@@ -45,7 +51,12 @@ export function selectCompletion(state: TodoSnapshot): CompletionCounts {
 /** 이미 뽑아 둔 목록에서 한 그룹을 만든다. `selectGroups` 가 목록을 한 번만 읽도록 분리했다. */
 function buildGroup(categoryId: CategoryId, todos: readonly Todo[]): TodoGroup {
   const mine = todos.filter((todo) => todo.categoryId === categoryId);
-  return { categoryId, ...groupTodosForDisplay(mine), counts: completionCounts(mine) };
+  return {
+    categoryId,
+    sequence: sortTodos(mine),
+    ...groupTodosForDisplay(mine),
+    counts: completionCounts(mine),
+  };
 }
 
 /** 한 카테고리 그룹 (R7). 그 카테고리에 그날 투두가 없으면 두 블록 모두 빈 배열이다. */

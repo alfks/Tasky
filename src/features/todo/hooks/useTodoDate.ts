@@ -6,7 +6,11 @@ import type { DateKey } from '@/domain/date/date-key';
 import type { TodoLoadStatus } from '@/features/todo/store/todo-state';
 import { useTodoStore } from '@/features/todo/store/todo-store';
 
-/** 적재 결과. `error` 는 적재 실패와 직전 쓰기 실패가 함께 쓰는 자리다. */
+/**
+ * 적재 결과. `error` 는 적재 실패와 직전 쓰기 실패가 함께 쓰는 자리라 **문구만으로는 갈리지 않는다** —
+ * 두 화면을 가르는 것은 `status` 다: `status === 'error'` 면 목록 자체를 못 읽은 것이라 적재 에러 화면,
+ * `status === 'ready'` 인데 `error !== null` 이면 목록은 멀쩡하고 마지막 쓰기만 실패한 것이라 토스트다.
+ */
 export type TodoDateState = { status: TodoLoadStatus; error: string | null };
 
 /**
