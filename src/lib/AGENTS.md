@@ -4,7 +4,7 @@
 
 ## 목적
 
-프레임워크·도메인 무관 순수 유틸. 현재 `cn.ts`(clsx + tailwind-merge). `date.ts`(DateKey ↔ Date, 주 계산, `nowIso()`)와 `id.ts`(`newId()` = `crypto.randomUUID()` 래퍼)는 T-02 가 추가한다.
+프레임워크·도메인 무관 순수 유틸. 현재 `cn.ts`(clsx + tailwind-merge), `a11y.ts`(접근 이름 가드 — 공백 리터럴 차단 타입 `NonBlank` + 개발 모드 `assertAccessibleName`). `date.ts`(DateKey ↔ Date, 주 계산, `nowIso()`)와 `id.ts`(`newId()` = `crypto.randomUUID()` 래퍼)는 T-02 가 추가한다.
 
 ## 규칙
 
