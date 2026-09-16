@@ -112,6 +112,7 @@ function fileTextOf(snapshot: DatasetSnapshot): string {
 }
 
 beforeEach(async () => {
+  localStorage.clear();
   tables = createMemoryTables();
   repositories = createMemoryRepositories(tables);
   setRepositories(repositories);
@@ -595,19 +596,84 @@ describe('exportBackup — 저장을 확인할 수 없을 때 (R10·R14)', () =>
     expect(canceled.getState().error).toBeNull();
   });
 
-  it('저장 완료를 관측할 수 없으면 파일은 내보내되 lastBackupAt 을 찍지 않고 이유를 말한다', async () => {
+  // 사용자 결정(R14): 확인 못 한 내보내기도 **일단 점을 끈다**. 영구 잔소리는 표시 자체를 무시하게
+  // 만들기 때문이다. 대신 "확인 못 함" 으로 기록해 **절반 기간**만 지나면 다시 켠다.
+  it('저장 완료를 관측할 수 없으면 점은 끄되 "확인 못 함" 으로 기록한다 (R14)', async () => {
     await seedStale();
     const anchor = storeWith({
       openTarget: (fileName) => Promise.resolve(unconfirmedTarget(fileName)),
     });
     await anchor.getState().refresh();
+    expect(anchor.getState().warnStale).toBe(true);
 
     expect(await anchor.getState().exportBackup()).toBe(true);
 
     expect(downloads).toHaveLength(1);
-    expect((await repositories.settings.get())?.lastBackupAt).toBeUndefined();
-    expect(anchor.getState().warnStale).toBe(true);
+    expect((await repositories.settings.get())?.lastBackupAt).toBe(NOW);
+    expect(anchor.getState().warnStale).toBe(false);
+    expect(anchor.getState().confirmation).toBe('unconfirmed');
     expect(anchor.getState().exportNote).toBe(EXPORT_UNCONFIRMED);
+    expect(anchor.getState().exportNote).toContain('15일');
+  });
+
+  it('확인된 내보내기는 "확인함" 으로 기록한다 (R14)', async () => {
+    await seedStale();
+    await store.getState().refresh();
+
+    expect(await store.getState().exportBackup()).toBe(true);
+
+    expect((await repositories.settings.get())?.lastBackupAt).toBe(NOW);
+    expect(store.getState().confirmation).toBe('confirmed');
+    expect(store.getState().warnStale).toBe(false);
+    expect(store.getState().exportNote).toBeNull();
+  });
+
+  // 두 경로를 **같은 테스트에서** 대조한다 — 갈리는 지점은 `showSaveFilePicker` 의 존재뿐이다.
+  it('showSaveFilePicker 가 없는 브라우저는 확인 못 함, 있는 브라우저는 확인함이 된다', async () => {
+    await seedStale();
+    const seen: Record<string, boolean> = {};
+
+    for (const hasPicker of [false, true]) {
+      localStorage.clear();
+      await seed(baseSnapshot({ settings: makeSettings() }));
+      const live = createBackupStore(deps, {
+        ...io,
+        openTarget: (fileName) =>
+          Promise.resolve(hasPicker ? confirmedTarget(fileName) : unconfirmedTarget(fileName)),
+      });
+      await live.getState().refresh();
+      await live.getState().exportBackup();
+      seen[String(hasPicker)] = live.getState().confirmation === 'confirmed';
+    }
+
+    expect(seen).toEqual({ false: false, true: true });
+  });
+
+  it('확인 못 한 백업은 절반 기간이 지나면 점이 다시 켜진다 (R14)', async () => {
+    const category = makeCategory();
+    const todos = makeTodos(BACKUP_WARN_MIN_TODOS, () => ({ categoryId: category.id }));
+    const backupAt = '2026-09-01T00:00:00.000Z';
+    await seed(
+      baseSnapshot({
+        categories: [category],
+        todos,
+        settings: makeSettings({ lastBackupAt: backupAt }),
+      }),
+    );
+
+    // 16일 뒤: 확인된 백업이면 아직 조용하고(30일 기준), 확인 못 한 백업이면 다시 켜진다(15일 기준).
+    const at = (now: string) => createBackupStore({ ...deps, now: () => now }, io);
+    localStorage.setItem('tasky.backup.confirmed-at', backupAt);
+    const confirmed = at('2026-09-17T00:00:00.000Z');
+    await confirmed.getState().refresh();
+    expect(confirmed.getState().confirmation).toBe('confirmed');
+    expect(confirmed.getState().warnStale).toBe(false);
+
+    localStorage.clear();
+    const unconfirmed = at('2026-09-17T00:00:00.000Z');
+    await unconfirmed.getState().refresh();
+    expect(unconfirmed.getState().confirmation).toBe('unconfirmed');
+    expect(unconfirmed.getState().warnStale).toBe(true);
   });
 
   it('저장할 자리를 본문보다 **먼저** 잡는다 (파일 피커는 사용자 제스처 안에서만 열린다)', async () => {

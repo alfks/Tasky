@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BACKUP_STALE_DAYS,
+  BACKUP_UNCONFIRMED_STALE_DAYS,
   BACKUP_WARN_MIN_TODOS,
   daysSinceBackup,
   shouldWarnStaleBackup,
+  staleDaysFor,
 } from '@/domain/backup/stale-backup';
 
 const NOW = '2026-09-15T09:00:00.000Z';
@@ -58,8 +60,66 @@ describe('shouldWarnStaleBackup (§2·R14)', () => {
     expect(warn(undefined, 0)).toBe(false);
   });
 
-  it('입력에 "사용자가 껐는가" 가 없다 — 끌 수 있는 경로가 타입에 없다 (R14)', () => {
-    const keys = Object.keys({ lastBackupAt: undefined, todoCount: 0, now: NOW });
-    expect(keys).toEqual(['lastBackupAt', 'todoCount', 'now']);
+  it('입력에 "사용자가 껐는가" 가 없다 — 가장 너그러운 값으로도 끌 수 없다 (R14)', () => {
+    // `confirmation` 은 기간을 늘릴 뿐 조건을 무효화하지 못한다: 백업한 적이 없으면 어느 값이든 참이다.
+    expect(
+      shouldWarnStaleBackup({
+        lastBackupAt: undefined,
+        todoCount: BACKUP_WARN_MIN_TODOS,
+        now: NOW,
+        confirmation: 'confirmed',
+      }),
+    ).toBe(true);
+  });
+});
+
+// 사용자 결정(R14): 확인 못 한 백업은 **보통의 절반 기간**만 지나면 다시 경고한다.
+describe('확인 못 한 백업의 절반 기간 (R14)', () => {
+  const warn = (days: number, confirmation: 'confirmed' | 'unconfirmed'): boolean =>
+    shouldWarnStaleBackup({
+      lastBackupAt: daysBefore(days),
+      todoCount: BACKUP_WARN_MIN_TODOS,
+      now: NOW,
+      confirmation,
+    });
+
+  // **리터럴과 유도식 양쪽으로 단언한다.** 상수만 참조하면 상수를 바꿔도 테스트가 따라가 아무것도 잡지 못한다.
+  it('임계값은 30일의 절반인 15일이다', () => {
+    expect(BACKUP_STALE_DAYS).toBe(30);
+    expect(BACKUP_UNCONFIRMED_STALE_DAYS).toBe(15);
+    expect(BACKUP_UNCONFIRMED_STALE_DAYS).toBe(BACKUP_STALE_DAYS / 2);
+    expect(Number.isInteger(BACKUP_UNCONFIRMED_STALE_DAYS)).toBe(true);
+  });
+
+  it('staleDaysFor 가 기록 종류에 따라 30 / 15 를 준다', () => {
+    expect(staleDaysFor('confirmed')).toBe(30);
+    expect(staleDaysFor('unconfirmed')).toBe(15);
+    expect(staleDaysFor('confirmed')).toBe(BACKUP_STALE_DAYS);
+    expect(staleDaysFor('unconfirmed')).toBe(BACKUP_UNCONFIRMED_STALE_DAYS);
+  });
+
+  it('16일 지난 기록은 확인 못 했으면 경고하고 확인했으면 경고하지 않는다', () => {
+    expect(warn(16, 'unconfirmed')).toBe(true);
+    expect(warn(16, 'confirmed')).toBe(false);
+  });
+
+  it('정확히 15일째는 "초과" 가 아니라 아직 경고하지 않는다', () => {
+    expect(warn(BACKUP_UNCONFIRMED_STALE_DAYS, 'unconfirmed')).toBe(false);
+    expect(warn(15, 'unconfirmed')).toBe(false);
+    expect(warn(BACKUP_UNCONFIRMED_STALE_DAYS + 1, 'unconfirmed')).toBe(true);
+  });
+
+  it('31일 지나면 확인된 기록도 경고한다 — 절반 규칙이 전체 기간을 없애지 않는다', () => {
+    expect(warn(BACKUP_STALE_DAYS + 1, 'confirmed')).toBe(true);
+  });
+
+  it('생략하면 확인된 것으로 본다 (기존 호출부의 뜻이 바뀌지 않는다)', () => {
+    expect(
+      shouldWarnStaleBackup({
+        lastBackupAt: daysBefore(16),
+        todoCount: BACKUP_WARN_MIN_TODOS,
+        now: NOW,
+      }),
+    ).toBe(false);
   });
 });

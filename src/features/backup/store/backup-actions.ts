@@ -27,6 +27,10 @@ import { markBackedUp } from '@/domain/theme/settings.rules';
 import { getRepositories } from '@/repositories/container';
 
 import {
+  readBackupConfirmation,
+  rememberConfirmedExport,
+} from '@/features/backup/store/backup-confirmation';
+import {
   canExport,
   canImport,
   EXPORT_FAILED,
@@ -106,12 +110,19 @@ export function createBackupActions(ctx: BackupContext): BackupActions {
       ]);
       const current = { categories: categoryList.length, todos: todoList.length };
       const lastBackupAt = settings?.lastBackupAt;
+      const confirmation = readBackupConfirmation(lastBackupAt);
       const now = ctx.deps.now();
       ctx.set({
         current,
         lastBackupAt,
+        confirmation,
         refreshedAt: now,
-        warnStale: shouldWarnStaleBackup({ lastBackupAt, todoCount: current.todos, now }),
+        warnStale: shouldWarnStaleBackup({
+          lastBackupAt,
+          todoCount: current.todos,
+          now,
+          confirmation,
+        }),
       });
     } catch {
       ctx.set({ error: LOAD_FAILED });
@@ -132,8 +143,9 @@ export function createBackupActions(ctx: BackupContext): BackupActions {
       const repositories = getRepositories();
       const now = ctx.deps.now();
       const lastBackupAt = (await repositories.settings.get())?.lastBackupAt;
-      ctx.set({ lastBackupAt, refreshedAt: now });
-      if (!isBackupStale(lastBackupAt, now)) {
+      const confirmation = readBackupConfirmation(lastBackupAt);
+      ctx.set({ lastBackupAt, confirmation, refreshedAt: now });
+      if (!isBackupStale(lastBackupAt, now, confirmation)) {
         ctx.set({ warnStale: false });
         return;
       }
@@ -150,9 +162,10 @@ export function createBackupActions(ctx: BackupContext): BackupActions {
    * 순서가 규칙이다: **저장할 자리를 먼저** 잡고(사용자 제스처가 살아 있어야 파일 피커가 열린다),
    * 그다음에 전량을 읽어 본문을 만든다. 사용자가 피커를 취소하면 16MB 를 만들 이유가 없다.
    *
-   * `lastBackupAt` 은 **저장 완료를 관측했을 때만** 찍는다 (R14). 앵커 내려받기는 취소·차단을 알려주지
-   * 않으므로 그 경로에서 찍으면 백업하지 않은 사용자의 경고 점이 꺼진다 — 경고 점을 끄는 행동이
-   * 백업보다 싸서는 안 된다는 것이 R14 의 근거다. 대신 무엇이 일어났는지 문구로 알린다.
+   * 취소(`null`)면 아무것도 갱신하지 않는다. 저장까지 갔으면 `lastBackupAt` 은 찍되, **저장 완료를
+   * 관측했을 때만** 확인 표식을 남긴다 (R14, 사용자 결정). 앵커 내려받기는 취소·차단을 알려주지 않으므로
+   * 그 기록은 "백업 시도" 이고 임계 기간이 절반(15일)이라 곧 다시 알린다 — 영구히 켜 두면 사용자가
+   * 표시를 무시하게 되어 경고의 목적이 무너지고, 전체 기간을 주면 저장되지 않은 파일을 믿게 된다.
    */
   const exportBackup = async (): Promise<boolean> => {
     if (!canExport(ctx.get())) {
@@ -170,10 +183,14 @@ export function createBackupActions(ctx: BackupContext): BackupActions {
       const snapshot = await repositories.dataset.readAll();
       const text = serializeBackup(buildBackupDocument(snapshot, ctx.deps.now()));
       await target.save(text);
+      // 시각은 어느 경로에서든 찍는다 — 다른 것은 **그 기록을 얼마나 믿는가**다(R14).
+      const backedUp = markBackedUp(snapshot.settings, ctx.deps);
+      await repositories.settings.upsert(backedUp);
       if (target.confirmable) {
-        await repositories.settings.upsert(markBackedUp(snapshot.settings, ctx.deps));
+        rememberConfirmedExport(backedUp.lastBackupAt ?? '');
         ctx.set({ phase: 'idle' });
       } else {
+        // 표식을 남기지 않는다 → 다음 판정이 'unconfirmed' 로 읽어 절반 기간을 쓴다.
         ctx.set({ phase: 'idle', exportNote: EXPORT_UNCONFIRMED });
       }
       await refresh();

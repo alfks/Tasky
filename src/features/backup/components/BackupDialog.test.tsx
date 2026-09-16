@@ -51,9 +51,18 @@ describe('BackupDialog — 구조 (§2)', () => {
   });
 
   it('현재 개수와 마지막 백업 시각을 보여준다', () => {
-    openWith({ lastBackupAt: '2026-09-01T00:00:00.000Z' });
+    openWith({ lastBackupAt: '2026-09-01T00:00:00.000Z', confirmation: 'confirmed' });
     expect(screen.getByText('카테고리 4개 · 할 일 312개')).toBeInTheDocument();
     expect(screen.getByText(/마지막 백업: 2026-09-01 \(14일 전\)/)).toBeInTheDocument();
+  });
+
+  // "백업함" 과 "백업을 시도했어요" 는 다른 사실이다 — 확인 못 한 기록으로 안심시키지 않는다(R14).
+  it('저장을 확인하지 못한 기록은 "시도" 로 적는다 (R14)', () => {
+    openWith({ lastBackupAt: '2026-09-01T00:00:00.000Z', confirmation: 'unconfirmed' });
+    expect(
+      screen.getByText(/백업을 시도했어요\(저장 확인 안 됨\): 2026-09-01 \(14일 전\)/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^마지막 백업: 2026-09-01/)).toBeNull();
   });
 
   it('백업한 적이 없으면 그렇게 적는다', () => {

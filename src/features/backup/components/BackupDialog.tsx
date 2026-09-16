@@ -24,6 +24,7 @@ const selectView = (state: BackupStore) => ({
   phase: state.phase,
   current: state.current,
   lastBackupAt: state.lastBackupAt,
+  confirmation: state.confirmation,
   refreshedAt: state.refreshedAt,
   exportNote: state.exportNote,
   mode: state.mode,
@@ -78,6 +79,7 @@ export function BackupDialog() {
         <BackupExportSection
           counts={view.current}
           lastBackupAt={view.lastBackupAt}
+          confirmation={view.confirmation}
           now={view.refreshedAt ?? ''}
           note={view.exportNote}
           busy={view.phase === 'exporting'}

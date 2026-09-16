@@ -4,6 +4,10 @@ import type { BackupDocument, BackupIssue } from '@/domain/backup/backup-documen
 import { backupIssueMessage } from '@/domain/backup/backup-document';
 import type { BackupCounts } from '@/domain/backup/export-backup';
 import type { ImportCounts, ImportMode } from '@/domain/backup/plan-import';
+import {
+  BACKUP_UNCONFIRMED_STALE_DAYS,
+  type BackupConfirmation,
+} from '@/domain/backup/stale-backup';
 import { DomainError } from '@/domain/errors';
 
 /** 진행 중 상태 (§2 로딩). `importing` 동안은 다이얼로그를 닫을 수 없다. */
@@ -25,6 +29,11 @@ export type BackupState = {
   current: BackupCounts | null;
   /** 마지막 내보내기 시각 (R10). 경고 점과 다이얼로그가 같은 값을 쓴다. */
   lastBackupAt: string | undefined;
+  /**
+   * 그 내보내기의 저장 완료를 이 기기가 관측했는가 (R10·R14). 확인 못 한 기록은 임계 기간이 절반이고
+   * 화면 문구도 다르다 — "백업함" 과 "백업을 시도했어요" 는 다른 사실이다.
+   */
+  confirmation: BackupConfirmation;
   /**
    * `lastBackupAt`·`warnStale` 을 계산한 시각. "14일 전" 표기가 이 값을 쓴다 —
    * 렌더 중에 시계를 읽으면 같은 상태가 렌더마다 다른 화면이 되고 테스트가 시각에 흔들린다.
@@ -68,9 +77,11 @@ export const LOAD_FAILED = '지금 데이터를 읽지 못했어요. 다시 시�
 /**
  * 저장 완료를 관측할 수 없는 브라우저에서 내보낸 뒤의 안내 (R10·R14).
  * File System Access API 가 없으면 `anchor.click()` 뿐이고 그것은 취소·차단을 알려주지 않는다.
+ * 무슨 일이 일어났는지(시도만 기록) 와 언제 다시 알릴지(절반 기간)를 둘 다 말한다.
  */
 export const EXPORT_UNCONFIRMED =
-  '파일이 저장됐는지 확인해 주세요. 이 브라우저는 저장 완료를 알려주지 않아 "마지막 백업" 시각을 갱신하지 않았어요';
+  '파일이 저장됐는지 확인해 주세요. 이 브라우저는 저장 완료를 알려주지 않아 "백업 시도" 로만 기록했고, ' +
+  `${BACKUP_UNCONFIRMED_STALE_DAYS}일 뒤에 다시 알려 드려요`;
 
 /** 교체 확인 체크박스가 꺼져 있을 때 `[가져오기]` 가 다는 이유 (§5). */
 export const NEEDS_ACKNOWLEDGE = '확인 체크가 필요해요';
@@ -80,6 +91,7 @@ export const initialBackupState: BackupState = {
   phase: 'idle',
   current: null,
   lastBackupAt: undefined,
+  confirmation: 'unconfirmed',
   refreshedAt: null,
   warnStale: false,
   mode: 'merge',
