@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { Category } from '@/domain/category/category';
 import { activeCategories } from '@/domain/category/category.rules';
@@ -17,7 +17,7 @@ import { useTodoGroups } from '@/features/todo/hooks/useTodoGroups';
 import { TODO_MESSAGES as M } from '@/features/todo/messages';
 
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { ToastViewport, type ToastItem } from '@/components/ui/Toast';
+import { pushToast } from '@/components/ui/Toast';
 
 import { fromDateKey } from '@/lib/date';
 
@@ -42,8 +42,8 @@ function dayLabel(date: DateKey): string {
 /**
  * 선택 날짜의 투두 목록 (todo.md §2-A·§2-C·R15).
  *
- * 화면 전체가 아니라 **본문 컬럼**이다 — 사이드바·헤더·날짜 스트립을 붙이는 것은 셸(T-20)이고,
- * 셸이 생기면 토스트 뷰포트도 그쪽으로 올라가야 한다(지금은 여기가 유일한 마운트 지점이다).
+ * 화면 전체가 아니라 **본문 컬럼**이다 — 사이드바·헤더·날짜 스트립을 붙이는 것은 셸(T-20)이다.
+ * 토스트는 자기 뷰포트를 띄우지 않고 전역 허브에 밀어 넣는다(T-30, app-shell R8 "동시에 1개").
  */
 export function TodoList({ date, categories }: TodoListProps) {
   const { status, error } = useTodoDate(date);
@@ -53,9 +53,7 @@ export function TodoList({ date, categories }: TodoListProps) {
   const [editing, setEditing] = useState<{ id: TodoId; field: 'title' | 'memo' } | null>(null);
   const [draggingId, setDraggingId] = useState<TodoId | null>(null);
   const [pending, setPending] = useState<PendingDelete | null>(null);
-  const [toasts, setToasts] = useState<readonly ToastItem[]>([]);
   const [announcement, setAnnouncement] = useState('');
-  const toastSeq = useRef(0);
 
   const active = activeCategories(categories.filter((category) => !isTombstone(category)));
   const known = new Map(categories.map((category) => [category.id, category]));
@@ -63,11 +61,6 @@ export function TodoList({ date, categories }: TodoListProps) {
   // 항목 포커스 키(Space·Enter·Delete·Alt+↑/↓)를 도움말에 싣는다 — 처리는 각 행이 한다(T-17 R2).
   useDocumentedShortcuts(ITEM_SHORTCUT_IDS);
   useShortcut('todo.new', () => setAddOpenFor(active[0]?.id ?? null));
-
-  const pushToast = (toast: Omit<ToastItem, 'id'>): void => {
-    const id = `todo-toast-${(toastSeq.current += 1)}`;
-    setToasts((list) => [...list, { ...toast, id }]);
-  };
 
   const confirmDelete = async (): Promise<void> => {
     if (pending === null) return;
@@ -91,10 +84,7 @@ export function TodoList({ date, categories }: TodoListProps) {
   // 파생 상태 동기화가 아니라 알림이라 effect 가 맞는 자리다 — 렌더 중에 하면 매 렌더 토스트가 는다.
   useEffect(() => {
     if (error === null || status === 'error') return;
-    setToasts((list) => [
-      ...list,
-      { id: `todo-error-${(toastSeq.current += 1)}`, message: error, variant: 'error' },
-    ]);
+    pushToast({ message: error, variant: 'error' });
     clearError();
   }, [error, status, clearError]);
 
@@ -146,11 +136,6 @@ export function TodoList({ date, categories }: TodoListProps) {
         onConfirm={() => void confirmDelete()}
         onCancel={() => setPending(null)}
         returnFocus={() => pending?.fallback ?? null}
-      />
-
-      <ToastViewport
-        toasts={toasts}
-        onClose={(id) => setToasts((list) => list.filter((toast) => toast.id !== id))}
       />
     </div>
   );

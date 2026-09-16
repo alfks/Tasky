@@ -10,7 +10,7 @@ import {
 
 function addNoticeRegion(bannerBottom: number | null): HTMLElement {
   const region = document.createElement('div');
-  region.setAttribute('aria-label', '저장 공간 알림');
+  region.setAttribute('data-top-notice', '');
   if (bannerBottom !== null) {
     const banner = document.createElement('div');
     vi.spyOn(banner, 'getBoundingClientRect').mockReturnValue({ bottom: bannerBottom } as DOMRect);
@@ -42,8 +42,18 @@ describe('measureTopNotice', () => {
     expect(measureTopNotice(document)).toBe(72 + TOP_NOTICE_GAP_PX);
   });
 
-  it('선택자는 PwaNotices 가 붙인 접근 이름 그대로다', () => {
-    expect(TOP_NOTICE_SELECTOR).toBe('[aria-label="저장 공간 알림"]');
+  it('선택자는 사람이 읽는 문구가 아니라 PwaNotices 의 표식을 본다(T-30)', () => {
+    expect(TOP_NOTICE_SELECTOR).toBe('[data-top-notice]');
+  });
+
+  it('접근 이름만 같고 표식이 없으면 못 찾는다 — 문구에 다시 결합되지 않았다는 증거', () => {
+    const region = document.createElement('div');
+    region.setAttribute('aria-label', '저장 공간 알림');
+    const banner = document.createElement('div');
+    vi.spyOn(banner, 'getBoundingClientRect').mockReturnValue({ bottom: 72 } as DOMRect);
+    region.append(banner);
+    document.body.append(region);
+    expect(measureTopNotice(document)).toBe(0);
   });
 });
 

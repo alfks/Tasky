@@ -32,10 +32,8 @@ import { useCategoryStore } from '@/features/category/store/category-store';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Dialog } from '@/components/ui/Dialog';
-import { ToastViewport, type ToastItem } from '@/components/ui/Toast';
-
-/** 토스트가 없을 때도 라이브 영역은 떠 있어야 낭독된다 — 빈 배열의 참조를 고정해 둔다. */
-const NO_TOASTS: readonly ToastItem[] = [];
+import { OVERLAY_ALWAYS_LIVE_ATTR } from '@/components/ui/overlay-rules';
+import { dismissToast, pushToast, useToasts } from '@/components/ui/Toast';
 
 type CategoryRemoveDialogProps = {
   /** `useCategoryRemoval()` 의 반환값. `CategoryList` 의 `onRemove` 에는 `controller.requestRemove` 를 넘긴다. */
@@ -45,45 +43,118 @@ type CategoryRemoveDialogProps = {
 };
 
 /**
+ * 제어기의 토스트 슬롯 하나를 **전역 허브의 토스트 한 장**과 짝지어 두고, 복귀 포커스를 감싼다 (T-30).
+ *
+ * 이 컴포넌트는 더 이상 자기 뷰포트를 띄우지 않는다(app-shell R8 — 뷰포트는 `ShellToasts` 하나).
+ * 양방향으로 잇는다: 제어기에 토스트가 생기면 허브에 밀어 넣고, 허브에서 사라지면(6초 만료·다음
+ * 토스트에 밀려남) 제어기의 되돌리기 창도 닫는다. 닫지 않으면 화면에 없는 `[되돌리기]` 의 메모가
+ * 스토어에 남는다.
+ *
+ * **복귀 포커스를 왜 여기서 감싸나.** 파괴 확인이 닫힐 때 `Dialog` 는 열었던 요소가 사라졌으면
+ * `returnFocus` 에 묻고, 셸의 답(`useRemovalReturnFocus`)은 "떠 있는 토스트의 액션 버튼이 첫 후보"
+ * 다(T-20 리뷰 실측: `[되돌리기]` 까지 Tab 29회 / 토스트 수명 6,934ms). 그런데 허브를 거치면 토스트는
+ * 대화상자가 사라진 **다음 커밋**에 뜬다 — React 는 한 커밋의 패시브 정리(=`Dialog` 의 복귀 처리)를
+ * 그 커밋의 패시브 생성(=아래 push)보다 **먼저** 돌리므로 그 시점에는 버튼이 DOM 에 없다. 그래서
+ * R14 순서로 먼저 보내고(포커스가 `<body>` 로 떨어지는 일은 없다), 토스트가 실제로 뜬 뒤 **그때까지
+ * 아무도 포커스를 옮기지 않았을 때만** 옮긴다. 포커스가 들어가면 `Toast` 가 타이머를 멈추므로 6초
+ * 제한도 함께 풀린다(R8).
+ */
+function useRemovalToastBridge(
+  controller: CategoryRemovalController,
+  returnFocus?: () => HTMLElement | null,
+): () => HTMLElement | null {
+  const { toast } = controller;
+  const hubToasts = useToasts();
+  const hubId = useRef<string | null>(null);
+  const sourceId = useRef<string | null>(null);
+  /** `Dialog` 에 돌려준 복귀 지점. 토스트가 뜰 때까지 여기 포커스가 남아 있으면 넘겨준다. */
+  const handoffFrom = useRef<HTMLElement | null>(null);
+  const latest = useRef({ dismissToast: controller.dismissToast, returnFocus });
+  useEffect(() => {
+    latest.current = { dismissToast: controller.dismissToast, returnFocus };
+  });
+
+  useEffect(() => {
+    if (toast === null) {
+      // 되돌리기에 성공하면 제어기가 슬롯을 비운다 — 화면의 토스트도 함께 걷는다.
+      if (hubId.current !== null) dismissToast(hubId.current);
+      hubId.current = null;
+      sourceId.current = null;
+      return;
+    }
+    if (sourceId.current === toast.id) return;
+    sourceId.current = toast.id;
+    const { id: _slotId, ...item } = toast;
+    hubId.current = pushToast(item);
+  }, [toast]);
+
+  useEffect(() => {
+    const id = hubId.current;
+    if (id === null) return;
+    if (!hubToasts.some((item) => item.id === id)) {
+      hubId.current = null;
+      handoffFrom.current = null;
+      latest.current.dismissToast();
+      return;
+    }
+    // 토스트가 이제 DOM 에 있다 — 기다리던 포커스를 넘긴다.
+    const from = handoffFrom.current;
+    if (from === null) return;
+    handoffFrom.current = null;
+    const active = document.activeElement;
+    if (active !== from && active !== document.body) return;
+    document.querySelector<HTMLButtonElement>(`[${OVERLAY_ALWAYS_LIVE_ATTR}] button`)?.focus();
+  }, [hubToasts]);
+
+  return () => {
+    const fallback = latest.current.returnFocus?.() ?? toastPerch();
+    handoffFrom.current = fallback;
+    return fallback;
+  };
+}
+
+/**
+ * R14 순서가 아무 답도 내지 못했을 때 **토스트가 들어앉을 자리**를 임시 발판으로 내준다.
+ *
+ * 카테고리 행은 `⋯` 메뉴(포털)에서 지워지므로 자리표가 목록 밖을 가리켜 `null` 이 나오는 경로가
+ * 실재한다(셸 테스트가 잡는다). 아무것도 돌려주지 않으면 포커스는 `<body>` 로 떨어지고 다음 Tab 이
+ * 문서 맨 위로 튄다. 곧 여기에 토스트가 뜨고 위 효과가 `[되돌리기]` 로 옮겨 준다.
+ *
+ * 여기가 불리는 경로는 **연 요소가 사라졌을 때**뿐이고, 이 대화상자에서 그것은 곧 삭제가 끝났다는
+ * 뜻이라 언제나 토스트(되돌리기 또는 실패)가 뒤따른다 — 취소·Esc 는 행이 살아 있어 이 자리에 오지
+ * 않는다. 그래도 토스트가 오지 않는 날이 있다면 포커스는 빈 상주 영역에 남는다(`<body>` 보다 낫다).
+ */
+function toastPerch(): HTMLElement | null {
+  const root = document.querySelector<HTMLElement>(`[${OVERLAY_ALWAYS_LIVE_ATTR}]`);
+  if (root === null) return null;
+  root.tabIndex = -1;
+  return root;
+}
+
+/**
  * 카테고리 삭제 대화상자 + 되돌리기 토스트 (category §2-C, R10~R16).
  *
- * **토스트 뷰포트가 이 컴포넌트에 함께 있는 이유**: 되돌리기 토스트는 대화상자가 닫힌 **뒤에** 뜬다.
- * 대화상자 안에 두면 같이 사라진다.
- *
- * 뷰포트의 `data-overlay-always-live` 가 보장하는 것은 **`inert` 면제까지** 다(overlay-rules).
- * 즉 다른 모달이 배경을 덮는 동안에도 토스트는 AX 트리에 남고 마우스로 누를 수 있다. 그러나
- * **Tab 으로는 닿지 않는다** — `Dialog.trapTab` 의 순환 집합은 `[panel, ...위 레이어]` 뿐이라
- * 토스트 뷰포트가 들어가지 않기 때문이다. Chromium 실측(이 트리, 토스트가 뜬 채 두 번째 삭제
- * 대화상자를 열고 Tab 16회): 순환은 `옮길 카테고리 → 취소 → 삭제 → 닫기` 안에서만 돌고 도달 0,
- * 뷰포트는 `inert` 없이 살아 있으며 히트테스트는 통과한다. `Esc` 로 모달을 닫으면 토스트가 남고
- * 그때부터 Tab 두 번에 [되돌리기] 에 닿는다.
- *
- * 키보드만 쓰는 사용자에게 이 창을 열어 주려면 `trapTab` 의 순환 집합에 뷰포트를 넣어야 하는데,
- * 그 코드는 공용 프리미티브(`components/ui/Dialog.tsx`)라 이 티켓의 소유가 아니다 — 별도 티켓.
+ * 다른 모달이 떠 있는 동안에도 토스트는 `data-overlay-always-live` 덕에 `inert` 를 비켜 가 AX 트리에
+ * 남지만 **Tab 으로는 닿지 않는다**(`Dialog.trapTab` 의 순환 집합에 뷰포트가 없다) — 공용
+ * 프리미티브를 고쳐야 하는 별도 티켓이다.
  *
  * N/M 을 세는 동안(`counts === null`)에는 아무것도 열지 않는다 — M 을 모르면 축약(R11)인지 3선택지인지
  * 정할 수 없고, 열어 두었다가 모양이 바뀌면 초기 포커스가 엉뚱한 곳에 남는다. 세기에 실패하면 훅이
  * 대상을 내리고 오류 토스트를 띄운다.
  */
 export function CategoryRemoveDialog({ controller, returnFocus }: CategoryRemoveDialogProps) {
-  const { target, counts, toast } = controller;
+  const { target, counts } = controller;
+  const returnFocusThenToast = useRemovalToastBridge(controller, returnFocus);
 
+  if (target === null || counts === null) return null;
   return (
-    <>
-      {target === null || counts === null ? null : (
-        <RemovalPrompt
-          key={target.id}
-          category={target}
-          counts={counts}
-          controller={controller}
-          returnFocus={returnFocus}
-        />
-      )}
-      <ToastViewport
-        toasts={toast === null ? NO_TOASTS : [toast]}
-        onClose={controller.dismissToast}
-      />
-    </>
+    <RemovalPrompt
+      key={target.id}
+      category={target}
+      counts={counts}
+      controller={controller}
+      returnFocus={returnFocusThenToast}
+    />
   );
 }
 

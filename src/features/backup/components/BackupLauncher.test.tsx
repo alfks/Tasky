@@ -17,6 +17,16 @@ import { makeCategory } from '@/test/fixtures/category';
 import { makeSettings } from '@/test/fixtures/settings';
 import { makeTodos } from '@/test/fixtures/todo';
 
+import { ToastViewport, dismissToast, useToasts } from '@/components/ui/Toast';
+
+/**
+ * 전역 토스트 뷰포트. 앱에서는 셸이 한 번만 마운트한다(`ShellToasts`, app-shell R8) — 이 컴포넌트를
+ * 단독으로 띄우는 여기서는 대신 세운다.
+ */
+function ToastHub() {
+  return <ToastViewport toasts={useToasts()} onClose={dismissToast} />;
+}
+
 const persist = <T extends Meta>(entity: T): Persistable<T> => entity as unknown as Persistable<T>;
 
 /** 투두 `count` 개를 담은 저장소. 경고 점 조건(투두 ≥ 20)을 개수로 조절한다. */
@@ -74,7 +84,8 @@ describe('BackupLauncher (§2·R14)', () => {
   });
 
   // 서버 HTML 에 없는 노드를 첫 클라이언트 렌더에 넣으면 React 19 가 트리를 통째로 다시 만든다
-  // (실 Chromium PAGEERROR — 리뷰 라운드 1 Major-1). `ToastViewport` 가 그 노드였다.
+  // (실 Chromium PAGEERROR — 리뷰 라운드 1 Major-1). 그 노드는 이 컴포넌트가 들고 있던 `ToastViewport`
+  // 였고, T-30 이 뷰포트를 셸로 옮기면서 **포털 자체가 사라졌다**(`mounted` 가드도 함께).
   // 지금 스택은 서버 렌더를 하지 않으므로(ADR-0013) 이 테스트는 프리렌더가 돌아왔을 때를 위한 고정이다.
   it('서버가 그린 HTML 에 그대로 하이드레이션된다 (콘솔 에러 0)', async () => {
     await seedTodos(3);
@@ -116,9 +127,14 @@ describe('BackupLauncher (§2·R14)', () => {
     expect(await screen.findByRole('dialog')).toHaveAccessibleName('백업/복원');
   });
 
-  it('가져오기 결과를 토스트로 알린다 (R12)', async () => {
+  it('가져오기 결과를 전역 허브의 토스트로 알린다 (R12)', async () => {
     await seedTodos(3);
-    render(<BackupLauncher />);
+    render(
+      <>
+        <BackupLauncher />
+        <ToastHub />
+      </>,
+    );
     await waitForWarningCheck();
 
     act(() => {

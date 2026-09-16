@@ -21,7 +21,6 @@ import {
   SKELETON_DELAY_MS,
 } from '@/features/shell/components/ShellMain';
 import { STORAGE_FAILURE_TEXT } from '@/features/shell/components/StorageFailureCard';
-import { TOAST_STACK_ATTR } from '@/features/shell/lib/toast-stack';
 import { useShellStorageStore } from '@/features/shell/store/shell-storage-store';
 import { useShellToastStore } from '@/features/shell/store/shell-toast-store';
 import { useShellUiStore } from '@/features/shell/store/shell-ui-store';
@@ -129,21 +128,20 @@ describe('토스트 뷰포트 통합 (R8 · 리뷰 필수항목 1)', () => {
     expect(await screen.findByText('옮겼어요')).toBeInTheDocument();
   });
 
-  it('뷰포트가 둘 이상 뜨면 셸이 서로 겹치지 않게 밀어 올린다', async () => {
+  // T-30 전에는 여기에 "뷰포트가 둘 이상 뜨면 겹치지 않게 밀어 올린다" 가 있었다. 뷰포트가 하나뿐이면
+  // 밀어 올릴 것이 없다 — 겹침 방지 대신 **한 장만 남는지**를 본다. 자세한 배선은 ShellToasts.test.tsx.
+  it('뷰포트는 앱에 하나뿐이고 토스트도 한 번에 한 장이다 (R8)', async () => {
     await mount();
-    // feature 가 자기 뷰포트를 띄우는 상황을 그대로 재현한다(지금 넷이 그렇게 한다).
-    const extra = document.createElement('div');
-    extra.setAttribute(OVERLAY_ALWAYS_LIVE_ATTR, '');
-    const region = document.createElement('div');
-    region.append(document.createElement('div'));
-    extra.append(region, document.createElement('div'));
-    vi.spyOn(extra, 'getBoundingClientRect').mockReturnValue({ height: 55 } as DOMRect);
     act(() => {
       useShellToastStore.getState().pushToast({ message: '먼저 뜬 토스트' });
-      document.body.append(extra);
     });
-    await waitFor(() => expect(extra.hasAttribute(TOAST_STACK_ATTR)).toBe(true));
-    expect(extra.style.bottom).not.toBe('');
+    expect(await screen.findByText('먼저 뜬 토스트')).toBeInTheDocument();
+    act(() => {
+      useShellToastStore.getState().pushToast({ message: '나중 토스트' });
+    });
+    expect(await screen.findByText('나중 토스트')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('먼저 뜬 토스트')).not.toBeInTheDocument());
+    expect(document.querySelectorAll(`[${OVERLAY_ALWAYS_LIVE_ATTR}]`)).toHaveLength(1);
   });
 });
 

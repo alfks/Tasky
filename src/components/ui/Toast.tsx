@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { createPortal } from 'react-dom';
 
@@ -33,6 +33,68 @@ export type ToastItem = {
   durationMs?: number;
 };
 
+/**
+ * 앱 전역 토스트 **허브** (app-shell.md R8 "동시에 1개").
+ *
+ * 왜 `features/` 가 아니라 여기인가: 토스트를 띄우는 곳은 `todo`·`category`·`backup`·`pwa`·`shell`
+ * 다섯 feature 다. 허브가 어느 한 feature 안에 있으면 나머지가 그 feature 의 배럴을 import 해야 하는데,
+ * 셸은 이미 그 feature 들을 import 하므로 곧바로 순환이 된다(`import/no-cycle` 실측:
+ * `@/features/shell/components/AppShell:5=>@/features/todo:44`). `components/` 는 모든 feature 가
+ * 의존해도 되는 아래층이라 순환이 생기지 않는다(FEATURE_ALLOW).
+ *
+ * zustand 를 쓰지 않는다 — `components` 레이어는 상태 라이브러리 금지 목록에 있다(eslint STORAGE).
+ * 필요한 것은 "구독 + 스냅샷" 뿐이라 React 의 `useSyncExternalStore` 로 충분하다.
+ *
+ * 슬롯을 하나로 두지 **않고** 배열로 갖되 남는 수를 `MAX_VISIBLE_TOASTS` 로 자른다: 슬롯 하나면 앞
+ * 토스트의 `[되돌리기]` 가 뒤 토스트로 **바뀌는** 순간 누르려던 대상이 사라진다. 배열이면 오래된
+ * 것부터 통째로 밀려나므로 보이는 것과 눌리는 것이 항상 같다.
+ */
+export const MAX_VISIBLE_TOASTS = 1;
+
+let hubToasts: readonly ToastItem[] = [];
+let hubSequence = 0;
+const hubListeners = new Set<() => void>();
+
+function emit(next: readonly ToastItem[]): void {
+  hubToasts = next;
+  for (const listener of [...hubListeners]) listener();
+}
+
+/** 지금 떠 있는 토스트들. 뷰포트 밖(브리지·테스트)에서 동기적으로 볼 때 쓴다. */
+export function getToasts(): readonly ToastItem[] {
+  return hubToasts;
+}
+
+/** 띄운 토스트의 id — 호출부가 나중에 직접 닫거나 밀려났는지 확인할 때 쓴다. */
+export function pushToast(toast: Omit<ToastItem, 'id'>): string {
+  hubSequence += 1;
+  const id = `toast-${hubSequence}`;
+  emit([...hubToasts, { ...toast, id }].slice(-MAX_VISIBLE_TOASTS));
+  return id;
+}
+
+export function dismissToast(id: string): void {
+  if (!hubToasts.some((toast) => toast.id === id)) return;
+  emit(hubToasts.filter((toast) => toast.id !== id));
+}
+
+export function clearToasts(): void {
+  if (hubToasts.length === 0) return;
+  emit([]);
+}
+
+function subscribeToasts(listener: () => void): () => void {
+  hubListeners.add(listener);
+  return () => {
+    hubListeners.delete(listener);
+  };
+}
+
+/** 허브를 구독한다. 뷰포트 하나(`ShellToasts`)와 브리지들이 쓴다. */
+export function useToasts(): readonly ToastItem[] {
+  return useSyncExternalStore(subscribeToasts, getToasts, getToasts);
+}
+
 type ToastViewportProps = {
   /** 지금 떠 있는 토스트들. 위에서 아래로 쌓인다. */
   toasts: readonly ToastItem[];
@@ -52,6 +114,13 @@ type ToastViewportProps = {
  * 뷰포트는 `OVERLAY_ALWAYS_LIVE_ATTR` 를 달아 **모달이 배경을 `inert` 로 덮을 때 비켜 간다**.
  * 달지 않으면 대화상자가 떠 있는 동안 토스트가 AX 트리에서 사라지고 `[되돌리기]` 에 포커스가
  * 가지 않는다(리뷰 Major 2 실측) — 카테고리 삭제 되돌리기(category R15)가 바로 그 경로다.
+ *
+ * **앱에서 이것을 마운트하는 곳은 `ShellToasts` 하나뿐이다**(app-shell R8). feature 는 자기 뷰포트를
+ * 띄우지 말고 위의 `pushToast` 로 허브에 밀어 넣는다.
+ *
+ * 아래쪽 여백은 `--space-6` 에 `--toast-bottom-reserve` 를 더한다. 후자는 좁은 화면의 하단 고정
+ * `[+ 할 일]` 막대가 실제로 차지한 높이이고, 셸이 **재서** 문서 루트에 올려 준다
+ * (`features/shell/lib/toast-stack.ts`). 값이 없으면 0 이라 넓은 화면은 그대로 24px 이다.
  */
 export function ToastViewport({ toasts, onClose, className }: ToastViewportProps) {
   if (typeof document === 'undefined') return null;
@@ -66,7 +135,8 @@ export function ToastViewport({ toasts, onClose, className }: ToastViewportProps
     <div
       {...{ [OVERLAY_ALWAYS_LIVE_ATTR]: '' }}
       className={cn(
-        'pointer-events-none fixed inset-x-0 bottom-[var(--space-6)] z-[var(--z-toast)]',
+        'pointer-events-none fixed inset-x-0 z-[var(--z-toast)]',
+        'bottom-[calc(var(--space-6)+var(--toast-bottom-reserve,0px))]',
         'flex flex-col items-center gap-[var(--space-2)] px-[var(--space-4)]',
         className,
       )}
