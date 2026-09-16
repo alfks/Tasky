@@ -7,6 +7,7 @@ import type { CategoryId } from '@/domain/ids';
 import { TODO_TITLE_MAX_LENGTH } from '@/domain/todo/todo.rules';
 
 import { TODO_MESSAGES as M } from '@/features/todo/messages';
+import { SAVE_FAILED } from '@/features/todo/store/todo-state';
 import { useTodoStore } from '@/features/todo/store/todo-store';
 
 import { Kbd } from '@/components/ui/Kbd';
@@ -30,9 +31,13 @@ type TodoAddRowProps = {
  *
  * `Enter` 는 **조합 중이면 무시한다**(R4). 한글에서 첫 `Enter` 는 글자를 확정하는 키라,
  * 그것으로 제출하면 "쓰다 만 할 일" 이 계속 생긴다. 판정은 `lib/ime.ts` 한 곳에서 온다.
+ *
+ * 검증 문구는 필드 아래에 **인라인으로** 남긴다(§2-C "제출 시 표시"). 저장 실패는 반대로 토스트가
+ * 맡는다 — 입력한 문장의 문제가 아니라 화면 전체의 사고라 필드 아래에 붙여 둘 이유가 없다(§2-C).
  */
 export function TodoAddRow({ categoryId, categoryName, open, onOpenChange }: TodoAddRowProps) {
   const addTodo = useTodoStore((state) => state.addTodo);
+  const clearError = useTodoStore((state) => state.clearError);
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -56,13 +61,28 @@ export function TodoAddRow({ categoryId, categoryName, open, onOpenChange }: Tod
   const submit = async (): Promise<boolean> => {
     if (submitting.current) return false;
     submitting.current = true;
+    // 문구는 스토어에 **놓이는 순간** 붙잡는다. `TodoList` 의 토스트 effect 가 같은 `error` 를
+    // 가져가며 `clearError()` 하기 때문에, `await` 가 끝난 뒤 `getState()` 로 읽으면 이미 `null`
+    // 이다(실브라우저 실측 — 인라인 문구가 한 번도 뜨지 않던 자리다). 구독 콜백은 `set()` 안에서
+    // **동기로** 불리므로 React 가 다시 그리기 전이고, 경쟁이 성립하지 않는다.
+    const raised: { current: string | null } = { current: null };
+    const unsubscribe = useTodoStore.subscribe((state) => {
+      if (state.error === null || raised.current !== null) return;
+      raised.current = state.error;
+      // 검증 오류는 이 행이 책임진다 — 곧바로 거둬들여 토스트로 새지 않게 한다. 같은 문장이 필드
+      // 아래와 토스트에 두 번 나오면 어느 쪽이 지금 얘긴지 알 수 없다(§2-C 가 채널을 가른 이유).
+      if (state.error !== SAVE_FAILED) clearError();
+    });
     try {
       const saved = await addTodo({ categoryId, title });
       // 실패 두 가지를 스토어가 `error` 로 가른다: 문구가 있으면 검증·저장 실패, 없으면 대상 없음.
-      setMessage(saved ? null : useTodoStore.getState().error);
+      // 저장 실패(`SAVE_FAILED`)는 토스트가 말하므로 필드 아래는 비워 둔다.
+      const inline = raised.current === SAVE_FAILED ? null : raised.current;
+      setMessage(saved ? null : inline);
       if (saved) setTitle('');
       return saved;
     } finally {
+      unsubscribe();
       submitting.current = false;
     }
   };

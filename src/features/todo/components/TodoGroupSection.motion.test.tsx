@@ -194,6 +194,17 @@ describe('체크 → 대기 → 이동 (R8)', () => {
     expect(제목들()).toEqual(['체육']);
   });
 
+  it('해제는 "위로 이동" 으로 낭독한다 — 완료와 문장이 다르다', async () => {
+    await 화면();
+    const live = document.querySelector('[aria-live="polite"]');
+
+    // 과학은 이미 완료 상태다 — 누르면 해제된다.
+    await 체크('과학');
+    await 흐르기(COMPLETION_WAIT_MS);
+
+    expect(live).toHaveTextContent('완료 해제됨, 위로 이동');
+  });
+
   it('이동이 끝난 뒤 한 번 낭독한다', async () => {
     await 화면();
     const live = document.querySelector('[aria-live="polite"]');

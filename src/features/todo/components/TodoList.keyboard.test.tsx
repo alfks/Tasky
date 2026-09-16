@@ -146,6 +146,16 @@ describe('삭제 확인 (R13)', () => {
     expect(within(확인창()).getByText("'영어'를 삭제할까요?")).toBeInTheDocument();
   });
 
+  it('④ 행에서 Backspace 키 — Delete 와 같은 대화상자를 연다 (R13)', async () => {
+    const user = userEvent.setup();
+    await 화면();
+
+    행('영어').focus();
+    await user.keyboard('{Backspace}');
+
+    expect(within(확인창()).getByText("'영어'를 삭제할까요?")).toBeInTheDocument();
+  });
+
   it('② 메뉴 "삭제"', async () => {
     const user = userEvent.setup();
     await 화면();
@@ -354,5 +364,87 @@ describe('편집 패널 (R14·R12)', () => {
 
     expect(screen.getAllByRole('group', { name: /편집/u })).toHaveLength(1);
     expect(screen.getByRole('group', { name: '국어 편집' })).toBeInTheDocument();
+  });
+});
+
+// 패널은 `onClose()` 로 언마운트될 뿐이라, 돌아갈 곳을 정해 두지 않으면 **네 경로 전부**에서
+// 포커스가 `<body>` 로 떨어진다(Chromium 실측 — 리뷰 Major-1). 그러면 다음 `Tab` 이 문서 처음으로
+// 돌아간다. 한 경로만 고쳐도 나머지 셋이 남으므로 네 개를 각각 고정한다.
+describe('편집 패널을 닫은 뒤 포커스 (§5·app-shell R14)', () => {
+  /** 편집 패널을 열고 그 패널을 돌려준다. */
+  async function 패널열기(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+    await user.click(screen.getByRole('button', { name: '영어' }));
+    return screen.getByRole('group', { name: '영어 편집' });
+  }
+
+  /** 편집하던 항목의 제목 버튼 = 돌아가야 할 자리. */
+  function 제목버튼(name: string): HTMLElement {
+    return screen.getByRole('button', { name });
+  }
+
+  it('① Esc 로 닫으면 그 항목의 제목 버튼으로 돌아온다', async () => {
+    const user = userEvent.setup();
+    await 화면();
+
+    const panel = await 패널열기(user);
+    await user.type(within(panel).getByLabelText('제목'), '{Escape}');
+
+    await waitFor(() => {
+      expect(제목버튼('영어')).toHaveFocus();
+    });
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('② [취소] 로 닫아도 같은 자리로 돌아온다', async () => {
+    const user = userEvent.setup();
+    await 화면();
+
+    const panel = await 패널열기(user);
+    await user.click(within(panel).getByRole('button', { name: '취소' }));
+
+    await waitFor(() => {
+      expect(제목버튼('영어')).toHaveFocus();
+    });
+  });
+
+  it('③ [저장] 으로 닫으면 고친 제목의 버튼으로 돌아온다', async () => {
+    const user = userEvent.setup();
+    await 화면();
+
+    const panel = await 패널열기(user);
+    await user.clear(within(panel).getByLabelText('제목'));
+    await user.type(within(panel).getByLabelText('제목'), '영어 듣기');
+    await user.click(within(panel).getByRole('button', { name: '저장' }));
+
+    await waitFor(() => {
+      expect(제목버튼('영어 듣기')).toHaveFocus();
+    });
+  });
+
+  it('④ 제목에서 Enter 로 저장해도 마찬가지다', async () => {
+    const user = userEvent.setup();
+    await 화면();
+
+    const panel = await 패널열기(user);
+    await user.clear(within(panel).getByLabelText('제목'));
+    await user.type(within(panel).getByLabelText('제목'), '영어 쓰기{Enter}');
+
+    await waitFor(() => {
+      expect(제목버튼('영어 쓰기')).toHaveFocus();
+    });
+  });
+
+  it('삭제 확인으로 닫힌 경우에는 대화상자가 정한 행선지를 빼앗지 않는다', async () => {
+    const user = userEvent.setup();
+    await 화면();
+
+    const panel = await 패널열기(user);
+    await user.click(within(panel).getByRole('button', { name: '삭제' }));
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '삭제' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('checkbox', { name: '영어' })).toBeNull();
+    });
+    expect(행('국어')).toHaveFocus();
   });
 });

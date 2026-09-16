@@ -17,6 +17,12 @@
 4. **행 단위 키(Space·Enter·Delete·Alt+↑/↓)는 `e.target === e.currentTarget` 일 때만 처리한다.**
    안 그러면 편집 입력에서 친 Space 가 완료 토글이 되고 Backspace 가 삭제 확인을 연다.
 5. **드래그 기능에는 반드시 키보드·메뉴 대안이 함께 있다**(WCAG 2.5.7, todo.md §5).
+6. **무언가를 닫거나 없애는 코드는 포커스 행선지를 함께 정한다**(app-shell R14). 판단은
+   `useTodoItemFocus` 한 곳에 모여 있다 — 삭제·"내일로"·카테고리 이동·편집 패널 닫기가 전부 그리로
+   간다. 여기서 빠뜨리면 포커스가 `<body>` 로 떨어지고 다음 `Tab` 이 문서 처음으로 돌아간다.
+7. **DOM 표식(`FLIP_ATTR`·`LIST_FOCUS_ATTR`)의 자리는 `todo-focus.ts` 다.** 행을 찾는 쪽이 셋
+   (FLIP·포커스 복원·형제 탐색)이라 그 중 하나에 두면 나머지가 거꾸로 import 해 순환이 난다.
+   `todo-focus.ts` 는 이 디렉토리에서 아무것도 import 하지 않는 **의존의 바닥**이다.
 
 ## 검증
 

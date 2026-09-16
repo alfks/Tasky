@@ -163,6 +163,36 @@ describe('삭제된 카테고리 그룹 (R16)', () => {
     expect(within(group).queryByRole('button', { name: '+ 할 일 추가' })).toBeNull();
   });
 
+  // 마우스 경로는 `disabled` 가 막지만 **행 포커스 `Space`**(§5)는 행이 직접 받는다 — 여기서
+  // `readOnly` 가드가 빠지면 삭제된 카테고리의 완료 기록이 조용히 풀린다.
+  it('행 포커스 Space 로도 완료가 풀리지 않는다', async () => {
+    const user = userEvent.setup();
+    화면();
+    await 목록이보일때까지();
+    const row = screen.getByRole('checkbox', { name: '김치찌개' }).closest('li');
+    if (row === null) throw new Error('행이 없다');
+
+    row.focus();
+    await user.keyboard(' ');
+
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: '김치찌개' })).toBeChecked();
+    });
+  });
+
+  it('행 포커스 Enter 로 편집 패널이 열리지 않는다', async () => {
+    const user = userEvent.setup();
+    화면();
+    await 목록이보일때까지();
+    const row = screen.getByRole('checkbox', { name: '김치찌개' }).closest('li');
+    if (row === null) throw new Error('행이 없다');
+
+    row.focus();
+    await user.keyboard('{Enter}');
+
+    expect(screen.queryByRole('group', { name: /편집/u })).toBeNull();
+  });
+
   it('메뉴에는 옮기기와 삭제만 있다', async () => {
     const user = userEvent.setup();
     화면();
@@ -235,5 +265,59 @@ describe('단축키', () => {
     await user.keyboard('n');
 
     expect(screen.getByRole('textbox', { name: '공부에 할 일 추가' })).toHaveFocus();
+  });
+});
+
+// `TodoAddRow` 단독 렌더로는 이 자리를 못 잡는다 — 검증 문구를 지우는 쪽이 `TodoList` 의 토스트
+// effect 라, 둘을 **함께** 마운트한 조립 경로에서만 드러난다(리뷰 Major-2: false green).
+describe('입력 행 검증 문구 (§2-C)', () => {
+  /** 입력 행 아래의 `role="status"`. 그룹 안에 하나뿐이다. */
+  function 문구(그룹이름: string): HTMLElement {
+    return within(screen.getByRole('region', { name: 그룹이름 })).getByRole('status');
+  }
+
+  /** 그 그룹의 입력 행을 열고 `<input>` 을 돌려준다. */
+  async function 입력행열기(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+    const 공부그룹 = screen.getByRole('region', { name: '공부' });
+    await user.click(within(공부그룹).getByRole('button', { name: '+ 할 일 추가' }));
+    return screen.getByRole('textbox', { name: '공부에 할 일 추가' });
+  }
+
+  it('빈 제목으로 제출하면 필드 아래에 문구가 남고 aria-invalid 가 선다', async () => {
+    const user = userEvent.setup();
+    화면();
+    await 목록이보일때까지();
+
+    const input = await 입력행열기(user);
+    await user.type(input, '   {Enter}');
+
+    await waitFor(() => {
+      expect(문구('공부')).toHaveTextContent('할 일을 입력해 주세요');
+    });
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    // 검증 오류는 **인라인** 이다 — 토스트는 저장 실패용이라 여기서 뜨면 같은 말이 두 번 나온다.
+    // 에러 토스트는 뷰포트의 assertive 영역(`role="alert"`)에 들어간다.
+    expect(screen.getByRole('alert')).toHaveTextContent('');
+  });
+
+  it('다시 제출해 성공하면 문구가 사라진다', async () => {
+    const user = userEvent.setup();
+    화면();
+    await 목록이보일때까지();
+
+    const input = await 입력행열기(user);
+    await user.type(input, '   {Enter}');
+    await waitFor(() => {
+      expect(문구('공부')).toHaveTextContent('할 일을 입력해 주세요');
+    });
+
+    await user.clear(input);
+    await user.type(input, '한국사{Enter}');
+
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: '한국사' })).toBeInTheDocument();
+    });
+    expect(문구('공부')).toHaveTextContent('');
+    expect(input).toHaveAttribute('aria-invalid', 'false');
   });
 });

@@ -3,10 +3,9 @@
 // 나머지는 순간이동하고, 그 차이가 R8 의 사용감을 통째로 바꾼다.
 import { useLayoutEffect, useRef, type RefObject } from 'react';
 
+import { FLIP_ATTR } from '@/features/todo/components/todo-focus';
 import { planFlip } from '@/features/todo/components/todo-motion';
-
-/** 행을 찾는 표식. `id` 가 아니라 전용 속성인 이유는 목록 밖 요소를 잡지 않기 위해서다. */
-export const FLIP_ATTR = 'data-flip-id';
+import { useFocusedRow } from '@/features/todo/components/useFocusedRow';
 
 /**
  * **`offsetTop` 으로 잰다**(`getBoundingClientRect` 가 아니라). 뷰포트 기준 좌표는 스크롤만 해도
@@ -23,6 +22,33 @@ function measure(container: HTMLElement): Map<string, HTMLElement> {
   return rows;
 }
 
+/** Invert(이전 자리로 되돌리기) → 다음 프레임에 Play. 예약한 프레임 번호를 `frames` 에 쌓는다. */
+function animate(
+  rows: Map<string, HTMLElement>,
+  moves: readonly { id: string; dy: number }[],
+  frames: number[],
+): void {
+  for (const { id, dy } of moves) {
+    const row = rows.get(id);
+    if (row === undefined) continue;
+    row.style.transition = 'none';
+    row.style.transform = `translateY(${dy}px)`;
+    frames.push(
+      requestAnimationFrame(() => {
+        row.style.transition = 'transform var(--motion-base) var(--motion-ease)';
+        row.style.transform = '';
+        row.addEventListener(
+          'transitionend',
+          () => {
+            row.style.transition = '';
+          },
+          { once: true },
+        );
+      }),
+    );
+  }
+}
+
 /**
  * 컨테이너 안에서 `data-flip-id` 를 단 행들을 FLIP 애니메이션한다.
  *
@@ -33,26 +59,7 @@ function measure(container: HTMLElement): Map<string, HTMLElement> {
 export function useFlipRows(containerRef: RefObject<HTMLElement | null>, enabled: boolean): void {
   const previous = useRef<Map<string, number>>(new Map());
   const frames = useRef<number[]>([]);
-  const focusedRow = useRef<{ id: string; el: HTMLElement } | null>(null);
-
-  /**
-   * 마지막으로 포커스를 받은 **행의 id** 를 기억한다 — 요소 참조가 아니라 id 인 이유:
-   * 완료 항목이 미완료 블록에서 완료 블록으로 갈 때 두 블록이 서로 다른 자식 배열이라 React 는
-   * 그 행을 옮기지 않고 **한쪽에서 내리고 다른 쪽에 새로 만든다**. 옛 요소는 DOM 에서 끊어지므로
-   * 참조를 들고 있어도 되살릴 수 없다(Chromium 실측 — 포커스가 `<body>` 로 떨어졌다).
-   */
-  useLayoutEffect(() => {
-    const container = containerRef.current;
-    if (container === null) return undefined;
-    const remember = (e: FocusEvent): void => {
-      const row =
-        e.target instanceof Element ? e.target.closest<HTMLElement>(`[${FLIP_ATTR}]`) : null;
-      const id = row?.getAttribute(FLIP_ATTR);
-      focusedRow.current = row === null || id === undefined || id === null ? null : { id, el: row };
-    };
-    container.addEventListener('focusin', remember);
-    return () => container.removeEventListener('focusin', remember);
-  }, [containerRef]);
+  const restoreFocus = useFocusedRow(containerRef);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -63,42 +70,8 @@ export function useFlipRows(containerRef: RefObject<HTMLElement | null>, enabled
     const before = previous.current;
     previous.current = after;
     const moves = planFlip(before, after);
-    // React 가 행을 `insertBefore` 로 옮기면 그 행에 있던 포커스가 `<body>` 로 떨어진다(Chromium 실측).
-    // 완료 항목이 아래로 내려가도 포커스는 그 항목에 남아야 한다(todo.md §5). 아무도 포커스를 가져가지
-    // 않았을 때만(= `body`) 되돌리므로, 사용자가 그 사이 다른 곳을 눌렀다면 빼앗지 않는다.
-    // 완료 항목이 아래로 내려가도 포커스는 그 항목에 남아야 한다(todo.md §5).
-    //
-    // 되돌리는 조건은 **그 행의 DOM 이 갈렸을 때** 하나다(`isConnected === false`). 자리만 바뀐
-    // 경우에는 브라우저가 포커스를 그대로 들고 있으므로 건드릴 이유가 없고, 아무도 포커스를
-    // 가져가지 않았을 때만(= `body`) 되돌리므로 그 사이 사용자가 누른 곳을 빼앗지도 않는다.
-    const kept = focusedRow.current;
-    if (kept !== null && !kept.el.isConnected && document.activeElement === document.body) {
-      const reborn = rows.get(kept.id);
-      if (reborn !== undefined) {
-        focusedRow.current = { id: kept.id, el: reborn };
-        reborn.focus();
-      }
-    }
-    if (!enabled) return;
-
-    for (const { id, dy } of moves) {
-      const row = rows.get(id);
-      if (row === undefined) continue;
-      row.style.transition = 'none';
-      row.style.transform = `translateY(${dy}px)`;
-      const frame = requestAnimationFrame(() => {
-        row.style.transition = 'transform var(--motion-base) var(--motion-ease)';
-        row.style.transform = '';
-        row.addEventListener(
-          'transitionend',
-          () => {
-            row.style.transition = '';
-          },
-          { once: true },
-        );
-      });
-      frames.current.push(frame);
-    }
+    restoreFocus(rows);
+    if (enabled) animate(rows, moves, frames.current);
   });
 
   useLayoutEffect(

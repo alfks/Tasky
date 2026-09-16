@@ -5,7 +5,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { focusFallback, LIST_FOCUS_ATTR } from '@/features/todo/components/todo-focus';
-import { FLIP_ATTR } from '@/features/todo/components/useFlipRows';
+import { FLIP_ATTR } from '@/features/todo/components/todo-focus';
 
 function 목록(): HTMLUListElement {
   document.body.innerHTML = `

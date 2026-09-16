@@ -5,18 +5,15 @@ import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent }
 
 import type { Category } from '@/domain/category/category';
 import type { DateKey } from '@/domain/date/date-key';
-import { domainErrorMessage } from '@/domain/errors';
 import type { CategoryId, TodoId } from '@/domain/ids';
 import type { Todo } from '@/domain/todo/todo';
 
 import { TODO_DRAG_MIME } from '@/features/date-strip';
-import { incompletePosition } from '@/features/todo/components/todo-drag';
-import { focusFallback } from '@/features/todo/components/todo-focus';
+import { FLIP_ATTR } from '@/features/todo/components/todo-focus';
 import { TodoEditPanel } from '@/features/todo/components/TodoEditPanel';
 import { DatePickRow, DragHandle } from '@/features/todo/components/TodoItemControls';
 import { TodoItemMenu } from '@/features/todo/components/TodoItemMenu';
-import { FLIP_ATTR } from '@/features/todo/components/useFlipRows';
-import { useTodoActions } from '@/features/todo/hooks/useTodoActions';
+import { useTodoItemActions } from '@/features/todo/components/useTodoItemActions';
 import { TODO_MESSAGES as M } from '@/features/todo/messages';
 
 import { Checkbox } from '@/components/ui/Checkbox';
@@ -56,10 +53,6 @@ type TodoItemProps = TodoItemHandlers & {
   onDropOn: (overId: TodoId, event: ReactDragEvent<HTMLElement>) => void;
 };
 
-/** 완료 항목에서 `Alt+↑/↓` 를 눌렀을 때의 낭독 (§5). 문면의 단일 소스는 도메인 규칙이다 —
- *  여기서 문장을 새로 쓰면 같은 사실을 토스트와 낭독이 서로 다르게 말한다. */
-const REORDER_DONE = domainErrorMessage('TODO_REORDER_DONE');
-
 /** 메모는 목록에서 첫 줄만 1줄로 줄여 보여 준다 (R2). */
 function memoPreview(memo: string | undefined): string | null {
   const first = memo?.split('\n')[0]?.trim();
@@ -82,79 +75,41 @@ export function TodoItem({
   onToggled,
   onMovedToDate,
 }: TodoItemProps) {
-  const { toggleDone, moveBy, moveToDate, changeCategory } = useTodoActions();
   const rowRef = useRef<HTMLLIElement>(null);
+  const titleRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const [pickingDate, setPickingDate] = useState(false);
   const canReorder = !readOnly && !todo.done;
-  /**
-   * 메뉴를 연 순간의 "이 행이 사라지면 갈 곳". 행이 목록에서 내려간 **뒤에** 계산하면 이미 DOM 에서
-   * 끊어져 형제도 컨테이너도 찾을 수 없다 — "내일로"·"다른 카테고리로 옮기기" 가 바로 그 경로다
-   * (Chromium 실측: 포커스가 `<body>` 로 떨어졌다).
-   */
-  const snapshot = useRef<HTMLElement | null>(null);
-  const returnFocus = (): HTMLElement | null => focusFallback(rowRef.current) ?? snapshot.current;
 
-  const toggle = async (next: boolean): Promise<void> => {
-    if (readOnly) return;
-    if (await toggleDone(todo.id, next)) onToggled(next);
-  };
-
-  const move = async (direction: -1 | 1): Promise<void> => {
-    if (!canReorder) {
-      // 완료 항목은 순서를 바꾸지 않는다(R11) — 조용히 무시하면 키가 고장 난 것처럼 보인다(§5).
-      onAnnounce(REORDER_DONE);
-      return;
-    }
-    // 끝에서 한 번 더 누른 것은 실패가 아니다 — 스토어도 성공(변경 0건)을 돌려주므로 여기서 가른다.
-    const from = incompletePosition(sequence, todo.id);
-    const open = sequence.filter((item) => !item.done).length;
-    if (from === null || from + direction < 1 || from + direction > open) {
-      onAnnounce(M.reorderEdge);
-      return;
-    }
-    if (await moveBy(todo.id, direction)) onAnnounce(M.reordered(todo.title, from + direction));
-  };
-
-  /**
-   * 행이 목록에서 내려간 뒤 포커스를 받을 곳으로 넘긴다 (app-shell R14).
-   *
-   * 메뉴가 닫힐 때는 행이 아직 살아 있어서 `Popover` 가 정상적으로 `⋯` 로 포커스를 돌려준다.
-   * 행이 사라지는 것은 그 **뒤** 라, 옮기기가 끝난 시점에 한 번 더 확인해야 한다
-   * (Chromium 실측: "내일로" 뒤에 포커스가 `<body>` 로 떨어졌다).
-   */
-  const handOffFocus = (fallback: HTMLElement | null): void => {
-    if (fallback === null) return;
-    requestAnimationFrame(() => {
-      if (rowRef.current?.isConnected !== true && document.activeElement === document.body) {
-        fallback.focus();
-      }
+  const { toggle, move, goToDate, toCategory, closeEdit, returnFocus, snapshotFocus } =
+    useTodoItemActions({
+      todo,
+      readOnly,
+      canReorder,
+      sequence,
+      editingField,
+      rowRef,
+      titleRef,
+      onEditChange,
+      onAnnounce,
+      onToggled,
+      onMovedToDate,
     });
-  };
-
-  const goToDate = async (date: DateKey): Promise<void> => {
-    const fallback = focusFallback(rowRef.current);
-    if (await moveToDate(todo.id, date)) {
-      onMovedToDate(todo, date);
-      handOffFocus(fallback);
-    }
-  };
-
-  const toCategory = async (id: CategoryId): Promise<void> => {
-    const fallback = focusFallback(rowRef.current);
-    if (await changeCategory(todo.id, id)) handOffFocus(fallback);
-  };
 
   const handleKeyDown = (e: ReactKeyboardEvent<HTMLLIElement>): void => {
     // 행 자신이 포커스일 때만. 안쪽 입력·버튼에서 올라온 키까지 여기서 처리하면 편집 중 Space 가
     // 완료 토글이 되고 Backspace 가 삭제 확인을 연다.
+    //
+    // `isImeKey` 는 **지금은 닿지 않는** 방어선이다: 조합이 성립하려면 편집 가능한 요소가 포커스여야
+    // 하는데, 그러면 위 `e.target !== e.currentTarget` 에서 이미 돌아선다. 행이 언젠가 인라인 편집을
+    // 품게 되면 그때 필요해지므로 남긴다 — 빼면 그 변경이 조용히 R4 를 깬다.
     if (e.target !== e.currentTarget || isImeKey(e.nativeEvent)) return;
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       e.preventDefault();
-      void move(e.key === 'ArrowUp' ? -1 : 1);
+      move(e.key === 'ArrowUp' ? -1 : 1);
     } else if (e.key === ' ') {
       e.preventDefault();
-      void toggle(!todo.done);
+      toggle(!todo.done);
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (!readOnly) onEditChange(todo.id, 'title');
@@ -205,7 +160,7 @@ export function TodoItem({
             title={todo.title}
             onDragStart={handleDragStart}
             onDragEnd={() => onDragChange(null)}
-            onMove={(direction) => void move(direction)}
+            onMove={move}
           />
         ) : (
           <span aria-hidden="true" className="size-[var(--control-hit-min)] shrink-0" />
@@ -215,10 +170,11 @@ export function TodoItem({
           checked={todo.done}
           disabled={readOnly}
           labelledBy={titleId}
-          onCheckedChange={(next) => void toggle(next)}
+          onCheckedChange={toggle}
         />
 
         <button
+          ref={titleRef}
           id={titleId}
           type="button"
           disabled={readOnly}
@@ -251,17 +207,15 @@ export function TodoItem({
           todo={todo}
           readOnly={readOnly}
           canReorder={canReorder}
-          moveTargets={categories.filter((category) => category.id !== todo.categoryId)}
+          moveTargets={categories}
           returnFocus={returnFocus}
-          onOpen={() => {
-            snapshot.current = focusFallback(rowRef.current);
-          }}
+          onOpen={snapshotFocus}
           onEdit={() => onEditChange(todo.id, 'title')}
           onAddMemo={() => onEditChange(todo.id, 'memo')}
-          onTomorrow={() => void goToDate(addDays(todo.date, 1))}
+          onTomorrow={() => goToDate(addDays(todo.date, 1))}
           onPickDate={() => setPickingDate(true)}
-          onMove={(direction) => void move(direction)}
-          onChangeCategory={(id: CategoryId) => void toCategory(id)}
+          onMove={move}
+          onChangeCategory={(id: CategoryId) => toCategory(id)}
           onDelete={() => onRequestDelete(todo, returnFocus)}
         />
       </div>
@@ -275,7 +229,7 @@ export function TodoItem({
           date={todo.date}
           onPick={(next) => {
             setPickingDate(false);
-            void goToDate(next);
+            goToDate(next);
           }}
           onDismiss={() => setPickingDate(false)}
         />
@@ -286,7 +240,7 @@ export function TodoItem({
           todo={todo}
           categories={categories}
           autoFocusField={editingField}
-          onClose={() => onEditChange(null)}
+          onClose={closeEdit}
           onDelete={() => onRequestDelete(todo, returnFocus)}
         />
       )}
