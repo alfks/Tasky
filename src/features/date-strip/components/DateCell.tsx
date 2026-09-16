@@ -4,6 +4,7 @@
 import { useState, type CSSProperties, type KeyboardEvent, type Ref } from 'react';
 
 import type { DateKey } from '@/domain/date/date-key';
+import type { DaySummary } from '@/domain/todo/day-summary';
 
 import {
   SATURDAY_INDEX,
@@ -14,7 +15,6 @@ import {
   formatProgressName,
   weekdayIndex,
 } from '@/features/date-strip/lib/format';
-import type { DaySummary } from '@/features/date-strip/lib/summary';
 
 import { cn } from '@/lib/cn';
 
@@ -72,7 +72,6 @@ export function DateCell({
       aria-label={formatCellName({
         date,
         isToday,
-        isSelected,
         progress: summary && formatProgressName(summary.total, summary.doneCount),
       })}
       disabled={isDisabled}
@@ -101,7 +100,9 @@ export function DateCell({
       }
       className={cn(
         'flex h-[72px] w-[56px] shrink-0 snap-center flex-col items-center justify-center gap-[var(--space-1)]',
-        'rounded-[var(--radius-lg)] transition-colors duration-[var(--motion-fast)] ease-[var(--motion-ease)]',
+        // 날짜를 바꿀 때 실제로 움직이는 것이 이 색 전환이라, R10 의 120ms 상한이 걸리는 자리도 여기다.
+        // `--motion-fast`(150ms)는 상한을 넘으므로 쓰지 않는다. 전용 토큰은 테마 티켓이 만든다.
+        'rounded-[var(--radius-lg)] motion-safe:transition-colors motion-safe:duration-[120ms] motion-safe:ease-[var(--motion-ease)]',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
         'disabled:cursor-not-allowed disabled:opacity-40',
         isSelected

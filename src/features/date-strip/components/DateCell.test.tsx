@@ -1,8 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { DaySummary } from '@/domain/todo/day-summary';
+
 import { DateCell, TODO_DRAG_MIME } from '@/features/date-strip/components/DateCell';
-import type { DaySummary } from '@/features/date-strip/lib/summary';
 
 /** 점·✓ 는 aria-hidden 장식이라 role 로 찾을 수 없다 — 구조로 센다(§5). */
 const dotsOf = (container: HTMLElement) =>

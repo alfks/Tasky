@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -84,7 +84,7 @@ describe('R1. 스트립은 선택 날짜가 속한 월요일 시작 7일을 보�
       '9월 14일 월요일',
       '9월 15일 화요일',
       '9월 16일 수요일',
-      '9월 17일 목요일, 오늘, 선택됨',
+      '9월 17일 목요일, 오늘',
       '9월 18일 금요일',
       '9월 19일 토요일',
       '9월 20일 일요일',
@@ -111,7 +111,7 @@ describe('R1. 스트립은 선택 날짜가 속한 월요일 시작 7일을 보�
     useDateStripStore.setState({ selectedDate: '2028-02-29', today: TODAY });
     await renderStrip();
     expect(screen.getAllByRole('radio')).toHaveLength(7);
-    expect(cell(/2월 29일 화요일, 선택됨/)).toBeChecked();
+    expect(cell('2월 29일 화요일')).toBeChecked();
   });
 });
 
@@ -140,7 +140,7 @@ describe('R3. 오늘 셀은 강조색 링, 선택 셀은 강조색 채움이고 
   it('선택 셀은 강조색으로 채워지고 aria-checked 가 참이다', async () => {
     useDateStripStore.setState({ selectedDate: '2026-09-15', today: TODAY });
     await renderStrip();
-    const selected = cell(/9월 15일 화요일, 선택됨/);
+    const selected = cell('9월 15일 화요일');
     expect(selected).toBeChecked();
     expect(selected.className).toContain('bg-accent');
     expect(cell(/9월 17일 목요일, 오늘/)).not.toBeChecked();
@@ -148,7 +148,7 @@ describe('R3. 오늘 셀은 강조색 링, 선택 셀은 강조색 채움이고 
 
   it('오늘이면서 선택이면 링 없이 채움만 남는다', async () => {
     await renderStrip();
-    const today = cell(/9월 17일 목요일, 오늘, 선택됨/);
+    const today = cell(/9월 17일 목요일, 오늘/);
     expect(today.className).toContain('bg-accent');
     expect(today.className).not.toContain('ring-2');
   });
@@ -235,7 +235,7 @@ describe('R12. 자정을 넘기면 오늘 표시가 갱신되고 선택 날짜�
     await act(async () => {
       await Promise.resolve();
     });
-    expect(cell(/9월 17일 목요일, 오늘, 선택됨/)).toBeInTheDocument();
+    expect(cell(/9월 17일 목요일, 오늘/)).toBeInTheDocument();
 
     vi.setSystemTime(new Date(2026, 8, 18, 0, 0, 30));
     await act(async () => {
@@ -244,7 +244,7 @@ describe('R12. 자정을 넘기면 오늘 표시가 갱신되고 선택 날짜�
     });
 
     expect(cell(/9월 18일 금요일, 오늘/)).toBeInTheDocument();
-    expect(cell(/9월 17일 목요일, 선택됨/)).toBeChecked();
+    expect(cell('9월 17일 목요일')).toBeChecked();
     expect(useDateStripStore.getState().selectedDate).toBe(TODAY);
   });
 });
@@ -318,6 +318,71 @@ describe('§5. 키보드만으로 셀 이동·선택이 되고 스트립 안의 
     expect(cell('9월 27일 일요일')).toBeInTheDocument();
 
     act(() => screen.getByRole('button', { name: '다음 주' }).focus());
-    await waitFor(() => expect(cell(/9월 17일 목요일, 오늘, 선택됨/)).toBeInTheDocument());
+    await waitFor(() => expect(cell(/9월 17일 목요일, 오늘/)).toBeInTheDocument());
+  });
+});
+
+describe('§5. 스트립은 라디오 그룹이고 탭 정지점이 포커스를 따라간다', () => {
+  it('셀 7개를 묶는 라디오 그룹에 이름이 있다', async () => {
+    await renderStrip();
+    const group = screen.getByRole('radiogroup', { name: '날짜 선택' });
+    // 그룹 역할이 없으면 스크린리더의 "7개 중 4번째" 안내가 통째로 사라진다.
+    expect(within(group).getAllByRole('radio')).toHaveLength(7);
+  });
+
+  it('화살표로 옮긴 포커스를 탭 정지점이 따라간다(선택 셀에 고정되지 않는다)', async () => {
+    const user = userEvent.setup();
+    await renderStrip();
+    expect(cell(/9월 17일 목요일, 오늘/).tabIndex).toBe(0);
+
+    focusCell(/9월 17일 목요일/);
+    await user.keyboard('{ArrowRight}{ArrowRight}');
+
+    expect(cell('9월 19일 토요일').tabIndex).toBe(0);
+    expect(cell(/9월 17일 목요일, 오늘/).tabIndex).toBe(-1);
+    // 선택은 그대로다 — 정지점과 선택이 갈라진 상태를 단언하는 것이 이 테스트의 요점이다.
+    expect(cell(/9월 17일 목요일, 오늘/)).toBeChecked();
+    expect(screen.getAllByRole('radio').filter((node) => node.tabIndex === 0)).toHaveLength(1);
+  });
+});
+
+describe('§5. 헤더 버튼이 자기 클릭으로 비활성돼도 포커스가 스트립에 남는다', () => {
+  it('[오늘] 을 키보드로 누르면 포커스가 오늘 셀로 넘어간다', async () => {
+    const user = userEvent.setup();
+    useDateStripStore.setState({ selectedDate: '2026-03-03', today: TODAY });
+    await renderStrip();
+
+    const button = screen.getByRole('button', { name: '오늘로 이동' });
+    act(() => button.focus());
+    await user.keyboard('{Enter}');
+
+    expect(button).toBeDisabled();
+    expect(document.body).not.toHaveFocus();
+    expect(cell(/9월 17일 목요일, 오늘/)).toHaveFocus();
+  });
+
+  it('[다음 주] 가 범위 끝에서 비활성되면 포커스가 선택 셀로 넘어간다', async () => {
+    const user = userEvent.setup();
+    useDateStripStore.setState({ selectedDate: '2099-12-20', today: TODAY });
+    await renderStrip();
+
+    const button = screen.getByRole('button', { name: '다음 주' });
+    act(() => button.focus());
+    await user.keyboard('{Enter}');
+
+    expect(button).toBeDisabled();
+    expect(cell('12월 27일 일요일')).toHaveFocus();
+  });
+
+  it('비활성되지 않는 주 이동은 버튼에 포커스를 남겨 연달아 누를 수 있다', async () => {
+    const user = userEvent.setup();
+    await renderStrip();
+
+    const button = screen.getByRole('button', { name: '다음 주' });
+    act(() => button.focus());
+    await user.keyboard('{Enter}{Enter}');
+
+    expect(button).toHaveFocus();
+    expect(useDateStripStore.getState().selectedDate).toBe('2026-10-01');
   });
 });

@@ -54,18 +54,19 @@ export function formatProgressName(total: number, doneCount: number): string | u
 }
 
 /**
- * 셀의 접근 가능한 이름 전체 (R11·§5). 예: '9월 17일 목요일, 오늘, 선택됨, 할 일 3개 중 2개 완료'.
- * '선택됨' 은 `aria-checked` 와 겹치지만 R11 이 이름에 포함하도록 못박아 그대로 둔다.
+ * 셀의 접근 가능한 이름 전체 (R11·§5). 예: '9월 17일 목요일, 오늘, 할 일 3개 중 2개 완료'.
+ *
+ * '선택됨' 은 이름에 넣지 않는다. 셀은 `role="radio" aria-checked` 라 스크린리더가 선택 상태를
+ * 이미 읽어 주고, 이름에 또 넣으면 화살표로 한 칸 지날 때마다 "선택됨"을 두 번 듣게 된다(실측 확인).
+ * 반면 '오늘' 은 대응하는 ARIA 상태가 없어 이름이 유일한 통로이므로 남긴다.
  */
 export function formatCellName(input: {
   date: DateKey;
   isToday: boolean;
-  isSelected: boolean;
   progress?: string;
 }): string {
   const segments = [formatDateName(input.date)];
   if (input.isToday) segments.push('오늘');
-  if (input.isSelected) segments.push('선택됨');
   if (input.progress !== undefined) segments.push(input.progress);
   return segments.join(', ');
 }

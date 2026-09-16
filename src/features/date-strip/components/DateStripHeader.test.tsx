@@ -98,3 +98,36 @@ describe('R5·R6. 범위 끝과 오늘에서 버튼이 비활성된다', () => {
     expect(screen.getByRole('button', { name: '오늘로 이동' })).toBeDisabled();
   });
 });
+
+describe('§5. 자기 클릭으로 비활성되는 버튼은 포커스를 넘긴다(WCAG 2.4.3)', () => {
+  it('[오늘] 은 눌리는 즉시 비활성되므로 항상 포커스 인계를 요청한다', async () => {
+    const user = userEvent.setup();
+    const { onSelect } = renderHeader({ selectedDate: '2026-03-03' });
+    await user.click(screen.getByRole('button', { name: '오늘로 이동' }));
+    expect(onSelect).toHaveBeenCalledWith('2026-09-17', true);
+  });
+
+  it('주 이동 버튼은 이동 후에도 살아 있으면 포커스를 넘기지 않는다', async () => {
+    const user = userEvent.setup();
+    const { onSelect } = renderHeader();
+    await user.click(screen.getByRole('button', { name: '다음 주' }));
+    expect(onSelect).toHaveBeenCalledWith('2026-09-24', false);
+    await user.click(screen.getByRole('button', { name: '이전 주' }));
+    expect(onSelect).toHaveBeenCalledWith('2026-09-10', false);
+  });
+
+  it('주 이동이 범위 끝에 닿아 버튼이 비활성될 때만 포커스 인계를 요청한다', async () => {
+    const user = userEvent.setup();
+    const { onSelect } = renderHeader({ selectedDate: '2099-12-20', nextWeek: '2099-12-27' });
+    await user.click(screen.getByRole('button', { name: '다음 주' }));
+    expect(onSelect).toHaveBeenCalledWith('2099-12-27', true);
+  });
+
+  it('날짜 점프는 월 버튼이 그대로 살아 있어 포커스를 넘기지 않는다', async () => {
+    const user = userEvent.setup();
+    const { onSelect } = renderHeader();
+    await user.click(monthButton());
+    fireEvent.change(screen.getByLabelText('날짜 선택'), { target: { value: '2026-12-25' } });
+    expect(onSelect).toHaveBeenCalledWith('2026-12-25');
+  });
+});

@@ -7,10 +7,10 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { DateKey } from '@/domain/date/date-key';
+import { summarizeDays, type DaySummary } from '@/domain/todo/day-summary';
 
 import { getRepositories } from '@/repositories/container';
 
-import { summarizeWeek, type DaySummary } from '@/features/date-strip/lib/summary';
 import { weekDays } from '@/features/date-strip/lib/week';
 
 /** 요약 조회 실패 시 앱 셸 토스트에 띄울 문구 (§2-C). 토스트 자체는 앱 셸 소관이다. */
@@ -42,7 +42,7 @@ export function useWeekSummaries(
     ])
       .then(([todoList, categoryList]) => {
         if (cancelled) return;
-        setSummaries(summarizeWeek(days, todoList, categoryList));
+        setSummaries(summarizeDays(days, todoList, categoryList));
       })
       .catch(() => {
         if (cancelled) return;

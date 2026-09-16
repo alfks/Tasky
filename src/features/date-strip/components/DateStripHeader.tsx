@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from
 import type { DateKey } from '@/domain/date/date-key';
 
 import { formatMonthLabel, formatShortMonthLabel } from '@/features/date-strip/lib/format';
-import { MAX_DATE_KEY, MIN_DATE_KEY } from '@/features/date-strip/lib/week';
+import { MAX_DATE_KEY, MIN_DATE_KEY, shiftWithinRange } from '@/features/date-strip/lib/week';
 
 import { Button } from '@/components/ui/Button';
 import { IconButton } from '@/components/ui/IconButton';
@@ -21,7 +21,11 @@ type DateStripHeaderProps = {
   /** `undefined` 면 그 방향은 범위 끝이라 버튼이 비활성된다 (R6). */
   previousWeek?: DateKey;
   nextWeek?: DateKey;
-  onSelect: (date: DateKey) => void;
+  /**
+   * 날짜를 선택한다. `adoptFocus` 가 참이면 **이 선택으로 방금 누른 버튼이 비활성된다**는 뜻이고,
+   * 호출부는 포커스를 선택 셀로 넘겨야 한다 — 그러지 않으면 포커스가 <body> 로 떨어진다 (WCAG 2.4.3).
+   */
+  onSelect: (date: DateKey, adoptFocus?: boolean) => void;
 };
 
 export function DateStripHeader({
@@ -32,12 +36,18 @@ export function DateStripHeader({
   nextWeek,
   onSelect,
 }: DateStripHeaderProps) {
+  /** 주 이동. 이동한 자리에서 같은 방향이 범위 끝이면 이 버튼이 곧 비활성되므로 포커스를 넘긴다. */
+  const stepWeek = (target: DateKey | undefined, days: number) => {
+    if (target === undefined) return;
+    onSelect(target, shiftWithinRange(target, days) === undefined);
+  };
+
   return (
     <div className="flex items-center justify-between gap-[var(--space-2)]">
       <IconButton
         label="이전 주"
         disabled={previousWeek === undefined}
-        onClick={() => previousWeek !== undefined && onSelect(previousWeek)}
+        onClick={() => stepWeek(previousWeek, -7)}
       >
         <Chevron direction="left" />
       </IconButton>
@@ -50,14 +60,15 @@ export function DateStripHeader({
           size="sm"
           aria-label="오늘로 이동"
           disabled={selectedDate === today}
-          onClick={() => onSelect(today)}
+          // 누르는 순간 R5 로 비활성되는 버튼이라 포커스는 항상 오늘 셀이 넘겨받는다.
+          onClick={() => onSelect(today, true)}
         >
           오늘
         </Button>
         <IconButton
           label="다음 주"
           disabled={nextWeek === undefined}
-          onClick={() => nextWeek !== undefined && onSelect(nextWeek)}
+          onClick={() => stepWeek(nextWeek, 7)}
         >
           <Chevron direction="right" />
         </IconButton>

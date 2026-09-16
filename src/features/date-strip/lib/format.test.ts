@@ -42,23 +42,25 @@ describe('R11. 날짜 표기는 월 YYYY년 M월, 셀 D(0 채움 없음), 요일
     expect(formatDateName('2026-01-01')).toBe('1월 1일 목요일');
   });
 
-  it('오늘·선택됨·진행 문구가 순서대로 덧붙는다', () => {
+  it('오늘·진행 문구가 순서대로 덧붙는다', () => {
     expect(
       formatCellName({
         date: '2026-09-17',
         isToday: true,
-        isSelected: true,
         progress: formatProgressName(3, 2),
       }),
-    ).toBe('9월 17일 목요일, 오늘, 선택됨, 할 일 3개 중 2개 완료');
+    ).toBe('9월 17일 목요일, 오늘, 할 일 3개 중 2개 완료');
   });
 
-  it('오늘도 선택도 아니고 투두도 없으면 날짜만 읽힌다', () => {
+  it('선택 상태는 이름에 넣지 않는다(aria-checked 와 중복 안내가 된다)', () => {
+    expect(formatCellName({ date: '2026-09-17', isToday: false })).toBe('9월 17일 목요일');
+  });
+
+  it('오늘도 아니고 투두도 없으면 날짜만 읽힌다', () => {
     expect(
       formatCellName({
         date: '2026-09-18',
         isToday: false,
-        isSelected: false,
         progress: formatProgressName(0, 0),
       }),
     ).toBe('9월 18일 금요일');

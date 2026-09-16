@@ -43,12 +43,28 @@ export function DateStrip({ onDropTodo, onSummaryError }: DateStripProps) {
   const cellRefs = useRef(new Map<DateKey, HTMLButtonElement>());
   // 클릭·Tab 으로 들어온 포커스까지 다시 focus() 하지 않도록, 키 조작으로 옮길 때만 켠다.
   const shouldMoveFocus = useRef(false);
+  // 헤더 버튼이 자기 클릭으로 비활성될 때 포커스를 넘겨받을 셀 (WCAG 2.4.3).
+  const shouldAdoptFocus = useRef(false);
 
   useEffect(() => {
     if (!shouldMoveFocus.current || focusedDate === null) return;
     shouldMoveFocus.current = false;
     cellRefs.current.get(focusedDate)?.focus();
   }, [focusedDate]);
+
+  useEffect(() => {
+    // `[오늘]`·`‹`·`›` 는 눌리는 순간 비활성이 될 수 있고, 그러면 브라우저가 포커스를 <body> 로 떨군다.
+    // 다음 Tab 이 스트립을 통째로 건너뛰므로, 비활성이 확정되는 이 렌더에서 선택 셀이 포커스를 받는다.
+    if (!shouldAdoptFocus.current) return;
+    shouldAdoptFocus.current = false;
+    cellRefs.current.get(selectedDate)?.focus();
+  }, [selectedDate]);
+
+  /** 헤더에서 온 선택. `adoptFocus` 면 방금 누른 버튼이 비활성되므로 선택 셀이 포커스를 넘겨받는다. */
+  const selectFromHeader = (date: DateKey, adoptFocus = false) => {
+    shouldAdoptFocus.current = adoptFocus;
+    select(date);
+  };
 
   useEffect(() => {
     // 좁은 화면(§2-B)에서 선택 셀을 가운데로. 넓은 화면에서는 스크롤이 없어 아무 일도 하지 않는다.
@@ -90,7 +106,7 @@ export function DateStrip({ onDropTodo, onSummaryError }: DateStripProps) {
         today={today}
         previousWeek={shiftWithinRange(selectedDate, -7)}
         nextWeek={shiftWithinRange(selectedDate, 7)}
-        onSelect={select}
+        onSelect={selectFromHeader}
       />
       <div
         role="radiogroup"
@@ -99,7 +115,9 @@ export function DateStrip({ onDropTodo, onSummaryError }: DateStripProps) {
           if (event.currentTarget.contains(event.relatedTarget)) return;
           setFocusedDate(null);
         }}
-        className="flex snap-x snap-mandatory gap-[var(--space-2)] overflow-x-auto overscroll-x-contain md:justify-between md:overflow-x-visible"
+        // 간격은 어느 폭에서도 --space-2(8px) 다 (§2-A). 넓은 화면에서 `justify-between` 으로 늘리면
+        // 조밀한 주 블록이 흩어진 버튼 7개로 읽히므로, 남는 폭은 블록을 가운데로 미는 데만 쓴다.
+        className="flex snap-x snap-mandatory gap-[var(--space-2)] overflow-x-auto overscroll-x-contain md:justify-center md:overflow-x-visible"
       >
         {days.map((day) => (
           <DateCell
