@@ -223,7 +223,14 @@ export function Dialog({
     const handleKeyDown = (e: KeyboardEvent) =>
       handleDialogKey(e, layer, panelRef.current, latestRef.current.onClose);
     const handleMouseDown = (e: MouseEvent) => {
-      if (isOutsideClick(e, layer, panelRef.current)) latestRef.current.onClose();
+      if (!isOutsideClick(e, layer, panelRef.current)) return;
+      // 백드롭은 포커스 가능한 요소가 아니다. mousedown 의 기본 동작을 그대로 두면 브라우저가
+      // **디스패치가 끝난 뒤** 포커스를 `<body>` 로 옮기는데, 그 시점은 여기서 부른 onClose 가
+      // 일으킨 언마운트·포커스 복귀보다 **나중**이라 복귀가 그대로 덮인다. Chromium 실측 순서:
+      // `복귀(focusin → 여는 요소)` → `mousedown 리스너 종료` → `focusout → BODY`. 그래서 복귀
+      // 로직을 아무리 고쳐도 소용이 없고, 기본 동작을 막는 것이 유일한 지점이다(T-35).
+      e.preventDefault();
+      latestRef.current.onClose();
     };
 
     document.addEventListener('keydown', handleKeyDown, true);

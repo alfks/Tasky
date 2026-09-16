@@ -6,13 +6,27 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { Dialog } from '@/components/ui/Dialog';
 
-function Footer() {
+import type { UserEvent } from '@testing-library/user-event';
+
+/** `onClick` 을 주면 [취소]·[삭제] 가 실제로 닫는 버튼이 된다 — "확정" 닫기 경로가 이걸 쓴다. */
+function Footer({ onClick }: { onClick?: () => void }) {
   return (
     <>
-      <button type="button">취소</button>
-      <button type="button">삭제</button>
+      <button type="button" onClick={onClick}>
+        취소
+      </button>
+      <button type="button" onClick={onClick}>
+        삭제
+      </button>
     </>
   );
+}
+
+/** 패널 뒤의 덮개. "바깥 클릭"은 실제로 여기 떨어진다(배경은 `inert` 라 닿지 않는다). */
+function backdrop(): HTMLElement {
+  const el = screen.getByRole('dialog').parentElement?.firstElementChild;
+  if (!(el instanceof HTMLElement)) throw new Error('백드롭을 찾지 못했습니다');
+  return el;
 }
 
 /** 여는 버튼 → 대화상자. 포커스 복귀·스크롤 잠금처럼 "닫힌 뒤"를 보는 테스트가 쓴다. */
@@ -32,7 +46,7 @@ function Harness({ returnFocus }: { returnFocus?: () => HTMLElement | null }) {
         title="장보기를 삭제할까요?"
         description="되돌릴 수 없어요."
         returnFocus={returnFocus}
-        footer={<Footer />}
+        footer={<Footer onClick={() => setOpen(false)} />}
       />
     </>
   );
@@ -56,7 +70,7 @@ function RemovingHarness({ returnFocus }: { returnFocus: () => HTMLElement | nul
         onClose={() => setState('confirmed')}
         title="장보기를 삭제할까요?"
         returnFocus={returnFocus}
-        footer={<Footer />}
+        footer={<Footer onClick={() => setState('confirmed')} />}
       />
     </>
   );
@@ -221,7 +235,35 @@ describe('Dialog', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  // 취소로 닫았는데 포커스가 옆 행으로 가면 다음 Delete 가 엉뚱한 항목을 지운다(리뷰 M-3).
+  // jsdom 은 mousedown 의 **기본 동작**(브라우저가 포커스를 옮기는 부분)을 구현하지 않는다. 그래서
+  // 아래 "백드롭 클릭" 경로는 고치기 전에도 jsdom 에서는 초록이었는데 Chromium 에서는 포커스가
+  // `<body>` 로 떨어졌다(T-35: 3좌표 × 대화상자 3종 전부 재현). 브라우저에서 그 이동을 막는 지점은
+  // "바깥 mousedown 의 기본 동작 취소" 하나뿐이므로, 그 취소 자체를 여기서 검사한다.
+  it('바깥 mousedown 의 기본 동작을 막는다 — 패널 안은 그대로 둔다', () => {
+    render(<Dialog open onClose={vi.fn()} title="제목" footer={<Footer />} />);
+
+    const outside = createEvent.mouseDown(backdrop());
+    fireEvent(backdrop(), outside);
+    expect(outside.defaultPrevented).toBe(true);
+
+    const remove = screen.getByRole('button', { name: '삭제' });
+    const inside = createEvent.mouseDown(remove);
+    fireEvent(remove, inside);
+    expect(inside.defaultPrevented).toBe(false);
+  });
+});
+
+// 닫기 경로 넷은 **같은** 복귀 규칙을 타야 한다 — 그동안 Esc 만 이 수준으로 재고 있었고, 빠져 있던
+// 백드롭 클릭에서 포커스가 `<body>` 로 떨어졌다(T-35). 취소로 닫았는데 포커스가 옆 행으로 가면
+// 다음 Delete 가 엉뚱한 항목을 지우므로(리뷰 M-3), 경로마다 두 갈래를 같이 잰다.
+const CLOSE_PATHS: ReadonlyArray<[string, (user: UserEvent) => Promise<void>]> = [
+  ['Esc', (user) => user.keyboard('{Escape}')],
+  ['✕ 버튼', (user) => user.click(screen.getByRole('button', { name: '닫기' }))],
+  ['백드롭 클릭', (user) => user.click(backdrop())],
+  ['확정(액션 실행)', (user) => user.click(screen.getByRole('button', { name: '삭제' }))],
+];
+
+describe.each(CLOSE_PATHS)('Dialog — %s 로 닫을 때', (_path, close) => {
   it('여는 요소가 살아 있으면 returnFocus 를 묻지 않고 그리로 돌아간다', async () => {
     const user = userEvent.setup();
     const returnFocus = vi.fn(() => document.getElementById('다음-행'));
@@ -229,18 +271,19 @@ describe('Dialog', () => {
     const opener = screen.getByRole('button', { name: '열기' });
 
     await user.click(opener);
-    await user.keyboard('{Escape}');
+    await close(user);
 
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(document.activeElement).toBe(opener);
     expect(returnFocus).not.toHaveBeenCalled();
   });
 
-  it('여는 요소가 확인의 결과로 사라졌으면 returnFocus 가 준 요소로 간다', async () => {
+  it('여는 요소가 사라졌으면 returnFocus 가 준 요소로 간다', async () => {
     const user = userEvent.setup();
     render(<RemovingHarness returnFocus={() => document.getElementById('다음-행')} />);
 
     await user.click(screen.getByRole('button', { name: '열기' }));
-    await user.keyboard('{Escape}');
+    await close(user);
 
     expect(screen.queryByRole('button', { name: '열기' })).not.toBeInTheDocument();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: '다음 행' }));
