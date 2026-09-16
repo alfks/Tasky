@@ -16,6 +16,7 @@
 | `ordering.ts`                 | 계약이 고정하는 정렬 중 도메인에 자리가 없는 것(집중 세션·검색 결과)                   |
 | `repository-error.ts`         | `RepositoryError` — 도메인 규칙 위반(`DomainError`)과 구분되는 저장소 실패             |
 | `contract.ts`                 | `ContractTarget` 과 계약 전용 엔티티 팩토리                                            |
+| `write-plan.ts`               | `DatasetRepository.write` 1단계(해석·검증). memory·indexeddb 두 구현이 **같이 쓴다**   |
 | `*.contract.ts`               | 계약 스위트 본문(`run<X>Contract(target)`). **테스트 파일이 아니다**                   |
 | `dataset-removal.contract.ts` | `planCategoryRemoval` → `write` 절(TECH_PLAN §6). 데이터셋 러너가 부른다               |
 | `memory.contract.test.ts`     | memory 대상으로 스위트 다섯을 실행                                                     |
