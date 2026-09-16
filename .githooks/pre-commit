@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 읽기 조건: 커밋이 이 훅에 막혔을 때. 로직은 scripts/check-forbidden-words.sh 에 있다.
 # 검사: (1) author == alfks <millie020524@gmail.com>  (2) 인덱스 전체 + 스테이징 파일명 금지어
+#      (3) .env 계열이 스테이징됐는가 (.gitignore 는 `git add -f` 로 뚫린다)
 set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 
@@ -14,3 +15,4 @@ if [ "$name" != "alfks" ] || [ "$email" != "millie020524@gmail.com" ]; then
 fi
 
 bash "$ROOT/scripts/check-forbidden-words.sh" --staged
+bash "$ROOT/scripts/check-env-secrets.sh" --staged

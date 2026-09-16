@@ -19,8 +19,8 @@ test-results/
 blob-report/
 
 # --- 환경 변수 ---
-.env
-.env.*
+.[eE][nN][vV]
+.[eE][nN][vV].*
 !.env.example
 .dev.vars
 
