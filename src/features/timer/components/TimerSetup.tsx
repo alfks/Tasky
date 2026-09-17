@@ -160,7 +160,12 @@ function RadioOption({ name, label, checked, onSelect }: RadioOptionProps) {
             'transition-colors duration-[var(--motion-fast)] ease-[var(--motion-ease)]',
             // 미체크에서 테두리가 유일한 식별 수단이라 3:1 이 필요하다(Checkbox 와 같은 근거).
             'border-muted peer-hover:border-accent',
-            'peer-checked:border-accent peer-checked:bg-accent',
+            // 체크된 원은 **앱 전체와 같은 잉크 선**을 두른다(theme.md §3-G R19). 이전에는 채움도
+            // 테두리도 강조색이라 표면 대비 1.85:1 이었다 — 안쪽 `bg-on-accent` 점이 채움과
+            // 4.5:1 을 넘어 1.4.11 위반은 아니었지만, "선택됨" 을 말하는 네 번째 표현이라
+            // R19("앱 어디서나 같은 잉크 선")가 거짓이었다. 굵기는 이미 `--control-checkbox-border`
+            // 이고 그 값은 `--control-selected-ring` 과 같다(tokens.test.ts 가 묶어 둔다).
+            'peer-checked:border-selected-ring peer-checked:bg-accent',
             'peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-focus',
           )}
         />
