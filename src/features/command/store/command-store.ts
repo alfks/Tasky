@@ -9,9 +9,12 @@ import { create } from 'zustand';
 
 import {
   addCommands,
+  addQuickAdd,
   removeCommands,
+  removeQuickAdd,
   pushRecent,
   type Command,
+  type QuickAdd,
 } from '@/features/command/store/command-registry';
 import { readRecentCommands, writeRecentCommands } from '@/features/command/store/recent-commands';
 import type { ShortcutId } from '@/features/command/store/shortcut-catalog';
@@ -27,6 +30,11 @@ export type CommandState = {
   shortcuts: ShortcutEntry[];
   /** 지금 등록된 명령(R7). */
   commands: Command[];
+  /**
+   * 빈 결과에서 질의를 소비하는 줄(§2). 등록 순서대로 쌓이고 **맨 뒤가 이긴다**
+   * (`activeQuickAdd`). 명령과 섞지 않는 이유는 `command-registry.ts` 의 `QuickAdd` 주석.
+   */
+  quickAdds: QuickAdd[];
   /** 최근 실행 5개, 최신 순(R12). */
   recentCommandIds: string[];
   /** 단축키 도움말 다이얼로그. */
@@ -42,6 +50,8 @@ export type CommandActions = {
   registerShortcut: (id: ShortcutId, run?: ShortcutHandler) => () => void;
   /** 명령 여러 개 등록. 해제 함수를 돌려준다. */
   registerCommands: (commands: readonly Command[]) => () => void;
+  /** 빈 결과 줄 하나 등록(§2). 해제 함수를 돌려준다. 중복은 던지지 않고 나중 것이 이긴다. */
+  registerQuickAdd: (entry: QuickAdd) => () => void;
   /** id 로 실행 + 최근 목록 갱신(R12). 없는 id·`when()` 거짓이면 아무 일도 하지 않는다. */
   runCommand: (id: string) => Promise<void>;
   openHelp: () => void;
@@ -55,6 +65,7 @@ export type CommandStore = CommandState & CommandActions;
 export const useCommandStore = create<CommandStore>((set, get) => ({
   shortcuts: [],
   commands: [],
+  quickAdds: [],
   recentCommandIds: readRecentCommands(),
   helpOpen: false,
   paletteOpen: false,
@@ -70,6 +81,11 @@ export const useCommandStore = create<CommandStore>((set, get) => ({
     set((state) => ({ commands: addCommands(state.commands, commands) }));
     const ids = commands.map((command) => command.id);
     return () => set((state) => ({ commands: removeCommands(state.commands, ids) }));
+  },
+
+  registerQuickAdd: (entry) => {
+    set((state) => ({ quickAdds: addQuickAdd(state.quickAdds, entry) }));
+    return () => set((state) => ({ quickAdds: removeQuickAdd(state.quickAdds, entry) }));
   },
 
   runCommand: async (id) => {

@@ -27,11 +27,14 @@ export type {
 
 export {
   DuplicateCommandError,
+  activeQuickAdd,
   availableCommands,
   matchCommands,
   normalizeQuery,
   orderByRecent,
   type Command,
+  // 빈 결과 줄(§2)을 거는 기능이 쓴다 — `useCommandStore.getState().registerQuickAdd(entry)`.
+  type QuickAdd,
 } from '@/features/command/store/command-registry';
 
 export {

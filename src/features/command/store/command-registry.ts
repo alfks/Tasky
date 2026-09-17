@@ -23,6 +23,60 @@ export type Command = {
   when?: () => boolean;
 };
 
+/**
+ * **빈 결과에서 질의 자체를 재료로 실행되는 줄**(shortcuts §2 "빈 결과").
+ *
+ * 왜 `Command` 가 아닌가 — 세 가지가 `Command` 의 계약과 정면으로 어긋난다.
+ * 1. 이름이 **질의에 따라 달라진다**(`'장보기'를 오늘 할 일로 추가`). `Command.label` 은 고정 문자열이다.
+ * 2. **검색에 걸려서는 안 된다.** `matchCommands` 는 `label`·`keywords` 부분 일치로만 거는데(R8),
+ *    이 줄은 "아무 것도 안 걸렸을 때" 나와야 하므로 부분 일치로는 원리상 표현할 수 없다.
+ * 3. 빈 질의의 명령 목록(R12 최근 실행 순)에 **끼면 안 된다.** §2 의 첫 화면에 이 줄은 없다.
+ *
+ * 그래서 레지스트리를 따로 둔다. 등록은 여전히 기능 쪽이 한다(R7 과 같은 이유 — `command` 가
+ * `todo` 를 import 하면 런타임 초기화가 깨지는 순환이다).
+ */
+export type QuickAdd = {
+  /** 전역 유일. 해제할 때 쓴다. */
+  id: string;
+  /** 그 줄의 이름. **다듬은 질의**를 받는다. */
+  label: (query: string) => string;
+  /** 지금 쓸 수 있는가. 거짓이면 그 줄이 아예 없다(§2 "카테고리 0개면 이 줄 없음"). */
+  when?: () => boolean;
+  /** 실행. 다듬은 질의를 받는다. 실패는 등록한 기능이 자기 방식으로 알린다. */
+  run: (query: string) => void | Promise<void>;
+};
+
+/**
+ * 등록. **나중에 등록된 것이 이긴다** — 중복이어도 던지지 않는다.
+ *
+ * `addCommands` 와 다른 정책인 이유: 이 줄은 화면에 **한 줄만** 나오므로 둘이 공존해도 가려질 뿐
+ * 사고가 아니다. 반대로 던지면, 화면 둘이 한 프레임 겹치는 순간(T-34 가 사이드바에서 실측한 경로)에
+ * `useEffect` 안에서 예외가 나 `#root` 가 통째로 빈다. 가려지는 쪽이 앱이 사라지는 쪽보다 낫다.
+ */
+export function addQuickAdd(list: readonly QuickAdd[], entry: QuickAdd): QuickAdd[] {
+  return [...list, entry];
+}
+
+/** 해제. 등록한 객체 자체로 지운다 — 같은 id 가 둘이어도 자기 것만 빠진다. */
+export function removeQuickAdd(list: readonly QuickAdd[], entry: QuickAdd): QuickAdd[] {
+  return list.filter((other) => other !== entry);
+}
+
+/** 지금 유효한 줄. 맨 뒤(가장 나중에 등록된 것)가 이긴다. `when` 이 던지면 없는 것으로 친다. */
+export function activeQuickAdd(list: readonly QuickAdd[]): QuickAdd | null {
+  for (let index = list.length - 1; index >= 0; index -= 1) {
+    const entry = list[index];
+    if (entry === undefined) continue;
+    try {
+      if (entry.when?.() === false) continue;
+    } catch {
+      continue;
+    }
+    return entry;
+  }
+  return null;
+}
+
 export class DuplicateCommandError extends Error {
   constructor(id: string) {
     super(`명령 '${id}' 가 이미 등록돼 있습니다 — 같은 id 로 두 번 등록하면 하나가 가려집니다.`);
