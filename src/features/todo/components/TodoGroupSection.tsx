@@ -127,7 +127,13 @@ export function TodoGroupSection({
   return (
     <section
       aria-label={name}
-      className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-xl)] bg-surface p-[var(--space-3)]"
+      /*
+       * **상시 카드의 면**(app-shell.md §2-A "면과 고도" — 값의 단일 소스는 그 절이다).
+       * `bg-surface` 하나만으로는 캔버스(`--color-bg`)와 명도비 1.042:1(다크 1.084:1)이라 경계가
+       * 사실상 없었다. 그래서 세 신호를 함께 건다: 1px 보더(다크에서 그림자가 거의 안 보이는 것을
+       * 보완한다) + `--elev-sm`(`shadow-sm`, 라이트에서 부유감을 만든다) + `--radius-xl`.
+       */
+      className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-xl)] border border-border bg-surface p-[var(--space-3)] shadow-sm"
     >
       <div className="flex items-center gap-[var(--space-2)] px-[var(--space-2)]">
         <span

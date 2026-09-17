@@ -130,6 +130,7 @@ function ShellBody() {
           <div ref={panels.sidebarRef} className="w-[240px] shrink-0">
             <ShellSidebar
               showTitle
+              framed
               onSelectCategory={focusCategory}
               onRemoveCategory={requestRemove}
             />

@@ -131,7 +131,9 @@ export function ShellMain({
             <MainSkeleton />
           ) : null
         ) : noCategories ? (
-          <div className="flex flex-col items-start gap-[var(--space-3)] rounded-[var(--radius-xl)] bg-surface p-[var(--space-6)]">
+          // 빈 상태 안내도 **상시 카드**다(app-shell.md §2-A). 화면에 카드가 이것 하나뿐인
+          // 순간이라 오히려 여기서 면이 흐리면 앱이 아직 안 그려진 것처럼 보인다.
+          <div className="flex flex-col items-start gap-[var(--space-3)] rounded-[var(--radius-xl)] border border-border bg-surface p-[var(--space-6)] shadow-sm">
             <p className="text-base text-text">{EMPTY_CATEGORIES_TEXT}</p>
             <Button onClick={onCreateCategory}>{EMPTY_CATEGORIES_CTA}</Button>
           </div>
