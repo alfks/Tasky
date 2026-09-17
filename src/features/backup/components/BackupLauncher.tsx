@@ -64,7 +64,11 @@ export function BackupLauncher() {
       <button
         type="button"
         onClick={openDialog}
-        className="flex w-full items-center gap-[var(--space-2)] rounded-[var(--radius-md)] px-[var(--space-3)] py-[var(--space-2)] text-left text-sm text-text hover:bg-surface-2"
+        // 포커스 링은 **앱의 링 그대로**다: `--color-focus` 2px + 오프셋 2px(theme.md §5: "포커스 링은
+        // `--color-focus` 2px + 오프셋 2px, 절대 제거하지 않는다"). 본뜬 곳은 같은 사이드바의
+        // 형제인 `CategoryClosedSection.tsx`:43 — 폭 100%·좌측 정렬·`text-sm` 까지 같은 꼴의 버튼이다.
+        // 이 세 클래스가 없으면 브라우저 기본 링으로 떨어져 한 화면에 링이 두 종류가 된다.
+        className="flex w-full items-center gap-[var(--space-2)] rounded-[var(--radius-md)] px-[var(--space-3)] py-[var(--space-2)] text-left text-sm text-text hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       >
         <span aria-hidden="true">⇅</span>
         <span>백업/복원</span>
