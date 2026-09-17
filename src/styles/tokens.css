@@ -77,6 +77,9 @@
   --control-checkbox-border: 2px;
   --control-height: 36px;
   --control-hit-min: 32px;
+  /* 3-G R18: "선택됨" 링 두께. 미체크 체크박스 테두리(2px)·스와치 선택 테두리(2px)와 같은 굵기 —
+     3:1 을 지는 선은 앱 전체에서 한 굵기다. */
+  --control-selected-ring: 2px;
 }
 
 /* @theme 밖 런타임 토큰. 여기 값은 Tailwind 유틸을 만들지 않고 CSS 변수로만 존재한다.
@@ -118,9 +121,21 @@
   --color-cat-gray-dark: #9ea1ab;
 }
 
+/* 3-G "선택됨" 표현 토큰(theme.md §3-G R17~R20). @theme inline 인 이유는 그림자와 같다 —
+   값이 다른 토큰을 가리키므로 빌드 시점 리터럴로 굳으면 라이트/다크·강조색 변경을 따라가지 못한다.
+   inline 은 var() 를 유틸에 그대로 흘려보내 런타임에 읽게 한다.
+
+   핵심: 라이트에서 파스텔 채움은 배경과 1.14~2.16:1 에 그친다(12 프리셋 전부 3:1 미달). 채도를
+   올려 3:1 을 맞추면 파스텔 정체성이 깨지므로, 채움은 파스텔로 두고 **WCAG 1.4.11 의 3:1 은
+   잉크 링(--color-selected-ring)이 진다**. 새 색을 만들지 않고 기존 --color-text 를 가리킨다 —
+   강조색 스와치가 이미 쓰던 선택 표현(border-2 border-text)과 같은 언어다. */
 @theme inline {
   --shadow-sm: var(--elev-sm);
   --shadow-md: var(--elev-md);
+
+  --color-selected: var(--color-accent);
+  --color-on-selected: var(--color-on-accent);
+  --color-selected-ring: var(--color-text);
 }
 
 /* 시스템 기본("system" 모드): OS 가 다크면 따른다(R7). 명시 선택(data-theme="light")이 있으면
