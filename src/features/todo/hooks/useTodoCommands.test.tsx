@@ -311,8 +311,16 @@ describe('빈 결과 줄 — Enter 로 **실제로 할 일이 생긴다** (§2)'
     fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
     fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 });
 
-    // 저장은 비동기라 "아직 없다" 만으로는 약하다 — 조합이 끝난 Enter 가 만드는 것과 대조한다.
+    // **팔레트가 아직 열려 있다**는 것이 판별선이다. 실행됐다면 `runOption` 이 곧바로 닫으므로
+    // 이 단언은 동기적으로 깨진다. "할 일이 아직 없다" 만 보면 저장이 늦게 도착할 때 그냥
+    // 통과한다 — 실제로 두 가드를 모두 지운 변이가 그렇게 살아남았다.
+    expect(screen.getByRole('combobox')).toBeInTheDocument();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
     expect(await storedTitles(TODAY)).toEqual([]);
+
+    // 조합이 끝난 Enter 는 실행된다 — 가드가 키를 영영 먹어 버리지 않는다.
     fireEvent.keyDown(input, { key: 'Enter' });
     await waitFor(async () => expect(await storedTitles(TODAY)).toEqual(['ㅈ']));
   });
