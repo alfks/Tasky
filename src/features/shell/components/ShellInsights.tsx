@@ -18,11 +18,17 @@ import { Kbd } from '@/components/ui/Kbd';
 import { cn } from '@/lib/cn';
 
 /**
- * 패널 섹션의 **카드 껍질**. `TimerPanelSection` 은 자기 카드를 갖고 있어 그것과 같은 값을 쓴다
- * (`rounded-xl` + 1px 보더 + `bg-surface` + `p-4`). 껍질을 셸이 쥐는 이유: 세 섹션이 각자 정하면
- * 지금처럼 하나만 카드이고 둘은 맨 텍스트가 되어 패널이 만들다 만 것처럼 읽힌다(리뷰 Major).
+ * 패널 섹션의 **카드 껍질** = 이 앱의 상시 카드(app-shell.md §2-A "면과 고도").
+ * `TimerPanelSection` 은 자기 카드를 갖고 있어 그것과 같은 값을 쓴다(`rounded-xl` + 1px 보더 +
+ * `bg-surface` + `p-4`). 껍질을 셸이 쥐는 이유: 세 섹션이 각자 정하면 지금처럼 하나만 카드이고
+ * 둘은 맨 텍스트가 되어 패널이 만들다 만 것처럼 읽힌다(리뷰 Major).
+ *
+ * `shadow-sm`(= `--elev-sm`)은 세 카드에 **함께** 걸어야 한다 — 하나만 떠 있으면 패널 안에서
+ * 고도가 두 층으로 갈린다. 타이머 카드는 자기 클래스를 갖고 있으므로 아래에서 같은 값을
+ * `className` 으로 넘겨 맞춘다.
  */
-const CARD_CLASS = 'rounded-[var(--radius-xl)] border border-border bg-surface p-[var(--space-4)]';
+const CARD_CLASS =
+  'rounded-[var(--radius-xl)] border border-border bg-surface p-[var(--space-4)] shadow-sm';
 
 /** 컬럼으로 선 패널의 id — `[접기]` 의 `aria-controls` 가 가리킨다(§5). */
 export const INSIGHT_PANEL_ID = 'shell-insight-panel';
@@ -47,7 +53,7 @@ export function ShellInsights({ categories, onCollapse, panelId, className }: Sh
     <div
       className={cn('flex h-full min-h-0 flex-col gap-[var(--space-4)] overflow-y-auto', className)}
     >
-      <TimerPanelSection />
+      <TimerPanelSection className="shadow-sm" />
       <Card>
         <CompletionPanelSection />
       </Card>
