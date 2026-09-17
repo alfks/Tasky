@@ -11,7 +11,7 @@
 | ---------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------ |
 | `CLAUDE.md`                                    | 루트 헌법                                                             | —                                               | 모든 세션 시작                                   |
 | `AGENTS.md`                                    | 역할 프로토콜·핸드오프·리뷰 루프·락                                   | —                                               | 오케스트레이터/리뷰어 역할, 핸드오프 주고받을 때 |
-| `README.md`                                    | 사람용 소개                                                           | —                                               | 읽지 않아도 됨                                   |
+| `README.md`                                    | 제품 소개·배포 안내(외부용)                                           | —                                               | 배포하거나 제품을 소개할 때                      |
 | `.github/`                                     | CI, PR/이슈 템플릿, CODEOWNERS, 라벨                                  | [.github/AGENTS.md](../.github/AGENTS.md)       | CI가 실패했을 때, 템플릿/라벨을 바꿀 때          |
 | `.githooks/`                                   | pre-commit(금지어·author), commit-msg(트레일러)                       | [.githooks/AGENTS.md](../.githooks/AGENTS.md)   | 커밋이 훅에 막혔을 때                            |
 | `.worktrees/`                                  | 워크트리 + 로컬 BOARD/tickets/handoffs/reviews                        | [.worktrees/AGENTS.md](../.worktrees/AGENTS.md) | 워크트리 만들기 전, 티켓/핸드오프 쓰기 전        |
@@ -33,6 +33,7 @@
 | `docs/ARCHITECTURE.md`  | 레이어·의존 방향·데이터 모델·확장 지점                                      | —                                                     | 레이어 경계 넘는 변경 전      |
 | `docs/DIRECTORY_MAP.md` | 이 문서                                                                     | —                                                     | 위치를 모를 때                |
 | `docs/DECISIONS.md`     | ADR 인덱스                                                                  | —                                                     | "왜 이렇게 했지?"가 궁금할 때 |
+| `docs/development.md`   | 개발 안내(명령어·문서 지도). 예전 루트 README                               | —                                                     | 개발을 시작할 때              |
 | `docs/conventions/`     | code-style, git-workflow, agent-collaboration, token-efficiency, templates/ | [docs/conventions/AGENTS.md](./conventions/AGENTS.md) | 각 문서의 읽기 조건 참조      |
 | `docs/research/`        | 레퍼런스 앱 리서치(읽기 전용, 긴 문서)                                      | [docs/research/AGENTS.md](./research/AGENTS.md)       | 스펙을 쓸 때 **섹션 단위로**  |
 | `docs/specs/`           | 기능별 스펙(티켓의 근거)                                                    | [docs/specs/AGENTS.md](./specs/AGENTS.md)             | 기능 티켓 시작 시 해당 스펙만 |

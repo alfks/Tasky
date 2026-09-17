@@ -1,30 +1,95 @@
 # Tasky
 
-감성 투두 · 일정 관리 데스크탑 웹앱. 날짜 스트립에서 하루를 고르고, 색깔 있는 카테고리 아래 할 일을 적고, 체크할수록 달성률이 차오릅니다. 데이터는 브라우저에 로컬로 저장되며(오프라인 우선), PWA로 설치할 수 있습니다.
+**감성 투두 · 일정 관리 데스크탑 웹앱.** 날짜 스트립에서 하루를 고르고, 색깔 있는 카테고리 아래
+할 일을 적고, 체크할수록 달성률이 차오릅니다.
+
+데이터는 **브라우저 안에만** 저장됩니다(IndexedDB). 계정도, 서버도, 추적도 없습니다.
+오프라인에서 그대로 쓸 수 있고 PWA 로 설치할 수 있습니다.
+
+## 무엇을 할 수 있나
+
+- **날짜 스트립** — 한 주를 가로로 훑으며 하루를 고릅니다. 각 날짜 칸에 그날의 카테고리 색 점과
+  전부 끝낸 날의 ✓ 가 붙습니다.
+- **카테고리별 할 일** — 12가지 파스텔 색 중에 골라 묶습니다. 추가·수정·삭제·날짜 이동(드래그) 가능.
+- **달성률** — 그날 완료 비율을 링과 숫자로. 카테고리별로도 나눠 봅니다.
+- **집중 타이머** — 할 일 하나를 골라 집중 세션을 돌립니다.
+- **테마** — 라이트/다크 + 강조색. 첫 페인트부터 고른 테마로 뜹니다(깜빡임 없음).
+- **커맨드 팔레트** — `Ctrl/⌘ K`. 검색해서 실행하고, 아무것도 안 걸리면 그 문장을 바로 오늘 할 일로 추가합니다.
+- **백업 · 복원** — 전체 데이터를 파일로 내보내고 다시 불러옵니다. 서버가 없으니 이게 여러분의 이사·보험입니다.
+- **키보드로 완주** — 추가·체크·수정·삭제·날짜 이동 전부 키보드만으로 됩니다. 한글 조합 중 `Enter` 도 정확히 처리합니다.
+
+## 지금 상태
+
+**아직 공개 배포되지 않았습니다.** 코드는 동작하고(아래 수치는 실측), 배포 배선도
+`--dry-run` 까지 확인됐지만 실제 배포는 자격증명이 필요해 실행되지 않았습니다.
+
+| 항목              | 값                                                       |
+| ----------------- | -------------------------------------------------------- |
+| 단위 테스트       | **2,014건** (155 파일)                                   |
+| E2E               | Playwright 3개 스펙(프로덕션 빌드를 띄워 실행)           |
+| 첫 로드 JS        | **gzip 130,752 B** (예산 150,000 B)                      |
+| 오프라인 프리캐시 | 14 URL · 1.05 MB                                         |
+| 저장소 청크       | Dexie gzip 32.5 kB — 첫 화면에는 없고 필요할 때 받습니다 |
+
+## 직접 배포하기
+
+Cloudflare Workers 의 정적 자산으로 나갑니다. 계정과 API 토큰만 있으면 됩니다.
+
+```bash
+pnpm install
+cp .env.example .env     # CLOUDFLARE_ACCOUNT_ID · CLOUDFLARE_API_TOKEN 을 채웁니다
+                         # 토큰 발급 방법은 .env.example 주석에 단계별로 있습니다
+
+pnpm build
+pnpm run deploy:dry-run  # 올라갈 파일 목록만 확인 (자격증명 없이도 됩니다)
+pnpm run deploy          # 실제 배포
+```
+
+- **`pnpm deploy` 가 아니라 `pnpm run deploy`** 입니다. `deploy` 는 pnpm 내장 명령이라
+  그냥 쓰면 이 레포의 배포 스크립트가 아니라 pnpm 의 워크스페이스 배포가 돕니다.
+- `.env` 는 `.gitignore` 에 있어 커밋되지 않습니다. 자격증명이 없으면 스크립트가 **조용히 넘어가지 않고
+  실패합니다** — "배포한 줄 알았는데 안 된" 상태를 만들지 않으려는 의도입니다.
+- GitHub Actions 로 배포하려면 같은 이름의 레포 Secrets(`CLOUDFLARE_*`)와 Variable(`DEPLOY_URL`)을 넣습니다.
+
+## 로컬에서 실행
+
+```bash
+pnpm install
+pnpm dev
+```
+
+빌드 결과물을 서비스워커까지 포함해 확인하려면 `pnpm build && pnpm start`.
 
 ## 기술 스택
 
-Vite 8(React SPA) · React 19 · TypeScript · Tailwind CSS v4 · Zustand · Dexie(IndexedDB) · Vitest · Playwright · pnpm · 배포 Cloudflare Workers(정적 자산)
+Vite 8(React SPA, 라우터 없음) · React 19 · TypeScript strict · Tailwind CSS v4 · Zustand ·
+Dexie(IndexedDB, 지연 로드) · Serwist(PWA) · Vitest · Playwright · pnpm ·
+배포는 Cloudflare Workers 정적 자산.
 
-## 시작하기
+로컬 우선 설계라 저장소는 인터페이스 뒤에 있습니다 — 나중에 동기화를 붙여도 화면 코드는 그대로입니다.
 
-```bash
-bash scripts/setup.sh   # git 설정 + 훅 + 의존성
-pnpm dev                # http://localhost:3000
-pnpm check              # lint + typecheck + test
-```
+## 데이터와 프라이버시
+
+- 모든 데이터는 **여러분 브라우저의 IndexedDB** 에 있습니다. 어디로도 전송되지 않습니다.
+- 분석·추적 스크립트가 없습니다.
+- 브라우저 데이터를 지우면 할 일도 함께 사라집니다. **백업 기능으로 내보내 두는 것을 권합니다.**
 
 ## 문서
 
-- 프로젝트 규칙: [CLAUDE.md](./CLAUDE.md) · 협업 프로토콜: [AGENTS.md](./AGENTS.md)
-- 아키텍처: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) · 디렉토리 맵: [docs/DIRECTORY_MAP.md](./docs/DIRECTORY_MAP.md)
-- 결정 기록: [docs/DECISIONS.md](./docs/DECISIONS.md)
+- 개발 안내(명령어·구조): [docs/development.md](./docs/development.md)
+- 아키텍처: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) · 결정 기록: [docs/DECISIONS.md](./docs/DECISIONS.md)
 
 ## 로드맵
 
-- Phase 1 (MVP): 날짜 스트립, 카테고리별 투두 CRUD, 체크·달성률, 테마/색상
-- Phase 2: 클라우드 동기화, 친구·피드·반응
+- **Phase 1 (MVP)** — 날짜 스트립, 카테고리별 할 일, 체크·달성률, 테마/색상 · _구현됨_
+- **Phase 2** — 클라우드 동기화, 친구·피드·반응
+
+## 라이선스
+
+아직 정해지지 않았습니다. `LICENSE` 파일이 없으므로 기본적으로 **모든 권리가 유보**됩니다 —
+재배포·수정을 허용하려면 라이선스를 명시해야 합니다.
 
 ## 서드파티 고지
 
-- Pretendard — SIL Open Font License 1.1 — https://github.com/orioncactus/pretendard (공식 배포 릴리스에서 서브셋, `public/fonts/OFL.txt`)
+- **Pretendard** — SIL Open Font License 1.1 — https://github.com/orioncactus/pretendard
+  (공식 배포 릴리스에서 서브셋, 전문은 `public/fonts/OFL.txt`)
