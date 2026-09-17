@@ -215,6 +215,52 @@ describe('Popover', () => {
     expect(onButton.defaultPrevented).toBe(false);
   });
 
+  // T-39: 바깥 클릭으로 닫을 때 포커스가 `<body>` 로 떨어졌다(app-shell R14 위반). 복귀 로직은 정상이고,
+  // 디스패치가 끝난 뒤 브라우저의 mousedown 기본 동작이 그 복귀를 덮는 것이 원인이다(T-35 Chromium 실측).
+  // jsdom 자체는 그 기본 동작을 구현하지 않지만 userEvent v14 가 모사하므로 `user.click` 으로만 재현된다.
+  it('포커스를 받지 못하는 바깥을 눌러 닫아도 포커스가 body 로 떨어지지 않는다', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const anchor = screen.getByRole('button', { name: '설정' });
+
+    await user.click(anchor);
+    await user.click(document.body);
+
+    expect(screen.queryByRole('group', { name: '설정' })).not.toBeInTheDocument();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(anchor);
+  });
+
+  // 위 테스트가 재현하는 것을 기본 동작 취소 자체로도 잰다(userEvent 의 모사에만 기대지 않는다).
+  it('포커스를 받지 못하는 바깥의 mousedown 은 기본 동작을 막는다', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.click(screen.getByRole('button', { name: '설정' }));
+    const event = createEvent.mouseDown(document.body);
+    fireEvent(document.body, event);
+
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  // Dialog(T-35)와 갈리는 지점. 대화상자의 "바깥" 은 자기 백드롭뿐이지만 팝오버는 비모달이라
+  // 바깥이 살아 있는 페이지다 — 통째로 막으면 바깥 버튼·입력칸이 포커스(캐럿)를 받지 못한다.
+  it('포커스를 받을 수 있는 바깥은 기본 동작을 막지 않고 그 요소가 포커스를 가져간다', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const next = screen.getByRole('button', { name: '다음 행' });
+
+    await user.click(screen.getByRole('button', { name: '설정' }));
+    const event = createEvent.mouseDown(next);
+    fireEvent(next, event);
+    expect(event.defaultPrevented).toBe(false);
+
+    await user.click(screen.getByRole('button', { name: '설정' }));
+    await user.click(next);
+    expect(screen.queryByRole('group', { name: '설정' })).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(next);
+  });
+
   // 항상 마운트하고 open 만 토글하는 것이 계약이다. `{open ? <Popover/> : null}` 로 쓰면 닫힌 동안
   // 앵커에 아무 ARIA 도 없어 M-4(앵커가 무엇을 여는지 모름)가 그대로 재발한다.
   it('닫혀 있어도 앵커에 ARIA 가 붙는다 — 조건부 마운트가 필요 없다', () => {
