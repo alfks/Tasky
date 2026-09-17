@@ -12,9 +12,7 @@
 - 있음: `visual-contrast.mjs`(시각 대조·스크린샷) · `state-language.mjs`(선택·호버·포커스·비활성) ·
   `motion-and-latency.mjs` · `focus-and-keyboard.mjs` · `stability-and-theme.mjs` ·
   `density-and-surface.mjs`(잉크 기준 밀도·카드 명도비·그림자 픽셀·선택 링) ·
-  `palette-and-longlist.mjs`(팔레트 열린 화면·120건 목록) ·
-  `rapid-input.mjs`·`rapid-input-window.mjs`·`rapid-input-minimal.mjs`(T-65 연속 입력 유실 계측) ·
-  `lib/`(하네스 + `probe*.mjs`)
+  `palette-and-longlist.mjs`(팔레트·120건) · `rapid-input{,-window,-minimal}.mjs`(T-65) · `lib/`
 - 없음(다른 곳): E2E → `tests/e2e/` · 단위 테스트 → `src/**/*.test.ts` · 해석과 티켓 배정 →
   `docs/FEEL_REPORT.md`.
 
@@ -35,11 +33,8 @@
 
 ## 검증
 
-`rapid-input*.mjs` 는 서버 포트를 `FEEL_BASE_URL` 로 받는다 — 다른 워크트리가 3200 을 쓰고 있으면
-다른 포트로 띄우고 그 주소를 넘겨라(`pkill` 로 남의 서버를 죽이지 마라).
-
 ```bash
-pnpm build && npx wrangler dev --config wrangler.jsonc --port 3200 &   # 서버
+pnpm build && npx wrangler dev --config wrangler.jsonc --port 3200 &   # 남이 쓰면 다른 포트 + FEEL_BASE_URL
 for f in visual-contrast state-language motion-and-latency focus-and-keyboard \
          stability-and-theme density-and-surface palette-and-longlist; do
   node "tests/feel/$f.mjs"; done
@@ -61,9 +56,5 @@ pnpm lint
   **0 부터** 훑어라(2 부터 시작하면 2px 그림자 띠를 통째로 건너뛴다).
 - **절대 날짜를 박지 마라**(`9월 17일` 등) — 하루 뒤 `오늘로 이동` 이 비활성이 되어 모션 계측이
   통째로 죽었다. `harness.mjs` 의 `dayLabel(offset)` 을 써라.
-- 많은 항목을 UI 로 심을 때 **대기 없이 Enter 를 연타하면 유실된다** — 그리고 **그것은 도구가 아니라
-  앱이 흘리는 것이다**(T-65 가 가렸다). 보낸 40 / 브라우저가 받은 **40**(창 capture keydown) /
-  저장 **23~30**. 페이지 안에서 직접 쏴 도구를 빼도 같고, 빠진 제목은 **Enter 가 난 그 순간
-  입력칸에 멀쩡히 들어 있었다**. 재현 창은 `Enter` 간격 **5ms 미만**(≥5ms 면 유실 0) —
-  사람 손으로는 닿지 않지만 **스크립트로는 늘 닿는다**. 그러니 심을 때는 기다려라(150ms 면 40/40).
-  최소 재현은 `rapid-input-minimal.mjs`(`Enter` 두 번이면 난다), 근거는 `rapid-input.mjs`.
+- 대기 없이 Enter 연타로 심기 → 유실된다. **도구가 아니라 앱이 흘린다**(T-65: 보낸 40 / 받은 40 /
+  저장 23~30, 창은 간격 5ms 미만). 심을 땐 150ms 씩 기다려라. 근거·재현: `rapid-input*.mjs`.
