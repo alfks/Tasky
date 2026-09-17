@@ -9,7 +9,7 @@ import { getRepositories } from '@/repositories/container';
 
 import { CommandLayer } from '@/features/command/components/CommandLayer';
 import { CommandPalette } from '@/features/command/components/CommandPalette';
-import type { Command } from '@/features/command/store/command-registry';
+import type { Command, QuickAdd } from '@/features/command/store/command-registry';
 import { useCommandStore } from '@/features/command/store/command-store';
 import { useDateStripStore } from '@/features/date-strip';
 import { makeCategory } from '@/test/fixtures/category';
@@ -105,6 +105,7 @@ beforeEach(async () => {
     helpOpen: false,
     paletteOpen: false,
     commandError: null,
+    quickAdds: [],
   });
   await getRepositories().categories.upsert(adopt(CATEGORY));
   useDateStripStore.setState({ selectedDate: START_DATE, today: START_DATE });
@@ -395,5 +396,129 @@ describe('CommandPalette — 응답 전 구간 (리뷰 Major 3)', () => {
     await user.type(input, ' 하기');
     await waitFor(() => expect(search).toHaveBeenCalled());
     expect(screen.getByRole('group', { name: '할 일 (1)' })).toBeInTheDocument();
+  });
+});
+
+describe('CommandPalette — 빈 결과 줄 (§2)', () => {
+  /** `todo` 가 거는 줄을 흉내 낸다. 진짜 할 일이 생기는지는 `useTodoCommands.test.tsx` 가 잰다. */
+  function registerQuickAdd(
+    run: (query: string) => void = vi.fn(),
+    when?: () => boolean,
+  ): ReturnType<typeof vi.fn> {
+    const spy = vi.fn(run);
+    const entry: QuickAdd = {
+      id: 'todo.quickAdd',
+      label: (title) => `'${title}'를 오늘 할 일로 추가`,
+      ...(when === undefined ? {} : { when }),
+      run: spy,
+    };
+    useCommandStore.getState().registerQuickAdd(entry);
+    return spy;
+  }
+
+  it('아무 것도 안 걸린 질의에서 Enter 가 **그 질의로** 실행된다 — 막다른 길이 아니다', async () => {
+    const user = userEvent.setup();
+    const run = registerQuickAdd();
+    render(<Harness />);
+    const input = await openPalette(user);
+
+    await user.type(input, '없는것zzz');
+    await screen.findByRole('option', { name: "'없는것zzz'를 오늘 할 일로 추가" });
+    await user.keyboard('{Enter}');
+
+    expect(run).toHaveBeenCalledWith('없는것zzz');
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it('그 줄이 **선택돼 있어** Enter 가 바로 닿는다 — 화살표를 먼저 누를 필요가 없다', async () => {
+    const user = userEvent.setup();
+    registerQuickAdd();
+    render(<Harness />);
+    const input = await openPalette(user);
+
+    await user.type(input, '없는것zzz');
+
+    await waitFor(() => expect(activeOptionText()).toBe("'없는것zzz'를 오늘 할 일로 추가"));
+  });
+
+  it('실행하면 팔레트가 닫힌다 — 추가된 할 일이 가려지지 않게', async () => {
+    const user = userEvent.setup();
+    registerQuickAdd();
+    render(<Harness />);
+    const input = await openPalette(user);
+    await user.type(input, '없는것zzz');
+    await screen.findByRole('option', { name: /오늘 할 일로 추가/ });
+
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull());
+  });
+
+  it('마우스 클릭으로도 실행된다', async () => {
+    const user = userEvent.setup();
+    const run = registerQuickAdd();
+    render(<Harness />);
+    const input = await openPalette(user);
+    await user.type(input, '없는것zzz');
+
+    await user.click(await screen.findByRole('option', { name: /오늘 할 일로 추가/ }));
+
+    expect(run).toHaveBeenCalledWith('없는것zzz');
+  });
+
+  it('한글 조합 중의 Enter 로는 실행되지 않는다 — "ㅈ" 만 치고 할 일이 생기면 안 된다', async () => {
+    const user = userEvent.setup();
+    const run = registerQuickAdd();
+    render(<Harness />);
+    const input = await openPalette(user);
+    await user.type(input, 'ㅈ');
+    await screen.findByRole('option', { name: "'ㅈ'를 오늘 할 일로 추가" });
+
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 });
+
+    expect(run).not.toHaveBeenCalled();
+
+    // 조합이 끝난 뒤의 Enter 는 실행된다 — 가드가 키를 영영 먹어 버리지 않는다.
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(run).toHaveBeenCalledWith('ㅈ');
+  });
+
+  it('`when()` 이 거짓이면(카테고리 0개) 그 줄이 없고 옛 문구가 그대로다 (§2)', async () => {
+    const user = userEvent.setup();
+    const run = registerQuickAdd(vi.fn(), () => false);
+    render(<Harness />);
+    const input = await openPalette(user);
+
+    await user.type(input, '없는것zzz');
+    await screen.findByText(/결과가 없어요 — 다른 말로/);
+
+    expect(screen.queryByRole('option', { name: /오늘 할 일로 추가/ })).toBeNull();
+    await user.keyboard('{Enter}');
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('진짜 결과가 있으면 그 줄은 없다 — 검색을 가로채지 않는다', async () => {
+    const user = userEvent.setup();
+    registerQuickAdd();
+    render(<Harness />);
+    const input = await openPalette(user);
+
+    await user.type(input, '장보기');
+    await screen.findByRole('group', { name: '할 일 (1)' });
+
+    expect(screen.queryByRole('option', { name: /오늘 할 일로 추가/ })).toBeNull();
+  });
+
+  it('낭독기에는 "결과가 없어요" 라고 말한다 — 그 줄을 결과로 세지 않는다 (§5)', async () => {
+    const user = userEvent.setup();
+    registerQuickAdd();
+    render(<Harness />);
+    const input = await openPalette(user);
+
+    await user.type(input, '없는것zzz');
+    await screen.findByRole('option', { name: /오늘 할 일로 추가/ });
+
+    expect(screen.getByRole('status')).toHaveTextContent('결과가 없어요');
   });
 });
