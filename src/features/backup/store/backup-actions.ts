@@ -86,10 +86,13 @@ export type BackupActions = {
 /**
  * 가져오기 뒤 화면을 다시 읽는다 (R11). 새로고침 없이 목록이 바뀐다.
  *
- * 투두 스토어는 직접 다시 읽고, **자기 데이터를 따로 캐시해 둔 feature** 는 `dataRevision` 을 구독해
- * 스스로 다시 조회한다(백업이 남의 조회 함수를 알면 의존 방향이 뒤집힌다). 지금 구독해야 하는 쪽은
- * 날짜 스트립의 주 요약·달성률(`useWeekSummaries`)인데 그 파일은 이 티켓의 `owns` 밖이라 배선은
- * 후속 티켓 몫이다 — 그때까지 주 요약은 낡은 값을 보여준다(리뷰 라운드 1 Major-3).
+ * 투두 스토어는 직접 다시 읽고, **자기 데이터를 따로 캐시해 둔 화면**은 `dataRevision` 을 구독해
+ * 스스로 다시 조회한다(백업이 남의 조회 함수를 알면 의존 방향이 뒤집힌다). 지금 그 구독자는 하나,
+ * 날짜 스트립의 주 요약(`useWeekSummaries`)이다 — 배선은 T-56 이 깔았다. 다만 스트립은 feature
+ * 그래프의 리프라 `@/features/backup` 을 스스로 import 할 수 없어서(`import/no-cycle`),
+ * `dataRevision` 을 실제로 읽는 것은 셸(`ShellHeader` 의 `useSummaryRevision`)이고 스트립에는
+ * `summaryRevision` prop 으로 들어간다. **이 함수는 그 경로를 몰라도 된다** — 여기서 할 일은
+ * `dataRevision` 을 올리는 것뿐이고 그것은 `runImport` 가 이미 한다.
  */
 async function reloadViews(): Promise<void> {
   const todo = useTodoStore.getState();

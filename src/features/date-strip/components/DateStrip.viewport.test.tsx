@@ -36,7 +36,7 @@ function setReducedMotion(reduce: boolean | undefined) {
 
 /** 렌더 후 요약 조회(비동기)까지 흘려보낸다. */
 async function renderStrip() {
-  const result = render(<DateStrip />);
+  const result = render(<DateStrip summaryRevision={0} />);
   await act(async () => {
     await Promise.resolve();
     await Promise.resolve();

@@ -50,8 +50,8 @@ function stubRepositories(
 }
 
 /** 렌더 후 요약 조회(비동기)까지 흘려보낸다. */
-async function renderStrip(props: Parameters<typeof DateStrip>[0] = {}) {
-  const result = render(<DateStrip {...props} />);
+async function renderStrip(props: Partial<Parameters<typeof DateStrip>[0]> = {}) {
+  const result = render(<DateStrip summaryRevision={0} {...props} />);
   await act(async () => {
     await Promise.resolve();
     await Promise.resolve();
@@ -120,7 +120,7 @@ describe('R2. 앱 시작 시 선택 날짜는 항상 오늘이다', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 8, 17, 9, 30));
     useDateStripStore.setState(createInitialDateStripState());
-    render(<DateStrip />);
+    render(<DateStrip summaryRevision={0} />);
     await act(async () => {
       await Promise.resolve();
     });
@@ -231,7 +231,7 @@ describe('R12. 자정을 넘기면 오늘 표시가 갱신되고 선택 날짜�
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 8, 17, 23, 59, 30));
     useDateStripStore.setState(createInitialDateStripState());
-    render(<DateStrip />);
+    render(<DateStrip summaryRevision={0} />);
     await act(async () => {
       await Promise.resolve();
     });
@@ -297,7 +297,7 @@ describe('§5. 키보드만으로 셀 이동·선택이 되고 스트립 안의 
     render(
       // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- 전파 여부만 보는 테스트용 관찰자다.
       <div onKeyDown={outer}>
-        <DateStrip />
+        <DateStrip summaryRevision={0} />
       </div>,
     );
     await act(async () => {

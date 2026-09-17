@@ -28,6 +28,14 @@ export type TodoContext = {
   readonly deps: MetaDeps;
 };
 
+/**
+ * 저장소에 반영된 쓰기 하나를 알린다 (T-56). **성공 경로에서만** 부른다 — 롤백된 쓰기가 이 값을
+ * 올리면 그것을 구독해 다시 조회하는 화면이 되돌려진 값을 한 번 더 읽어 낡은 화면이 된다.
+ */
+function bumpWriteRevision(ctx: TodoContext): number {
+  return ctx.get().writeRevision + 1;
+}
+
 /** 한 건 저장. 낙관적 토글처럼 대상이 하나인 쓰기가 쓴다. */
 export function upsertOne(entities: readonly Persistable<Todo>[]): Promise<void> {
   return getRepositories().todos.upsert(entities[0]);
@@ -86,7 +94,11 @@ export function createTodoWriter(ctx: TodoContext): TodoWriter {
             return false;
           }
           await getRepositories().todos.upsert(entity);
-          ctx.set({ byId: apply(ctx.get().byId, entity), error: null });
+          ctx.set({
+            byId: apply(ctx.get().byId, entity),
+            error: null,
+            writeRevision: bumpWriteRevision(ctx),
+          });
           return true;
         } catch (error) {
           ctx.set({ error: messageOf(error) });
@@ -110,6 +122,8 @@ export function createTodoWriter(ctx: TodoContext): TodoWriter {
       return serialize(async () => {
         try {
           await save(next);
+          // 화면은 이미 위에서 바뀌었지만 **저장소가 바뀐 것은 지금**이다 — 남이 다시 조회해도 될 시점.
+          ctx.set({ writeRevision: bumpWriteRevision(ctx) });
           return true;
         } catch (error) {
           ctx.set({ byId: withTodos(ctx.get().byId, previous), error: messageOf(error) });

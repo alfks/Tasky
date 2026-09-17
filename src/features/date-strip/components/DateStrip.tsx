@@ -13,6 +13,15 @@ import { isWithinRange, shiftWithinRange, weekDays } from '@/features/date-strip
 import { useDateStripStore } from '@/features/date-strip/store/date-strip-store';
 
 type DateStripProps = {
+  /**
+   * **저장소가 바뀌었다는 신호** — 값이 바뀌면 주 요약(점·✓·셀 접근성 이름)을 다시 읽는다 (T-56).
+   *
+   * **옵셔널이 아닌 이유**: 스트립은 자기 투두를 따로 조회해 캐시하므로 이 신호가 없으면 체크·추가·
+   * 삭제·가져오기 뒤에도 화면이 낡은 채로 남는다. 옵셔널로 두면 호출부가 잊는 순간 그 버그가 **조용히**
+   * 돌아온다 — 필수로 두면 잊는 순간 타입 에러다. 스트립 자신은 `todo`·`backup` 을 import 할 수 없어
+   * (feature 그래프의 리프 — `import/no-cycle`) 무엇을 합칠지는 셸이 정한다(`ShellHeader`).
+   */
+  summaryRevision: number;
   /** 투두를 셀에 떨어뜨렸을 때 (R13). 없으면 셀이 드롭을 받지 않는다. */
   onDropTodo?: (todoId: string, date: DateKey) => void;
   /** 요약 조회 실패 문구. 토스트로 띄우는 것은 앱 셸 소관이다 (§2-C). */
@@ -25,7 +34,7 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-export function DateStrip({ onDropTodo, onSummaryError }: DateStripProps) {
+export function DateStrip({ summaryRevision, onDropTodo, onSummaryError }: DateStripProps) {
   const selectedDate = useDateStripStore((state) => state.selectedDate);
   const today = useDateStripStore((state) => state.today);
   const select = useDateStripStore((state) => state.select);
@@ -38,7 +47,7 @@ export function DateStrip({ onDropTodo, onSummaryError }: DateStripProps) {
   const activeDate = focusedDate ?? selectedDate;
   const days = weekDays(activeDate);
   const weekStart = days[0];
-  const summaries = useWeekSummaries(weekStart, onSummaryError);
+  const summaries = useWeekSummaries(weekStart, summaryRevision, onSummaryError);
 
   const cellRefs = useRef(new Map<DateKey, HTMLButtonElement>());
   // 클릭·Tab 으로 들어온 포커스까지 다시 focus() 하지 않도록, 키 조작으로 옮길 때만 켠다.

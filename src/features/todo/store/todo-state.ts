@@ -21,6 +21,17 @@ export type TodoState = TodoSnapshot & {
   status: TodoLoadStatus;
   /** 사용자에게 그대로 보여줄 한국어 문구. 성공한 액션은 `null` 로 지운다. */
   error: string | null;
+  /**
+   * **저장소에 실제로 반영된 쓰기마다 +1** (T-56). 투두를 자기 쪽에서 따로 조회해 캐시해 둔 화면이
+   * 이 값을 조회 `useEffect` 의 의존성에 넣어 다시 읽는다 — 지금 그러는 곳은 날짜 스트립의 주
+   * 요약이고, 구독은 셸(`ShellHeader`)이 한다(`date-strip` 은 feature 그래프의 리프라 `todo` 를
+   * import 할 수 없다 — 하면 `import/no-cycle` 이다).
+   *
+   * 올라가는 자리는 `todo-writes.ts` 의 `commit`·`optimistic` **성공 경로 둘뿐**이다. 그래서
+   * 롤백된 쓰기는 올리지 않고(올리면 화면이 낡은 값으로 한 번 더 덮인다), 읽기인 `loadDate` 도
+   * 이 경로를 타지 않아 자동으로 빠진다.
+   */
+  writeRevision: number;
 };
 
 /** 쓰기 실패 공통 문구 (todo §2-C). 원인이 아니라 다음 행동을 안내한다. */
