@@ -58,6 +58,33 @@ function 행(처음열림 = true) {
 const 입력 = (): HTMLInputElement =>
   screen.getByRole('textbox', { name: '공부에 할 일 추가' }) as HTMLInputElement;
 
+/**
+ * 첫 `upsert` 를 붙잡아 "저장 중" 창을 열어 둔다. 돌려받은 함수를 부르면 저장이 이어진다.
+ * 실브라우저에서 창의 길이는 **한 번의 저장이 걸리는 시간**이라, 여기서는 그것을 손으로 잡는다.
+ */
+function 저장을붙잡는다(): () => void {
+  const repositories = createMemoryRepositories();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let first = true;
+  const todos = {
+    ...repositories.todos,
+    upsert: async (entity: Parameters<typeof repositories.todos.upsert>[0]) => {
+      if (first) {
+        first = false;
+        await gate;
+      }
+      return repositories.todos.upsert(entity);
+    },
+  };
+  setRepositories({ ...repositories, todos });
+  return () => {
+    release();
+  };
+}
+
 /** 방금 저장된 것들만(픽스처 제외). */
 async function 저장된것(): Promise<Todo[]> {
   const all = await getRepositories().todos.listByDate(FIXTURE_DATE);
@@ -221,5 +248,61 @@ describe('닫힌 상태', () => {
 
     expect(screen.getByRole('button', { name: '+ 할 일 추가' })).toHaveFocus();
     expect(document.activeElement).not.toBe(document.body);
+  });
+});
+
+/**
+ * T-67 회귀. 앞 저장이 끝나기 전에 온 `Enter` 를 이 행이 **조용히 버리고** 입력칸까지 비우던 자리다
+ * (T-65 실브라우저 실측: `Enter` 간격 0·1ms 에서 5/5 유실, 오류·토스트 없음).
+ *
+ * `fireEvent` 두 번을 **한 틱 안에서** 쏘면 그 창이 그대로 열린다 — 첫 `addTodo` 는 첫 `await` 에
+ * 걸려 있고, 그 사이에 두 번째 `Enter` 가 난다. 실브라우저 0ms 연타와 같은 순서라 목이 필요 없다.
+ */
+describe('저장 중에 온 입력 (T-67)', () => {
+  it('앞 저장이 끝나기 전에 온 Enter 도 잃지 않는다', async () => {
+    행();
+    const input = 입력();
+
+    fireEvent.change(input, { target: { value: '첫째' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.change(input, { target: { value: '둘째' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(async () => {
+      expect((await 저장된것()).map((t) => t.title).sort()).toEqual(['둘째', '첫째']);
+    });
+    // R5: 같은 그룹이므로 기존 최대(2) 뒤로 3·4 가 나와야 한다 — 겹치면 순서가 무너진다.
+    expect((await 저장된것()).map((t) => t.order).sort((a, b) => a - b)).toEqual([3, 4]);
+  });
+
+  it('저장이 도는 중에 새로 친 글자를 앞 저장이 지우지 않는다', async () => {
+    const 풀기 = 저장을붙잡는다();
+    행();
+    const input = 입력();
+
+    fireEvent.change(input, { target: { value: '첫째' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    // 저장이 아직 도는 중에 사용자가 다음 문장을 친다.
+    fireEvent.change(input, { target: { value: '둘째' } });
+    풀기();
+
+    await waitFor(async () => {
+      expect((await 저장된것()).map((t) => t.title)).toEqual(['첫째']);
+    });
+    expect(입력()).toHaveValue('둘째');
+  });
+
+  it('비워진 칸에서 난 두 번째 Enter 는 검증 문구를 띄우지 않는다', async () => {
+    행();
+    const input = 입력();
+
+    fireEvent.change(input, { target: { value: '첫째' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.keyDown(input, { key: 'Enter' }); // 같은 틱, 새로 친 글자 없음
+
+    await waitFor(async () => {
+      expect((await 저장된것()).map((t) => t.title)).toEqual(['첫째']);
+    });
+    expect(screen.queryByText('할 일을 입력해 주세요')).not.toBeInTheDocument();
   });
 });
