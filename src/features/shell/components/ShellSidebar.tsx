@@ -65,11 +65,26 @@ export function ShellSidebar({
         <CategoryList onSelect={onSelectCategory} onRemove={onRemoveCategory} />
       </div>
 
-      {/* 하단 고정 영역 (R12). 스크롤과 무관하게 항상 같은 자리 — `mt-auto` 로 컬럼 바닥에 붙인다. */}
+      {/*
+        도구 줄 (R12: 테마 토글 · 설정 · 백업/복원). 스크롤 영역 밖이라 목록이 길어져도 밀려나지
+        않는다(`shrink-0`).
+
+        **컬럼일 때는 목록 카드 바로 아래에 붙인다 — 바닥으로 내려보내지 않는다(R12).**
+        `mt-auto` 로 바닥에 붙이면 카드 두 장 **사이**에 빈 띠가 갇힌다: 투두 3~5건이 보통인
+        이 앱에서 실측 538px(1440), 사이드바 높이의 3분의 2였다(FEEL_REPORT §9-2 A). 위아래가
+        전부 카드로 막힌 공백은 "여백" 이 아니라 **레이아웃이 끝나지 않은 자리**로 읽힌다 —
+        메인의 꼬리 공백(§2-A-2 가 "채우지 않는다" 고 정한 그것)과 다른 물건이다. 정보를 새로
+        지어 채우는 대신 **띠를 꼬리로 옮긴다**: 카드는 위에서부터 쌓이고 남는 공간은 아래에
+        모인다 — 메인 컬럼과 같은 문법이다.
+
+        드로어(`framed === false`)는 그대로 `mt-auto` 다. 거기서는 도구 줄이 카드가 아니라
+        대화상자의 발(캔버스 + 1px 구분선, R17)이라 공백을 가두지 않고, 오버레이의 바닥에
+        붙어 있는 편이 손가락에 가깝다.
+      */}
       <div
         className={cn(
-          'mt-auto flex shrink-0 flex-col gap-[var(--space-1)]',
-          framed ? CARD_CLASS : 'border-t border-border pt-[var(--space-2)]',
+          'flex shrink-0 flex-col gap-[var(--space-1)]',
+          framed ? CARD_CLASS : 'mt-auto border-t border-border pt-[var(--space-2)]',
         )}
       >
         <div className="flex items-center gap-[var(--space-1)] px-[var(--space-1)]">
