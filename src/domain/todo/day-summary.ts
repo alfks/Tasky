@@ -6,6 +6,7 @@ import type { Category } from '@/domain/category/category';
 import { sortCategoriesForDisplay } from '@/domain/category/category.rules';
 import type { DateKey } from '@/domain/date/date-key';
 import type { CategoryId } from '@/domain/ids';
+import { completionCounts } from '@/domain/todo/completion-rate';
 import type { Todo } from '@/domain/todo/todo';
 
 /** 셀에 찍는 점의 최대 개수. 넘치면 '+n' 텍스트가 대신한다 (R7). */
@@ -59,19 +60,22 @@ export function indexCategoryDots(categories: readonly Category[]): CategoryDotI
  * 그 조회로도 안 나오는 id)이고, 그 경우에만 위 규칙이 적용된다.
  */
 export function summarizeDay(todos: readonly Todo[], index: CategoryDotIndex): DaySummary {
+  // **세는 일은 `completionCounts` 하나가 한다** (completion-rate R8). 전에는 여기서 따로 셌고 값이
+  // 우연히 같았을 뿐이라 갈라져도 아무 테스트가 죽지 않았다. 이 위임이 "같은 목록을 같은 방식으로
+  // 센다" 를 구조로 만든 지점이고, 두 경로가 다시 갈리면 `completion-invariant.test.ts` 가 죽는다.
+  const { done, total } = completionCounts(todos);
   const seen = new Map<CategoryId, { rank: number; color: string }>();
-  let doneCount = 0;
   for (const todo of todos) {
-    if (todo.done) doneCount += 1;
     const entry = index.get(todo.categoryId);
     if (entry === undefined || seen.has(todo.categoryId)) continue;
     seen.set(todo.categoryId, entry);
   }
   const ordered = [...seen].sort(([, a], [, b]) => a.rank - b.rank);
   return {
-    total: todos.length,
-    doneCount,
-    isAllDone: todos.length > 0 && doneCount === todos.length,
+    total,
+    doneCount: done,
+    // `completionRate(todos) === 1` 과 같은 조건이다(0개면 `null`, 나눗셈 없이 같은 판정).
+    isAllDone: total > 0 && done === total,
     dots: ordered
       .slice(0, MAX_DOTS)
       .map(([categoryId, entry]) => ({ categoryId, color: entry.color })),
