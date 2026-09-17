@@ -149,6 +149,16 @@ export function TodoItem({
       }
       className={cn(
         'flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] px-[var(--space-2)] py-[var(--space-1)]',
+        // 호버는 **앱에 이미 있는 언어 그대로** `--color-surface-2` 다(theme.md §3 표: "hover, 트랙,
+        // 스켈레톤"). 본뜬 곳: `CategoryListItem.tsx`:95 · `Menu.tsx`:127 · `TodoAddRow.tsx`:126 —
+        // 전부 `hover:bg-surface-2`. 행은 포커스를 받는 컨트롤이므로(todo.md §5, tabindex=0 +
+        // Space/Enter/Delete/Alt+↑↓) 다른 클릭 대상과 같은 신호를 내야 한다.
+        //
+        // **터치에서 눌어붙지 않는다**: Tailwind 4 의 `hover:` 는 기본으로 `@media (hover:hover)` 안에
+        // 들어간다(빌드 CSS 에서 확인 — `@media (hover:hover){.hover\:bg-surface-2:hover{…}}`).
+        // 그래서 미디어 쿼리를 **따로 쓰지 않는다** — 손으로 한 겹 더 쓰면 그것이 곧 새 언어다.
+        'hover:bg-surface-2',
+        'transition-colors duration-[var(--motion-fast)] ease-[var(--motion-ease)]',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
         draggingId === todo.id && 'opacity-50',
       )}
@@ -181,6 +191,10 @@ export function TodoItem({
           onClick={() => onEditChange(todo.id, 'title')}
           className={cn(
             'min-w-0 flex-1 truncate rounded-[var(--radius-sm)] bg-transparent px-[var(--space-1)] text-left text-base',
+            // `readOnly` 면 `disabled` 라, 투명 배경 버튼의 기존 언어인 `Button.tsx`:27(ghost:
+            // `bg-transparent text-text hover:enabled:bg-surface-2`)·`DateCell.tsx`:123 을 그대로 쓴다 —
+            // `enabled:` 가 빠지면 누를 수 없는 제목이 눌리는 척한다.
+            'hover:enabled:bg-surface-2',
             'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
             'transition-colors duration-[var(--motion-fast)] ease-[var(--motion-ease)]',
             todo.done ? 'text-muted line-through' : 'text-text',
