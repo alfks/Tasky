@@ -43,11 +43,14 @@ type PwaNoticesProps = {
  */
 export function PwaNotices({ onBackup }: PwaNoticesProps) {
   const { applyUpdate, dismissStorageNotice } = usePwaLifecycle();
+  // ✕ 의 목적지. `usePwaLifecycle` 은 이것을 내주지 않으므로(그 훅은 이 티켓의 owns 밖) 스토어에서
+  // 직접 집는다 — zustand 액션이라 참조가 고정이다.
+  const dismissUpdate = usePwaStore((state) => state.dismissUpdate);
   const isUpdateReady = usePwaStore(selectIsUpdateReady);
   const isStorageNoticeOpen = usePwaStore(selectIsStorageNoticeOpen);
   const isDeferred = useOverlayDeferral(isUpdateReady);
 
-  useUpdateToast(isUpdateReady && !isDeferred, applyUpdate);
+  useUpdateToast(isUpdateReady && !isDeferred, applyUpdate, dismissUpdate);
 
   return (
     /* 영역에 이름을 붙인다: 토스트 뷰포트도 assertive 영역(role="alert")을 하나 갖고 있어
@@ -78,12 +81,12 @@ export function PwaNotices({ onBackup }: PwaNoticesProps) {
  * **밀려나면 화면이 빌 때 다시 올린다**. 지금 떠 있는 토스트가 있으면 기다린다 — 곧바로 되밀면
  * 사용자가 방금 한 동작의 결과(예: `[되돌리기]`)를 읽을 기회를 뺏는다.
  */
-function useUpdateToast(show: boolean, applyUpdate: () => void): void {
+function useUpdateToast(show: boolean, applyUpdate: () => void, dismissUpdate: () => void): void {
   const toasts = useToasts();
   const hubId = useRef<string | null>(null);
-  const latest = useRef(applyUpdate);
+  const latest = useRef({ applyUpdate, dismissUpdate });
   useEffect(() => {
-    latest.current = applyUpdate;
+    latest.current = { applyUpdate, dismissUpdate };
   });
 
   useEffect(() => {
@@ -96,7 +99,11 @@ function useUpdateToast(show: boolean, applyUpdate: () => void): void {
     if (toasts.length > 0) return;
     hubId.current = pushToast({
       message: UPDATE_NOTICE_TEXT,
-      action: { label: '새로고침', onAction: () => latest.current() },
+      action: { label: '새로고침', onAction: () => latest.current.applyUpdate() },
+      // ✕ 로 **사용자가 직접** 닫은 것만 `isUpdateDismissed` 로 남긴다. 자동 닫힘·밀려남에서는
+      // 불리지 않으므로(`Toast` 계약), 아래 "화면이 비면 다시 올린다" 와 부딪히지 않는다 —
+      // 이 배선이 없으면 ✕ 를 눌러도 `show` 가 그대로라 **다음 커밋에 곧바로 되밀린다**(T-29).
+      onDismiss: () => latest.current.dismissUpdate(),
       durationMs: NO_AUTO_DISMISS_MS,
     });
   }, [show, toasts]);
