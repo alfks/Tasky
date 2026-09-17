@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { createPortal } from 'react-dom';
 
+import { IconButton } from '@/components/ui/IconButton';
 import { OVERLAY_ALWAYS_LIVE_ATTR } from '@/components/ui/overlay-rules';
 
 import { cn } from '@/lib/cn';
@@ -11,6 +12,42 @@ import { cn } from '@/lib/cn';
 /** 액션이 있는 토스트는 6초, 없는 토스트는 3초 뒤 자동으로 닫힌다(app-shell R8). */
 const DURATION_WITH_ACTION_MS = 6000;
 const DURATION_MS = 3000;
+
+/**
+ * `setTimeout` 이 실제로 받을 수 있는 최대 지연(ms) = 2^31-1 ≈ **24.8일**.
+ *
+ * 왜 상수로 두는가 — `Infinity` 를 넘기면 "안 닫힘" 이 아니라 **즉시 닫힘** 이 되기 때문이다.
+ * 지연 인자는 HTML 규격에서 WebIDL `long`(32비트 부호 있는 정수)이라 넘기기 전에 `ToInt32` 가
+ * 돌고, `ToInt32(Infinity) === 0` · `ToInt32(NaN) === 0` 이다 → 다음 틱에 바로 터진다.
+ * Node(=jsdom) 는 같은 상황에서 `TimeoutOverflowWarning: Infinity does not fit into a 32-bit
+ * signed integer. Timeout duration was set to 1.` 을 찍고 **1ms** 로 바꾼다(실측: 둘 다 11ms 뒤
+ * 발화). 32비트를 넘는 유한값(`2147483648`)도 똑같이 1ms 로 접힌다 — 큰 수를 넣는 우회가
+ * "오래 유지" 가 아니라 **즉시 닫힘** 으로 뒤집히는 지점이 바로 여기다.
+ *
+ * 그래서 "유지" 는 **큰 수가 아니라 타이머를 아예 걸지 않는 것**으로만 표현한다(`durationMs: null`).
+ */
+const TIMER_MAX_MS = 2_147_483_647;
+
+/** ✕ 의 접근 이름. 토스트 문구에 따라 바꾸지 않는다 — 아래 `Toast` 주석 참고. */
+export const TOAST_DISMISS_LABEL = '알림 닫기';
+
+/**
+ * 렌더할 유지 시간. `null` 이면 **자동으로 닫지 않는다**(타이머를 걸지 않는다).
+ *
+ * - `undefined`(기본): 액션 유무로 6초/3초.
+ * - `null`: 유지. 사용자가 ✕ 를 누르거나 호출부가 `dismissToast` 할 때까지 남는다.
+ * - 유한하지 않은 수(`Infinity`·`NaN`)와 `TIMER_MAX_MS` 이상: **유지로 접는다**. 타이머에 그대로
+ *   넘기면 위 주석대로 즉시 닫히거나 24.8일 뒤 닫히는데, 둘 다 호출부의 의도("안 닫힘")가 아니다.
+ */
+export function resolveToastDuration(
+  durationMs: number | null | undefined,
+  hasAction: boolean,
+): number | null {
+  if (durationMs === undefined) return hasAction ? DURATION_WITH_ACTION_MS : DURATION_MS;
+  if (durationMs === null) return null;
+  if (!Number.isFinite(durationMs) || durationMs >= TIMER_MAX_MS) return null;
+  return Math.max(0, durationMs);
+}
 
 type ToastAction = {
   /** 예: '되돌리기' */
@@ -29,8 +66,18 @@ export type ToastItem = {
   /** 되돌리기 같은 액션. 있으면 기본 유지 시간이 6초가 된다. */
   action?: ToastAction;
   variant?: ToastVariant;
-  /** 유지 시간(ms). 기본값은 액션 유무로 정해진다. */
-  durationMs?: number;
+  /**
+   * 유지 시간(ms). 기본값은 액션 유무로 정해진다(6초/3초).
+   * **`null` 은 "자동으로 닫지 않는다"** — 업데이트 알림처럼 사용자가 직접 닫아야 하는 토스트가 쓴다
+   * (pwa R4 §2). 큰 수로 흉내내지 말 것: `resolveToastDuration` 주석 참고.
+   */
+  durationMs?: number | null;
+  /**
+   * ✕ 로 **사용자가 직접 닫았을 때**만 불린다(자동 닫힘·`dismissToast` 에서는 불리지 않는다).
+   * 띄운 쪽이 "다시 올리지 않는다" 를 기억해야 할 때 쓴다 — PWA 업데이트 알림의 `dismissUpdate`
+   * 가 이 경로다(pwa-store `isUpdateDismissed`). 없으면 그냥 화면에서만 사라진다.
+   */
+  onDismiss?: () => void;
 };
 
 /**
@@ -172,18 +219,34 @@ type ToastProps = Omit<ToastItem, 'id'> & {
 /**
  * 토스트 한 장. 스스로는 라이브 영역이 **아니다** — 낭독은 `ToastViewport` 의 상주 영역이 맡는다.
  * 자동 닫힘 타이머는 hover·포커스 중 멈춘다(app-shell R8).
+ *
+ * **✕ 는 모든 토스트에 있다**(pwa §2 는 업데이트 알림에만 그리지만 여기서 갈라 두지 않는다).
+ * 자동으로 닫히는 토스트라도 hover·포커스 중에는 타이머가 멈추므로, ✕ 가 없으면 `[되돌리기]` 에
+ * 포커스를 둔 키보드 사용자는 **토스트를 닫을 방법이 없다**(실측: 포커스 상태로 7초 넘게 생존).
+ * 닫는 수단이 조건부면 그 상태를 학습할 수 없으니 항상 같은 자리에 둔다.
+ *
+ * **✕ 의 접근 이름은 토스트 문구에 따라 바뀌지 않는다**(`TOAST_DISMISS_LABEL` 고정). 토스트는
+ * `role="status"`/`role="alert"` 상주 영역 **안**에 삽입되므로 삽입된 부분트리의 접근 이름이 전부
+ * 낭독에 섞인다 — 이름에 문구를 넣으면("'삭제했어요' 알림 닫기") 한 번 뜰 때 같은 문구를 두 번
+ * 읽는다. 화면에 남는 토스트는 하나뿐(`MAX_VISIBLE_TOASTS`)이라 짧은 고정 이름으로도 가리키는
+ * 대상이 모호하지 않다.
  */
 export function Toast({
   message,
   action,
   variant = 'default',
   durationMs,
+  onDismiss,
   onClose,
   className,
 }: ToastProps) {
-  const total = durationMs ?? (action === undefined ? DURATION_MS : DURATION_WITH_ACTION_MS);
+  const total = resolveToastDuration(durationMs, action !== undefined);
   const remainingRef = useRef(total);
   const [paused, setPaused] = useState(false);
+  // ✕ 를 누르면 이 토스트가 통째로 사라진다 — 그러면 포커스는 `<body>` 로 떨어지고 키보드
+  // 사용자는 문서 처음부터 다시 Tab 해야 한다(실측: 닫은 직후 activeElement === BODY).
+  // 그래서 **토스트 밖에서 들어온** 첫 포커스의 출발지를 기억해 두었다가 닫을 때 되돌려준다.
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   const latestRef = useRef({ onClose });
   useEffect(() => {
@@ -193,11 +256,14 @@ export function Toast({
   // 멈춤/재개마다 타이머를 새로 걸고, 정리할 때 남은 시간을 기록해 둔다 — 재개하면 그 시점부터 이어 간다.
   useEffect(() => {
     if (paused) return undefined;
+    // 유지(null)면 타이머를 **걸지 않는다**. 큰 수를 넣어 흉내내면 32비트 경계에서 뒤집힌다.
+    const remaining = remainingRef.current;
+    if (remaining === null) return undefined;
     const startedAt = Date.now();
-    const timer = window.setTimeout(() => latestRef.current.onClose(), remainingRef.current);
+    const timer = window.setTimeout(() => latestRef.current.onClose(), remaining);
     return () => {
       window.clearTimeout(timer);
-      remainingRef.current = Math.max(0, remainingRef.current - (Date.now() - startedAt));
+      remainingRef.current = Math.max(0, remaining - (Date.now() - startedAt));
     };
   }, [paused]);
 
@@ -208,7 +274,14 @@ export function Toast({
     <div
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
+      onFocus={(e) => {
+        setPaused(true);
+        // 안에서 [액션] ↔ [✕] 로 옮겨 다닐 때는 덮어쓰지 않는다 — 들어온 지점만 기억한다.
+        const from = e.relatedTarget;
+        if (from instanceof HTMLElement && !e.currentTarget.contains(from)) {
+          returnFocusRef.current = from;
+        }
+      }}
       onBlur={() => setPaused(false)}
       className={cn(
         'pointer-events-auto flex items-center gap-[var(--space-4)] rounded-[var(--radius-lg)] border',
@@ -236,6 +309,20 @@ export function Toast({
           {action.label}
         </button>
       )}
+      {/* 탭 순서는 DOM 순서 그대로 [액션] → [✕] 다. ✕ 가 마지막이라 액션을 건너뛰지 않는다. */}
+      <IconButton
+        label={TOAST_DISMISS_LABEL}
+        onClick={() => {
+          onDismiss?.();
+          onClose();
+          // 되돌릴 곳이 사라졌으면(그 요소도 같이 지워진 경우) 그대로 둔다 — 없는 곳으로 보낼 수 없다.
+          const back = returnFocusRef.current;
+          if (back?.isConnected === true) back.focus();
+        }}
+        className="-mr-[var(--space-2)]"
+      >
+        ✕
+      </IconButton>
     </div>
   );
 }
