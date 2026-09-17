@@ -1,4 +1,4 @@
-<!-- 읽기 조건: src/features/backup/ 바로 아래(components/store)에 파일을 추가하기 전, 관할만 확인하려고. 규칙 본문은 src/features/AGENTS.md. -->
+<!-- 읽기 조건: src/features/backup/ 바로 아래(components/hooks/store)에 파일을 추가하기 전, 관할만 확인하려고. 규칙 본문은 src/features/AGENTS.md. -->
 
 # src/features/backup/ — AGENTS
 
@@ -6,5 +6,7 @@
 백업 파일 형식·검증·병합 규칙은 [src/domain/backup/AGENTS.md](../../domain/backup/AGENTS.md).
 
 ## 관할: components/
+
+## 관할: hooks/
 
 ## 관할: store/
