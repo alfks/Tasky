@@ -5,6 +5,8 @@
 # 하나가 실패해도 나머지를 끝까지 돌려 그 실행 안에서 실패를 전부 보여주기 때문 — 스텝을 쪼개
 # fail-fast 하면 첫 실패 이후 검사 결과를 같은 실행에서 볼 수 없다. 어느 검사가 실패했는지는
 # 로그의 "FAIL: <라벨>" 줄과 check.sh 가 내는 `::error::` 애노테이션으로 PR 체크 요약에서도 보인다.
+# 세 번째 잡 `perf` 는 예외다 — 느린 스위트는 **의도적으로 PR 게이트 밖**이라 check.sh 를 거치지
+# 않고 main push 에서만 돈다. 이유는 그 잡의 주석에 있다.
 name: CI
 
 on:
@@ -119,3 +121,37 @@ jobs:
       - name: 빌드 산출물에 금지어 없음 확인 (생성 파일 포함)
         if: steps.pkg.outputs.present == 'true'
         run: bash scripts/check-forbidden-words.sh --paths dist/client public
+
+  perf:
+    # **PR 에는 일부러 붙이지 않는다.** 성능 측정은 러너 상태에 흔들린다 — T-24 실측에서 재정렬
+    # `max` 진폭이 1.67~34.5ms(20배)였고 같은 실행의 p95 는 0.10~0.24ms 였다(GC 일시정지). 이걸
+    # PR 게이트로 쓰면 회귀가 아니라 잡음에 빨간불이 켜져 멀쩡한 PR 의 머지가 막힌다. 그래서
+    # **main 에 들어간 뒤에만** 돌려 회귀를 기록한다(`if: github.event_name == 'push'`).
+    # 예산은 `max` 가 아니라 **p95** 로 견주므로(todo-perf.slow.test.ts 상단 주석) 튀는 `max` 로는
+    # 실패하지 않는다. 여유도 크다 — 실측 p95 0.097/0.152/0.094ms 대 예산 50/5/5ms.
+    #
+    # 이 잡만 `scripts/check.sh` 를 거치지 않고 `pnpm test:slow` 를 직접 부른다. check.sh 는 **PR
+    # 게이트의 단일 소스**이고 느린 스위트는 의도적으로 그 게이트 밖이기 때문이다 — check.sh 에
+    # 넣으면 로컬 훅과 PR 잡에도 딸려 들어가 위의 결정이 뒤집힌다.
+    name: perf (느린 스위트 — main 머지 후 측정 · PR 게이트 아님)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: pnpm 설치
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Node 설치
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 의존성 설치
+        run: pnpm install --frozen-lockfile
+
+      - name: 느린 스위트 (성능 예산 — 측정값은 이 스텝 로그의 `[perf]` 줄)
+        run: pnpm test:slow
