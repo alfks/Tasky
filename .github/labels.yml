@@ -1,10 +1,28 @@
 # 읽기 조건: 라벨을 추가/변경할 때, 또는 새 레포에 라벨을 동기화할 때.
-# 적용: yq/jq 없이 gh 만으로 — 이 파일이 한 줄에 하나씩 `{ name: "...", color: "...", description: "..." }`
-# 형식(flow mapping)을 유지하는 한 grep+sed 로 그대로 파싱된다(yq 바이너리마다 필터 문법이 달라
-# 버전에 따라 깨지므로 쓰지 않는다). gh 만 있으면 된다:
-#   grep -E '^\- \{ name:' .github/labels.yml | \
+# 이 파일은 라벨 **정의**의 단일 소스다. 레포 실물과 갈릴 수 있으므로 아래 "드리프트 확인"을 먼저 돌린다.
+#
+# 적용: yq/jq 없이 gh 만으로 — 이 파일이 **한 줄에 하나씩**
+# `- { name: "...", color: "...", description: "..." }` 형식(flow mapping)을 유지하는 한 grep+sed 로
+# 그대로 파싱된다(yq 바이너리마다 필터 문법이 달라 버전에 따라 깨지므로 쓰지 않는다).
+# **줄바꿈된 항목은 아래 grep 이 통째로 건너뛴다** — prettier 가 printWidth(100)를 넘겨 접지 않도록
+# 설명을 짧게 쓰고, 그래도 넘치면 바로 위에 `# prettier-ignore` 를 붙여 한 줄을 지킨다.
+#
+#   # 1) 드리프트 확인(읽기 전용) — 정의에만 있는 것 / 실물에만 있는 것
+#   grep -E '^- \{ name:' .github/labels.yml | sed -E 's/^- \{ name: "([^"]+)".*$/\1/' | sort > /tmp/def
+#   gh label list --limit 200 --json name -q '.[].name' | sort > /tmp/live
+#   comm -23 /tmp/def /tmp/live   # 정의됐는데 레포에 없음 → 아래 2) 로 생성
+#   comm -13 /tmp/def /tmp/live   # 레포에만 있음 → 사람이 판단(자동 삭제하지 않는다, 아래 참고)
+#
+#   # 2) 생성/갱신(만들기만 한다. 지우지 않는다)
+#   grep -E '^- \{ name:' .github/labels.yml | \
 #   sed -E 's/^- \{ name: "([^"]+)", *color: "([^"]+)", *description: "([^"]+)" *\}.*$/\1\t\2\t\3/' | \
 #   while IFS=$'\t' read -r n c d; do gh label create "$n" --color "$c" --description "$d" --force; done
+#
+# **prune(정의에 없는 라벨 일괄 삭제)은 일부러 자동화하지 않는다.** 라벨 삭제는 되돌릴 수 없고,
+# 삭제하면 그 라벨이 붙어 있던 **과거 PR·이슈에서도 함께 사라진다**. 이 레포는 CI 가 멈춘 동안
+# PR 라벨이 "어떤 변경이 어디를 건드렸는지"의 사실상 유일한 색인이라 더 그렇다.
+# 게다가 GitHub 기본 라벨(bug·enhancement·question·accessibility 등 10종)은 이 파일에 정의되지
+# 않으므로 단순 prune 은 그것들까지 지운다. 정리는 위 1) 의 `comm -13` 결과를 사람이 한 건씩 본다.
 
 # --- type: PR/이슈의 변경 유형 (커밋 type과 동일) ---
 - { name: "type:feature", color: "0E8A16", description: "새 기능" }
@@ -19,9 +37,14 @@
 - { name: "area:category", color: "5319E7", description: "카테고리" }
 - { name: "area:date-strip", color: "5319E7", description: "날짜 스트립/달력" }
 - { name: "area:theme", color: "5319E7", description: "테마/색상" }
+- { name: "area:timer", color: "5319E7", description: "포커스 타이머" }
+- { name: "area:command", color: "5319E7", description: "커맨드 팔레트/단축키" }
+- { name: "area:shell", color: "5319E7", description: "앱 셸/레이아웃/전역 레이어" }
+- { name: "area:ui", color: "5319E7", description: "공용 UI 프리미티브" }
 - { name: "area:domain", color: "1D76DB", description: "도메인 규칙" }
 - { name: "area:infra", color: "1D76DB", description: "IndexedDB/저장소 구현" }
 - { name: "area:collab", color: "E4E669", description: "협업 규칙/CI/스크립트" }
+- { name: "area:docs", color: "E4E669", description: "문서/스펙/규약" }
 - { name: "area:pwa", color: "1D76DB", description: "PWA/서비스워커" }
 
 # --- review: 리뷰 라운드 상태 (오케스트레이터가 갱신) ---
@@ -36,10 +59,11 @@
 - { name: "status:escalated", color: "B60205", description: "3라운드 초과, 사용자 결정 필요" }
 
 # --- size / phase ---
-- {
-    name: "size:large",
-    color: "E99695",
-    description: "diff 300줄 초과 (스캐폴딩/설정 등 정당한 예외)",
-  }
+# prettier-ignore
+- { name: "size:large", color: "E99695", description: "diff 300줄 초과 (스캐폴딩/설정 등 정당한 예외)" }
 - { name: "phase:2", color: "D4C5F9", description: "Phase 2(SNS/동기화) 범위" }
 - { name: "adr", color: "006B75", description: "아키텍처 결정 기록 포함" }
+# --- 일부러 정의하지 않는 이름 (실물 레포에 떠 있어도 새로 붙이지 않는다) ---
+# size:small  : size 라벨은 "300줄 초과 예외" 표시 전용이다(git-workflow.md §4). 작은 PR 이 기본값이라
+#               붙여도 정보가 없다. 과거 PR 2건(#38·#41)에 남아 있으나 확산시키지 않는다.
+# area:ci     : CI/스크립트는 area:collab 이 이미 덮는다. 사용처 0건이라 사람이 지우면 된다.

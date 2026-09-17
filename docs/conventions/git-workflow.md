@@ -141,6 +141,17 @@ bash scripts/wt.sh rm date-strip
 
 PR 크기: diff 300줄 초과면 오케스트레이터가 분할을 검토. 스캐폴딩·설정 PR은 예외(라벨 `size:large` 명시).
 
+### 4.1 라벨 규약
+
+정의의 단일 소스는 **`.github/labels.yml`** 이다(색·설명·동기화 명령 포함). 여기엔 *고르는 규칙*만 적는다.
+
+1. **PR 에는 `type:<type>` + `area:<scope>` 를 각각 최소 1개** 붙인다. 리뷰 중에는 `review:round-N`, 머지 직전엔 `status:ready-to-merge` 를 더한다.
+2. **`labels.yml` 에 없는 이름을 즉석에서 만들지 않는다.** 필요하면 `labels.yml` 에 먼저 추가하는 PR 을 내고, 머지 후 동기화 명령으로 실물을 만든다. `gh pr edit --add-label` 로 없는 이름을 주면 회색 라벨이 조용히 생겨 정의와 갈린다 — 실제로 그렇게 7종이 쌓였다.
+3. **붙이기 전에 실물을 확인한다**: `gh label list --limit 200`. `labels.yml` 에 정의됐다고 레포에 있는 것은 아니다 — 동기화는 사람이 돌려야 실물이 생긴다.
+4. **`size:` 는 예외 표시 전용이다.** `size:large`(300줄 초과)만 쓴다. `size:small` 은 쓰지 않는다 — 작은 PR 이 기본값이라 정보가 없다.
+5. **CI·스크립트 변경은 `area:collab`** 이다. `area:ci` 라는 이름은 쓰지 않는다.
+6. **라벨 삭제는 사람이 한 건씩 한다.** 삭제는 되돌릴 수 없고 과거 PR 에서도 함께 사라지므로, 동기화 명령에 prune 을 붙이지 않는다(근거: `labels.yml` 머리 주석).
+
 ## 5. 충돌 해결 규칙
 
 1. 충돌은 **항상 작업 브랜치 쪽에서 리베이스로** 해결. `main`에 merge 커밋 금지, `git merge main` 금지.
