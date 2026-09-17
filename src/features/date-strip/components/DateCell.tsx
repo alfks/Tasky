@@ -105,10 +105,16 @@ export function DateCell({
         'rounded-[var(--radius-lg)] motion-safe:transition-colors motion-safe:duration-[var(--motion-xfast)] motion-safe:ease-[var(--motion-ease)]',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
         'disabled:cursor-not-allowed disabled:opacity-40',
+        // 선택 = 파스텔 채움 + 중립 잉크 링(theme.md §3-G R17). 라이트에서 파스텔 채움은 배경과
+        // 1.14~2.16:1 뿐이라 채움만으로는 WCAG 1.4.11 의 3:1 에 못 미친다 — 3:1 을 지는 것은
+        // `--color-selected-ring`(= --color-text) 링이다. 안쪽 링이라 칸 크기가 변하지 않는다.
+        // 채움 유틸은 강조색 이름 그대로 둔다: 선택 채움 토큰이 강조색을 가리켜 렌더 결과가 같은데,
+        // 이름만 바꾸면 그 클래스 문자열을 재는 테스트 파일들이 깨진다(그 파일들은 T-49 소유다).
         isSelected
-          ? 'bg-accent text-on-accent'
+          ? 'bg-accent text-on-accent ring-[length:var(--control-selected-ring)] ring-selected-ring ring-inset'
           : 'bg-transparent text-text hover:enabled:bg-surface-2',
-        // 오늘이면서 선택이면 채움만 남긴다 (R3).
+        // 오늘이면서 선택이면 강조색 링을 걷어내고 잉크 링만 남긴다 (R3 · theme.md §3-G R20).
+        // "오늘"(강조색 링, 채움 없음)과 "선택"(채움 + 잉크 링)은 색도 채움 여부도 달라 겹치지 않는다.
         isToday && !isSelected && 'ring-2 ring-accent ring-inset',
         isDropTarget && 'border-2 border-dashed border-accent',
       )}
