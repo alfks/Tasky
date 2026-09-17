@@ -27,11 +27,7 @@ export function inkDensity(selector) {
     if (bg !== null && (bg[4] === undefined || Number(bg[4]) > 0)) return true;
     if (s.boxShadow !== 'none' && s.boxShadow !== '') return true;
     const sides = ['Top', 'Right', 'Bottom', 'Left'];
-    if (
-      sides.some(
-        (d) => parseFloat(s[`border${d}Width`]) > 0 && s[`border${d}Style`] !== 'none',
-      )
-    )
+    if (sides.some((d) => parseFloat(s[`border${d}Width`]) > 0 && s[`border${d}Style`] !== 'none'))
       return true;
     if (['svg', 'IMG', 'INPUT', 'HR', 'CANVAS', 'VIDEO'].includes(el.tagName)) return true;
     return [...el.childNodes].some((n) => n.nodeType === 3 && (n.textContent ?? '').trim() !== '');

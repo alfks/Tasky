@@ -16,8 +16,8 @@ import {
   waitForShell,
   writeJson,
 } from './lib/harness.mjs';
-import { completionSurfaces } from './lib/probe.mjs';
 import { cardCensus, inkDensity, selectedRingCensus } from './lib/probe-density.mjs';
+import { completionSurfaces } from './lib/probe.mjs';
 
 const SIZES = [
   [1440, 900],
@@ -42,7 +42,11 @@ const RING_GROUPS = [
     group: '강조색 스와치(선택)',
     selector: '[role="radiogroup"][aria-label="강조색"] [role="radio"][aria-checked="true"]',
   },
-  { group: '타이머 시간 라디오(체크)', selector: 'input[type=radio]:checked', scopeSelector: 'label' },
+  {
+    group: '타이머 시간 라디오(체크)',
+    selector: 'input[type=radio]:checked',
+    scopeSelector: 'label',
+  },
 ];
 
 const browser = await launch();
@@ -105,7 +109,5 @@ log('\n--- 선택됨 링(1440 라이트) ---');
 for (const e of wide.rings.entries) {
   log(`  ${e.group}: ${e.found ? JSON.stringify(e.ring) : '화면에 없음'}`);
 }
-log(
-  `\n링 토큰: 색 ${wide.rings.ringColorToken} / 굵기 ${wide.rings.ringWidthToken}`,
-);
+log(`\n링 토큰: 색 ${wide.rings.ringColorToken} / 굵기 ${wide.rings.ringWidthToken}`);
 log('\n저장: ' + writeJson('t60-density-and-surface.json', report));

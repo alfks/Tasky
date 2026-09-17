@@ -85,6 +85,17 @@ export async function seed(page, titles = ['장보기', '방 청소', '물 마�
   await page.waitForTimeout(200);
 }
 
+/**
+ * 오늘 기준 **상대 날짜**의 접근 이름 조각(`9월 18일`). 스크립트가 `9월 17일` 같은 절대 날짜를
+ * 박아 두면 **측정한 날에만 돈다** — T-25 가 그렇게 적어 둔 탓에 하루 뒤 `오늘로 이동` 이
+ * 비활성(오늘이라서)이 되어 `motion-and-latency.mjs` 가 통째로 죽었다(T-60 실측).
+ */
+export function dayLabel(offsetDays = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
+
 export function writeJson(name, data) {
   mkdirSync(OUT_DIR, { recursive: true });
   const path = join(OUT_DIR, name);
