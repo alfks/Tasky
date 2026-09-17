@@ -7,11 +7,12 @@
 // 계약 테스트는 이 전역 묶음을 쓰지 않고 `ContractTarget.create()` 로 매번 새 묶음을 만든다.
 import 'fake-indexeddb/auto';
 import '@testing-library/jest-dom/vitest';
-import { beforeEach } from 'vitest';
+import { afterEach, beforeEach, expect } from 'vitest';
 
 import { setRepositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
+import { overlayLayerCount } from '@/components/ui/overlay-stack';
 import { clearToasts } from '@/components/ui/Toast';
 
 setRepositories(createMemoryRepositories());
@@ -39,4 +40,21 @@ setRepositories(createMemoryRepositories());
  */
 beforeEach(() => {
   clearToasts();
+});
+
+/**
+ * 오버레이 스택(`components/ui/overlay-stack.ts`)이 비어 있는 채로 테스트가 끝나는지 본다 (T-49).
+ *
+ * 비우지 않고 **고발만** 하는 이유: 이 스택은 `pushOverlayLayer` 의 정리 함수로만 내려가고, 그
+ * 정리 함수는 오버레이 컴포넌트의 언마운트가 부른다. 여기서 몰래 비우면 "정리가 안 붙은 레이어" 를
+ * 감출 뿐이다. 그리고 그 사고는 실제로 났다 — T-44 에서 DOM 없는 레이어 하나가 스택에 눌러앉아
+ * `overlayLayerCount()` 가 영원히 1 이상이 됐고, 그 값을 보는 전역 단축키와 PWA 업데이트 토스트가
+ * **조용히 죽은 채로 전 스위트가 초록**이었다.
+ *
+ * 실측(T-49): 2010건 전부 0 으로 끝난다. 즉 지금은 공짜로 켤 수 있는 그물이다. RTL 의 자동
+ * `cleanup` 은 테스트 파일이 나중에 등록하므로 vitest 의 기본 `stack` 순서에서 이 훅보다 **먼저**
+ * 돈다 — 언마운트가 끝난 뒤의 값을 본다.
+ */
+afterEach(() => {
+  expect(overlayLayerCount(), '오버레이 레이어가 남은 채 테스트가 끝났다').toBe(0);
 });
