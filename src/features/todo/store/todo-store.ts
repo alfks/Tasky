@@ -20,7 +20,13 @@ export type { TodoActions };
 export type TodoStore = TodoState & TodoActions;
 
 /** 아직 아무 날짜도 읽지 않은 상태. */
-const initialState: TodoState = { byId: {}, date: null, status: 'idle', error: null };
+const initialState: TodoState = {
+  byId: {},
+  date: null,
+  status: 'idle',
+  error: null,
+  writeRevision: 0,
+};
 
 /** 실제 시계·UUID. 테스트는 `createTodoStore(fixedDeps())` 로 결정적인 주입기를 쓴다. */
 const defaultDeps: MetaDeps = { now: nowIso, id: newId };

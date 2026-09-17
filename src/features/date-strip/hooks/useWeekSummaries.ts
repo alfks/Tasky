@@ -3,7 +3,14 @@
 // 보이는 주 7일의 요약(점·✓) 조회 (date-strip.md §2-C·§4·R7·R8).
 //
 // 셀·숫자는 즉시 그리고 요약만 늦게 붙는다 — 그래서 로딩 상태를 따로 내보내지 않고 `undefined`
-// 하나로 "아직 없음"을 표현한다(스켈레톤 없음, §2-C). 조회 실패도 같은 `undefined` 라 점이 사라진다.
+// 하나로 "아직 없음"을 표현한다(스켈레톤 없음, §2-C).
+//
+// **`undefined` 로 비우는 조건은 "보이는 주가 바뀌었다" 하나뿐이다** (T-56). 요약은 주가 바뀔 때만
+// 다시 읽는 것이 아니라 투두를 쓸 때마다 다시 읽는데, 다시 읽을 때마다 비우면 체크 한 번에 주
+// 전체의 점·✓ 가 사라졌다 다시 나타난다. 그래서 상태에 **어느 주의 요약인지**를 함께 담고
+// (`{ week, summaries }`) 비우기는 `useEffect` 가 아니라 **렌더 중 대조**로 한다 — 주가 바뀌면
+// 그 렌더에서 이미 `undefined` 이고, 그 밖의 재조회에서는 새 값이 도착할 때까지 이전 요약이 남는다.
+// 실패 경로도 같은 이유로 상태를 건드리지 않는다(이미 보이던 점을 재조회 실패가 지우면 안 된다).
 import { useEffect, useRef, useState } from 'react';
 
 import type { Category } from '@/domain/category/category';
@@ -43,15 +50,27 @@ async function loadWeekSummaries(days: readonly DateKey[]): Promise<Map<DateKey,
   return summarizeDays(days, todoList, [...living, ...deleted]);
 }
 
+/** 읽은 요약 + **어느 주의 것인지**. 주가 바뀌면 렌더 중 대조만으로 옛 주의 요약이 걸러진다. */
+type LoadedWeek = {
+  readonly week: DateKey;
+  readonly summaries: Map<DateKey, DaySummary>;
+};
+
 /**
  * `weekStart` 가 속한 주 7일의 요약. 아직 못 읽었거나 실패하면 `undefined`.
+ *
+ * `revision` 은 **저장소가 바뀌었다는 신호**다 — 값이 바뀌면 같은 주를 다시 읽는다(T-56). 스트립은
+ * 자기 투두를 따로 조회해 캐시하므로, 이 신호가 없으면 체크·추가·삭제·가져오기 뒤에도 점·✓ 와 셀
+ * 접근성 이름이 낡은 채로 남는다. 어떤 값을 합쳐 넣을지는 셸이 정한다(`ShellHeader`).
+ *
  * `onError` 는 실패할 때 한 번 불린다(렌더 중이 아니라 비동기 경로에서).
  */
 export function useWeekSummaries(
   weekStart: DateKey,
+  revision: number,
   onError?: (message: string) => void,
 ): Map<DateKey, DaySummary> | undefined {
-  const [summaries, setSummaries] = useState<Map<DateKey, DaySummary> | undefined>(undefined);
+  const [loaded, setLoaded] = useState<LoadedWeek | undefined>(undefined);
   // 콜백 정체성이 바뀌어도 재조회하지 않게 ref 로 받는다 — 호출부가 useCallback 을 쓰도록 강요하지 않는다.
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
@@ -59,23 +78,24 @@ export function useWeekSummaries(
   useEffect(() => {
     let cancelled = false;
     const days = weekDays(weekStart);
-    setSummaries(undefined);
 
     loadWeekSummaries(days)
       .then((next) => {
         if (cancelled) return;
-        setSummaries(next);
+        setLoaded({ week: weekStart, summaries: next });
       })
       .catch(() => {
         if (cancelled) return;
-        setSummaries(undefined);
+        // 상태를 비우지 않는다: 주가 바뀐 직후라면 아래 대조가 이미 `undefined` 를 돌려주고,
+        // 같은 주를 다시 읽다 실패한 것이라면 이미 보이던 점이 사라질 이유가 없다 (§2-C).
         onErrorRef.current?.(SUMMARY_ERROR_MESSAGE);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [weekStart]);
+  }, [weekStart, revision]);
 
-  return summaries;
+  // 렌더 중 파생 — 주가 바뀐 렌더에서 `useEffect` 를 기다리지 않고 옛 주의 점이 즉시 사라진다.
+  return loaded?.week === weekStart ? loaded.summaries : undefined;
 }

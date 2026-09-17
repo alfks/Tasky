@@ -7,16 +7,21 @@
 //
 // 배선은 셸이 실제로 하는 것 그대로다: `<CommandLayer palette={<CommandPalette/>}/>` 한 번
 // (`ShellGlobals`) + 헤더 하나.
-import { render, screen, waitFor } from '@testing-library/react';
+//
+// 아래쪽 T-56 절도 같은 질문을 한다: **"쓰기 뒤에 날짜 셀이 실제로 다시 읽히는가"**. 그 배선이
+// 여기 있는 이유는 `date-strip` 이 feature 그래프의 리프라 `todo`·`backup` 을 스스로 구독할 수 없고
+// (`import/no-cycle`) 셸이 세 화살표를 모두 가진 유일한 합성 지점이기 때문이다.
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DateKey } from '@/domain/date/date-key';
 import { adopt } from '@/domain/meta';
 
-import { setRepositories } from '@/repositories/container';
+import { getRepositories, setRepositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
+import { useBackupStore } from '@/features/backup';
 import { CommandLayer, CommandPalette, useCommandStore } from '@/features/command';
 import { useDateStripStore } from '@/features/date-strip';
 import { ShellHeader } from '@/features/shell/components/ShellHeader';
@@ -24,6 +29,7 @@ import type { CompletionSummary } from '@/features/stats';
 import { useTimerStore } from '@/features/timer';
 import { useTodoStore } from '@/features/todo';
 import { makeCategory } from '@/test/fixtures/category';
+import { FIXTURE_CATEGORY_ID, makeTodo } from '@/test/fixtures/todo';
 
 const TODAY = '2026-09-16' as DateKey;
 const SUMMARY: CompletionSummary = { done: 3, total: 5, rate: 0.6, percent: 60 };
@@ -61,7 +67,8 @@ beforeEach(async () => {
     commandError: null,
   });
   useDateStripStore.setState({ selectedDate: TODAY, today: TODAY });
-  useTodoStore.setState({ status: 'ready' });
+  useTodoStore.setState({ byId: {}, date: null, status: 'ready', error: null, writeRevision: 0 });
+  useBackupStore.setState({ dataRevision: 0 });
   useTimerStore.setState({ session: null });
 });
 
@@ -132,5 +139,92 @@ describe('ShellHeader — 팔레트 입구 (T-36)', () => {
     // jsdom 은 mac 이 아니므로 `Ctrl` 갈래다. 표기 자체는 `ShortcutKeys` 가 만든다.
     expect(entry).toHaveTextContent('Ctrl');
     expect(entry).toHaveTextContent('K');
+  });
+});
+
+describe('ShellHeader — 쓰기 뒤에 주 요약이 다시 읽힌다 (T-56)', () => {
+  /**
+   * 그날 셀의 접근 이름. 점·✓ 는 `aria-hidden` 이라 **낭독되는 요약은 이 문자열이 전부**이고
+   * (date-strip §5), T-45 가 낡은 값을 관측한 자리도 정확히 여기다.
+   */
+  const cellName = (): string | null =>
+    screen.getByRole('radio', { name: /^9월 16일/ }).getAttribute('aria-label');
+
+  it('투두를 체크하면 **같은 화면에서** 날짜 셀 접근성 이름이 따라 바뀐다', async () => {
+    const todo = makeTodo({ seq: 1, date: TODAY });
+    await getRepositories().todos.upsert(adopt(todo));
+    render(<Harness />);
+    await act(async () => {
+      await useTodoStore.getState().loadDate(TODAY);
+    });
+
+    // BEFORE — 적재만으로는 여기까지다. 다시 마운트하지 않고 이 문자열이 바뀌는지를 본다.
+    await waitFor(() => expect(cellName()).toContain('할 일 1개 중 0개 완료'));
+    const before = cellName();
+
+    await act(async () => {
+      await useTodoStore.getState().toggleDone(todo.id, true);
+    });
+
+    // AFTER — 같은 마운트, 같은 노드. 쓰기 revision 이 없으면 여기서 BEFORE 가 그대로 남는다.
+    await waitFor(() => expect(cellName()).toContain('할 일 1개 중 1개 완료'));
+    expect(cellName()).not.toBe(before);
+  });
+
+  it('투두를 추가하면 **같은 화면에서** 날짜 셀 접근성 이름이 따라 바뀐다', async () => {
+    render(<Harness />);
+    await act(async () => {
+      await useTodoStore.getState().loadDate(TODAY);
+    });
+    await waitFor(() => expect(cellName()).toBe('9월 16일 수요일, 오늘'));
+    const before = cellName();
+
+    await act(async () => {
+      await useTodoStore.getState().addTodo({ categoryId: FIXTURE_CATEGORY_ID, title: '운동' });
+    });
+
+    await waitFor(() => expect(cellName()).toContain('할 일 1개 중 0개 완료'));
+    expect(cellName()).not.toBe(before);
+  });
+
+  it('실패해 되돌아간 쓰기는 요약을 건드리지 않는다 — 낡은 값으로 덮이지 않는다', async () => {
+    // 저장이 깨진 저장소. 낙관적 토글은 화면에 먼저 반영됐다가 되돌아간다(R6).
+    const base = createMemoryRepositories();
+    const todo = makeTodo({ seq: 1, date: TODAY });
+    await base.categories.upsert(adopt(makeCategory({ seq: 1 })));
+    await base.todos.upsert(adopt(todo));
+    setRepositories({
+      ...base,
+      todos: { ...base.todos, upsert: () => Promise.reject(new Error('저장 실패')) },
+    });
+    render(<Harness />);
+    await act(async () => {
+      await useTodoStore.getState().loadDate(TODAY);
+    });
+    await waitFor(() => expect(cellName()).toContain('할 일 1개 중 0개 완료'));
+
+    await act(async () => {
+      await useTodoStore.getState().toggleDone(todo.id, true);
+    });
+
+    // 저장소는 변하지 않았으니 요약도 변하지 않는다. revision 도 올라가지 않았다.
+    expect(cellName()).toContain('할 일 1개 중 0개 완료');
+    expect(useTodoStore.getState().writeRevision).toBe(0);
+  });
+
+  it('가져오기로 저장소가 통째로 바뀌면 **같은 화면에서** 요약이 따라 바뀐다', async () => {
+    render(<Harness />);
+    await waitFor(() => expect(cellName()).toBe('9월 16일 수요일, 오늘'));
+    const before = cellName();
+
+    // `runImport` 성공이 하는 것 그대로: 저장소를 바꾸고 `dataRevision` 을 +1 한다
+    // (`backup-actions.ts` — `restore` 뒤 `dataRevision: ctx.get().dataRevision + 1`).
+    await getRepositories().todos.upsert(adopt(makeTodo({ seq: 1, date: TODAY })));
+    act(() => {
+      useBackupStore.setState({ dataRevision: useBackupStore.getState().dataRevision + 1 });
+    });
+
+    await waitFor(() => expect(cellName()).toContain('할 일 1개 중 0개 완료'));
+    expect(cellName()).not.toBe(before);
   });
 });

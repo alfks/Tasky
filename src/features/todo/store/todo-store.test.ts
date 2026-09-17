@@ -584,3 +584,78 @@ describe('없는 투두·clearError', () => {
     expect(state().error).toBeNull();
   });
 });
+
+describe('쓰기 revision (T-56) — 저장소에 반영된 쓰기만 센다', () => {
+  it('0 에서 시작하고 적재만으로는 오르지 않는다', async () => {
+    expect(state().writeRevision).toBe(0);
+
+    await state().loadDate(FIXTURE_DATE);
+    await state().loadDate(TOMORROW);
+
+    // 적재는 읽기다 — 목록은 이미 갱신되므로 남에게 "다시 읽어라" 고 할 이유가 없다.
+    expect(state().writeRevision).toBe(0);
+  });
+
+  it('성공한 쓰기마다 정확히 1 씩 오른다 (추가·토글·편집·삭제)', async () => {
+    await state().loadDate(FIXTURE_DATE);
+    expect(state().writeRevision).toBe(0);
+
+    await state().addTodo({ categoryId: FIXTURE_CATEGORY_ID, title: '달리기' });
+    expect(state().writeRevision).toBe(1);
+
+    const todo = find('달리기');
+    await state().toggleDone(todo.id, true);
+    expect(state().writeRevision).toBe(2);
+
+    await state().editTodo(todo.id, { title: '달리기 30분' });
+    expect(state().writeRevision).toBe(3);
+
+    await state().removeTodo(todo.id);
+    expect(state().writeRevision).toBe(4);
+  });
+
+  it('낙관적 순서 변경도 저장이 끝난 뒤에 오른다 — 한 트랜잭션이니 1 이다', async () => {
+    await seed('가', '나', '다');
+    const before = state().writeRevision;
+
+    await state().reorder(find('다').id, 0);
+
+    expect(orderedTitles()).toEqual(['다', '가', '나']);
+    expect(state().writeRevision).toBe(before + 1);
+  });
+
+  it('저장이 실패해 되돌아간 쓰기는 올리지 않는다 — 올리면 화면이 낡은 값으로 덮인다', async () => {
+    await seed('달리기', '수영');
+    const before = state().writeRevision;
+    const todo = find('달리기');
+    failWrites();
+
+    expect(await state().toggleDone(todo.id, true)).toBe(false);
+    expect(await state().editTodo(todo.id, { title: '걷기' })).toBe(false);
+    expect(await state().reorder(find('수영').id, 0)).toBe(false);
+    expect(await state().addTodo({ categoryId: FIXTURE_CATEGORY_ID, title: '요가' })).toBe(false);
+
+    expect(state().error).toBe(SAVE_FAILED);
+    expect(state().writeRevision).toBe(before);
+  });
+
+  it('아무것도 바꾸지 않은 재정렬은 성공이지만 올리지 않는다 — 쓴 것이 없다', async () => {
+    await seed('달리기');
+    const before = state().writeRevision;
+
+    expect(await state().reorder(find('달리기').id, 0)).toBe(true);
+
+    expect(state().writeRevision).toBe(before);
+  });
+
+  it('대상이 없어 아무것도 쓰지 않은 호출도 올리지 않는다', async () => {
+    await state().loadDate(FIXTURE_DATE);
+    const before = state().writeRevision;
+
+    expect(await state().toggleDone('없는-id' as Todo['id'], true)).toBe(false);
+    expect(await state().editTodo('없는-id' as Todo['id'], { title: '아무거나' })).toBe(false);
+    expect(await state().removeTodo('없는-id' as Todo['id'])).toBe(false);
+
+    expect(state().writeRevision).toBe(before);
+  });
+});

@@ -17,6 +17,7 @@
 // 링이 달린 버튼이 되어 오버레이를 연다(R6). 덤으로 고정 영역이 40px → 32px 로 줄어 상한에 여유가 생겼다.
 import type { DateKey } from '@/domain/date/date-key';
 
+import { useBackupStore } from '@/features/backup';
 import { ShortcutKeys, chordsOf, useCommandStore } from '@/features/command';
 import { DateStrip } from '@/features/date-strip';
 import {
@@ -27,8 +28,27 @@ import {
 } from '@/features/stats';
 import type { CompletionSummary } from '@/features/stats';
 import { TimerChip } from '@/features/timer';
+import { useTodoStore } from '@/features/todo';
 
 import { IconButton } from '@/components/ui/IconButton';
+
+/**
+ * 날짜 스트립의 주 요약을 다시 읽게 하는 신호를 **셸이 합성한다** (T-56).
+ *
+ * 스트립은 자기 투두를 따로 조회해 캐시하므로 저장소가 바뀌면 누군가 알려 줘야 하는데,
+ * `date-strip` 은 feature 그래프의 **리프**라(`todo`·`command`·`shell` 이 스트립을 import 한다)
+ * 스스로 `@/features/todo`·`@/features/backup` 을 구독할 수 없다 — 하면 `import/no-cycle` 이다.
+ * 셸은 세 화살표를 **이미 전부** 갖고 있어 여기서 합치면 새 간선이 0개다.
+ *
+ * **더하는 이유**: 두 값 모두 단조 증가(쓰기 +1 / 가져오기 성공 +1)라 합도 단조 증가다. 어느 쪽이
+ * 올라도 값이 반드시 달라지므로 `useEffect` 가 빠짐없이 다시 돈다. 튜플이나 문자열 결합도 되지만
+ * 스트립이 받는 것은 "바뀌었다" 하나뿐이라 수 하나면 충분하고, 참조 동일성 함정도 없다.
+ */
+function useSummaryRevision(): number {
+  const writeRevision = useTodoStore((state) => state.writeRevision);
+  const dataRevision = useBackupStore((state) => state.dataRevision);
+  return writeRevision + dataRevision;
+}
 
 /** 오버레이 패널의 id — 여는 버튼의 `aria-controls` 가 가리킨다(열려 있을 때만 존재한다). */
 export const INSIGHT_OVERLAY_ID = 'shell-insight-overlay';
@@ -109,6 +129,7 @@ export function ShellHeader({
   onSummaryError,
   onDropTodo,
 }: ShellHeaderProps) {
+  const summaryRevision = useSummaryRevision();
   return (
     <div className="flex flex-col gap-[var(--space-2)]">
       <div className="flex min-h-[var(--control-hit-min)] items-center gap-[var(--space-2)]">
@@ -157,7 +178,11 @@ export function ShellHeader({
         </span>
       </div>
 
-      <DateStrip onDropTodo={onDropTodo} onSummaryError={onSummaryError} />
+      <DateStrip
+        summaryRevision={summaryRevision}
+        onDropTodo={onDropTodo}
+        onSummaryError={onSummaryError}
+      />
     </div>
   );
 }

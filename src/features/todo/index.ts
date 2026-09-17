@@ -1,5 +1,12 @@
 // 공개 API 배럴 — src/ 에서 index.ts 가 허용되는 유일한 위치(code-style.md §2).
 // 명시 export 만 둔다. 셸(T-20)이 붙이는 화면은 `TodoList` 하나다.
+//
+// **투두를 따로 조회해 캐시해 둔 화면은 `writeRevision` 을 구독한다** (T-56):
+// `const revision = useTodoStore((state) => state.writeRevision)` 를 조회 `useEffect` 의 의존성에
+// 더하면 된다. 저장소에 반영된 쓰기마다 +1 이고, 롤백된 쓰기와 `loadDate` 재조회로는 변하지 않는다.
+// 지금 소비자는 셸(`ShellHeader`) 하나이며, 셸이 이 값과 백업의 `dataRevision` 을 합쳐
+// `DateStrip` 의 `summaryRevision` 으로 넘긴다 — `date-strip` 은 feature 그래프의 **리프**라
+// `@/features/todo` 를 스스로 import 할 수 없다(`import/no-cycle`).
 export type { TodoActions } from '@/features/todo/store/todo-actions';
 export { createTodoStore, useTodoStore } from '@/features/todo/store/todo-store';
 export type { TodoStore } from '@/features/todo/store/todo-store';
