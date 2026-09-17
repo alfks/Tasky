@@ -131,6 +131,66 @@ describe('업데이트 토스트 (R4)', () => {
   });
 });
 
+/*
+ * pwa.md §2 의 ✕. `Toast` 는 T-29 부터 ✕ 를 그리지만, 그것이 **`isUpdateDismissed` 로 이어지는지**
+ * 는 여기 배선에 달려 있다. 배선이 없으면 ✕ 는 허브에서만 지우고 `show` 는 그대로라 바로 위의
+ * "화면이 비면 다시 올린다"(R4 + R8)가 **다음 커밋에 곧바로 되민다** — 누른 티도 안 난다.
+ * 그래서 아래는 "`dismissUpdate` 가 불렸다" 가 아니라 **"누른 뒤 무엇이 보이는가"** 를 잰다.
+ */
+describe('✕ 로 닫기 (R4 §2 · pwa-store isUpdateDismissed)', () => {
+  function dismissByX() {
+    fireEvent.click(screen.getByRole('button', { name: '알림 닫기' }));
+  }
+
+  it('누르면 사라지고, 화면이 비어도 되밀리지 않는다', () => {
+    render(<Notices />);
+    setStage('waiting');
+    expect(screen.getByText('새 버전이 준비됐어요')).toBeInTheDocument();
+
+    dismissByX();
+    expect(screen.queryByText('새 버전이 준비됐어요')).not.toBeInTheDocument();
+    // 배선이 없으면 여기서 되돌아온다 — 허브가 비었고 show 가 여전히 참이기 때문이다.
+    advance(60_000);
+    expect(screen.queryByText('새 버전이 준비됐어요')).not.toBeInTheDocument();
+    expect(usePwaStore.getState().isUpdateDismissed).toBe(true);
+  });
+
+  it('닫은 뒤 다른 토스트가 왔다 가도 돌아오지 않는다', () => {
+    render(<Notices />);
+    setStage('waiting');
+    dismissByX();
+
+    act(() => {
+      pushToast({ message: '삭제했어요' });
+    });
+    advance(3000); // 그 토스트가 자동으로 닫혀 화면이 다시 빈다
+    expect(screen.queryByText('삭제했어요')).not.toBeInTheDocument();
+    expect(screen.queryByText('새 버전이 준비됐어요')).not.toBeInTheDocument();
+  });
+
+  // 영영 죽이는 것이 아니다 — 닫은 것은 "이번 알림" 이고, 새 상황은 새 알림이다(pwa-store).
+  it('닫은 뒤 다른 탭이 적용하면 다시 뜬다', () => {
+    render(<Notices />);
+    setStage('waiting');
+    dismissByX();
+    expect(screen.queryByText('새 버전이 준비됐어요')).not.toBeInTheDocument();
+
+    setStage('activated');
+    expect(screen.getByText('새 버전이 준비됐어요')).toBeInTheDocument();
+  });
+
+  // 자동 닫힘·밀려남은 "사용자가 껐다" 가 아니다. 여기서 세워지면 R4 가 깨진다.
+  it('밀려나 사라진 것만으로는 isUpdateDismissed 가 서지 않는다', () => {
+    render(<Notices />);
+    setStage('waiting');
+    act(() => {
+      pushToast({ message: '삭제했어요' });
+    });
+    expect(screen.queryByText('새 버전이 준비됐어요')).not.toBeInTheDocument();
+    expect(usePwaStore.getState().isUpdateDismissed).toBe(false);
+  });
+});
+
 describe('저장 공간 배너 (R6)', () => {
   function denyPersist() {
     act(() => {
