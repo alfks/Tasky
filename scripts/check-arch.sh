@@ -176,7 +176,11 @@ eslint_json() { # $1 출력 파일, $2 패스(1|2), 나머지 eslint 인자
     echo "      동시에 도는 빌드/테스트를 줄이고 다시 실행하세요. 마지막 stderr:"
   else
     echo "FAIL: eslint(${pass}차 패스)가 rc=$rc 로 끝났습니다 — **위반 판정이 아니라** 설정/CLI 오류입니다."
-    echo "      직접 실행해 원인을 보세요: ./node_modules/.bin/eslint --no-inline-config --config eslint.arch.config.mjs src"
+    if [ "$pass" = 2 ]; then
+      echo "      직접 실행해 원인을 보세요: ./node_modules/.bin/eslint --no-inline-config --config eslint.arch.config.mjs src"
+    else
+      echo "      직접 실행해 원인을 보세요: ./node_modules/.bin/eslint --no-ignore src/domain/__arch__"
+    fi
   fi
   # stderr 는 **앞부분**을 보여 준다 — ESLint 는 실제 원인 문장을 먼저 찍고 스택을 뒤에 붙인다(tail 이면 스택만 남는다).
   sed -n '1,15p' "$out.err" 2>/dev/null | sed 's/^/      /'
