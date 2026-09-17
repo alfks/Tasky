@@ -16,6 +16,9 @@ import { BASE_URL, launch, log, newPage, waitForShell, writeJson } from './lib/h
 const COUNT = Number(process.env.FEEL_COUNT ?? 40);
 const TRIALS = Number(process.env.FEEL_TRIALS ?? 3);
 const TITLE = (i) => `항목 ${i}`;
+// `FEEL_CPU=6` 으로 CPU 를 6배 느리게(CDP `Emulation.setCPUThrottlingRate`). 이 기계는 저장이
+// 3~20ms 에 끝나 창이 아주 좁다 — 느린 기기에서 그 창이 얼마나 벌어지는지를 이것으로 본다.
+const CPU = Number(process.env.FEEL_CPU ?? 1);
 
 /** 창 capture 단계에서 센다 — React 의 루트 리스너보다 먼저라 "앱에 닿기 전" 의 수다. */
 function installCounters() {
@@ -29,9 +32,13 @@ function installCounters() {
     },
     true,
   );
-  window.addEventListener('input', () => {
-    window.__t65.input += 1;
-  }, true);
+  window.addEventListener(
+    'input',
+    () => {
+      window.__t65.input += 1;
+    },
+    true,
+  );
 }
 
 /** IndexedDB 를 직접 읽는다(T-53 이 쓴 방식). 툼스톤(`deletedAt`)은 뺀다. */
@@ -88,6 +95,10 @@ async function openAddRow(page) {
 async function runTrial(browser, mode, gapMs) {
   const page = await newPage(browser);
   await page.addInitScript(installCounters);
+  if (CPU > 1) {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU });
+  }
   const input = await openAddRow(page);
 
   if (mode === 'in-page') {
@@ -115,6 +126,8 @@ async function runTrial(browser, mode, gapMs) {
     (t) => !titles.includes(t),
   );
   const duplicated = titles.filter((t, i) => titles.indexOf(t) !== i);
+  const orders = rows.map((r) => r.order);
+  const dupOrders = orders.filter((o, i) => orders.indexOf(o) !== i);
   return {
     mode,
     gapMs,
@@ -125,18 +138,30 @@ async function runTrial(browser, mode, gapMs) {
     leftover,
     missing,
     duplicated,
-    orders: rows.map((r) => r.order),
+    dupOrders,
+    // 각 Enter 가 도착했을 때 **DOM 입력칸에 들어 있던 값**. 빠진 제목이 여기 있으면 글자는
+    // 제대로 닿았고 앱이 그 Enter 를 흘린 것이다(도구가 글자를 흘린 것이 아니다).
+    seen: counters.seen,
   };
 }
 
 const browser = await launch();
-const report = { baseUrl: BASE_URL, count: COUNT, trials: TRIALS, runs: [] };
+const report = { baseUrl: BASE_URL, count: COUNT, trials: TRIALS, cpuThrottle: CPU, runs: [] };
 
-const modes = [
+const ALL_MODES = [
   ['playwright', 0],
+  ['playwright', 10],
+  ['playwright', 25],
+  ['playwright', 50],
+  ['playwright', 100],
   ['playwright', 150],
+  ['playwright', 400],
   ['in-page', 0],
 ];
+// `FEEL_MODES=playwright-0,in-page-0` 로 일부만 돌린다.
+const only = process.env.FEEL_MODES?.split(',').map((s) => s.trim());
+const modes =
+  only === undefined ? ALL_MODES : ALL_MODES.filter(([m, g]) => only.includes(`${m}-${g}`));
 
 for (const [mode, gapMs] of modes) {
   for (let t = 1; t <= TRIALS; t += 1) {
@@ -146,7 +171,11 @@ for (const [mode, gapMs] of modes) {
       `${mode} 간격 ${gapMs}ms · ${t}/${TRIALS}회: 보낸 ${r.sent} / 받은 ${r.received} / 저장 ${r.stored}` +
         `  (화면 ${r.dom}, 입력칸 잔여 ${JSON.stringify(r.leftover)})` +
         (r.missing.length > 0 ? `\n    빠진 것: ${r.missing.join(', ')}` : '') +
-        (r.duplicated.length > 0 ? `\n    중복: ${r.duplicated.join(', ')}` : ''),
+        (r.duplicated.length > 0 ? `\n    제목 중복: ${r.duplicated.join(', ')}` : '') +
+        (r.dupOrders.length > 0 ? `\n    order 중복(R5): ${r.dupOrders.join(', ')}` : '') +
+        (r.missing.length > 0
+          ? `\n    빠진 제목이 Enter 시점 DOM 에 있었는가: ${r.missing.every((t) => r.seen.includes(t)) ? '전부 있었다' : '아니다'}`
+          : ''),
     );
   }
 }
