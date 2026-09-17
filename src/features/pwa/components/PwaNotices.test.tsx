@@ -9,6 +9,7 @@ import {
   ToastViewport,
   clearToasts,
   dismissToast,
+  getToasts,
   pushToast,
   useToasts,
 } from '@/components/ui/Toast';
@@ -65,6 +66,8 @@ function advance(ms: number) {
   });
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 describe('업데이트 토스트 (R4)', () => {
   it('새 버전이 없으면 뜨지 않는다', () => {
     render(<Notices />);
@@ -87,11 +90,24 @@ describe('업데이트 토스트 (R4)', () => {
     expect(applyUpdate).toHaveBeenCalledTimes(1);
   });
 
-  it('자동으로 닫히지 않는다', () => {
+  /*
+   * "안 닫힌다" 를 **글자가 아직 보이는가** 로만 재면 아무것도 잡히지 않는다: 자동으로 닫혀도 바로
+   * 아래의 "화면이 비면 다시 올린다"(R4 + R8)가 곧바로 되밀어 글자는 그대로 남는다(실측: 6초 유지로
+   * 되돌려도 60초 뒤 글자가 있다). 그래서 **처음 올라온 그 토스트가 아직 그 자리인지** 를 잰다 —
+   * 한 번이라도 닫혔다면 토스트가 갈린다(id 가 바뀌고 DOM 노드도 새로 난다 = 사용자에게는 깜빡임).
+   */
+  it('자동으로 닫히지 않는다 — 30일이 흘러도 처음 그 토스트 그대로다', () => {
     render(<Notices />);
     setStage('waiting');
-    advance(60_000);
-    expect(screen.getByText('새 버전이 준비됐어요')).toBeInTheDocument();
+    const toast = screen.getByText('새 버전이 준비됐어요');
+    const [{ id }] = getToasts();
+
+    advance(10_000); // 액션 있는 토스트의 기본 유지 시간(6초)을 넘긴다
+    expect(toast).toBeInTheDocument();
+    // 32비트 안쪽의 큰 수로 흉내낸 "유지"(예: 2_000_000_000 ≈ 23.1일)가 갈리는 지점.
+    advance(30 * DAY_MS);
+    expect(toast).toBeInTheDocument();
+    expect(getToasts()[0]?.id).toBe(id);
   });
 
   it('편집 패널이 열려 있는 동안에는 미루고, 닫히면 띄운다', () => {
