@@ -118,6 +118,9 @@ beforeEach(async () => {
   setRepositories(repositories);
   await seed(baseSnapshot());
   downloads = [];
+  // 가져오기는 `useTodoStore.date` 가 `null` 이 아닐 때만 목록을 다시 읽는다(`reloadViews`).
+  // 그 날짜를 남긴 채 다음 테스트로 넘기면 재조회 유무가 **앞 테스트에 달린다**.
+  useTodoStore.setState({ byId: {}, date: null, status: 'idle', error: null, writeRevision: 0 });
   store = createBackupStore(deps, io);
   await store.getState().refresh();
 });

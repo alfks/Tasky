@@ -10,6 +10,8 @@ function reset() {
   useCommandStore.setState({
     shortcuts: [],
     commands: [],
+    // T-53 이 더한 필드다. 여기서 빠지면 빈 결과 줄이 파일 안에서 다음 테스트로 넘어간다.
+    quickAdds: [],
     recentCommandIds: [],
     helpOpen: false,
     paletteOpen: false,

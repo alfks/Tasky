@@ -61,7 +61,7 @@ async function seed(
     status: 'ready',
     error: null,
   });
-  useTodoStore.setState({ byId: {}, date: null, status: 'idle', error: null });
+  useTodoStore.setState({ byId: {}, date: null, status: 'idle', error: null, writeRevision: 0 });
 }
 
 beforeEach(async () => {
@@ -77,6 +77,10 @@ beforeEach(async () => {
   // 앞 테스트가 열어 둔 도움말·팔레트가 남으면 다음 테스트는 **대화상자가 열린 채** 돈다
   // (전역 단축키가 막히는 것이 정상이다 — T-44). 이 스토어는 모듈 전역이라 언마운트로 안 돌아간다.
   useCommandStore.setState({ helpOpen: false, paletteOpen: false });
+  // 아래 `저장소 열기 실패` 테스트가 테마를 `error` 로 남긴다. 되돌리지 않으면 그 뒤의 모든
+  // 테스트가 **테마 조회가 실패한 앱**을 그린다 — 지금은 그래도 통과하지만(T-49 실측), 그건
+  // 조립이 그 조합에 둔감할 뿐이지 테스트가 의도한 상태가 아니다.
+  useThemeStore.setState({ status: 'ready', error: null });
   useShellStorageStore.setState({ status: 'storage' });
   useTimerStore.setState({ session: null, todoTitle: null, completion: null });
   await seed();
