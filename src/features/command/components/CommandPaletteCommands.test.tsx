@@ -21,6 +21,8 @@ function availableIds(): string[] {
 beforeEach(() => {
   useThemeStore.setState({ mode: 'system' });
   useDateStripStore.setState({ selectedDate: '2026-09-10', today: '2026-09-17' });
+  // `도움말 명령이 도움말을 연다` 가 `helpOpen: true` 를 남긴다 — 모듈 전역이라 언마운트로 안 돌아온다.
+  useCommandStore.setState({ helpOpen: false, paletteOpen: false });
 });
 
 describe('PALETTE_COMMANDS (R7)', () => {

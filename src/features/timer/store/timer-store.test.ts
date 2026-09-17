@@ -54,6 +54,9 @@ beforeEach(() => {
   jumpTo(0);
   setRepositories(createMemoryRepositories());
   localStorage.clear();
+  // 픽스처 id 는 결정적이라 파일 안의 모든 테스트가 **같은 id** 의 투두를 만든다. 스토어 사본을
+  // 남기면 다음 테스트가 앞 테스트의 `focusSeconds` 를 들고 시작한다.
+  useTodoStore.setState({ byId: {}, date: null, status: 'idle', error: null, writeRevision: 0 });
 });
 
 afterEach(() => {
