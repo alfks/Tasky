@@ -1,8 +1,11 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { Dialog } from '@/components/ui/Dialog';
 import {
   MAX_VISIBLE_TOASTS,
+  TOAST_DISMISS_LABEL,
   ToastViewport,
   clearToasts,
   dismissToast,
@@ -196,5 +199,102 @@ describe('토스트 허브 (app-shell R8 "동시에 1개")', () => {
     advance(3000);
     expect(screen.queryByText('옮겼어요')).not.toBeInTheDocument();
     expect(getToasts()).toEqual([]);
+  });
+});
+
+const DAY_MS = 86_400_000;
+describe('✕ 닫기 버튼', () => {
+  beforeEach(() => clearToasts());
+  it('onDismiss 는(pwa dismissUpdate 경로) ✕ 로 닫을 때만 불린다', () => {
+    const onDismiss = vi.fn();
+    const toast = { id: 'x', message: '알림', onDismiss };
+    const { unmount } = renderToasts([toast]);
+    advance(3000); // 자동 닫힘
+    expect(onClose).toHaveBeenCalledWith('x');
+    expect(onDismiss).not.toHaveBeenCalled();
+    unmount();
+    renderToasts([toast]);
+    fireEvent.click(screen.getByRole('button', { name: TOAST_DISMISS_LABEL }));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+  it('허브 토스트를 ✕ 로 닫으면 목록에서 빠진다 — 눌러서 실제로 사라지는가', () => {
+    const Subscriber = () => <ToastViewport toasts={useToasts()} onClose={dismissToast} />;
+    render(<Subscriber />);
+    act(() => void pushToast({ message: '새 버전이 준비됐어요', durationMs: null }));
+    fireEvent.click(screen.getByRole('button', { name: TOAST_DISMISS_LABEL }));
+    expect(getToasts()).toEqual([]);
+    expect(screen.queryByText('새 버전이 준비됐어요')).not.toBeInTheDocument();
+  });
+  it('[되돌리기] 다음에 닿고, 닫으면 포커스가 들어온 자리로 돌아간다', async () => {
+    // Tab 은 실제 포커스 이동이라 가짜 타이머 위에서 userEvent 가 멈춘다 — 여기서만 실시간이다.
+    vi.useRealTimers();
+    const user = userEvent.setup();
+    const Harness = () => (
+      <>
+        <button type="button">바깥</button>
+        <ToastViewport toasts={useToasts()} onClose={dismissToast} />
+      </>
+    );
+    render(<Harness />);
+    act(() => void pushToast({ message: '삭제했어요', action: { label: '되돌리기', onAction } }));
+    const outside = screen.getByRole('button', { name: '바깥' });
+    await user.tab();
+    expect(outside).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: '되돌리기' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: TOAST_DISMISS_LABEL })).toHaveFocus();
+    // 되돌려주지 않으면 포커스가 <body> 로 떨어져 문서 처음부터 다시 Tab 해야 한다(실측).
+    await user.keyboard('{Enter}');
+    expect(getToasts()).toEqual([]);
+    expect(outside).toHaveFocus();
+  });
+  it('✕ 에 포커스가 있는 동안에도 타이머가 멈춘다', () => {
+    renderToasts([undoToast]);
+    const dismiss = screen.getByRole('button', { name: TOAST_DISMISS_LABEL });
+    act(() => dismiss.focus());
+    advance(60_000);
+    expect(onClose).not.toHaveBeenCalled();
+    act(() => dismiss.blur());
+    advance(6000);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+  it('모달이 떠 있어도 ✕ 가 inert 아래로 들어가지 않고 눌린다', () => {
+    render(
+      <>
+        <Dialog open onClose={vi.fn()} title="장보기를 삭제할까요?" />
+        <ToastViewport toasts={[undoToast]} onClose={onClose} />
+      </>,
+    );
+    const dismiss = screen.getByRole('button', { name: TOAST_DISMISS_LABEL });
+    expect(dismiss.closest('[inert]')).toBeNull();
+    act(() => dismiss.focus());
+    expect(dismiss).toHaveFocus(); // inert 아래였다면 .focus() 가 무시된다
+    fireEvent.click(dismiss);
+    expect(onClose).toHaveBeenCalledWith('undo');
+  });
+});
+// "유지" 는 큰 수가 아니라 타이머를 **걸지 않는 것**이다(원인: `Toast.tsx` 의 `TIMER_MAX_MS` 주석).
+describe('자동 닫힘 끄기 (durationMs)', () => {
+  it.each([
+    ['null — 명시적인 유지', null],
+    ['Infinity (예전엔 즉시 닫혔다)', Number.POSITIVE_INFINITY],
+    ['2^31-1 우회 (예전엔 24.8일 뒤 닫혔다)', 2_147_483_647],
+    ['2^31 (32비트를 넘겨 1ms 로 접히던 값)', 2_147_483_648],
+  ])('%s: 30일이 흘러도 닫히지 않는다', (_label, durationMs) => {
+    renderToasts([{ id: 'keep', message: '새 버전이 준비됐어요', durationMs }]);
+    advance(1);
+    expect(onClose).not.toHaveBeenCalled();
+    advance(30 * DAY_MS);
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: TOAST_DISMISS_LABEL }));
+    expect(onClose).toHaveBeenCalledWith('keep');
+  });
+  it('유한한 값은 그대로 지킨다 — 전부 유지로 접지 않는다', () => {
+    renderToasts([{ id: 'short', message: '저장했어요', durationMs: 1200 }]);
+    advance(1199);
+    expect(onClose).not.toHaveBeenCalled();
+    advance(1);
+    expect(onClose).toHaveBeenCalledWith('short');
   });
 });
