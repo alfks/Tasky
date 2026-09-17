@@ -100,7 +100,15 @@ export function ColorSwatchGroup({
                 'flex size-[calc(var(--control-hit-min)-var(--space-1))] items-center justify-center rounded-full',
                 'bg-[var(--cat-color)] text-sm font-bold text-on-accent',
                 // 선택 표시는 색이 아니라 형태로도 드러나야 한다: 체크 문자 + 굵은 테두리.
-                isSelected ? 'border-2 border-text' : 'border border-border',
+                // 그 테두리는 앱 전체의 "선택됨" 링과 **같은 토큰**이다(theme.md §3-G R19) —
+                // `--color-selected-ring` 는 `--color-text`, `--control-selected-ring` 는 2px 이라
+                // 이전의 `border-2 border-text` 와 픽셀·색이 같고 의미만 선택 전용으로 좁혀진다.
+                // `border-style` 을 함께 적는 것은 Tailwind 프리플라이트(`border: 0 solid`)에 기대지
+                // 않기 위해서다 — 빼도 지금은 solid 로 그려지는 것을 실측으로 확인했지만, 폭만 주는
+                // 임의 속성은 스타일을 스스로 말하지 않는다(Checkbox.tsx 가 쓰는 것과 같은 짝).
+                isSelected
+                  ? '[border-width:var(--control-selected-ring)] [border-style:solid] border-selected-ring'
+                  : 'border border-border',
               )}
             >
               {isSelected ? '✓' : ''}
