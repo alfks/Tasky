@@ -1,16 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  QUICK_ADD_SECTION_ID,
+  QUICK_ADD_SECTION_LABEL,
   buildSections,
   clampIndex,
+  countResults,
   flattenOptions,
   formatMonthDay,
   parseDateQuery,
   resultCountText,
+  quickAddOption,
   stepIndex,
   type CommandOption,
 } from '@/features/command/components/CommandPaletteOptions';
-import type { Command } from '@/features/command/store/command-registry';
+import type { Command, QuickAdd } from '@/features/command/store/command-registry';
 import { makeTodo } from '@/test/fixtures/todo';
 
 const TODAY = '2026-09-17';
@@ -143,5 +147,81 @@ describe('resultCountText (§5)', () => {
   it('0 개는 "결과가 없어요", 그 밖은 개수를 읽는다', () => {
     expect(resultCountText(0)).toBe('결과가 없어요');
     expect(resultCountText(5)).toBe('결과 5개');
+  });
+});
+
+describe('빈 결과 줄 (§2 "결과가 없어요 — Enter로 \'장보기\'를 오늘 할 일로 추가")', () => {
+  function quickAdd(run = vi.fn()): QuickAdd {
+    return { id: 'todo.quickAdd', label: (title) => `'${title}'를 오늘 할 일로 추가`, run };
+  }
+
+  it('아무 것도 안 걸렸을 때 그 줄 하나만 놓는다', () => {
+    const sections = sectionsOf({ query: '장보기', quickAdd: quickAdd() });
+
+    expect(sections).toHaveLength(1);
+    expect(sections[0]?.id).toBe(QUICK_ADD_SECTION_ID);
+    expect(sections[0]?.label).toBe(QUICK_ADD_SECTION_LABEL);
+    expect(sections[0]?.options[0]?.kind === 'command' && sections[0]?.options[0]?.label).toBe(
+      "'장보기'를 오늘 할 일로 추가",
+    );
+  });
+
+  it('하나라도 걸리면 그 줄은 나오지 않는다 — 막다른 길일 때만이다', () => {
+    const withCommand = sectionsOf({
+      commands: [command('a', '장보기 명령')],
+      query: '장보기',
+      quickAdd: quickAdd(),
+    });
+    const withTodo = sectionsOf({
+      query: '장보기',
+      todos: [makeTodo({ seq: 1, title: '장보기', categoryId: 'category-1' })],
+      quickAdd: quickAdd(),
+    });
+
+    expect(withCommand.map((section) => section.id)).toEqual(['commands']);
+    expect(withTodo.map((section) => section.id)).toEqual(['todos']);
+  });
+
+  it('등록된 줄이 없으면(카테고리 0개) 섹션도 없다 — 옛 문구가 그대로 남는다', () => {
+    expect(sectionsOf({ query: '장보기', quickAdd: null })).toEqual([]);
+  });
+
+  it('빈 질의에는 나오지 않는다 — 제목 없는 할 일을 만들 수는 없다', () => {
+    expect(sectionsOf({ query: '   ', quickAdd: quickAdd() })).toEqual([]);
+  });
+
+  it('`run` 은 **다듬은 질의**를 받는다 — 앞뒤 공백이 제목에 섞이지 않는다', () => {
+    const run = vi.fn();
+    const option = quickAddOption(quickAdd(run), '  장보기  ');
+
+    expect(option?.label).toBe("'장보기'를 오늘 할 일로 추가");
+    void option?.run?.();
+    expect(run).toHaveBeenCalledWith('장보기');
+  });
+
+  it('등록된 명령이 아니라 즉석 명령이다 — 최근 실행(R12)에 질의가 쌓이지 않는다', () => {
+    const option = quickAddOption(quickAdd(), '장보기');
+
+    expect(option?.commandId).toBeUndefined();
+    expect(option?.run).toBeTypeOf('function');
+  });
+});
+
+describe('countResults (§5 — 빈 결과 줄은 결과가 아니다)', () => {
+  it('그 줄만 있으면 0 이다 — 낭독기가 "결과 1개" 라고 하면 화면과 갈린다', () => {
+    const sections = sectionsOf({
+      query: '장보기',
+      quickAdd: { id: 'q', label: () => '추가', run: vi.fn() },
+    });
+
+    expect(flattenOptions(sections)).toHaveLength(1);
+    expect(countResults(sections)).toBe(0);
+    expect(resultCountText(countResults(sections))).toBe('결과가 없어요');
+  });
+
+  it('진짜 결과는 그대로 센다', () => {
+    const sections = sectionsOf({ commands: [command('a', '가'), command('b', '나')] });
+
+    expect(countResults(sections)).toBe(2);
   });
 });

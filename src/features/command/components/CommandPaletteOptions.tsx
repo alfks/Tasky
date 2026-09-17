@@ -20,6 +20,7 @@ import {
   normalizeQuery,
   orderByRecent,
   type Command,
+  type QuickAdd,
 } from '@/features/command/store/command-registry';
 import type { ShortcutId } from '@/features/command/store/shortcut-catalog';
 
@@ -108,6 +109,33 @@ function toCommandOption(command: Command): CommandOption {
   };
 }
 
+/**
+ * 빈 결과 줄이 사는 섹션의 id. `aria-live` 가 이것을 **결과로 세지 않는다**(`countResults`) —
+ * 화면에도 "결과가 없어요" 라고 적혀 있는데 낭독기만 "결과 1개" 라고 하면 둘이 갈린다.
+ */
+export const QUICK_ADD_SECTION_ID = 'quick-add';
+
+/** 빈 결과 섹션의 제목이자 `role="group"` 의 접근 이름. §2 문면의 앞 절이다. */
+export const QUICK_ADD_SECTION_LABEL = '결과가 없어요';
+
+/**
+ * 빈 결과에서 질의를 소비하는 줄(§2). 질의가 있고 등록된 `QuickAdd` 가 있을 때만 생긴다.
+ *
+ * **등록된 명령이 아니라 즉석 명령(`run`)으로 만든다** — 날짜 이동 줄과 같은 취급이다.
+ * `commandId` 를 주면 `runCommand(id)` 가 질의를 모르는 채 실행하게 되고, 최근 실행 목록(R12)에
+ * 이름이 질의마다 달라지는 항목이 쌓인다.
+ */
+export function quickAddOption(quickAdd: QuickAdd | null, query: string): CommandOption | null {
+  const title = query.trim();
+  if (quickAdd === null || title === '') return null;
+  return {
+    kind: 'command',
+    key: `quick-add:${quickAdd.id}`,
+    label: quickAdd.label(title),
+    run: () => quickAdd.run(title),
+  };
+}
+
 export type BuildSectionsInput = {
   /** 지금 등록된 명령 전부. `when()` 거르기는 여기서 한다. */
   commands: readonly Command[];
@@ -120,6 +148,11 @@ export type BuildSectionsInput = {
   todos: readonly Todo[];
   /** 투두의 카테고리 이름. 없는 id 는 "카테고리 없음" 으로 적는다. */
   categoryNames: ReadonlyMap<string, string>;
+  /**
+   * 지금 유효한 빈 결과 줄(§2). 호출처가 `activeQuickAdd(quickAdds)` 로 골라 준다 —
+   * `when()` 판정이 여기 들어오면 이 함수가 순수하지 않게 된다.
+   */
+  quickAdd?: QuickAdd | null;
 };
 
 /**
@@ -128,7 +161,7 @@ export type BuildSectionsInput = {
  * 빈 질의에서 투두를 싣지 않는 것은 스펙 문면이다(§2 "입력이 비어 있으면 명령만").
  */
 export function buildSections(input: BuildSectionsInput): PaletteSection[] {
-  const { commands, recentIds, query, dateJump, todos, categoryNames } = input;
+  const { commands, recentIds, query, dateJump, todos, categoryNames, quickAdd } = input;
   const usable = availableCommands(commands);
   const matched =
     normalizeQuery(query) === '' ? orderByRecent(usable, recentIds) : matchCommands(usable, query);
@@ -151,7 +184,30 @@ export function buildSections(input: BuildSectionsInput): PaletteSection[] {
   if (todoOptions.length > 0) {
     sections.push({ id: 'todos', label: `할 일 (${todoOptions.length})`, options: todoOptions });
   }
+
+  // **아무 것도 안 걸렸을 때만** 빈 결과 줄을 놓는다(§2). 섹션으로 만드는 이유: 목록의 한 항목이
+  // 되면 `↑/↓`·`Enter`·클릭·선택 표시가 전부 이미 있는 것으로 돈다. 특별 행을 따로 그리면
+  // 그 넷을 다시 구현해야 하고, IME 가드(입력칸의 `isImeKey`)도 그 경로에는 안 걸린다.
+  if (sections.length === 0) {
+    const row = quickAddOption(quickAdd ?? null, query);
+    if (row !== null) {
+      sections.push({
+        id: QUICK_ADD_SECTION_ID,
+        label: QUICK_ADD_SECTION_LABEL,
+        options: [row],
+      });
+    }
+  }
   return sections;
+}
+
+/**
+ * `aria-live` 로 셀 결과 수. 빈 결과 줄은 **결과가 아니다** — 그것만 있으면 0 이다(§5).
+ */
+export function countResults(sections: readonly PaletteSection[]): number {
+  return sections
+    .filter((section) => section.id !== QUICK_ADD_SECTION_ID)
+    .reduce((total, section) => total + section.options.length, 0);
 }
 
 /** 섹션을 평평하게 — `↑/↓` 는 섹션을 넘나들며 한 칸씩 움직인다(§2). */

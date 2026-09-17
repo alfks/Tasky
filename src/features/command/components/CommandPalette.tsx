@@ -26,6 +26,7 @@ import { CommandPaletteList } from '@/features/command/components/CommandPalette
 import {
   buildSections,
   clampIndex,
+  countResults,
   flattenOptions,
   formatMonthDay,
   parseDateQuery,
@@ -36,6 +37,7 @@ import {
 } from '@/features/command/components/CommandPaletteOptions';
 import { goToTodo } from '@/features/command/components/CommandPaletteRun';
 import { isMacPlatform } from '@/features/command/lib/key-label';
+import { activeQuickAdd } from '@/features/command/store/command-registry';
 import { useCommandStore } from '@/features/command/store/command-store';
 import { useDateStripStore } from '@/features/date-strip';
 
@@ -147,6 +149,7 @@ export function CommandPalette() {
   const closePalette = useCommandStore((state) => state.closePalette);
   const commands = useCommandStore((state) => state.commands);
   const recentIds = useCommandStore((state) => state.recentCommandIds);
+  const quickAdds = useCommandStore((state) => state.quickAdds);
   const today = useDateStripStore((state) => state.today);
   const categoryNames = useCategoryNames();
 
@@ -177,6 +180,8 @@ export function CommandPalette() {
     dateJump,
     todos,
     categoryNames,
+    // `when()` 은 렌더마다 다시 묻는다 — 카테고리가 방금 생겼는데 줄이 안 나오면 안 된다(§2).
+    quickAdd: activeQuickAdd(quickAdds),
   });
   const options = flattenOptions(sections);
   const safeIndex = clampIndex(activeIndex, options.length);
@@ -192,7 +197,7 @@ export function CommandPalette() {
   }, [baseId, safeIndex]);
 
   // 응답 전에는 결과 수를 알리지 않는다 — "결과가 없어요" 를 먼저 읽어 버리면 화면과 같은 거짓말이다.
-  const liveText = pending && options.length === 0 ? '' : resultCountText(options.length);
+  const liveText = pending && options.length === 0 ? '' : resultCountText(countResults(sections));
 
   const runOption = (option: PaletteOption): void => {
     if (option.kind === 'todo') {

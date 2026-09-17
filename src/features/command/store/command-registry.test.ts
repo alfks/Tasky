@@ -2,14 +2,18 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   DuplicateCommandError,
+  activeQuickAdd,
   addCommands,
+  addQuickAdd,
   availableCommands,
   matchCommands,
   normalizeQuery,
   orderByRecent,
   pushRecent,
   removeCommands,
+  removeQuickAdd,
   type Command,
+  type QuickAdd,
 } from '@/features/command/store/command-registry';
 
 function command(id: string, label: string, extra: Partial<Command> = {}): Command {
@@ -137,5 +141,61 @@ describe('orderByRecent · pushRecent (R12)', () => {
 
   it('5개까지만 기억한다', () => {
     expect(pushRecent(['a', 'b', 'c', 'd', 'e'], 'f')).toEqual(['f', 'a', 'b', 'c', 'd']);
+  });
+});
+
+describe('QuickAdd 레지스트리 (§2 빈 결과 줄)', () => {
+  const entry = (id: string, when?: () => boolean): QuickAdd => ({
+    id,
+    label: (query) => `'${query}' 추가`,
+    ...(when === undefined ? {} : { when }),
+    run: vi.fn(),
+  });
+
+  it('등록·해제가 자기 것만 건드린다', () => {
+    const a = entry('a');
+    const b = entry('b');
+    const list = addQuickAdd(addQuickAdd([], a), b);
+
+    expect(list).toEqual([a, b]);
+    expect(removeQuickAdd(list, a)).toEqual([b]);
+  });
+
+  it('같은 id 로 두 번 등록해도 던지지 않는다 — 명령과 다른 정책이다', () => {
+    const first = entry('same');
+    const second = entry('same');
+
+    expect(() => addQuickAdd(addQuickAdd([], first), second)).not.toThrow();
+  });
+
+  it('둘이 겹치면 **나중에 등록된 것**이 이긴다', () => {
+    const first = entry('first');
+    const second = entry('second');
+
+    expect(activeQuickAdd([first, second])).toBe(second);
+  });
+
+  it('`when()` 이 거짓이면 그 줄은 없는 것이다 (§2 "카테고리 0개면 이 줄 없음")', () => {
+    expect(activeQuickAdd([entry('a', () => false)])).toBeNull();
+  });
+
+  it('맨 뒤가 쓸 수 없으면 그 앞의 쓸 수 있는 줄로 내려간다', () => {
+    const usable = entry('usable');
+
+    expect(activeQuickAdd([usable, entry('closed', () => false)])).toBe(usable);
+  });
+
+  it('`when()` 이 던지면 팔레트를 죽이지 않고 그 줄만 숨긴다', () => {
+    expect(
+      activeQuickAdd([
+        entry('boom', () => {
+          throw new Error('터짐');
+        }),
+      ]),
+    ).toBeNull();
+  });
+
+  it('등록된 것이 없으면 null 이다', () => {
+    expect(activeQuickAdd([])).toBeNull();
   });
 });

@@ -81,13 +81,18 @@ export async function goToTodo(todo: Todo): Promise<void> {
 }
 
 /**
- * ## 여기 없는 것: "결과가 없어요 — Enter로 '장보기'를 오늘 할 일로 추가"(§2 빈 결과)
+ * ## "결과가 없어요 — Enter로 '장보기'를 오늘 할 일로 추가"(§2 빈 결과)는 **여기 없다**
  *
- * 그 줄은 투두를 **만들어야** 하고, 만들려면 `@/features/todo` 의 스토어가 필요하다. 그런데
+ * 그 줄은 투두를 만들어야 하고, 만들려면 `@/features/todo` 의 스토어가 필요하다. 그런데
  * `TodoList` 가 단축키 때문에 `@/features/command` 를 import 하고 있어서, 반대 방향을 더하면
  * feature 두 개가 서로를 부르는 순환이 된다(`import/no-cycle` 이 막는다 — 실측).
  *
- * 우회하지 않고 비워 둔 이유: R7 의 설계가 이미 답이다. **투두 feature 가 "새 할 일" 명령을
- * 레지스트리에 등록**하면 팔레트는 그 명령을 부르기만 하면 되고 순환이 생기지 않는다.
- * `CommandPaletteCommands.tsx` 의 "아직 못 만든 MVP 명령" 목록과 같은 이음새다.
+ * 그래서 R7 과 같은 방향으로 풀었다(T-53): 투두 feature 가 `registerQuickAdd` 로 **그 줄 하나를**
+ * 레지스트리에 걸고(`todo/hooks/useTodoCommands.ts`), 팔레트는 결과가 하나도 없을 때 그것을
+ * 목록의 한 항목으로 그린다(`CommandPaletteOptions.quickAddOption`). 화살표는 여전히
+ * `todo → command` 한 방향이다.
+ *
+ * 실행이 이 파일이 아니라 등록 쪽에 있는 이유: "오늘로 옮기고 → 그 날짜가 올라오기를 기다렸다가 →
+ * 첫 카테고리에 추가" 는 투두 스토어의 적재 규칙(R17)을 알아야 하는 일이다. 여기서 하면 팔레트가
+ * 남의 스토어의 수명을 흉내 내게 된다.
  */
