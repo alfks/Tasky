@@ -137,11 +137,15 @@ describe('디자인 토큰: 형태·간격·타이포·모션·z-index(§3-D)', 
     expect(base.get('font-weight-bold')).toBe('700');
   });
 
-  it('그림자 2종, 다크에서 알파값이 짙어진다(라이트 .06/.08 → 다크 .30/.45)', () => {
-    expect(runtime.get('elev-sm')).toBe('0 1px 2px rgb(0 0 0 / 0.06)');
+  it('그림자 2종, sm 은 두 겹(접촉+퍼짐)이고 다크에서 알파가 짙어진다', () => {
+    // sm 이 두 겹인 이유: 한 겹짜리 `0 1px 2px/.06` 은 찍힌 픽셀이 2px 띠·1.102:1 이라 같은 카드의
+    // 1px 보더(1.192:1)보다 약했다(T-63 실측). 퍼짐 층이 그 띠를 13px·1.218:1 로 넓힌다.
+    expect(runtime.get('elev-sm')).toBe(
+      '0 1px 2px rgb(0 0 0 / 0.05), 0 4px 12px rgb(0 0 0 / 0.07)',
+    );
     expect(runtime.get('elev-md')).toBe('0 6px 20px rgb(0 0 0 / 0.08)');
     for (const dark of [mediaDark, explicitDark]) {
-      expect(dark.get('elev-sm')).toBe('0 1px 2px rgb(0 0 0 / 0.3)');
+      expect(dark.get('elev-sm')).toBe('0 1px 2px rgb(0 0 0 / 0.3), 0 4px 12px rgb(0 0 0 / 0.36)');
       expect(dark.get('elev-md')).toBe('0 6px 20px rgb(0 0 0 / 0.45)');
     }
   });
