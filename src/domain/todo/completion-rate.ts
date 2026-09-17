@@ -5,6 +5,9 @@
 // `completionCounts` 의 결과다 — 진입점이 둘이어도 계산은 하나라는 뜻이고, 그 불변식은
 // `completion-invariant.test.ts` 가 고정한다(R8).
 //
+// **불변식은 "같은 목록을 넣었을 때" 성립한다.** 화면의 두 값이 늘 같다는 뜻은 아니다 — 스트립은
+// 주가 바뀔 때만 저장소를 읽어 토글 직후 낡은 값이 남는다(R8 하위 항목). 무효화는 T-56 소관.
+//
 // 조회가 이미 툼스톤을 제외하므로 여기서 `deletedAt` 을 다시 보지 않는다 (ADR-0007 결정 4).
 import type { Category } from '@/domain/category/category';
 import { sortCategoriesForDisplay } from '@/domain/category/category.rules';

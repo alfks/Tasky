@@ -148,6 +148,26 @@ describe('R8. 카테고리 상태와 무관하게 센다 — 점이 안 찍혀�
     ]);
   });
 
+  it('점이 하나도 없는 날(투두 전부가 조회표 밖 id)도 전부 완료면 ✓ 배지가 켜진다', () => {
+    // **✓ 배지는 수에 묶여 있지 배지를 그릴 점 유무에 묶여 있지 않다.** 바로 위 케이스는
+    // "아는 것 1 + 모르는 것 1" 이라 `dots.length === 1` 이고, 배지를 점에 잘못 묶어도(예:
+    // `dots.length > 0 && done === total`) 통과해 버린다. 점이 **0개**인 날이 있어야 그 갈라짐이
+    // 잡힌다 — R8 의 `isAllDone === (completionRate === 1)` 이 정확히 여기서 깨지기 때문이다.
+    const todos = [
+      makeTodo({ seq: 1, date: DAY, categoryId: 'gone', done: true }),
+      makeTodo({ seq: 2, date: DAY, categoryId: 'gone-too', done: true }),
+    ];
+    expectPathsAgree(todos, [makeCategory({ seq: 1 })]);
+    const summary = summarizeDays(WEEK, todos, [makeCategory({ seq: 1 })]).get(DAY);
+    expect([
+      summary?.total,
+      summary?.doneCount,
+      summary?.dots.length,
+      summary?.overflowCount,
+    ]).toEqual([2, 2, 0, 0]);
+    expect(summary?.isAllDone).toBe(true);
+  });
+
   it('종료된 카테고리의 투두도 양쪽에서 똑같이 센다', () => {
     const closed = makeCategory({
       seq: 2,

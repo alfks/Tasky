@@ -75,6 +75,8 @@ export function summarizeDay(todos: readonly Todo[], index: CategoryDotIndex): D
     total,
     doneCount: done,
     // `completionRate(todos) === 1` 과 같은 조건이다(0개면 `null`, 나눗셈 없이 같은 판정).
+    // **점(dots) 유무가 아니라 수에만 묶는다.** 그날 투두가 전부 조회표 밖 id 면 점은 0개인데
+    // 전부 완료일 수 있고, 그때도 배지는 켜져야 한다(completion-invariant.test.ts 가 고정).
     isAllDone: total > 0 && done === total,
     dots: ordered
       .slice(0, MAX_DOTS)
