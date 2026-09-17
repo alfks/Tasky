@@ -43,7 +43,8 @@
 - R5. 카테고리별 막대: 활성 `order` 순 → 종료 → 삭제됨("(삭제됨)" 표기), 그날 투두 있는 것만. 막대 = 카테고리 색, 트랙 = `--color-surface-2`, 우측 `done/total`.
 - R6. 값 갱신은 토글 후 50ms 안(낙관적 갱신과 동일 프레임).
 - R7. 헤더 링 40px·굵기 4px, 패널 링 120px·굵기 10px. 숫자 `--text-lg`(헤더), `--text-3xl`(패널).
-- R8. 달성률은 `document.title`(app-shell R9)과 날짜 스트립 ✓ 배지(date-strip R8)의 원천이다. 세 곳의 값은 항상 같은 함수의 결과다.
+- R8. 달성률·`document.title`(app-shell R9)·날짜 스트립 ✓ 배지(date-strip R8)는 **같은 계산**을 쓴다. 세 곳이 부르는 **진입점은 둘**이다 — 하루치 `completionCounts`(헤더 링·탭 제목)와 날짜 범위 `summarizeDays`(스트립 배지, §4). 진입점이 둘이어도 **세는 일은 `completionCounts` 하나가 한다**: `summarizeDay` 의 `total`·`doneCount` 는 그 결과를 그대로 쓰고, `isAllDone` 은 점(dots) 유무가 아니라 그 수에만 묶인다. 그래서 불변식은 **"같은 날짜의 같은 투두 목록을 두 경로에 넣으면"** 성립한다 — `summarizeDay(todos,…).total === completionCounts(todos).total`, `doneCount === done`, `isAllDone === (completionRate(todos) === 1)`(투두 0개면 비율이 `null` 이라 배지도 없고, 그날 투두가 전부 색을 못 찾은 카테고리라 점이 0개여도 배지는 수를 따른다). 고정: `src/domain/todo/completion-invariant.test.ts`.
+  - **화면에 뜬 두 값이 항상 같다는 뜻은 아직 아니다.** 헤더 링·탭 제목은 스토어 낙관 갱신으로 토글 즉시 움직이는데(R6) `useWeekSummaries` 는 `weekStart` 가 바뀔 때만 저장소를 읽어 **토글 뒤 스트립 배지가 낡은 값으로 남는다.** 계산이 갈라져서가 아니라 한쪽 입력이 낡아서다 — 주 요약 무효화는 **T-56** 이 맡는다. 그때까지 이 규칙의 "원천" 은 같은 목록을 넣었을 때의 조건부 보장이다.
 
 ## 4. 데이터
 

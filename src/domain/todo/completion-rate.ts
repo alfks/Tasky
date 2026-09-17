@@ -1,4 +1,13 @@
-// 달성률 계산 (completion-rate.md R1·R2·R5, R8). 헤더 링·탭 제목·날짜 스트립 배지는 **전부 이 함수들의 결과**다.
+// 달성률 계산 (completion-rate.md R1·R2·R5, R8).
+//
+// **세는 일은 `completionCounts` 하나뿐이다.** 헤더 링·탭 제목은 이 파일을 직접 부르고, 날짜 스트립
+// ✓ 배지는 `day-summary.ts` 의 `summarizeDays` 를 부르지만 그쪽의 `total`·`doneCount` 도 결국
+// `completionCounts` 의 결과다 — 진입점이 둘이어도 계산은 하나라는 뜻이고, 그 불변식은
+// `completion-invariant.test.ts` 가 고정한다(R8).
+//
+// **불변식은 "같은 목록을 넣었을 때" 성립한다.** 화면의 두 값이 늘 같다는 뜻은 아니다 — 스트립은
+// 주가 바뀔 때만 저장소를 읽어 토글 직후 낡은 값이 남는다(R8 하위 항목). 무효화는 T-56 소관.
+//
 // 조회가 이미 툼스톤을 제외하므로 여기서 `deletedAt` 을 다시 보지 않는다 (ADR-0007 결정 4).
 import type { Category } from '@/domain/category/category';
 import { sortCategoriesForDisplay } from '@/domain/category/category.rules';
@@ -69,6 +78,6 @@ export function summarizeByCategory(
 // **`summarizeWeek` 은 여기 없다.** 원래 날짜별 `{done, total, categoryIds}` 를 모으는 같은 이름의
 // 함수가 있었지만, 같은 계산(날짜별 버킷팅 + 완료 수 + 그날 등장한 카테고리)을 `day-summary.ts` 의
 // `summarizeDays` 가 이미 하고 있었다 — 그쪽은 카테고리 순서·점 규칙(date-strip R7)까지 지키고, 날짜
-// 스트립(`useWeekSummaries`)과 달성률이 실제로 부르는 것도 그쪽 하나다. 둘을 남겨 두면 "세 곳의 값은
-// 항상 같은 함수의 결과"(R8)가 이름만 참이 된다. 날짜 범위 요약이 필요하면 `summarizeDays(days, …)` 를
+// 스트립(`useWeekSummaries`)과 달성률이 실제로 부르는 것도 그쪽 하나다. 둘을 남겨 두면 R8 의 "같은
+// 목록을 같은 방식으로 센다" 가 이름만 참이 된다. 날짜 범위 요약이 필요하면 `summarizeDays(days, …)` 를
 // 쓴다(TECH_PLAN §12 의 `summarizeRange` 확장도 그쪽에서 이어 간다).
