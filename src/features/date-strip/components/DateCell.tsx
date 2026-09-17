@@ -110,8 +110,16 @@ export function DateCell({
         // `--color-selected-ring`(= --color-text) 링이다. 안쪽 링이라 칸 크기가 변하지 않는다.
         // 채움 유틸은 강조색 이름 그대로 둔다: 선택 채움 토큰이 강조색을 가리켜 렌더 결과가 같은데,
         // 이름만 바꾸면 그 클래스 문자열을 재는 테스트 파일들이 깨진다(그 파일들은 T-49 소유다).
+        // 강제 색 모드(Windows 고대비 등)에서는 UA 가 `box-shadow` 를 통째로 `none` 으로 만든다 —
+        // 링만 쓰면 선택 표시가 **완전히 사라진다**(실측: 일곱 칸 어디에도 표시가 없었다).
+        // 그때만 같은 굵기의 **테두리**로 갈아 단다. 스와치가 이미 테두리를 써서 살아남는
+        // 쪽이라 표현도 그쪽에 맞춘다. `outline` 이 아니라 테두리인 이유는 이 칸이 **포커스를
+        // 받기 때문**이다 — 빌드된 CSS 에서 `forced-colors:` 규칙이 `focus-visible:` 보다 뒤에
+        // 나와, 윤곽선으로 달면 선택된 칸에서 포커스 링을 덮어써 포커스가 들어와도 화면이
+        // 아무 변화가 없다(실측). 테두리는 `box-sizing: border-box` 라 칸 크기를 바꾸지 않는다.
+        // 색은 지정하지 않는다 — 강제 색 모드는 어차피 시스템 색으로 덮어쓴다.
         isSelected
-          ? 'bg-accent text-on-accent ring-[length:var(--control-selected-ring)] ring-selected-ring ring-inset'
+          ? 'bg-accent text-on-accent ring-[length:var(--control-selected-ring)] ring-selected-ring ring-inset forced-colors:[border-width:var(--control-selected-ring)] forced-colors:[border-style:solid]'
           : 'bg-transparent text-text hover:enabled:bg-surface-2',
         // 오늘이면서 선택이면 강조색 링을 걷어내고 잉크 링만 남긴다 (R3 · theme.md §3-G R20).
         // "오늘"(강조색 링, 채움 없음)과 "선택"(채움 + 잉크 링)은 색도 채움 여부도 달라 겹치지 않는다.

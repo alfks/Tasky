@@ -114,8 +114,12 @@ function PaletteRow({ option, id, selected, index, onRun, onHover, isMac }: Pale
         // 패널 배경과 1.14~2.16:1 뿐이라 채움만으로는 WCAG 1.4.11 의 3:1 에 못 미친다. 안쪽 링이라
         // 행 높이가 변하지 않아 목록이 밀리지 않는다. 채움 유틸의 이름을 강조색 그대로 둔 이유는
         // `DateCell.tsx` 에 적어 뒀다(렌더 결과가 같고, 이름을 바꾸면 남의 티켓 파일이 깨진다).
+        //
+        // 강제 색 모드에서는 UA 가 `box-shadow` 를 `none` 으로 만들어 링이 통째로 사라진다 —
+        // 그때만 같은 굵기의 안쪽 윤곽선으로 갈아 단다(`DateCell` 과 같은 처방). 행은 포커스를
+        // 받지 않으므로(포커스는 입력칸 한 곳) `focus-visible` 윤곽선과 부딪힐 일이 없다.
         selected
-          ? 'bg-accent text-on-accent ring-[length:var(--control-selected-ring)] ring-selected-ring ring-inset [&_kbd]:border-on-accent/55 [&_kbd]:bg-on-accent/22 [&_span]:text-inherit'
+          ? 'bg-accent text-on-accent ring-[length:var(--control-selected-ring)] ring-selected-ring ring-inset forced-colors:[outline-width:var(--control-selected-ring)] forced-colors:[outline-offset:calc(-1*var(--control-selected-ring))] forced-colors:[outline-style:solid] [&_kbd]:border-on-accent/55 [&_kbd]:bg-on-accent/22 [&_span]:text-inherit'
           : 'hover:bg-surface-2',
       )}
     >
