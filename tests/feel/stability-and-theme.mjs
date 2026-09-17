@@ -8,6 +8,7 @@ import { writeFileSync } from 'node:fs';
 
 import {
   BASE_URL,
+  dayLabel,
   launch,
   log,
   newPage,
@@ -64,7 +65,7 @@ const result = { baseUrl: BASE_URL, cls: {}, themeFlash: {} };
   result.cls.emptyToPopulated = { 설명: '빈 상태 → 항목 3개', ...(await read()) };
 
   await reset();
-  await page.getByLabel(/9월 18일/).click(); // 항목 없는 날 → 빈 상태
+  await page.getByLabel(new RegExp(dayLabel(1))).click(); // 항목 없는 날 → 빈 상태
   await page.waitForTimeout(700);
   await page.getByRole('button', { name: '오늘로 이동' }).click();
   await page.waitForTimeout(700);

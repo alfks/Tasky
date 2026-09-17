@@ -2,7 +2,16 @@
 // 타이핑·토글·날짜 이동의 응답이 몇 ms 인지 잰다.
 //
 // 실행: node tests/feel/motion-and-latency.mjs
-import { BASE_URL, launch, log, newPage, seed, waitForShell, writeJson } from './lib/harness.mjs';
+import {
+  BASE_URL,
+  dayLabel,
+  launch,
+  log,
+  newPage,
+  seed,
+  waitForShell,
+  writeJson,
+} from './lib/harness.mjs';
 
 /** 프레임 간격과 목록 재배치 시각을 페이지 안에서 기록한다. 결과는 `window.__feel` 에 쌓인다. */
 function installRecorder() {
@@ -111,7 +120,7 @@ const read = () => page.evaluate(() => ({ ...window.__feel }));
   page.on('pageerror', (e) => errors.push(e.message));
   await boxes.nth(0).check();
   await page.waitForTimeout(120); // R8 의 400ms 대기 한가운데
-  await page.getByLabel(/9월 17일/).click();
+  await page.getByLabel(new RegExp(dayLabel(1))).click();
   await page.waitForTimeout(1200);
   const r = await read();
   result.cases.dateMoveDuringWait = {
@@ -201,7 +210,7 @@ const read = () => page.evaluate(() => ({ ...window.__feel }));
 // --- 4-c. 날짜 스트립 이동 지연 (date-strip R10: 100ms 안에 목록이 그려져야 한다) ---
 {
   const lat = [];
-  for (const day of ['9월 18일', '9월 19일', '9월 17일', '9월 15일']) {
+  for (const day of [dayLabel(1), dayLabel(2), dayLabel(0), dayLabel(-2)]) {
     const t = await page.evaluate(() => performance.now());
     await page.getByLabel(new RegExp(day)).click();
     await page.waitForFunction(
@@ -251,20 +260,20 @@ const read = () => page.evaluate(() => ({ ...window.__feel }));
 
 // --- 4-e. 날짜 스트립 이동 지연, 양쪽 날짜에 항목이 있을 때 (date-strip R10: ≤100ms) ---
 {
-  await page.getByLabel(/9월 18일/).click();
+  await page.getByLabel(new RegExp(dayLabel(1))).click();
   await page.waitForTimeout(600);
   await seed(page, ['18일 할 일 하나', '18일 할 일 둘']);
   const count = () => page.evaluate(() => document.querySelectorAll('li[data-flip-id]').length);
   const n18 = await count();
-  await page.getByLabel(/9월 16일/).click();
+  await page.getByLabel(new RegExp(dayLabel(-1))).click();
   await page.waitForTimeout(600);
   const n16 = await count();
   const lat = [];
   for (const [day, want] of [
-    ['9월 18일', n18],
-    ['9월 16일', n16],
-    ['9월 18일', n18],
-    ['9월 16일', n16],
+    [dayLabel(1), n18],
+    [dayLabel(-1), n16],
+    [dayLabel(1), n18],
+    [dayLabel(-1), n16],
   ]) {
     const t = await page.evaluate(() => performance.now());
     await page.getByLabel(new RegExp(day)).click();
