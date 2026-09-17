@@ -309,7 +309,7 @@ export function planCategoryRemovalUndo(input: {
 | 성능     | Vitest 벤치(`*.slow.test.ts`, CI만)                    | 200개/일 토글 50ms, 10,000개 검색 150ms, 50,000개 가져오기 10s                                                                                                                                                                                                                                                                                                   | 실기기 프로파일링                   |
 | E2E      | Playwright(chromium, CI: PR 라벨 `e2e` 또는 main push) | 스모크 1개(로드 → 카테고리 → 투두 → 체크 → 달성률 → 새로고침 유지), 키보드 완주 1개, 오프라인 새로고침 1개, 테마 깜빡임 1개                                                                                                                                                                                                                                      | 크로스 브라우저 매트릭스, 시각 회귀 |
 
-`pnpm test` 3초 이내(느린 것은 `*.slow.test.ts`). 테스트 데이터는 `src/test/fixtures` 팩토리만.
+`pnpm test` 에 **초 단위 상한을 두지 않는다** — 그 상한이 왜 반드시 거짓이 되는지와 대신 지키는 것(느린 것은 `*.slow.test.ts` 로 분리 등)은 [code-style.md §11 테스트 규칙](conventions/code-style.md#11-테스트-규칙)에 있다. 테스트 데이터는 `src/test/fixtures` 팩토리만.
 
 ## 8. 성능 예산 (초과 = 리뷰 Major, 20% 초과 = Blocker)
 
