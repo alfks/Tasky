@@ -35,6 +35,22 @@ function parseDecls(block: string): Map<string, string> {
   return decls;
 }
 
+interface ShadowLayer {
+  offset: number;
+  blur: number;
+  alpha: number;
+}
+
+/** `0 1px 2px rgb(0 0 0 / 0.05), 0 4px 12px rgb(0 0 0 / 0.07)` → 겹 배열(y 오프셋·흐림·알파). */
+function parseShadowLayers(value: string | undefined): ShadowLayer[] {
+  if (value === undefined) throw new Error('그림자 토큰이 없다');
+  return value.split('),').map((raw) => {
+    const m = /^\s*0 (-?[\d.]+)px ([\d.]+)px rgb\(0 0 0 \/ ([\d.]+)\)?/.exec(raw);
+    if (m === null) throw new Error(`그림자 겹을 읽지 못함: ${raw}`);
+    return { offset: Number(m[1]), blur: Number(m[2]), alpha: Number(m[3]) };
+  });
+}
+
 const base = parseDecls(extractBlock(CSS, '@theme {'));
 // 유틸을 만들면 안 되는 토큰(그림자 값 --elev-*, 카테고리 팔레트)은 @theme 밖 :root 에 있다.
 const runtime = parseDecls(extractBlock(CSS, ':root {'));
@@ -137,16 +153,47 @@ describe('디자인 토큰: 형태·간격·타이포·모션·z-index(§3-D)', 
     expect(base.get('font-weight-bold')).toBe('700');
   });
 
-  it('그림자 2종, sm 은 두 겹(접촉+퍼짐)이고 다크에서 알파가 짙어진다', () => {
-    // sm 이 두 겹인 이유: 한 겹짜리 `0 1px 2px/.06` 은 찍힌 픽셀이 2px 띠·1.102:1 이라 같은 카드의
+  it('그림자 2종, 둘 다 두 겹(접촉+퍼짐)이고 다크에서 알파가 짙어진다', () => {
+    // 두 겹인 이유: 한 겹짜리 `0 1px 2px/.06` 은 찍힌 픽셀이 2px 띠·1.102:1 이라 같은 카드의
     // 1px 보더(1.192:1)보다 약했다(T-63 실측). 퍼짐 층이 그 띠를 13px·1.218:1 로 넓힌다.
+    // md 의 접촉 겹은 T-66 이 넣었다 — 그전까지 md 는 퍼짐 한 겹뿐이라 접촉 픽셀에서 사다리가
+    // 뒤집혀 있었다(sm 228 vs md 236). 알파는 sm 과 같고 기하만 두 배다(R23).
     expect(runtime.get('elev-sm')).toBe(
       '0 1px 2px rgb(0 0 0 / 0.05), 0 4px 12px rgb(0 0 0 / 0.07)',
     );
-    expect(runtime.get('elev-md')).toBe('0 6px 20px rgb(0 0 0 / 0.08)');
+    expect(runtime.get('elev-md')).toBe(
+      '0 2px 4px rgb(0 0 0 / 0.05), 0 6px 20px rgb(0 0 0 / 0.08)',
+    );
     for (const dark of [mediaDark, explicitDark]) {
       expect(dark.get('elev-sm')).toBe('0 1px 2px rgb(0 0 0 / 0.3), 0 4px 12px rgb(0 0 0 / 0.36)');
-      expect(dark.get('elev-md')).toBe('0 6px 20px rgb(0 0 0 / 0.45)');
+      expect(dark.get('elev-md')).toBe('0 2px 4px rgb(0 0 0 / 0.3), 0 6px 20px rgb(0 0 0 / 0.45)');
+    }
+  });
+
+  it('고도 사다리가 단조다 — 모든 겹에서 md 가 sm 보다 낮지 않다(R23)', () => {
+    // 위 테스트가 문자열을 고정한다면 이건 **관계**를 고정한다. 값이 나중에 바뀌더라도 사다리가
+    // 다시 뒤집히면(낮은 단이 더 진해지면) 여기서 걸린다. 접촉 겹의 오프셋/흐림 비가 sm 이상이면
+    // 같은 알파로도 감쇠 곡선이 sm 아래에 깔린다 — 실측으로 14개 표본 전부 md ≤ sm(밝기)이다.
+    for (const [name, scope] of [
+      ['라이트', runtime],
+      ['@media 다크', mediaDark],
+      ['명시 다크', explicitDark],
+    ] as const) {
+      const sm = parseShadowLayers(scope.get('elev-sm'));
+      const md = parseShadowLayers(scope.get('elev-md'));
+      expect(md.length, `${name}: 겹 수`).toBe(sm.length);
+      md.forEach((layer, i) => {
+        const lower = sm[i] as ShadowLayer;
+        expect(layer.alpha, `${name} ${i}겹: 알파`).toBeGreaterThanOrEqual(lower.alpha);
+        expect(layer.offset, `${name} ${i}겹: 오프셋`).toBeGreaterThanOrEqual(lower.offset);
+        expect(layer.blur, `${name} ${i}겹: 흐림`).toBeGreaterThanOrEqual(lower.blur);
+      });
+      const contact = md[0] as ShadowLayer;
+      const lowerContact = sm[0] as ShadowLayer;
+      expect(
+        contact.offset / contact.blur,
+        `${name}: 접촉 겹의 오프셋/흐림 비`,
+      ).toBeGreaterThanOrEqual(lowerContact.offset / lowerContact.blur);
     }
   });
 
