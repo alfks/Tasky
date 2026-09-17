@@ -20,8 +20,8 @@ export function isEditableTarget(target: EventTarget | null): boolean {
 }
 
 export type GuardContext = {
-  /** 이 단축키 위에 열린 오버레이가 없는가(오버레이 스택의 맨 위인가). */
-  isTopLayer: boolean;
+  /** 대화상자·팝오버·메뉴가 하나라도 떠 있는가(오버레이 스택이 비어 있지 않은가). */
+  isOverlayOpen: boolean;
   /** 입력 중에도 동작하는 단축키인가(`Mod+K` 팔레트 — R1). */
   allowInEditable: boolean;
 };
@@ -50,7 +50,7 @@ export function shortcutBlockReason(
 ): ShortcutBlockReason | null {
   if (e.defaultPrevented) return 'handled';
   if (!ctx.allowInEditable && isImeKey(e)) return 'ime';
-  if (!ctx.isTopLayer) return 'overlay';
+  if (ctx.isOverlayOpen) return 'overlay';
   if (!ctx.allowInEditable && isEditableTarget(e.target)) return 'editable';
   return null;
 }

@@ -10,7 +10,7 @@ import {
 function fireFrom(
   html: string,
   init: KeyboardEventInit & { keyCode?: number },
-  ctx: { isTopLayer?: boolean; allowInEditable?: boolean; preventFirst?: boolean } = {},
+  ctx: { isOverlayOpen?: boolean; allowInEditable?: boolean; preventFirst?: boolean } = {},
 ): ShortcutBlockReason | null {
   const host = document.createElement('div');
   host.innerHTML = html;
@@ -24,7 +24,7 @@ function fireFrom(
   }
   const onKeyDown = (e: Event) => {
     seen = shortcutBlockReason(e as KeyboardEvent, {
-      isTopLayer: ctx.isTopLayer ?? true,
+      isOverlayOpen: ctx.isOverlayOpen ?? false,
       allowInEditable: ctx.allowInEditable ?? false,
     });
   };
@@ -115,12 +115,14 @@ describe('shortcutBlockReason', () => {
   });
 
   it('오버레이가 떠 있으면 막는다', () => {
-    expect(fireFrom('<button>버튼</button>', { key: 't' }, { isTopLayer: false })).toBe('overlay');
+    expect(fireFrom('<button>버튼</button>', { key: 't' }, { isOverlayOpen: true })).toBe(
+      'overlay',
+    );
     expect(
       fireFrom(
         '<input />',
         { key: 'k', ctrlKey: true },
-        { isTopLayer: false, allowInEditable: true },
+        { isOverlayOpen: true, allowInEditable: true },
       ),
     ).toBe('overlay');
   });
@@ -137,13 +139,13 @@ describe('shortcutBlockReason', () => {
       fireFrom(
         '<input />',
         { key: 't', isComposing: true },
-        { isTopLayer: false, preventFirst: true },
+        { isOverlayOpen: true, preventFirst: true },
       ),
     ).toBe('handled');
-    expect(fireFrom('<input />', { key: 't', isComposing: true }, { isTopLayer: false })).toBe(
+    expect(fireFrom('<input />', { key: 't', isComposing: true }, { isOverlayOpen: true })).toBe(
       'ime',
     );
-    expect(fireFrom('<input />', { key: 't' }, { isTopLayer: false })).toBe('overlay');
+    expect(fireFrom('<input />', { key: 't' }, { isOverlayOpen: true })).toBe('overlay');
     expect(fireFrom('<input />', { key: 't' })).toBe('editable');
   });
 });

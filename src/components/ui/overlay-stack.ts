@@ -54,7 +54,18 @@ export function isInsideLayerAbove(layer: OverlayLayer, node: Node): boolean {
   return overlayLayersAbove(layer).some((above) => above.contains(node));
 }
 
-/** 테스트용 — 열린 레이어 수. */
+/**
+ * 지금 **화면에 떠 있는** 오버레이의 수. `0` 이면 아무것도 열려 있지 않다.
+ *
+ * 테스트 보조가 아니라 제품 코드가 쓰는 신호다: 전역 단축키는 이것이 `0` 일 때만 돌고
+ * (`useShortcutDispatch`), PWA 업데이트 토스트와 조용한 새로고침은 이것이 `0` 이 되기를
+ * 기다린다(`useOverlayDeferral`·`usePwaLifecycle`, pwa.md R4).
+ *
+ * 그래서 **DOM 을 그리지 않는 것을 스택에 올리면 안 된다.** 감시·판정 목적으로 빈 레이어를 하나
+ * 눌러 두면 이 값이 영원히 1 이상이 되어, 위 두 기능이 조용히 죽는다 — 실제로 그랬다(T-44).
+ * "내가 맨 위인가" 가 필요하면 진짜 오버레이만 `pushOverlayLayer` 하고, "무엇이든 열려 있는가" 는
+ * 여기서 읽는다.
+ */
 export function overlayLayerCount(): number {
   return stack.length;
 }
