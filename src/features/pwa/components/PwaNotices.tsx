@@ -19,15 +19,6 @@ import {
 
 import { dismissToast, pushToast, useToasts } from '@/components/ui/Toast';
 
-/**
- * 업데이트 토스트는 사실상 자동으로 닫히지 않아야 한다(R4 §2). `Toast` 의 타이머는 끌 수 없어
- * 32비트 상한을 넣는다 — **정확히는 안 닫히는 게 아니라 약 24.8일 뒤에 닫힌다.** 한 세션 안에서는
- * 도달하지 않는 값이라 지금은 충분하다(실브라우저에서 8초·30초 유지 확인).
- * `Infinity` 를 주면 `setTimeout` 이 비유한값을 0 으로 클램프해 **즉시** 닫히므로 쓸 수 없다.
- * 근본 해법은 `Toast` 의 `durationMs?: number | null` 이고, ✕ 버튼과 함께 T-07 후속 티켓이 맡는다.
- */
-const NO_AUTO_DISMISS_MS = 2_147_483_647;
-
 /** 상단 알림 영역을 밖에서 찾는 표식. 셸이 이만큼 자리를 비운다(`shell/lib/top-notice.ts`). */
 export const TOP_NOTICE_ATTR = 'data-top-notice';
 
@@ -104,7 +95,9 @@ function useUpdateToast(show: boolean, applyUpdate: () => void, dismissUpdate: (
       // 불리지 않으므로(`Toast` 계약), 아래 "화면이 비면 다시 올린다" 와 부딪히지 않는다 —
       // 이 배선이 없으면 ✕ 를 눌러도 `show` 가 그대로라 **다음 커밋에 곧바로 되밀린다**(T-29).
       onDismiss: () => latest.current.dismissUpdate(),
-      durationMs: NO_AUTO_DISMISS_MS,
+      // R4 §2 는 "자동으로 닫히지 않는다" 다. 큰 수가 아니라 `null`(= 타이머를 아예 걸지 않는다)로만
+      // 적는다 — 큰 수가 왜 그 반대로 뒤집히는지는 `Toast.tsx` 의 `resolveToastDuration` 주석에 있다.
+      durationMs: null,
     });
   }, [show, toasts]);
 }
