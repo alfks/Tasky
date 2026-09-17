@@ -126,11 +126,25 @@ function handleDialogKey(
   if (e.key === 'Tab') trapTab(e, layer, panel);
 }
 
-/** 포털로 body 에 나간 위 레이어(팝오버 패널) 안쪽 클릭은 "바깥"이 아니다. */
+/**
+ * 포털로 body 에 나간 위 레이어(팝오버 패널) 안쪽 클릭은 "바깥"이 아니다.
+ *
+ * `OVERLAY_ALWAYS_LIVE_ATTR` 를 단 루트(= 토스트 뷰포트) **안쪽도 바깥이 아니다.** 그 표식은
+ * `makeBackgroundInert` 에서만 쓰이고 있었는데, 그래서 모달이 떠 있는 동안 토스트는 살아 있으면서도
+ * 그 `[되돌리기]` 를 **마우스로** 누르면 모달까지 닫혔다(T-29 실측 · T-29 이전부터 있던 결함).
+ * 뷰포트는 오버레이 스택에 없으므로(`pushOverlayLayer` 는 DOM 을 그리는 오버레이 전용 — T-44)
+ * `isInsideLayerAbove` 가 잡지 못한다. 표식 자체가 이미 "모달이 있어도 살아 있는 영역" 을 뜻하니
+ * 새 표식을 만들지 않고 그것을 그대로 읽는다.
+ *
+ * 범위는 **그 표식을 단 부분트리 안쪽**뿐이다. 문서에 뷰포트가 존재하는지로 판단하면 진짜 바깥
+ * 클릭(백드롭)까지 살아남아 모달이 영영 안 닫힌다.
+ */
 function isOutsideClick(e: MouseEvent, layer: OverlayLayer, panel: HTMLElement | null): boolean {
   const target = e.target;
   if (!(target instanceof Node)) return false;
   if (panel?.contains(target) === true) return false;
+  const el = target instanceof Element ? target : target.parentElement;
+  if (el?.closest(`[${OVERLAY_ALWAYS_LIVE_ATTR}]`) != null) return false;
   return !isInsideLayerAbove(layer, target);
 }
 

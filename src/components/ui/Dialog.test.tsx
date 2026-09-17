@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { Dialog } from '@/components/ui/Dialog';
+import { TOAST_DISMISS_LABEL, ToastViewport } from '@/components/ui/Toast';
 
 import type { UserEvent } from '@testing-library/user-event';
 
@@ -287,5 +288,89 @@ describe.each(CLOSE_PATHS)('Dialog — %s 로 닫을 때', (_path, close) => {
 
     expect(screen.queryByRole('button', { name: '열기' })).not.toBeInTheDocument();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: '다음 행' }));
+  });
+});
+
+// 모달이 떠 있는 동안에도 토스트는 살아 있어야 한다(app-shell §5 · R8) — 그래서 토스트 뷰포트는
+// 배경 `inert` 를 비켜 가는 표식(`OVERLAY_ALWAYS_LIVE_ATTR`)을 단다. 그런데 그 표식은 `inert` 만
+// 비켜 갔을 뿐 **바깥 클릭 판정**에는 없었다: 토스트는 패널 밖이라 "바깥"으로 읽혀, 모달을 띄운 채
+// `[되돌리기]` 를 마우스로 누르면 되돌려지면서 **모달까지 닫혔다**(T-29 실측, T-29 이전부터 있던 결함).
+// 키보드(Tab → Enter) 경로는 mousedown 이 없어 무관하다. 여기서는 진짜 `ToastViewport` 를 쓴다 —
+// 표식을 붙이는 쪽과 읽는 쪽이 실제로 맞물리는지까지 같이 재기 위해서다.
+function WithToast({ onAction }: { onAction: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        열기
+      </button>
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title="장보기를 삭제할까요?"
+        footer={<Footer onClick={() => setOpen(false)} />}
+      />
+      {/* durationMs: null = 타이머를 걸지 않는다. 자동 닫힘이 판정에 섞이지 않게. */}
+      <ToastViewport
+        toasts={[
+          {
+            id: 't1',
+            message: "'장보기'를 삭제했어요",
+            durationMs: null,
+            action: { label: '되돌리기', onAction },
+          },
+        ]}
+        onClose={vi.fn()}
+      />
+    </>
+  );
+}
+
+describe('Dialog — 모달 위에 살아 있는 토스트', () => {
+  it.each([['되돌리기'], [TOAST_DISMISS_LABEL]])(
+    '토스트의 [%s] 를 마우스로 눌러도 모달은 닫히지 않는다',
+    async (name) => {
+      const user = userEvent.setup();
+      const onAction = vi.fn();
+      render(<WithToast onAction={onAction} />);
+
+      await user.click(screen.getByRole('button', { name: '열기' }));
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name }));
+
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(onAction).toHaveBeenCalledTimes(name === '되돌리기' ? 1 : 0);
+    },
+  );
+
+  // 반대 방향. 예외를 "문서에 토스트 뷰포트가 떠 있으면 전부 바깥이 아니다" 로 넓게 잡으면 위 두
+  // 케이스는 그대로 초록인데 **진짜 바깥 클릭이 영영 안 닫힌다**(음성 대조 B1: 이 케이스가 없을 때
+  // 0 죽음으로 살아남았다). 기존 백드롭 테스트들은 토스트를 띄우지 않아 그 변이를 보지 못하므로,
+  // "토스트가 떠 있는 동안에도" 백드롭이 닫는다는 것을 여기서 따로 잰다.
+  it('토스트가 떠 있어도 백드롭 클릭은 여전히 모달을 닫는다', async () => {
+    const user = userEvent.setup();
+    render(<WithToast onAction={vi.fn()} />);
+    const opener = screen.getByRole('button', { name: '열기' });
+
+    await user.click(opener);
+    await user.click(backdrop());
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(opener);
+    // 모달만 닫히고 토스트는 살아남는다.
+    expect(screen.getByRole('button', { name: '되돌리기' })).toBeInTheDocument();
+  });
+
+  // 백드롭은 기본 동작을 막아야 하지만(T-35) 토스트 버튼은 **막으면 안 된다** — 막는 순간 브라우저가
+  // 그 버튼에 포커스를 주지 않아, 마우스로 누른 뒤 토스트가 사라지면 포커스가 `<body>` 로 떨어진다.
+  it('토스트 위 mousedown 의 기본 동작은 막지 않는다', () => {
+    render(<WithToast onAction={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '열기' }));
+
+    const undo = screen.getByRole('button', { name: '되돌리기' });
+    const event = createEvent.mouseDown(undo);
+    fireEvent(undo, event);
+    expect(event.defaultPrevented).toBe(false);
   });
 });
