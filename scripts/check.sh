@@ -56,6 +56,7 @@ BASE="${1:-main}"
 
 pass=0
 fail_count=0
+failed_labels=""   # 실패한 검사 라벨(개행 구분) — 요약에 그대로 다시 찍는다
 run_step() { # $1 라벨, 나머지는 명령
   local label="$1"; shift
   echo "-- $label --"
@@ -66,6 +67,8 @@ run_step() { # $1 라벨, 나머지는 명령
     echo "FAIL: $label"
     [ "${GITHUB_ACTIONS:-}" = "true" ] && echo "::error title=${label}::${label} 실패 — 위 로그 참조"
     fail_count=$((fail_count + 1))
+    failed_labels="${failed_labels}${label}
+"
   fi
   echo
 }
@@ -100,7 +103,18 @@ if [ "$fail_count" -eq 0 ]; then
   echo "OK: 로컬 검사 통과 — CI guard/build 잡과 동일"
   exit 0
 else
-  echo "FAIL: 위 실패 항목을 고친 뒤 다시 실행하세요"
-  echo "src/**/__arch__ 잔여물이 보이면 rm -rf src/**/__arch__ (check-arch.sh 비정상 종료 흔적)"
+  # 어떤 검사가 실패했는지 여기서 이름으로 다시 말한다. 예전에는 요약에 숫자만 있고 그 아래에
+  # __arch__ 잔여물 안내가 **무조건** 붙어 있어서, 원인이 전혀 다른 실패까지 "check-arch.sh 비정상 종료 흔적"
+  # 으로 오진하게 만들었다(T-62 실측: 잔여물 1개가 pnpm typecheck 를 죽여 "통과 9 / 실패 1" 이 났는데
+  # 화면은 arch 를 가리켰다 — arch 는 PASS 였다). 안내는 잔여물이 실제로 있을 때만 붙인다.
+  echo "FAIL: 다음 검사가 실패했습니다 — 위 로그에서 해당 '-- 라벨 --' 구간을 보세요:"
+  printf '%s' "$failed_labels" | sed 's/^/  - /'
+  stale=0
+  [ -d src ] && stale="$(find src -type d -name __arch__ -prune 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "${stale:-0}" -gt 0 ]; then
+    echo "힌트: src/**/__arch__ 잔여물 ${stale}개가 남아 있습니다(check-arch.sh 비정상 종료 흔적)."
+    echo "      .gitignore 에 걸려 git status 에는 안 보이지만 pnpm typecheck 를 실패시킵니다."
+    echo "      bash scripts/check-arch.sh 를 한 번 돌리면 스스로 지웁니다(또는 find src -type d -name __arch__ -prune -exec rm -rf {} +)."
+  fi
   exit 1
 fi

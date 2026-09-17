@@ -11,7 +11,8 @@
 #       커버리지 검사가 본다. 예외: `-c eslint.arch.config.mjs` 만 지우면 1차 설정으로 떨어지는데,
 #       아키텍처 규칙 집합이 같아 실제 위반은 그대로 잡히고 정당한 style disable 이 오분류돼 시끄럽게
 #       실패한다(클린 트리에서만 통과). 조용한 구멍은 아니다 — 실측.
-#       비정상 종료로 남았으면: rm -rf src/**/__arch__
+#       비정상 종료로 남은 잔여물은 **다음 실행이 시작할 때 스스로 지운다**(WARN 한 줄을 남긴다) — 손으로 지울 필요 없다.
+#       손으로 지우려면: find src -type d -name __arch__ -prune -exec rm -rf {} +
 # 사용법: bash scripts/check-arch.sh   (package.json 이 없으면 SKIP)
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -20,6 +21,72 @@ ESLINT=./node_modules/.bin/eslint
 if [ ! -f package.json ] || [ ! -x "$ESLINT" ]; then
   echo "SKIP: package.json 또는 node_modules/.bin/eslint 없음(스캐폴딩 전) — 레이어 경계 검사는 스캐폴딩 후부터 동작합니다."
   exit 0
+fi
+
+# --- 0'. 잔여물 선청소 + 신호까지 받는 trap ---
+# 픽스처는 src/<layer>/__arch__/ 에 만들었다가 trap 으로 지운다. 그러나 SIGKILL·OOM 처럼 trap 이 돌지 못하는
+# 죽음이 있다. 그때 남은 파일은 .gitignore 에 걸려 `git status` 에 보이지 않으면서도 **pnpm typecheck 를 실패시킨다**
+# (tsc 는 eslint ignores 도 .gitignore 도 보지 않는다). 그래서 check.sh 가 "통과 9 / 실패 1 (pnpm typecheck)" 로
+# 빨개지는데 화면 어디에도 잔여물이라는 말이 없다 — T-62 실측(재현: 이 스크립트를 픽스처 생성 직후 kill -9 → 122개 잔존).
+# 쓸어 담는 범위는 DIRS 가 아니라 src/** 전체다: DIRS 는 feature 를 앞의 2개만 덮으므로, 그 밖의 feature 에 떨어진
+# 잔여물은 매 실행 살아남아 typecheck 를 계속 빨갛게 만든다(재현됨).
+sweep_arch_dirs() { [ -d src ] && find src -type d -name __arch__ -prune -exec rm -rf {} + 2>/dev/null; return 0; }
+stale_arch_dirs() { [ -d src ] || { echo 0; return 0; }; find src -type d -name __arch__ -prune 2>/dev/null | wc -l | tr -d " "; }
+
+covjson=""; json=""; HELD_LOCK=""
+cleanup() {
+  sweep_arch_dirs
+  [ -z "$covjson" ] || rm -f "$covjson" "$covjson.err"
+  [ -z "$json" ] || rm -f "$json" "$json.err"
+  [ -z "$HELD_LOCK" ] || rm -rf "$HELD_LOCK"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
+
+# --- 0''. 워크트리 단위 락 ---
+# 같은 워크트리에서 이 스크립트가 둘 이상 겹치면 서로의 __arch__ 픽스처를 지운다. 그러면 뒤늦게 읽으러 간 쪽의
+# eslint 가 `No files matching the pattern "src/features/<f>/__arch__/infra.ts" were found` 로 rc=2 에 죽고,
+# 화면에는 "레이어 경계 린트 검증" 실패로 보인다 — 아키텍처와 아무 상관없는 거짓 빨간불이다.
+# T-62 실측: 한 실행이 픽스처를 다 만든 직후 두 번째 실행을 띄우면 **5회 중 5회** 한쪽이 이렇게 죽었다.
+# 겹치는 일은 드물지 않다 — 첫 실행을 Ctrl-C 하고 다시 돌리면 죽은 쪽의 EXIT trap 이 새 실행의 픽스처를 지우고,
+# 부하가 걸리면 한 번의 실행이 17초에서 31초로 늘어 겹칠 창이 넓어진다(실측).
+# 락은 레포 안이 아니라 TMPDIR 에 워크트리 경로로 키를 만들어 둔다(레포에 파일을 남기지 않는다).
+# flock 은 쓰지 않는다 — scripts/AGENTS.md 규칙 4(없을 때의 대체 경로) 대로 mkdir 스핀락 하나로 통일한다.
+LOCK="${TMPDIR:-/tmp}/tasky-check-arch-$(printf '%s' "$PWD" | cksum | awk '{print $1}').lock"
+LOCK_TIMEOUT=300   # 한 번의 실행은 무부하 17초·부하 31초(실측). 10배 가까운 여유 — 여기 걸리면 진짜로 멈춘 것이다.
+waited=0
+while ! mkdir "$LOCK" 2>/dev/null; do
+  # 죽은 락 회수: 락을 쥔 PID 가 이미 없으면(SIGKILL 로 죽어 trap 이 못 돌았다) 지우고 다시 시도한다.
+  lockpid="$(cat "$LOCK/pid" 2>/dev/null || true)"
+  if [ -z "$lockpid" ]; then
+    # 상대가 막 mkdir 하고 아직 pid 를 못 쓴 찰나일 수 있다 — 한 박자 쉬고 다시 본다(여기서 바로 지우면
+    # 살아 있는 락을 뺏는다). 쉬고도 비어 있으면 죽은 락이다. 이 sleep 이 스핀도 함께 막는다.
+    sleep 1
+    waited=$((waited + 1))
+    lockpid="$(cat "$LOCK/pid" 2>/dev/null || true)"
+  fi
+  if [ -z "$lockpid" ] || ! kill -0 "$lockpid" 2>/dev/null; then
+    rm -rf "$LOCK"
+    continue
+  fi
+  [ "$waited" -eq 0 ] && echo "WARN: 같은 워크트리에서 check-arch.sh(pid $lockpid)가 이미 돌고 있습니다 — 끝날 때까지 기다립니다."
+  sleep 1
+  waited=$((waited + 1))
+  if [ "$waited" -ge "$LOCK_TIMEOUT" ]; then
+    echo "FAIL: 다른 check-arch.sh 가 ${LOCK_TIMEOUT}초 넘게 락을 쥐고 있습니다(pid $lockpid)."
+    echo "      **아키텍처 위반이 아닙니다** — 그 프로세스를 끝내거나 락을 지우세요: rm -rf $LOCK"
+    exit 1
+  fi
+done
+printf '%s\n' "$$" > "$LOCK/pid"
+HELD_LOCK="$LOCK"
+
+stale="$(stale_arch_dirs)"
+if [ "$stale" -gt 0 ]; then
+  echo "WARN: 이전 실행의 __arch__ 잔여물 ${stale}개 디렉토리를 지웁니다(직전 실행이 trap 없이 죽었다는 뜻 — OOM·SIGKILL)."
+  echo "      아래 판정과는 무관합니다. 이 줄이 자주 보이면 동시에 도는 빌드/테스트를 줄이세요."
+  sweep_arch_dirs
 fi
 
 # --- 0. 레이어·예외 파일·확장자 목록을 scripts/arch-layers.mjs 에서 읽는다(단일 소스) ---
@@ -80,20 +147,48 @@ echo "PASS: src/** 전수 분류(레이어 $(git ls-files src | wc -l | tr -d ' 
 #      --config eslint.arch.config.mjs 를 지우면 픽스처가 곧바로 FAIL 한다(지우고 돌려보면 재현된다).
 arch_pass() { "$ESLINT" --no-inline-config --config eslint.arch.config.mjs "$@"; }
 
-covjson=""; json=""; ARCH_DIRS=""
-cleanup() {
-  for d in $ARCH_DIRS; do rm -rf "$d/__arch__"; done
-  [ -z "$covjson" ] || rm -f "$covjson"
-  [ -z "$json" ] || rm -f "$json"
+# eslint 는 "위반 있음" 을 rc=1 로 알린다 — 그건 정상 결과다. rc>=2 는 판정이 아예 없다는 뜻이고 원인은 둘로 갈린다:
+#   rc=2        ESLint 자신의 치명적 오류(설정·CLI 오류)
+#   rc>2        프로세스가 죽었다(134=SIGABRT: V8 heap OOM, 137=SIGKILL: 커널 OOM killer …) — 부하에서 나는 실패다.
+# 예전에는 두 경우 모두 `|| true` 로 삼켜 JSON 이 빈 채로 넘어갔고, 화면에는 "설정 로드 실패?" 만 남았다
+# (T-62 실측: `ulimit -v 1200000` 로 돌리면 2차 패스 eslint 가 SIGABRT 로 죽고 정확히 그 문구가 나온다 —
+#  자원 문제를 설정 문제로 오진한다). 이제 rc 를 보존해 메시지를 가르고, **죽은 경우에만** 한 번 재시도한다.
+# 재시도가 위반을 숨길 수는 없다: 위반은 rc<=1 이라 애초에 재시도 대상이 아니다.
+eslint_json() { # $1 출력 파일, $2 패스(1|2), 나머지 eslint 인자
+  local out="$1" pass="$2"; shift 2
+  local rc attempt
+  for attempt in 1 2; do
+    rc=0
+    if [ "$pass" = 2 ]; then
+      arch_pass "$@" > "$out" 2> "$out.err" || rc=$?
+    else
+      "$ESLINT" "$@" > "$out" 2> "$out.err" || rc=$?
+    fi
+    if [ "$rc" -le 1 ] && [ -s "$out" ]; then return 0; fi
+    if [ "$attempt" = 1 ] && [ "$rc" -gt 2 ]; then
+      echo "WARN: eslint(${pass}차 패스)가 rc=$rc 로 비정상 종료 — 자원 부족으로 보고 1회만 재시도합니다."
+      continue
+    fi
+    break
+  done
+  if [ "$rc" -gt 2 ]; then
+    echo "FAIL: eslint(${pass}차 패스)가 rc=$rc 로 비정상 종료했습니다 — **아키텍처 위반이 아니라 실행 실패**입니다(OOM·시그널)."
+    echo "      동시에 도는 빌드/테스트를 줄이고 다시 실행하세요. 마지막 stderr:"
+  else
+    echo "FAIL: eslint(${pass}차 패스)가 rc=$rc 로 끝났습니다 — **위반 판정이 아니라** 설정/CLI 오류입니다."
+    echo "      직접 실행해 원인을 보세요: ./node_modules/.bin/eslint --no-inline-config --config eslint.arch.config.mjs src"
+  fi
+  # stderr 는 **앞부분**을 보여 준다 — ESLint 는 실제 원인 문장을 먼저 찍고 스택을 뒤에 붙인다(tail 이면 스택만 남는다).
+  sed -n '1,15p' "$out.err" 2>/dev/null | sed 's/^/      /'
+  return 1
 }
-trap cleanup EXIT
 
 if [ -d src ]; then
   # --format json 으로 받는 이유: 위반 보고와 함께 "이 패스가 실제로 어떤 파일을 봤는지"를 같은 한 번의 실행에서
   # 확인하기 위해서다. 트래킹된 src 코드 파일이 하나라도 결과에 없으면 대상 경로가 좁혀졌거나 전역 ignores 가
   # 그 파일을 먹은 것이므로(둘 다 2차 패스를 조용히 무력화한다) 실패로 본다.
   covjson="$(mktemp)"
-  arch_pass --format json src > "$covjson" || true
+  eslint_json "$covjson" 2 --format json src || exit 1
   covfiles="$(git ls-files src | grep -E '\.tsx?$' || true)"
   if ! node -e '
 const fs = require("fs"), path = require("path");
@@ -146,10 +241,10 @@ FA="$1"; FB="${2:-}"
 
 DIRS="src src/domain src/repositories src/infra src/components src/lib src/app src/test src/styles src/features src/features/$FA"
 [ -n "$FB" ] && DIRS="$DIRS src/features/$FB"
-ARCH_DIRS="$DIRS"   # 위에서 건 trap(cleanup)이 이 목록의 __arch__ 를 반드시 지운다
+# 정리는 위 cleanup(trap) 이 src/** 전체를 쓸어서 한다 — 이 목록에 의존하지 않는다(목록 밖 잔여물이 실제로 남았다).
 for d in $DIRS; do
   rm -rf "$d/__arch__"; mkdir -p "$d/__arch__"
-  printf '// 아키텍처 검사 임시 파일 — scripts/check-arch.sh 가 만들고 지운다. 남아 있으면 rm -rf src/**/__arch__\nexport const a = 1;\n' > "$d/__arch__/a.ts"
+  printf '// 아키텍처 검사 임시 파일 — scripts/check-arch.sh 가 만들고 지운다. 남아 있으면 다음 실행이 지운다.\nexport const a = 1;\n' > "$d/__arch__/a.ts"
 done
 # 경유지(2홉 세탁) 후보: 금지된 곳(infra)을 재export 하는 파일을 여러 위치에 둔다. 세탁이 막히는 방식은 둘 중 하나 —
 # importer 가 경유지를 import 하지 못하거나(허용 목록 밖), 경유지 파일 자체가 자기 레이어 규칙에 걸린다(전수 분류).
@@ -291,7 +386,7 @@ add "$FT/ok.test.ts"       - "$I '@/infra/__arch__/a'; export const x = a;"
 [ -n "$FB" ] && add "$FT/ok-other.ts" - "$I '@/features/$FB'; export const x = a;"
 
 json="$(mktemp)"
-"$ESLINT" --no-ignore --format json $FILES > "$json" 2>/dev/null || true   # 위반이 있으면 eslint 는 exit 1 — 정상
+eslint_json "$json" 1 --no-ignore --format json $FILES || exit 1   # 위반이 있으면 eslint 는 rc=1 — 정상. rc>=2 만 실패다
 
 node -e '
 const fs = require("fs"), path = require("path");
@@ -332,19 +427,17 @@ count_errors() { # $1 = 패스(1|2), 나머지 = 파일 → "파일 에러수" �
   # 2차는 반드시 arch_pass(1.5 에서 실제 src/ 를 검사하는 그 함수)로 돌린다 — 픽스처가 자기 명령을 따로 조립하면
   # 그 함수의 플래그를 지워도 픽스처는 통과해 버린다(검증이 실제 실행 줄과 끊긴다).
   local pass="$1"; shift
-  if [ "$pass" = 2 ]; then
-    arch_pass --no-ignore --format json "$@" 2>/dev/null > "$json" || true
-  else
-    "$ESLINT" --no-ignore --format json "$@" 2>/dev/null > "$json" || true
-  fi
+  # 이 함수는 명령 치환($( )) 안에서 불린다 — 거기서의 exit 는 서브셸만 죽인다. 그래서 진단은 stderr 로 내보내고
+  # (치환에 먹히지 않게) rc 로 호출부에 올린다.
+  eslint_json "$json" "$pass" --no-ignore --format json "$@" >&2 || return 1
   node -e '
 const fs = require("fs"), path = require("path");
 for (const r of JSON.parse(fs.readFileSync(process.argv[1], "utf8"))) {
   console.log(path.relative(process.cwd(), r.filePath) + " " + r.messages.filter((m) => m.severity === 2).length);
 }' "$json"
 }
-first="$(count_errors 1 $DISABLES)"
-second="$(count_errors 2 $DISABLES)"
+first="$(count_errors 1 $DISABLES)" || exit 1
+second="$(count_errors 2 $DISABLES)" || exit 1
 gfail=0
 for f in $DISABLES; do
   n1="$(printf '%s\n' "$first"  | awk -v f="$f" '$1 == f { print $2 }')"
