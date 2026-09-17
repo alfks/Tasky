@@ -49,6 +49,71 @@ const RING_GROUPS = [
   },
 ];
 
+/**
+ * **그림자가 실제로 눈에 보이는가** 를 찍은 픽셀로 본다. 계산된 `box-shadow` 가 있다는 것과
+ * 화면에 부유감이 생겼다는 것은 다른 말이다(T-60 티켓의 지적). 카드 아래쪽 바깥을 세로로 훑어
+ * **가장 어두워진 픽셀**과 페이지 배경의 명도비를 낸다. 1.00 에 가까우면 "있지만 안 보인다" 다.
+ *
+ * PNG 디코더가 이 레포에 없어서 **브라우저의 canvas 로 푼다** — 찍은 이미지를 빈 페이지에
+ * 올려 `getImageData` 로 읽는다.
+ */
+async function measureShadowPixels(browserRef, page, pngBuffer) {
+  const target = await page.evaluate(() => {
+    const el = document.querySelector('section[aria-label]');
+    if (el === null) return null;
+    const r = el.getBoundingClientRect();
+    return { x: Math.round(r.x + r.width / 2), bottom: Math.round(r.bottom) };
+  });
+  if (target === null) return null;
+  const reader = await browserRef.newPage();
+  const result = await reader.evaluate(
+    async ({ dataUrl, x, bottom }) => {
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = dataUrl;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const px = (yy) => {
+        const d = ctx.getImageData(x, yy, 1, 1).data;
+        return { r: d[0], g: d[1], b: d[2] };
+      };
+      const lum = (c) => {
+        const f = (v) => {
+          const s = v / 255;
+          return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+        };
+        return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+      };
+      // 카드 아래 14px 을 훑는다. `dy = -1` 이 1px 보더라서 **0 부터** 시작한다 — 2 부터
+      // 시작했더니 그림자 띠(실측 2px)를 통째로 건너뛰어 "그림자 0" 이라는 오측이 나왔다.
+      const samples = [];
+      for (let dy = 0; dy <= 13; dy += 1) samples.push({ dy, c: px(bottom + dy) });
+      const background = px(bottom + 40);
+      const darkest = samples.reduce((a, b) => (lum(a.c) <= lum(b.c) ? a : b));
+      const [hi, lo] = [lum(background), lum(darkest.c)].sort((p, q) => q - p);
+      const bgLum = lum(background);
+      return {
+        background: `rgb(${background.r}, ${background.g}, ${background.b})`,
+        darkest: `rgb(${darkest.c.r}, ${darkest.c.g}, ${darkest.c.b})`,
+        darkestAtPx: darkest.dy,
+        contrast: Number(((hi + 0.05) / (lo + 0.05)).toFixed(4)),
+        // 배경과 다른 픽셀이 **몇 줄**인가 — 그림자의 두께다.
+        bandPx: samples.filter((s2) => Math.abs(lum(s2.c) - bgLum) > 0.001).length,
+        profile: samples.map((s2) => `${s2.dy}:${s2.c.r},${s2.c.g},${s2.c.b}`).join(' '),
+      };
+    },
+    { dataUrl: `data:image/png;base64,${pngBuffer.toString('base64')}`, ...target },
+  );
+  await reader.close();
+  return result;
+}
+
 const browser = await launch();
 const report = { baseUrl: BASE_URL, measuredAt: new Date().toISOString(), rows: [] };
 
@@ -76,13 +141,24 @@ for (const colorScheme of SCHEMES) {
     }
     const rings = await page.evaluate(selectedRingCensus, RING_GROUPS);
 
+    let shadowPixels = null;
     if (SHOT_WIDTHS.has(width)) {
       await page.keyboard.press('Escape');
       await page.waitForTimeout(300);
-      await page.screenshot({ path: out(`t60-${colorScheme}-${width}x${height}.png`) });
+      const png = await page.screenshot({ path: out(`t60-${colorScheme}-${width}x${height}.png`) });
+      if (width === 1440) shadowPixels = await measureShadowPixels(browser, page, png);
     }
 
-    report.rows.push({ colorScheme, width, height, density, cards, completion, rings });
+    report.rows.push({
+      colorScheme,
+      width,
+      height,
+      density,
+      cards,
+      completion,
+      rings,
+      shadowPixels,
+    });
     const main = density['메인 스크롤 영역'];
     log(
       `${colorScheme} ${width}px  메인공백 ${main?.emptyRatio ?? '?'} (꼬리 ${main?.tailEmptyPx ?? '?'}px)  ` +
@@ -110,4 +186,9 @@ for (const e of wide.rings.entries) {
   log(`  ${e.group}: ${e.found ? JSON.stringify(e.ring) : '화면에 없음'}`);
 }
 log(`\n링 토큰: 색 ${wide.rings.ringColorToken} / 굵기 ${wide.rings.ringWidthToken}`);
+log('\n--- 카드 아래 그림자의 실제 픽셀(1440) ---');
+for (const scheme of SCHEMES) {
+  const row = report.rows.find((r) => r.colorScheme === scheme && r.width === 1440);
+  log(`  ${scheme}: ${JSON.stringify(row?.shadowPixels)}`);
+}
 log('\n저장: ' + writeJson('t60-density-and-surface.json', report));
