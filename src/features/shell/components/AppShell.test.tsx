@@ -84,8 +84,39 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  // 가짜 시계·가짜 타이머를 쓴 테스트가 있어도 여기서 원래대로 돌린다(안 썼으면 무해하다).
+  vi.useRealTimers();
   document.title = 'Tasky';
 });
+
+const SESSION_STARTED_AT = '2026-09-16T00:00:00.000Z';
+const SESSION_NOW = '2026-09-16T00:00:10.000Z';
+
+/**
+ * 실행 중인 집중 세션을 스토어에 꽂는다 — **시계를 그 세션 안에 멈춰 두고**.
+ *
+ * 헤더 칩은 타이머 런타임을 걸고, 그 런타임은 1초마다 `tick()` 을 부른다. `tick()` 은 **진짜
+ * 시계**를 읽어 이미 끝난 세션을 쓸어 담으므로, 고정 날짜의 픽스처 세션은 오늘의 시계에서 늘
+ * "한참 전에 끝난" 세션이다. 그 인터벌이 세션을 꽂은 뒤와 칩을 찾기 전 사이에 끼어들면 세션이
+ * 지워지고 칩은 영영 안 뜬다. 예산은 **틱 한 번(1000ms)** 뿐이다.
+ *
+ * T-55 실측(2026-09-17 · 4코어): 이 배선이 실제로 실패하는 것은 **보지 못했다** — 부하를 건
+ * 138회(조건은 아래 `로딩` 블록 주석과 같다)에서 0회다. 대신 창의 존재는 결정적으로 보였다:
+ * 세션을 꽂은 뒤 `findByRole` 앞에 **진짜 1.2초**를 끼우면 고친 이 배선 없이는 곧바로 죽고
+ * (`Unable to find role="button" and name /집중 타이머/`), 아래처럼 `Date` 를 세워 두면 같은
+ * 1.2초에도 통과한다. 즉 "아직 안 터졌을 뿐 시계에 매달린" 단언이라 함께 걷었다.
+ *
+ * 그래서 **`Date` 만** 가짜로 세운다. 타이머는 진짜 그대로라 인터벌이 몇 번을 돌든 `tick()` 이
+ * 읽는 시각은 세션 시작 10초 뒤고, 25분짜리 세션은 그대로 실행 중이다. 되돌리기는 위 `afterEach`.
+ */
+function startRunningSession(): void {
+  vi.useFakeTimers({ toFake: ['Date'], now: new Date(SESSION_NOW) });
+  useTimerStore.setState({
+    session: makeFocusSession({ startedAt: SESSION_STARTED_AT }),
+    now: SESSION_NOW,
+    todoTitle: null,
+  });
+}
 
 /** 셸을 띄우고 첫 적재 effect 들이 가라앉을 때까지 기다린다. */
 async function mount(options: { todos?: boolean } = {}): Promise<void> {
@@ -225,13 +256,7 @@ describe('타이머 슬롯 (리뷰 필수항목 5 · R15)', () => {
 
   it('세션이 있으면 헤더에 칩이 뜬다', async () => {
     await mount();
-    act(() => {
-      useTimerStore.setState({
-        session: makeFocusSession({ startedAt: '2026-09-16T00:00:00.000Z' }),
-        now: '2026-09-16T00:00:10.000Z',
-        todoTitle: null,
-      });
-    });
+    act(startRunningSession);
     expect(await screen.findByRole('button', { name: /집중 타이머/ })).toBeInTheDocument();
   });
 });
@@ -410,54 +435,129 @@ describe('적재 배선 (Blocker: 1024px 미만·사이드바 접힘에서 앱�
   });
 });
 
+/**
+ * 이 블록은 **가짜 타이머 + 손으로 푸는 조회**로 돈다 — 벽시계를 한 밀리초도 쓰지 않는다.
+ *
+ * 왜: 스켈레톤이 보이는 구간은 `[100ms, 조회가 끝나는 시각]` 이라 **지나가는 창**이다. 실제
+ * `setTimeout(250)` 으로 느린 조회를 흉내 내면 그 창이 150ms 밖에 안 열리고, `waitFor` 의 폴링이
+ * 그 안에 한 번도 못 들어가면 창이 **이미 닫힌 뒤** 계속 헛돌다 죽는다. 워크트리 여러 개가 동시에
+ * 도는 것이 평상시인 이 레포에서 그것이 실제로 났다.
+ *
+ * T-55 재현 실측(2026-09-17 · 4코어 · 이 파일 53건 · 고친 **전** 코드). 부하 종류를 바꿔 가며 셌다:
+ *   - CPU 바쁜 루프 12개 + 순차 실행 ......... 20회 중 **0회**
+ *   - `vitest` 6개 동시 + 바쁜 루프 6개 ...... 54회 중 **2회**
+ *   - `vitest` 8개 동시 + 바쁜 루프 4개 ...... 64회 중 **1회**
+ * 합계 **138회 중 3회(2.2%)**, 전부 이 블록의 `slowTodoReads(250)` 케이스에서 같은 한 줄로 죽었다
+ * (`AssertionError: expected null not to be null`). 부하를 CPU 로만 올리면 안 나고 **같은 파일을
+ * 여러 프로세스가 같이 돌 때** 났다 — 이 레포의 평상시가 정확히 그 모양이다. 2%는 티켓이 인용한
+ * 수치(20회 중 5회)보다 훨씬 낮지만, 낮은 실패율이야말로 "또 그거네" 로 흘려보내지는 쪽이다.
+ *
+ * 타임아웃을 늘리는 것은 고치는 게 아니다 — 부하가 더 오르면 창은 또 닫힌다. 그래서 창 자체를
+ * 없앤다: 조회는 **우리가 풀 때까지 안 끝나고**(창이 열린 채로 멈춘다), 100ms 문턱은 가짜 시계를
+ * 정확히 그만큼 돌려 넘는다. 단언은 오히려 늘었다 — 이제 "100ms 전에는 안 뜬다" 까지 잡는다.
+ * 음성 대조로 확인했다: `useDelayedFlag` 에서 문턱을 걷어내면 여기 한 건이 죽는데, **옛 테스트는
+ * 같은 결함에 53/53 초록**이었다.
+ *
+ * 가짜로 만드는 것은 **타이머 넷뿐**이다. `setImmediate` 까지 가짜로 두면 React 의 `act` 가
+ * 그것으로 작업을 미루다 영영 깨어나지 않는다.
+ */
 describe('로딩 (§2-C · Blocker: 스켈레톤이 적재를 진동시키던 자리)', () => {
-  /** 100ms 를 넘겨 끝나는 조회. 스켈레톤이 뜨는 조건을 실제로 만든다. */
-  function slowTodoReads(delayMs: number): { calls: () => number } {
+  const FAKE_TIMERS = ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] as const;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: [...FAKE_TIMERS] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** 지금 스켈레톤이 떠 있는가 (§2-C 로딩의 유일한 표식). */
+  function skeleton(): Element | null {
+    return document.querySelector('[aria-busy="true"]');
+  }
+
+  /**
+   * 투두 조회를 **붙잡는다**. `release()` 를 부를 때까지 끝나지 않는다 —
+   * "느린 조회" 를 밀리초가 아니라 **순서**로 만든다.
+   */
+  function heldTodoReads(): { calls: () => number; release: () => Promise<void> } {
     const repositories = getRepositories();
     const original = repositories.todos.listByDate.bind(repositories.todos);
     let calls = 0;
-    vi.spyOn(repositories.todos, 'listByDate').mockImplementation(async (date) => {
+    const gates: Array<() => void> = [];
+    const results: Array<Promise<unknown>> = [];
+    vi.spyOn(repositories.todos, 'listByDate').mockImplementation((date) => {
       calls += 1;
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-      return original(date);
+      const held = new Promise<void>((resolve) => gates.push(resolve)).then(() => original(date));
+      results.push(held);
+      return held;
     });
-    return { calls: () => calls };
+    return {
+      calls: () => calls,
+      release: async () => {
+        await act(async () => {
+          for (const open of gates.splice(0)) open();
+          await Promise.all(results);
+          // 스토어의 `await` 뒷줄과 그것이 부른 렌더까지 소화시킨다(가짜 시계는 안 움직인다).
+          await vi.advanceTimersByTimeAsync(0);
+        });
+      },
+    };
+  }
+
+  /** 가짜 시계를 그만큼 돌리고, 그 사이 풀린 약속·렌더를 전부 소화한다. */
+  async function advance(ms: number): Promise<void> {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
   }
 
   it('느린 조회에서도 목록 적재는 한 번이다 — 스켈레톤이 `TodoList` 를 대체하지 않는다', async () => {
-    const reads = slowTodoReads(150);
-    await mount();
-    await waitFor(() => expect(screen.getByRole('main')).toHaveTextContent(/할 일 추가/), {
-      timeout: 3000,
-    });
+    const reads = heldTodoReads();
+    render(<AppShell />);
+    // 스켈레톤이 실제로 뜬 상태를 지난다 — 진동은 바로 이 순간에 났다.
+    await advance(SKELETON_DELAY_MS);
+    expect(skeleton()).not.toBeNull();
+    await reads.release();
+    expect(screen.getByRole('main')).toHaveTextContent(/할 일 추가/);
     // 리뷰 실측에서는 조작 0회에 8회였다.
     expect(reads.calls()).toBe(1);
   });
 
   it('첫 조회가 100ms 를 넘기면 스켈레톤이 뜨고, 끝나면 사라진다', async () => {
-    slowTodoReads(250);
+    const reads = heldTodoReads();
     render(<AppShell />);
-    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).not.toBeNull());
-    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull(), {
-      timeout: 3000,
-    });
+    // 문턱 전: 짧은 조회에 번쩍이지 않는다(§2-C).
+    await advance(SKELETON_DELAY_MS - 1);
+    expect(skeleton()).toBeNull();
+    await advance(1);
+    expect(skeleton()).not.toBeNull();
+    await reads.release();
+    expect(skeleton()).toBeNull();
   });
 
   it('스켈레톤이 떠 있는 동안에도 `TodoList` 는 마운트된 채다', async () => {
-    slowTodoReads(250);
+    const reads = heldTodoReads();
     render(<AppShell />);
-    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).not.toBeNull());
+    await advance(SKELETON_DELAY_MS);
+    expect(skeleton()).not.toBeNull();
     // 숨겨져 있을 뿐 트리에 살아 있다 — 언마운트되면 적재가 취소되고 다시 시작된다.
     expect(screen.getByRole('main').querySelector('[hidden]')).not.toBeNull();
+    await reads.release();
   });
 
   it('날짜를 옮길 때는 스켈레톤이 다시 뜨지 않는다 (첫 적재로만 좁혔다)', async () => {
-    await mount();
+    const reads = heldTodoReads();
+    render(<AppShell />);
+    await reads.release();
+    // 첫 적재가 끝난 뒤라야 "다시" 를 물을 수 있다.
+    expect(useTodoStore.getState().status).toBe('ready');
     act(() => {
       useTodoStore.setState({ status: 'loading' });
     });
-    await new Promise((resolve) => setTimeout(resolve, SKELETON_DELAY_MS + 60));
-    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+    await advance(SKELETON_DELAY_MS + 60);
+    expect(skeleton()).toBeNull();
   });
 });
 
@@ -552,18 +652,10 @@ describe('인사이트 접기 버튼의 상태 (§5)', () => {
 });
 
 describe('타이머 칩의 "인사이트 열기" (R1)', () => {
-  function runningSession() {
-    useTimerStore.setState({
-      session: makeFocusSession({ startedAt: '2026-09-16T00:00:00.000Z' }),
-      now: '2026-09-16T00:00:10.000Z',
-      todoTitle: null,
-    });
-  }
-
   it('컬럼이 서 있으면 오버레이를 띄우지 않는다 — `aside` 가 둘이 되면 R1 위반이다', async () => {
     const user = userEvent.setup();
     await mount();
-    act(runningSession);
+    act(startRunningSession);
     await user.click(await screen.findByRole('button', { name: /집중 타이머/ }));
     expect(screen.queryByRole('dialog', { name: '오늘 요약' })).toBeNull();
     expect(screen.getAllByRole('complementary')).toHaveLength(1);
@@ -574,7 +666,7 @@ describe('타이머 칩의 "인사이트 열기" (R1)', () => {
     const user = userEvent.setup();
     setWidth(1100);
     await mount();
-    act(runningSession);
+    act(startRunningSession);
     await user.click(await screen.findByRole('button', { name: /집중 타이머/ }));
     expect(await screen.findByRole('dialog', { name: '오늘 요약' })).toBeInTheDocument();
     expect(screen.getAllByRole('complementary')).toHaveLength(1);
