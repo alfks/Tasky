@@ -12,6 +12,7 @@ import type { Todo } from '@/domain/todo/todo';
 import { ITEM_SHORTCUT_IDS, useDocumentedShortcuts, useShortcut } from '@/features/command';
 import { TodoGroupSection } from '@/features/todo/components/TodoGroupSection';
 import { useTodoActions } from '@/features/todo/hooks/useTodoActions';
+import { useTodoCommands } from '@/features/todo/hooks/useTodoCommands';
 import { useTodoDate } from '@/features/todo/hooks/useTodoDate';
 import { useTodoGroups } from '@/features/todo/hooks/useTodoGroups';
 import { TODO_MESSAGES as M } from '@/features/todo/messages';
@@ -61,6 +62,9 @@ export function TodoList({ date, categories }: TodoListProps) {
   // 항목 포커스 키(Space·Enter·Delete·Alt+↑/↓)를 도움말에 싣는다 — 처리는 각 행이 한다(T-17 R2).
   useDocumentedShortcuts(ITEM_SHORTCUT_IDS);
   useShortcut('todo.new', () => setAddOpenFor(active[0]?.id ?? null));
+  // 팔레트의 `새 할 일 (<카테고리>)` (shortcuts R7). `N` 과 **같은 상태**를 연다 — 입력 행을 여는
+  // 곳이 둘이 되면 한쪽만 고쳤을 때 조용히 갈린다. 목록이 사라지면 명령도 함께 사라진다.
+  useTodoCommands(active, (categoryId) => setAddOpenFor(categoryId));
 
   const confirmDelete = async (): Promise<void> => {
     if (pending === null) return;

@@ -14,6 +14,7 @@ import {
   useClosedCategories,
 } from '@/features/category/hooks/useCategories';
 import { useCategoryActions } from '@/features/category/hooks/useCategoryActions';
+import { useCategoryCommands } from '@/features/category/hooks/useCategoryCommands';
 import type { CategoryFormMode } from '@/features/category/hooks/useCategoryForm';
 
 import { Button } from '@/components/ui/Button';
@@ -57,6 +58,9 @@ export function CategoryList({ onSelect, onRemove }: CategoryListProps) {
   const openCreate = (): void => {
     setForm((previous) => ({ mode: { kind: 'create' }, key: (previous?.key ?? 0) + 1 }));
   };
+  // 팔레트의 `새 카테고리` (shortcuts R7). `+ 카테고리 추가` 버튼과 **같은 상태**를 연다.
+  useCategoryCommands(openCreate);
+
   const openEdit = (category: Category): void => {
     setForm((previous) => ({ mode: { kind: 'edit', category }, key: (previous?.key ?? 0) + 1 }));
   };

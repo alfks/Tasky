@@ -11,6 +11,7 @@
 import { lazy, Suspense, useEffect, useRef } from 'react';
 
 import { BackupWarningDot } from '@/features/backup/components/BackupWarningDot';
+import { useBackupCommands } from '@/features/backup/hooks/useBackupCommands';
 import { importResultMessage } from '@/features/backup/store/backup-state';
 import { useBackupStore } from '@/features/backup/store/backup-store';
 
@@ -28,6 +29,10 @@ export function BackupLauncher() {
   const openDialog = useBackupStore((state) => state.openDialog);
   const refreshWarning = useBackupStore((state) => state.refreshWarning);
   const dismissResult = useBackupStore((state) => state.dismissResult);
+
+  // 팔레트의 `백업/복원 열기` (shortcuts R7). 다이얼로그를 그리는 것이 이 컴포넌트라 등록의
+  // 수명도 여기에 묶는다 — 런처가 없는 화면에서 명령만 남으면 상태만 바뀌고 아무것도 안 뜬다.
+  useBackupCommands(openDialog);
 
   // 파생 상태 동기화가 아니라 **외부 저장소 읽기**다(code-style §3 이 금지하는 쪽이 아니다).
   // 경고 점은 다이얼로그를 열지 않아도 보여야 하므로 마운트 시 한 번 읽는다 — 개수까지 읽지는 않는다.
