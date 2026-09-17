@@ -12,7 +12,7 @@
 - 있음: `visual-contrast.mjs`(시각 대조·스크린샷) · `state-language.mjs`(선택·호버·포커스·비활성) ·
   `motion-and-latency.mjs` · `focus-and-keyboard.mjs` · `stability-and-theme.mjs` ·
   `density-and-surface.mjs`(잉크 기준 밀도·카드 명도비·그림자 픽셀·선택 링) ·
-  `palette-and-longlist.mjs`(팔레트 열린 화면·120건 목록) · `lib/`(하네스 + `probe*.mjs`)
+  `palette-and-longlist.mjs`(팔레트·120건) · `rapid-input{,-window,-minimal}.mjs`(T-65) · `lib/`
 - 없음(다른 곳): E2E → `tests/e2e/` · 단위 테스트 → `src/**/*.test.ts` · 해석과 티켓 배정 →
   `docs/FEEL_REPORT.md`.
 
@@ -34,7 +34,7 @@
 ## 검증
 
 ```bash
-pnpm build && npx wrangler dev --config wrangler.jsonc --port 3200 &   # 서버
+pnpm build && npx wrangler dev --config wrangler.jsonc --port 3200 &   # 남이 쓰면 다른 포트 + FEEL_BASE_URL
 for f in visual-contrast state-language motion-and-latency focus-and-keyboard \
          stability-and-theme density-and-surface palette-and-longlist; do
   node "tests/feel/$f.mjs"; done
@@ -56,5 +56,5 @@ pnpm lint
   **0 부터** 훑어라(2 부터 시작하면 2px 그림자 띠를 통째로 건너뛴다).
 - **절대 날짜를 박지 마라**(`9월 17일` 등) — 하루 뒤 `오늘로 이동` 이 비활성이 되어 모션 계측이
   통째로 죽었다. `harness.mjs` 의 `dayLabel(offset)` 을 써라.
-- 많은 항목을 UI 로 심을 때 **대기 없이 Enter 를 연타하면 10% 가량 유실된다**(40건 중 36건, 150ms 면 40/40).
-  원인(도구 경합 ↔ 앱)은 아직 안 가렸다 — 세는 대상이 흔들리지 않게 기다려라.
+- 대기 없이 Enter 연타로 심기 → 유실된다. **도구가 아니라 앱이 흘린다**(T-65: 보낸 40 / 받은 40 /
+  저장 23~30, 창은 간격 5ms 미만). 심을 땐 150ms 씩 기다려라. 근거·재현: `rapid-input*.mjs`.
