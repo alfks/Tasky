@@ -4,9 +4,9 @@
 // 그래서 통합 테스트는 레지스트리의 `runCommand` 를 거쳐 **입력 행이 실제로 열리는 것**까지 본다.
 // 픽스처는 **비대칭**이다: 활성 2개(공부·운동)의 이름·순서가 다르고 종료 1개(요리)와 삭제된
 // 카테고리 1개(청소)가 섞여 있다 — 활성만 거르는지, 첫 칸에만 `N` 을 다는지가 드러나야 한다.
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Category } from '@/domain/category/category';
 import type { DateKey } from '@/domain/date/date-key';
@@ -65,6 +65,10 @@ beforeEach(async () => {
   useTodoStore.setState({ byId: {}, date: null, status: 'idle', error: null });
   useDateStripStore.setState({ selectedDate: FIXTURE_DATE, today: TODAY });
   await getRepositories().todos.upsert(수학 as Persistable<Todo>);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 /**
@@ -205,10 +209,52 @@ describe('빈 결과 줄 — Enter 로 **실제로 할 일이 생긴다** (§2)'
     expect(await storedTitles(TODAY)).toEqual([]);
 
     await openPaletteAndType(user, '장보기');
-    await screen.findByRole('option', { name: todoQuickAddLabel('장보기') });
+    // 이름을 **문자열 그대로** 찾는다. `todoQuickAddLabel()` 로 찾으면 라벨이 질의를 안 싣게
+    // 바뀌어도 기대값이 함께 바뀌어 통과한다(음성 대조에서 실제로 살아남았다).
+    await screen.findByRole('option', { name: "'장보기'를 오늘 할 일로 추가" });
     await user.keyboard('{Enter}');
 
     await waitFor(async () => expect(await storedTitles(TODAY)).toEqual(['장보기']));
+  });
+
+  it('그 줄의 이름은 §2 의 문면 그대로다 — 질의가 이름에 들어간다', () => {
+    expect(todoQuickAddLabel('장보기')).toBe("'장보기'를 오늘 할 일로 추가");
+  });
+
+  it('느린 조회가 끝난 **뒤에** 쓴다 — 조회 응답이 방금 만든 할 일을 덮지 않는다', async () => {
+    const user = userEvent.setup();
+    const todos = getRepositories().todos;
+    const realList = todos.listByDate.bind(todos);
+    let release: (() => void) | null = null;
+    vi.spyOn(todos, 'listByDate').mockImplementation(async (date) => {
+      if (date !== TODAY) return realList(date);
+      // **기다리기 전에** 지금 스냅샷을 뜬다. 쓰기가 끼어든 뒤에 읽으면 덮어쓰기가 안 보인다.
+      const snapshot = realList(date);
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return snapshot;
+    });
+    render(<QuickAddHarness />);
+    await waitFor(() => expect(commandIds().length).toBe(2));
+
+    await openPaletteAndType(user, '장보기');
+    await screen.findByRole('option', { name: /오늘 할 일로 추가/ });
+    await user.keyboard('{Enter}');
+
+    // 오늘 조회가 아직 끝나지 않았다. 이 틈에 쓰면 뒤늦은 응답이 그 할 일을 화면에서 지운다.
+    await waitFor(() => expect(release).not.toBeNull());
+    await act(async () => {
+      release?.();
+      await Promise.resolve();
+    });
+
+    // 저장소 조회는 **가짜를 거치지 않은** 것으로 확인한다 — 두 번째 호출은 아무도 풀어 주지 않는다.
+    await waitFor(async () =>
+      expect((await realList(TODAY)).map((todo) => todo.title)).toEqual(['장보기']),
+    );
+    // 그리고 화면에 남아 있다. 뒤늦은 조회 응답이 덮었다면 여기서 사라진다.
+    await waitFor(() => expect(screen.getByText('장보기')).toBeInTheDocument());
   });
 
   it('보고 있던 날짜가 아니라 **오늘**에 들어간다 (§2 "오늘 할 일로 추가")', async () => {
