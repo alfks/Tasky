@@ -13,6 +13,7 @@ import { getRepositories, setRepositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
 import { useCategoryStore } from '@/features/category';
+import { useCommandStore } from '@/features/command';
 import { useDateStripStore } from '@/features/date-strip';
 import { AppShell } from '@/features/shell/components/AppShell';
 import {
@@ -73,6 +74,9 @@ beforeEach(async () => {
     insightOverlayOpen: false,
   });
   useShellToastStore.setState({ toasts: [] });
+  // 앞 테스트가 열어 둔 도움말·팔레트가 남으면 다음 테스트는 **대화상자가 열린 채** 돈다
+  // (전역 단축키가 막히는 것이 정상이다 — T-44). 이 스토어는 모듈 전역이라 언마운트로 안 돌아간다.
+  useCommandStore.setState({ helpOpen: false, paletteOpen: false });
   useShellStorageStore.setState({ status: 'storage' });
   useTimerStore.setState({ session: null, todoTitle: null, completion: null });
   await seed();
