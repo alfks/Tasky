@@ -163,7 +163,8 @@ src/infra/indexeddb/
 - 테스트명은 한국어 문장: `it('완료된 투두 비율을 0~1로 반환한다')`.
 - 테스트 데이터는 `src/test/fixtures/*.ts` 팩토리(`makeTodo(overrides)`). 매직 날짜 금지 — 팩토리 기본값 사용. 픽스처는 `Meta` 리터럴을 써도 된다(테스트 파일 예외).
 - 테스트 파일(`*.test.*`)과 `src/test/**`는 레이어 경계 린트에서 제외된다(계약 테스트가 `infra` 구현을 직접 돌린다). 반대로 비테스트 파일은 테스트 파일과 `src/test`를 import할 수 없다(§7 표 #10).
-- `pnpm test`는 3초 이내 유지. 느린 테스트는 `*.slow.test.ts`로 분리(CI만).
+- `pnpm test`는 3초 이내 유지. 느린 테스트(성능 예산 벤치 등)는 `*.slow.test.ts`로 분리한다 — 기본 `pnpm test`의 `include`에서 빠지므로 **`pnpm test:slow`**(= `VITEST_SLOW=1 vitest run`)로 돌린다. 갈림은 `vitest.config.ts` 한 곳이다(vitest 5 의 CLI `--exclude` 는 설정을 덮어쓰지 않고 **더하기만** 해서 명령줄로는 제외를 풀 수 없다). 실측: `pnpm test` 148파일 1845건 19.2s(느린 파일 없음) / `pnpm test:slow` 1파일 3건 0.84s.
+- 느린 스위트는 **PR 게이트가 아니다.** CI 는 `main` push 에서만 `perf` 잡(`.github/workflows/ci.yml`)으로 돌린다 — 측정은 러너 상태에 흔들려(GC) 게이트로 쓰면 회귀가 아니라 잡음에 빨간불이 켜진다. 예산은 `max` 가 아니라 `p95` 로 견준다. **그 잡이 실제로 도는 것이 확인되기 전까지는**(CLAUDE.md 현재 상태 블록 — Actions 미작동) 아래 경로를 건드리는 PR 의 **구현자가 직접 `pnpm test:slow` 를 돌리고 `[perf]` 수치를 PR 본문에 적는다**: `src/features/todo/store/**`, `src/features/todo/hooks/**`, `src/domain/todo/{ordering,completion-rate}.ts`, `src/domain/category/category.rules.ts`.
 - E2E(Playwright)는 스모크 1개(앱 로드 → 투두 추가 → 체크)부터. `tests/e2e/`.
 
 ## 12. 금지 목록 (요약)
