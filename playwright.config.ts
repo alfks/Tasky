@@ -31,11 +31,17 @@ function installedChromium(): string | undefined {
 const executablePath = installedChromium();
 
 const config = defineConfig({
+  // `tests/feel/` 는 여기에 들어오지 않는다 — 합격/불합격을 내지 않는 수동 계측 도구다(tests/feel/AGENTS.md).
   testDir: './tests/e2e',
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   reporter: 'list',
+  // 흐름 하나가 카테고리 생성부터 새로고침까지 가고, 중간에 체크 재배치 400ms 대기(todo R8)가 낀다.
+  // 로컬 실측 2.5~3.0s 지만 CI 러너는 더 느리므로 기본 30s 보다 넉넉히 둔다.
+  timeout: 60_000,
+  // 개별 단언도 같은 이유로 기본 5s 에서 올린다. 늘려도 **틀린 단언은 그대로 실패한다** — 느려질 뿐이다.
+  expect: { timeout: 10_000 },
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
     trace: 'on-first-retry',

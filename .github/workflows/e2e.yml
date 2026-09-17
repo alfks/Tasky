@@ -1,0 +1,67 @@
+# 읽기 조건: E2E 잡이 실패했을 때, 또는 브라우저 설치/서버 기동 방식을 바꿀 때.
+# 원칙: 실행 조건(포트·브라우저 실행 파일·서버 기동)의 단일 소스는 `playwright.config.ts` 다.
+# 여기서는 브라우저를 깔고 `pnpm test:e2e` 를 한 번 부른다 — 서버는 config 의 `webServer` 가
+# `pnpm build && pnpm start` 로 직접 띄운다(서비스워커는 프로덕션 빌드에만 있다, pwa.md R5).
+#
+# ci.yml 과 나눈 이유: E2E 는 브라우저 내려받기 + 프로덕션 빌드 + 실서버 기동이 붙어 성격도
+# 실행 시간도 다르고, 브라우저 설치가 막힌 환경에서 lint/typecheck/test 까지 같이 빨간불이 되면
+# 무엇이 깨졌는지 구분할 수 없다. ci.yml 은 T-31 이 소유한다 — 여기서 건드리지 않는다.
+name: E2E
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  # wrangler 가 대화형 프롬프트·텔레메트리로 멈추지 않게 한다(자격증명은 필요 없다 — 로컬 모드).
+  WRANGLER_SEND_METRICS: "false"
+
+jobs:
+  e2e:
+    name: e2e (Playwright chromium 스모크)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: pnpm 설치
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Node 설치
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 의존성 설치
+        run: pnpm install --frozen-lockfile
+
+      # `--with-deps` 는 헤드리스 chromium 이 필요로 하는 시스템 라이브러리까지 깐다.
+      # 버전은 `@playwright/test` 설치본을 따라간다(여기에 숫자를 박지 않는다).
+      # 이 스텝에 `continue-on-error` 를 붙이지 않는다 — 브라우저가 없는데 초록불이 되면
+      # E2E 가 "돌았다" 는 거짓 기록이 남는다(.github/AGENTS.md §5 와 같은 이유).
+      - name: Chromium 설치
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: E2E 스모크 (빌드 + wrangler dev 기동은 playwright.config.ts 의 webServer 가 한다)
+        run: pnpm test:e2e
+
+      - name: 실패 시 트레이스 보관
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-trace
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
