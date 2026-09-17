@@ -75,11 +75,13 @@ describe('전역 디스패치 — 통과 경로', () => {
     expect(press(document.body, { key: 'ArrowLeft' }).defaultPrevented).toBe(false);
   });
 
-  it('언마운트하면 오버레이 스택에 레이어를 남기지 않는다', () => {
-    // 디스패처는 자기 자신을 맨 아래 레이어로 밀어 넣는다 — 정리에서 빼지 않으면 마운트마다 쌓인다.
+  it('오버레이 스택에 아무것도 올리지 않는다 (T-44)', () => {
+    // 디스패처는 스택을 **읽기만** 한다. 예전처럼 DOM 없는 레이어를 하나 눌러 두면 앱이 살아 있는
+    // 내내 스택이 비지 않아, "오버레이가 전부 닫히면" 을 기다리는 PWA 업데이트 토스트가 영영 뜨지
+    // 않는다(`overlay-stack.ts` 의 `overlayLayerCount` 주석).
     const before = overlayLayerCount();
     const { unmount } = render(<Harness />);
-    expect(overlayLayerCount()).toBe(before + 1);
+    expect(overlayLayerCount()).toBe(before);
     unmount();
     expect(overlayLayerCount()).toBe(before);
   });
