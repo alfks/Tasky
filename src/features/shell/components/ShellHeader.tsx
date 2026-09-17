@@ -123,8 +123,16 @@ export function ShellHeader({
         )}
         <PaletteEntry />
         <div className="flex-1" />
-        {/* R15: 세션이 없으면 칩은 아무것도 렌더하지 않는다 — 자리를 차지하지 않는다. */}
-        <TimerChip onOpen={onOpenInsight} />
+        {/*
+          R15: 세션이 없으면 칩은 아무것도 렌더하지 않는다 — 자리를 차지하지 않는다.
+
+          `min-w-0` 은 **이 줄에서 유일하게 줄어들 수 있는 것이 칩**이기 때문이다. 400px 에서
+          ☰ · 입구 · 칩(최대 224px) · 달성률을 한 줄에 놓으면 388px 이라 336px 를 넘는데, 칩의
+          `min-width:auto` 가 내용 폭에서 버티면 **달성률 버튼이 화면 밖으로 밀려 가로 스크롤이
+          생긴다**(R4·R11 위반 — 입구를 넣고 실측하다 잡았다). `min-w-0` 을 주면 칩이 먼저 줄고,
+          줄어드는 것은 칩 안에서 이미 `truncate` 인 투두 제목이라 시계는 그대로 읽힌다.
+        */}
+        <TimerChip onOpen={onOpenInsight} className="min-w-0" />
         {insightIsColumn ? (
           <p className="text-base text-muted tabular-nums">{completionCountText(summary)}</p>
         ) : (
@@ -137,7 +145,7 @@ export function ShellHeader({
                "제어 대상 없음" 으로 읽는다. 열렸을 때만 연결한다(§5). */
             aria-controls={insightOverlayOpen ? INSIGHT_OVERLAY_ID : undefined}
             onClick={onOpenInsight}
-            className="flex h-[var(--control-hit-min)] items-center gap-[var(--space-2)] rounded-[var(--radius-full)] border border-border bg-surface px-[var(--space-3)] text-base font-semibold text-text hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            className="flex h-[var(--control-hit-min)] shrink-0 items-center gap-[var(--space-2)] rounded-[var(--radius-full)] border border-border bg-surface px-[var(--space-3)] text-base font-semibold text-text hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           >
             <CompletionRing summary={summary} size={20} thickness={3} />
             <span aria-hidden="true">{completionPercentText(summary)}</span>
