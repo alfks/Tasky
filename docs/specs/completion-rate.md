@@ -20,8 +20,9 @@
  │ ● 100%  5 / 5  다 했어요 🎉│           │ 카테고리별             │
  └────────────────────────┘              │ 📝 todo  ■■■■□  2/3    │  ← 막대 카테고리 색
  투두 0개:                                │ 📚 공부  ■■□□□  1/2    │
- │ ◌ —     0 / 0          │              │ 💪 운동  (없음)        │
-                                         └──────────────────────┘
+ │ ◌ —     0 / 0          │              └──────────────────────┘
+                                          ↑ 그날 투두가 없는 카테고리(운동)는 줄이 아예 없다(R5).
+                                            전부 없으면 "오늘 적은 할 일이 없어요" 한 줄만 남는다.
 ```
 
 - 링 색: 진행분 = 강조색, 트랙 = `--color-surface-2`. 100%면 진행분이 카테고리 색이 아닌 강조색으로 가득 차고 400ms 펄스 1회.
@@ -46,7 +47,9 @@
 
 ## 4. 데이터
 
-- domain 순수 함수: `completionRate(todos) → number | null`, `summarizeByCategory(todos, categories) → { categoryId, done, total }[]`, `summarizeWeek(todos) → Map<DateKey, { done, total, categoryIds }>`. 타입 변경 없음.
+- domain 순수 함수(`src/domain/todo/completion-rate.ts`): `completionCounts(todos) → { done, total }`, `completionRate(todos) → number | null`, `completionPercent(todos) → number | null`(R2 표기), `summarizeByCategory(todos, categories) → { categoryId, done, total }[]`.
+- 날짜 범위 요약은 여기 있지 않다: `summarizeDays(days, todos, categories) → Map<DateKey, DaySummary>`(`src/domain/todo/day-summary.ts`, `DaySummary = { total, doneCount, isAllDone, dots, overflowCount }`). 헤더 링·탭 제목이 쓰는 것은 위의 `completionCounts` 이고, 날짜 스트립 ✓ 배지(R8)가 쓰는 것은 `summarizeDays` 의 `isAllDone` 이다 — 둘 다 같은 목록을 같은 방식으로 센다.
+- 타입 변경 없음.
 - 레포지토리 메서드 없음(todo.md의 조회 결과를 사용).
 
 ## 5. 접근성
