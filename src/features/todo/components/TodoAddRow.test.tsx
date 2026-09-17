@@ -272,11 +272,7 @@ describe('저장 중에 온 입력 (T-67)', () => {
       expect((await 저장된것()).map((t) => t.title).sort()).toEqual(['둘째', '첫째']);
     });
     // R5: 같은 그룹이므로 기존 최대(2) 뒤로 3·4 가 나와야 한다 — 겹치면 순서가 무너진다.
-    expect(
-      (await 저장된것())
-        .map((t) => t.order)
-        .sort((a, b) => a - b),
-    ).toEqual([3, 4]);
+    expect((await 저장된것()).map((t) => t.order).sort((a, b) => a - b)).toEqual([3, 4]);
   });
 
   it('저장이 도는 중에 새로 친 글자를 앞 저장이 지우지 않는다', async () => {
