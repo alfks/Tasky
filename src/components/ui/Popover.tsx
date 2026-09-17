@@ -18,6 +18,32 @@ const GAP = 8;
 const FOCUSABLE_SELECTOR =
   'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
+/**
+ * **마우스로 눌렀을 때** 브라우저가 포커스를 줄 수 있는 요소. 탭 순서용 `FOCUSABLE_SELECTOR` 와
+ * 일부러 다르다 — `tabindex="-1"` 은 탭으로는 못 가지만 클릭으로는 포커스를 받고, `label` 은 연결된
+ * 컨트롤로 포커스를 넘긴다. 반대로 `disabled` 는 어느 쪽으로도 받지 않는다.
+ */
+const MOUSE_FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'summary',
+  'label',
+  'iframe',
+  'audio[controls]',
+  'video[controls]',
+  '[contenteditable]:not([contenteditable="false"])',
+  '[tabindex]',
+].join(',');
+
+/** 이 `mousedown` 의 기본 동작이 포커스를 줄 곳이 있는가. 없으면 브라우저는 `<body>` 로 내린다. */
+function hasMouseFocusTarget(target: Node): boolean {
+  const el = target instanceof Element ? target : target.parentElement;
+  return (el?.closest(MOUSE_FOCUSABLE_SELECTOR) ?? null) !== null;
+}
+
 type PopoverPlacement = 'bottom-start' | 'bottom-end' | 'top-start' | 'top-end';
 
 type PopoverProps = {
@@ -146,6 +172,16 @@ export function Popover({
       if (!(target instanceof Node)) return;
       if (panelRef.current?.contains(target) === true) return;
       if (anchorRef.current?.contains(target) === true) return;
+      // 아래 정리 단계의 포커스 복귀는 제대로 돈다. 그런데 mousedown 의 기본 동작이 **디스패치가
+      // 끝난 뒤** 실행돼 그 복귀를 덮는다 — Chromium 실측 순서: `복귀(focusin → 앵커)` →
+      // `mousedown 리스너 종료` → `focusout → BODY`(T-35). 그래서 복귀 쪽은 고칠 데가 없고
+      // 기본 동작을 막는 것이 유일한 지점이다.
+      //
+      // **`Dialog` 와 달리 조건부다.** 대화상자의 "바깥" 은 자기 백드롭뿐이고 배경은 `inert` 라
+      // 무조건 막아도 잃는 기본 동작이 없다. 팝오버는 비모달이어서 바깥이 살아 있는 페이지 전체다 —
+      // 무조건 막으면 바깥 입력칸을 눌러도 캐럿이 가지 않고 바깥 버튼이 포커스를 못 받는다.
+      // 기본 동작이 포커스를 아무 데도 주지 못할 때(= 브라우저가 `<body>` 로 내릴 때)만 막는다.
+      if (!hasMouseFocusTarget(target)) e.preventDefault();
       latestRef.current.onClose();
     };
     document.addEventListener('keydown', handleKeyDown, true);
