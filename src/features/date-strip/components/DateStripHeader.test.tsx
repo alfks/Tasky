@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -8,15 +8,20 @@ import { MAX_DATE_KEY, MIN_DATE_KEY } from '@/features/date-strip/lib/week';
 function renderHeader(props: Partial<Parameters<typeof DateStripHeader>[0]> = {}) {
   const onSelect = vi.fn();
   render(
-    <DateStripHeader
-      weekStart="2026-09-14"
-      selectedDate="2026-09-17"
-      today="2026-09-17"
-      previousWeek="2026-09-10"
-      nextWeek="2026-09-24"
-      onSelect={onSelect}
-      {...props}
-    />,
+    <div>
+      <DateStripHeader
+        weekStart="2026-09-14"
+        selectedDate="2026-09-17"
+        today="2026-09-17"
+        previousWeek="2026-09-10"
+        nextWeek="2026-09-24"
+        onSelect={onSelect}
+        {...props}
+      />
+      {/* 팝오버 "바깥" 두 종류 — 눌러도 포커스를 못 받는 곳과, 받는 곳. */}
+      <p data-testid="바깥 빈 곳">바깥 빈 곳</p>
+      <input aria-label="바깥 입력" />
+    </div>,
   );
   return { onSelect };
 }
@@ -83,6 +88,64 @@ describe('§2-A. 월 표시를 누르면 네이티브 날짜 입력으로 아무
     await user.click(monthButton());
     fireEvent.change(screen.getByLabelText('날짜 선택'), { target: { value: '' } });
     expect(onSelect).not.toHaveBeenCalled();
+  });
+});
+
+describe('app-shell R7. 날짜 점프는 Popover 프리미티브를 타고 닫히면 월 버튼으로 돌아온다', () => {
+  it('바깥 빈 곳을 누르면 닫히고 포커스가 월 버튼으로 돌아온다', async () => {
+    const user = userEvent.setup();
+    const { onSelect } = renderHeader();
+
+    await user.click(monthButton());
+    expect(screen.getByLabelText('날짜 선택')).toHaveFocus();
+
+    // fireEvent 로는 재현되지 않는다 — userEvent v14 만 mousedown 의 기본 포커스 이동을 모사한다.
+    await user.click(screen.getByTestId('바깥 빈 곳'));
+
+    expect(screen.queryByLabelText('날짜 선택')).not.toBeInTheDocument();
+    expect(monthButton()).toHaveFocus();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('바깥의 포커스 가능한 곳을 누르면 팝오버는 닫히되 포커스는 그쪽으로 간다(비모달)', async () => {
+    const user = userEvent.setup();
+    renderHeader();
+
+    await user.click(monthButton());
+    await user.click(screen.getByLabelText('바깥 입력'));
+
+    expect(screen.queryByLabelText('날짜 선택')).not.toBeInTheDocument();
+    // 여기서 앵커로 되돌리면 바깥 입력칸에 캐럿이 가지 않는다 — 팝오버는 비모달이다(T-39).
+    expect(screen.getByLabelText('바깥 입력')).toHaveFocus();
+  });
+
+  it('입력이 포커스를 잃어도 닫지 않는다 — blur 로 닫으면 안쪽 이동까지 닫힌다', async () => {
+    const user = userEvent.setup();
+    renderHeader();
+
+    await user.click(monthButton());
+    const input = screen.getByLabelText('날짜 선택');
+    act(() => {
+      input.blur();
+    });
+
+    expect(screen.getByLabelText('날짜 선택')).toBeInTheDocument();
+  });
+
+  it('열려 있는 동안 월 버튼이 aria-controls 로 패널을 가리킨다', async () => {
+    const user = userEvent.setup();
+    renderHeader();
+
+    expect(monthButton()).toHaveAttribute('aria-haspopup');
+    expect(monthButton()).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(monthButton());
+    const panelId = monthButton().getAttribute('aria-controls');
+    expect(panelId).not.toBeNull();
+    expect(document.getElementById(panelId ?? '')).toContainElement(
+      screen.getByLabelText('날짜 선택'),
+    );
+    expect(monthButton()).toHaveAttribute('aria-expanded', 'true');
   });
 });
 

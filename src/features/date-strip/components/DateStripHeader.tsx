@@ -1,7 +1,7 @@
 'use client';
 
 // 스트립 위쪽 줄: ‹ · 월 표시(날짜 점프) · [오늘] · › (date-strip.md §2-A·R4·R5·R6·R11·§5).
-import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react';
+import { useRef, useState } from 'react';
 
 import type { DateKey } from '@/domain/date/date-key';
 
@@ -10,6 +10,7 @@ import { MAX_DATE_KEY, MIN_DATE_KEY, shiftWithinRange } from '@/features/date-st
 
 import { Button } from '@/components/ui/Button';
 import { IconButton } from '@/components/ui/IconButton';
+import { Popover } from '@/components/ui/Popover';
 
 import { isDateKey } from '@/lib/date';
 
@@ -82,7 +83,11 @@ export function DateStripHeader({
  *
  * `input[type=date]` 을 쓰므로 한글 IME 조합이 끼어들 여지가 없고(텍스트 입력이 아니다) 확정은
  * `change` 로만 받는다 — Enter 키를 직접 해석하지 않으므로 조합 중 Enter 오작동 경로가 없다.
- * T-07 의 Popover 프리미티브가 아직 없어 여기서 최소 구현(Esc 닫기 + 포커스 복귀)만 둔다.
+ *
+ * 열고 닫는 일 자체는 **`Popover` 프리미티브에 맡긴다.** T-07 당시 프리미티브가 없어 여기에
+ * 자체 구현(Esc + `blur` 닫기)을 두었는데, `blur` 로 닫으면 (1) 바깥을 눌렀을 때 포커스를
+ * 앵커로 되돌릴 수 없고(`mousedown` 기본 동작이 그 뒤에 덮는다 — T-35), (2) 팝오버 **안에서**
+ * 포커스가 움직이기만 해도 닫힌다. 둘 다 프리미티브가 이미 푼 문제다(app-shell R7).
  */
 function MonthJump({
   weekStart,
@@ -91,69 +96,46 @@ function MonthJump({
 }: Pick<DateStripHeaderProps, 'weekStart' | 'selectedDate' | 'onSelect'>) {
   const [isOpen, setIsOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (isOpen) inputRef.current?.focus();
-  }, [isOpen]);
-
-  const close = (returnFocus: boolean) => {
-    setIsOpen(false);
-    if (returnFocus) anchorRef.current?.focus();
-  };
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== 'Escape') return;
-    event.stopPropagation();
-    close(true);
-  };
-
-  // 팝오버 안에서 포커스를 받을 수 있는 요소는 이 입력 하나뿐이라, 입력의 blur 가 곧 "팝오버를 떠남"이다.
-  // (래퍼 div 에 onBlur 를 두면 상호작용 핸들러가 붙은 비대화형 요소가 되어 접근성 린트가 막는다.)
-  const handleBlur = (event: FocusEvent<HTMLInputElement>) => {
-    if (event.relatedTarget === anchorRef.current) return;
-    close(false);
-  };
 
   return (
-    <div className="relative">
+    <>
       <Button
         ref={anchorRef}
         variant="ghost"
         size="sm"
-        aria-expanded={isOpen}
-        aria-haspopup="dialog"
+        // aria-haspopup·aria-expanded·aria-controls 는 Popover 가 앵커에 직접 붙인다 —
+        // 여기서 같이 쓰면 두 벌이 되어 어긋난다.
         onClick={() => setIsOpen((open) => !open)}
       >
         <span className="hidden sm:inline">{formatMonthLabel(weekStart)}</span>
         <span className="sm:hidden">{formatShortMonthLabel(weekStart)}</span>
         <Chevron direction="down" />
       </Button>
-      {isOpen && (
-        <div
-          className="absolute top-full left-0 z-[var(--z-popover)] mt-[var(--space-1)] rounded-[var(--radius-md)] border border-border bg-surface p-[var(--space-2)] shadow-md"
-          // 네이티브 입력 하나뿐이라 대화상자 역할은 두지 않는다 — 포커스 트랩 없이 Esc·blur 로 닫힌다.
-        >
-          <input
-            ref={inputRef}
-            type="date"
-            aria-label="날짜 선택"
-            onKeyDown={handleKeyDown}
-            onBlur={handleBlur}
-            value={selectedDate}
-            min={MIN_DATE_KEY}
-            max={MAX_DATE_KEY}
-            onChange={(event) => {
-              const value = event.target.value;
-              if (!isDateKey(value)) return;
-              onSelect(value);
-              close(true);
-            }}
-            className="h-[var(--control-height)] rounded-[var(--radius-sm)] border border-border bg-surface px-[var(--space-2)] text-base text-text"
-          />
-        </div>
-      )}
-    </div>
+      {/* 항상 마운트하고 open 만 토글한다 — 닫혀 있을 때도 앵커에 aria-haspopup 이 붙어야 한다. */}
+      <Popover
+        open={isOpen}
+        onClose={() => setIsOpen(false)}
+        anchorRef={anchorRef}
+        // label 을 주지 않는다: 안에 있는 것이 이름 있는 입력 하나뿐이라, 주면 같은 이름이
+        // 버튼 → 그룹 → 입력으로 거듭 낭독된다.
+        className="w-fit min-w-0"
+      >
+        <input
+          type="date"
+          aria-label="날짜 선택"
+          value={selectedDate}
+          min={MIN_DATE_KEY}
+          max={MAX_DATE_KEY}
+          onChange={(event) => {
+            const value = event.target.value;
+            if (!isDateKey(value)) return;
+            onSelect(value);
+            setIsOpen(false);
+          }}
+          className="h-[var(--control-height)] rounded-[var(--radius-sm)] border border-border bg-surface px-[var(--space-2)] text-base text-text"
+        />
+      </Popover>
+    </>
   );
 }
 
