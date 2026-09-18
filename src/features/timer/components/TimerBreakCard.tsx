@@ -7,6 +7,9 @@
 // `Todo.focusSeconds` 에 더해진다(R8). 자리를 비운 사이 혼자 시작된 집중은 **하지 않은 일을 기록**한다.
 // 휴식은 아무것도 기록하지 않아 자동으로 시작해도 잃을 것이 없지만, 이쪽은 다르다.
 //
+// 버튼 이름이 대기 화면의 `[집중 시작]` 과 다른 이유: 카드가 떠 있는 동안 그 화면도 함께 보인다.
+// 같은 이름이 둘이면 스크린리더에서 어느 쪽인지 구분되지 않고, 역할·이름으로 거는 테스트도 갈린다.
+//
 // 이 카드는 **막 끝난 휴식에만** 만들어지므로(`pomodoro.ts` 의 `pomodoroBreakSignal`) 언제나
 // `role="alertdialog"` 다. 초기 포커스는 `[나중에]` 에 둔다 — 카드가 뜨자마자 `Enter` 를 눌러
 // 의도치 않게 새 집중이 시작되는 일이 없게, 파괴적이지 않은 쪽을 기본으로 둔다.
@@ -64,7 +67,7 @@ export function TimerBreakCard() {
             void start();
           }}
         >
-          집중 시작
+          다음 집중 시작
         </Button>
         <Button ref={laterRef} variant="ghost" size="sm" onClick={dismiss}>
           나중에

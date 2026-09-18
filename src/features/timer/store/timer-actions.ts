@@ -10,7 +10,7 @@ import type { TodoId } from '@/domain/ids';
 import { savePomodoro } from '@/features/timer/store/pomodoro-flow';
 import { saveTimerPrefs } from '@/features/timer/store/timer-prefs';
 import { createStartAction } from '@/features/timer/store/timer-start';
-import { timerMessageOf, type TimerState } from '@/features/timer/store/timer-state';
+import { timerMessageOf } from '@/features/timer/store/timer-state';
 import {
   endSession,
   hydrateTimer,

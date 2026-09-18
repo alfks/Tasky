@@ -2,10 +2,7 @@
 // `session` + `now` 에서 매번 다시 계산된다 — 그래서 인터벌이 지연돼도 표시가 어긋나지 않는다.
 import { focusElapsedSeconds, focusRemainingSeconds } from '@/domain/focus/focus-session.rules';
 
-import {
-  pomodoroBreakLabel,
-  pomodoroBreakRemainingSeconds,
-} from '@/features/timer/store/pomodoro';
+import { pomodoroBreakLabel, pomodoroBreakRemainingSeconds } from '@/features/timer/store/pomodoro';
 import { timerPhaseOf, type TimerPhase, type TimerState } from '@/features/timer/store/timer-state';
 
 /** 선택자가 보는 최소 상태. 스토어 전체를 구독하지 않게 필요한 조각만 요구한다. */

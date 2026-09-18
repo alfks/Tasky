@@ -37,7 +37,11 @@ function parseBreak(value: unknown): PomodoroBreak | null {
   if (typeof startedAt !== 'string' || startedAt === '' || Number.isNaN(Date.parse(startedAt))) {
     return null;
   }
-  if (typeof plannedSeconds !== 'number' || !Number.isFinite(plannedSeconds) || plannedSeconds <= 0) {
+  if (
+    typeof plannedSeconds !== 'number' ||
+    !Number.isFinite(plannedSeconds) ||
+    plannedSeconds <= 0
+  ) {
     return null;
   }
   return { kind, startedAt, plannedSeconds };

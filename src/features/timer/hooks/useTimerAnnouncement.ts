@@ -51,15 +51,7 @@ export function useTimerAnnouncement(): string {
     if (spoken !== null) {
       setMessage(spoken);
     }
-  }, [
-    phase,
-    remainingSeconds,
-    sessionId,
-    completed,
-    breakKind,
-    breakRemainingSeconds,
-    breakDone,
-  ]);
+  }, [phase, remainingSeconds, sessionId, completed, breakKind, breakRemainingSeconds, breakDone]);
 
   return message;
 }

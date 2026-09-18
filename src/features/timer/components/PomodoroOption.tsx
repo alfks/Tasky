@@ -42,8 +42,8 @@ export function PomodoroOption() {
       </label>
       {pomodoro && (
         <p className="text-sm text-muted">
-          집중이 끝나면 {pomodoroShortBreakMinutes(minutes)}분 휴식 ·{' '}
-          {POMODORO_LONG_BREAK_EVERY}번째마다 {pomodoroLongBreakMinutes(minutes)}분 휴식
+          집중이 끝나면 {pomodoroShortBreakMinutes(minutes)}분 휴식 · {POMODORO_LONG_BREAK_EVERY}
+          번째마다 {pomodoroLongBreakMinutes(minutes)}분 휴식
           {done > 0 && ` · 오늘 ${done}번 마쳤어요`}
         </p>
       )}
