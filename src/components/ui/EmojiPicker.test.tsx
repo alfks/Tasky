@@ -18,7 +18,13 @@ const OPTIONS = [
   { emoji: '💪', name: '근육' },
 ] as const;
 
-function Harness({ initial = '📚', onChange }: { initial?: string; onChange?: (v: string) => void }) {
+function Harness({
+  initial = '📚',
+  onChange,
+}: {
+  initial?: string;
+  onChange?: (v: string) => void;
+}) {
   const [value, setValue] = useState(initial);
   return (
     <EmojiPicker
