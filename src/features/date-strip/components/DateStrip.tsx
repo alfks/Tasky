@@ -172,21 +172,20 @@ export function DateStrip({ summaryRevision, onDropTodo, onSummaryError }: DateS
         onSelect={selectFromHeader}
       />
       {isMonth ? (
-        <div onBlur={clearFocusOnLeave}>
-          <MonthGrid
-            days={days}
-            anchorDate={activeDate}
-            selectedDate={selectedDate}
-            today={today}
-            focusDate={activeDate}
-            summaries={summaries}
-            onCellRef={registerCell}
-            onSelect={select}
-            onFocusCell={setFocusedDate}
-            onKeyDown={handleKeyDown}
-            onDropTodo={onDropTodo}
-          />
-        </div>
+        <MonthGrid
+          days={days}
+          anchorDate={activeDate}
+          selectedDate={selectedDate}
+          today={today}
+          focusDate={activeDate}
+          summaries={summaries}
+          onCellRef={registerCell}
+          onBlur={clearFocusOnLeave}
+          onSelect={select}
+          onFocusCell={setFocusedDate}
+          onKeyDown={handleKeyDown}
+          onDropTodo={onDropTodo}
+        />
       ) : (
         <div
           role="radiogroup"

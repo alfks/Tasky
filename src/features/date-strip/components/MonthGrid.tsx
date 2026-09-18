@@ -4,7 +4,7 @@
 //
 // 칸은 만들지 않는다 — `DateCell` 을 그대로 쓰고 `variant="month"` 만 준다. 오늘 링·선택 채움·점·✓ 는
 // 주 보기와 **같은 코드 한 벌**에서 나온다(R16). 이 파일이 맡는 것은 배치와 격자 역할뿐이다.
-import type { KeyboardEvent } from 'react';
+import type { FocusEvent, KeyboardEvent } from 'react';
 
 import type { DateKey } from '@/domain/date/date-key';
 import type { DaySummary } from '@/domain/todo/day-summary';
@@ -28,6 +28,8 @@ type MonthGridProps = {
   /** 아직 못 읽었으면 `undefined` — 칸은 그대로 그리고 점만 늦게 붙는다 (§2-C). */
   summaries?: ReadonlyMap<DateKey, DaySummary>;
   onCellRef: (date: DateKey, element: HTMLButtonElement | null) => void;
+  /** 포커스가 격자를 떠날 때. 주 보기의 radiogroup 과 같은 규약을 쓴다 (§5). */
+  onBlur: (event: FocusEvent<HTMLElement>) => void;
   onSelect: (date: DateKey) => void;
   onFocusCell: (date: DateKey) => void;
   onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
@@ -45,6 +47,7 @@ export function MonthGrid({
   focusDate,
   summaries,
   onCellRef,
+  onBlur,
   onSelect,
   onFocusCell,
   onKeyDown,
@@ -57,6 +60,7 @@ export function MonthGrid({
       role="grid"
       // 주 보기의 radiogroup 과 **같은 이름**이다 — 보기를 바꿔도 "무엇을 고르는 곳인지"는 같다.
       aria-label="날짜 선택"
+      onBlur={onBlur}
       className="flex flex-col gap-[var(--space-2)] overflow-x-auto overscroll-x-contain md:overflow-x-visible"
     >
       {/* 요일은 여기서 한 번만 나온다 — 칸마다 반복하지 않는다 (R16). */}
