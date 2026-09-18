@@ -53,10 +53,19 @@ export async function saveAll(entities: readonly Persistable<Todo>[]): Promise<v
  */
 export type TodoBuild = () => Promise<Persistable<Todo> | null> | Persistable<Todo> | null;
 
-/** 액션이 쓰는 두 가지 저장 경로. */
+/** `commitMany` 가 만드는 여러 건. 루틴 등록(R21)처럼 한 액션이 여러 날짜에 걸쳐 새 투두를 만들 때 쓴다. */
+export type TodoBuildMany = () =>
+  Promise<readonly Persistable<Todo>[]> | readonly Persistable<Todo>[];
+
+/** 액션이 쓰는 세 가지 저장 경로. */
 export type TodoWriter = {
   /** 저장이 성공한 뒤에만 상태를 바꾼다 (낙관적이지 않은 액션의 공통 경로). */
   commit: (build: TodoBuild, apply: (byId: TodoMap, saved: Todo) => TodoMap) => Promise<boolean>;
+  /**
+   * `commit` 의 여러 건 버전. 한 트랜잭션(`saveAll`)으로 저장하고, 그 중 **지금 보고 있는 날짜**에
+   * 속한 것만 메모리에 반영한다(R17) — 다른 날짜는 그쪽으로 이동해야 `loadDate` 가 집어 온다.
+   */
+  commitMany: (build: TodoBuildMany) => Promise<boolean>;
   /** 화면에 먼저 반영하고 저장한다. 실패하면 `previous` 로 되돌린다 (R6·R11). */
   optimistic: (
     previous: readonly Todo[],
@@ -96,6 +105,28 @@ export function createTodoWriter(ctx: TodoContext): TodoWriter {
           await getRepositories().todos.upsert(entity);
           ctx.set({
             byId: apply(ctx.get().byId, entity),
+            error: null,
+            writeRevision: bumpWriteRevision(ctx),
+          });
+          return true;
+        } catch (error) {
+          ctx.set({ error: messageOf(error) });
+          return false;
+        }
+      }),
+
+    commitMany: (build) =>
+      serialize(async () => {
+        try {
+          const entities = await build();
+          if (entities.length === 0) {
+            return true;
+          }
+          await saveAll(entities);
+          const currentDate = ctx.get().date;
+          const visible = entities.filter((entity) => entity.date === currentDate);
+          ctx.set({
+            byId: visible.length === 0 ? ctx.get().byId : withTodos(ctx.get().byId, visible),
             error: null,
             writeRevision: bumpWriteRevision(ctx),
           });

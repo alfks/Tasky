@@ -39,6 +39,7 @@ type TodoItemMenuProps = {
   onPickDate: () => void;
   onMove: (direction: -1 | 1) => void;
   onChangeCategory: (categoryId: CategoryId) => void;
+  onRegisterRoutine: () => void;
   onDelete: () => void;
   /** 메뉴를 닫을 때 앵커가 이미 사라졌으면(삭제 직후) 대신 포커스할 곳 (app-shell R14). */
   returnFocus?: () => HTMLElement | null;
@@ -64,6 +65,7 @@ export function TodoItemMenu({
   onPickDate,
   onMove,
   onChangeCategory,
+  onRegisterRoutine,
   onDelete,
   returnFocus,
   onOpen,
@@ -108,6 +110,7 @@ export function TodoItemMenu({
         { id: 'memo', label: M.menuMemo, onSelect: run(onAddMemo) },
         { id: 'tomorrow', label: M.menuTomorrow, onSelect: run(onTomorrow) },
         { id: 'pick-date', label: M.menuPickDate, onSelect: run(onPickDate) },
+        { id: 'routine', label: M.menuRoutine, onSelect: run(onRegisterRoutine) },
         {
           id: 'up',
           label: M.menuUp,

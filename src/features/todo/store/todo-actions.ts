@@ -14,6 +14,7 @@
 import type { DateKey } from '@/domain/date/date-key';
 import type { CategoryId, TodoId } from '@/domain/ids';
 import { moveTodoBy, reorderTodos, todosInGroup } from '@/domain/todo/ordering';
+import { expandRoutineDates, type RoutineRecurrence } from '@/domain/todo/routine.rules';
 import type { Todo } from '@/domain/todo/todo';
 import {
   changeTodoCategory,
@@ -58,6 +59,18 @@ export type TodoActions = {
   reorder: (id: TodoId, targetIndex: number) => Promise<boolean>;
   /** `Alt+↑/↓`·메뉴 "위로/아래로" (R11). 완료 항목은 건너뛴다. */
   moveBy: (id: TodoId, direction: -1 | 1) => Promise<boolean>;
+  /**
+   * 루틴 등록 (R21): 시작~종료일 안에서 반복 패턴에 맞는 날짜마다 같은 카테고리·제목·메모의 투두를
+   * 새로 만든다. "루틴" 자체는 저장하지 않는다 — 만들어진 각 투두는 그 뒤로 독립된 투두다.
+   */
+  createRoutine: (input: {
+    categoryId: CategoryId;
+    title: string;
+    memo?: string;
+    startDate: DateKey;
+    endDate: DateKey;
+    recurrence: RoutineRecurrence;
+  }) => Promise<boolean>;
   /** 토스트를 닫을 때 문구를 지운다. */
   clearError: () => void;
 };
@@ -207,6 +220,34 @@ function createOrderActions(
   };
 }
 
+/** 루틴 등록 (R21). 날짜별 `order` 는 그 날짜·카테고리의 기존 투두 끝이다(그룹 끝 규칙과 같다). */
+function createRoutineAction(
+  ctx: TodoContext,
+  writer: TodoWriter,
+): Pick<TodoActions, 'createRoutine'> {
+  return {
+    createRoutine: ({ categoryId, title, memo, startDate, endDate, recurrence }) =>
+      writer.commitMany(async () => {
+        const dates = expandRoutineDates({ startDate, endDate, recurrence });
+        if (dates.length === 0) {
+          return [];
+        }
+        const existing = await getRepositories().todos.listByDateRange(startDate, endDate);
+        const siblingsByDate = new Map<DateKey, Todo[]>();
+        for (const todo of existing) {
+          if (todo.categoryId !== categoryId) continue;
+          siblingsByDate.set(todo.date, [...(siblingsByDate.get(todo.date) ?? []), todo]);
+        }
+        return dates.map((date) =>
+          createTodo(
+            { categoryId, date, title, memo, siblings: siblingsByDate.get(date) ?? [] },
+            ctx.deps,
+          ),
+        );
+      }),
+  };
+}
+
 /** 액션 전부. 스토어는 이 결과를 상태에 펼쳐 넣기만 한다. */
 export function createTodoActions(ctx: TodoContext): TodoActions {
   const writer = createTodoWriter(ctx);
@@ -215,6 +256,7 @@ export function createTodoActions(ctx: TodoContext): TodoActions {
     ...createEntryActions(ctx, writer),
     ...createMoveActions(ctx, writer),
     ...createOrderActions(ctx, writer),
+    ...createRoutineAction(ctx, writer),
     clearError: () => {
       ctx.set({ error: null });
     },

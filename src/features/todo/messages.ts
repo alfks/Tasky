@@ -62,4 +62,17 @@ export const TODO_MESSAGES = {
   hasMemo: '메모 있음',
   focusChip: (minutes: number): string => `⏱ ${minutes}분`,
   focusLabel: (minutes: number): string => `집중 ${minutes}분`,
+  /** 루틴 등록 (R21). */
+  menuRoutine: '루틴으로 등록',
+  routineDialogTitle: '루틴 등록',
+  routineStartDate: '시작일',
+  routineEndDate: '종료일',
+  routineWeekly: '매주',
+  routineMonthly: '매달',
+  routineWeekdaysLabel: '반복 요일',
+  routineMonthDaysLabel: '반복 일(1~31, 쉼표로 구분)',
+  routineMonthDaysPlaceholder: '예: 1, 15',
+  routineSubmit: '루틴 등록',
+  routineCreated: (count: number): string => `${count}개의 할 일을 만들었어요`,
+  routineEmptyResult: '이 기간에는 반복 조건에 맞는 날짜가 없어요',
 } as const;
