@@ -8,6 +8,10 @@
 //    (`order` → `createdAt` → `id`)를 유지한 채 연속 번호. 동률이 남지 않아 memory·indexeddb 결과가 같다(R14-a).
 //  · `categories`(삭제 시점 전량)는 **필수**다 — ② 가 그 목록 없이는 R5(order)·R12(이름 유일성·개수)를
 //    지킬 수 없고, 선택 인자로 두면 누락이 조용한 오답이 되기 때문이다(리뷰 라운드 1 Blocker).
+//  · `hideHistory`(category R22)는 **완료 투두를 건드리지 않는다** — R14 "완료 투두는 writes 에
+//    들어가지 않는다"와 충돌하지 않는다. tombstone 카테고리 자신에 `historyHidden: true` 를 얹을
+//    뿐이고, 그 값을 읽어 "일반 삭제됨 표시로 떨어뜨릴지"를 정하는 것은 화면(`listDeletedByIds`
+//    호출부)이다 — 투두도 `categoryId` 도 물리적으로 지우지 않는다(ADR-0002·0005).
 import type { Category } from '@/domain/category/category';
 import { createCategory } from '@/domain/category/category.rules';
 import type { DatasetWrite } from '@/domain/dataset';
@@ -87,15 +91,21 @@ export function planCategoryRemoval(input: {
    * 이 그대로 단일 트랜잭션에 실린다). 그래서 **①③ 에서도 필수**다 — 빠뜨리면 컴파일 에러다.
    */
   categories: readonly Category[];
+  /**
+   * 지난 기록(완료 투두)에서도 이름·색을 지우기로 골랐는가 (category R22). 기본 `false` —
+   * 대부분의 삭제는 지금까지처럼 기록에 이름·색이 그대로 남는다(파괴적 선택지를 기본값으로
+   * 두지 않는다, R10 과 같은 근거).
+   */
+  hideHistory?: boolean;
 }): { writes: DatasetWrite[]; result: CategoryRemovalResult } {
-  const { category, todos, targetTodos, choice, deps, categories } = input;
+  const { category, todos, targetTodos, choice, deps, categories, hideHistory = false } = input;
   // 타입이 "인자 누락" 을 막고, 이 검사가 "타입만 맞춘 빈/엉뚱한 목록" 을 막는다. 삭제 대상은 아직
   // 툼스톤이 아니므로 올바른 스냅샷이면 반드시 들어 있다 — 없으면 R5·R12 의 모집단이 틀린 것이다.
   if (!categories.some((c) => c.id === category.id)) {
     throw new DomainError('CATEGORY_NOT_IN_LIST', category.id);
   }
   const at = deps.now();
-  const tombstone = markDeleted(category, at);
+  const tombstone = markDeleted(hideHistory ? { ...category, historyHidden: true } : category, at);
   const incomplete = sortTodos(todos.filter((t) => !t.done));
 
   const writes: DatasetWrite[] = [];

@@ -267,6 +267,34 @@ describe('R7. 삭제된 카테고리의 투두도 원래 색 점을 받는다', 
 
     expect(askedFor).toEqual([]);
   });
+
+  it('historyHidden 이 켜진 tombstone 은 제 색을 복원하지 않는다 (R22)', async () => {
+    const hidden = makeCategory({ seq: 3, color: '#FF0000', deletedAt: '2026-09-02T00:00:00.000Z', historyHidden: true }); // prettier-ignore
+    const base = createMemoryRepositories();
+    setRepositories({
+      ...base,
+      todos: {
+        ...base.todos,
+        listByDateRange: () =>
+          Promise.resolve([
+            makeTodo({ seq: 1, date: TODAY, categoryId: ACTIVE.id }),
+            makeTodo({ seq: 2, date: TODAY, categoryId: hidden.id }),
+          ]),
+      },
+      categories: {
+        ...base.categories,
+        list: () => Promise.resolve([ACTIVE]),
+        listDeletedByIds: (ids) => Promise.resolve([hidden].filter((c) => ids.includes(c.id))),
+      },
+    });
+    useDateStripStore.setState({ selectedDate: TODAY, today: TODAY });
+
+    const { container } = render(<DateStrip summaryRevision={0} />);
+    await waitFor(() => expect(dotCount(container)).toBe(1));
+
+    // 음성 대조: 필터가 없으면 점이 2개(활성 + 숨긴 삭제됨)가 된다.
+    expect(colorsOf(container)).toEqual([ACTIVE.color]);
+  });
 });
 
 describe('§2-C. 조회에 실패하면 앞 주의 점이 새어 나오지 않는다', () => {

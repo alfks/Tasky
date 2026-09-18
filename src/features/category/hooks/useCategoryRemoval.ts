@@ -46,8 +46,11 @@ export type CategoryRemovalController = {
   requestRemove: (category: Category) => void;
   /** 취소·Esc·✕·바깥 클릭. */
   cancel: () => void;
-  /** 고른 처리로 실행한다. 성공하면 대화상자를 닫고 되돌리기 토스트를 띄운다. */
-  confirm: (choice: CategoryRemovalChoice) => Promise<boolean>;
+  /**
+   * 고른 처리로 실행한다. 성공하면 대화상자를 닫고 되돌리기 토스트를 띄운다.
+   * `hideHistory` 는 지난 기록(완료 투두)에서도 이름·색을 지울지 (category R22, 기본 `false`).
+   */
+  confirm: (choice: CategoryRemovalChoice, hideHistory?: boolean) => Promise<boolean>;
   /** 지금 떠 있는 토스트(되돌리기 또는 실패). 최대 한 장이다. */
   toast: ToastItem | null;
   /** 6초가 지났거나 닫혔을 때. 되돌리기 창을 닫는다. */
@@ -170,14 +173,14 @@ export function useCategoryRemoval(): CategoryRemovalController {
     cancel();
   };
 
-  const confirm = async (choice: CategoryRemovalChoice): Promise<boolean> => {
+  const confirm = async (choice: CategoryRemovalChoice, hideHistory = false): Promise<boolean> => {
     // `removing` 은 저장이 끝날 때까지 두 번째 실행을 막는다. 3선택지 화면의 [삭제] 는 `loading`
     // 으로 비활성이 되지만 축약(R11)은 공용 `ConfirmDialog` 라 버튼이 끝까지 눌린다.
     if (target === null || removing) {
       return false;
     }
     setRemoving(true);
-    const removed = await removeCategory({ category: target, choice });
+    const removed = await removeCategory({ category: target, choice, hideHistory });
     setRemoving(false);
     if (!removed) {
       setError(useCategoryStore.getState().error ?? SAVE_FAILED);

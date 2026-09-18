@@ -164,6 +164,35 @@ describe('① 다른 카테고리로 옮기기 (R14·R14-a)', () => {
   });
 });
 
+describe('hideHistory — 지난 기록의 이름·색 지우기 선택 (R22)', () => {
+  it('기본값(생략)은 기존과 같은 툼스톤 — historyHidden 이 안 실린다', async () => {
+    await state().removeCategory({
+      category: state().byId[공부.id],
+      choice: { incomplete: 'delete' },
+    });
+    expect(categoryRow(공부.id).historyHidden).toBeUndefined();
+  });
+
+  it('true 로 넘기면 툼스톤에 historyHidden: true 가 저장된다', async () => {
+    await state().removeCategory({
+      category: state().byId[공부.id],
+      choice: { incomplete: 'delete' },
+      hideHistory: true,
+    });
+    expect(categoryRow(공부.id).historyHidden).toBe(true);
+  });
+
+  it('완료 투두는 그대로다 — historyHidden 이 켜져도 R14(완료 투두 불변)는 지켜진다', async () => {
+    await state().removeCategory({
+      category: state().byId[공부.id],
+      choice: { incomplete: 'delete' },
+      hideHistory: true,
+    });
+    expect(row(공부_할일[1])).toEqual(공부_할일[1]);
+    expect(row(공부_할일[4])).toEqual(공부_할일[4]);
+  });
+});
+
 describe('③ 함께 삭제 (R14)', () => {
   beforeEach(async () => {
     await state().removeCategory({

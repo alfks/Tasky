@@ -15,6 +15,7 @@ import { DEFAULT_ACCENT_COLOR } from '@/domain/theme/palette';
 
 import {
   CategoryRemoveDialogChoices,
+  HistoryVisibilityOption,
   type RemovalChoiceKind,
 } from '@/features/category/components/CategoryRemoveDialogChoices';
 import {
@@ -181,6 +182,7 @@ function RemovalPrompt({ category, counts, controller, returnFocus }: PromptProp
   const [targetId, setTargetId] = useState<CategoryId>(targets[0]?.id ?? '');
   const [name, setName] = useState('');
   const [color, setColor] = useState(DEFAULT_ACCENT_COLOR);
+  const [hideHistory, setHideHistory] = useState(false);
   const [invalid, setInvalid] = useState<string | null>(null);
   const defaultRadioRef = useRef<HTMLInputElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -223,7 +225,7 @@ function RemovalPrompt({ category, counts, controller, returnFocus }: PromptProp
 
   const remove = async (choice: CategoryRemovalChoice): Promise<void> => {
     setInvalid(null);
-    await controller.confirm(choice);
+    await controller.confirm(choice, hideHistory);
   };
 
   const submit = (): void => {
@@ -244,6 +246,11 @@ function RemovalPrompt({ category, counts, controller, returnFocus }: PromptProp
         description={
           <>
             {description}
+            {counts.done === 0 ? null : (
+              <div className="mt-[var(--space-3)]">
+                <HistoryVisibilityOption checked={hideHistory} onChange={setHideHistory} />
+              </div>
+            )}
             {controller.error === null ? null : <AlertLine>{controller.error}</AlertLine>}
           </>
         }
@@ -296,6 +303,12 @@ function RemovalPrompt({ category, counts, controller, returnFocus }: PromptProp
         nameRef={nameRef}
         error={invalid ?? controller.error}
       />
+      {/* R22 — 남길 기록(N>0)이 있을 때만. 그 밖에는 지울 이름·색 자체가 없다. */}
+      {counts.done === 0 ? null : (
+        <div className="mt-[var(--space-4)]">
+          <HistoryVisibilityOption checked={hideHistory} onChange={setHideHistory} />
+        </div>
+      )}
       {/* R16 종료 제안 — 남길 기록(N>0)이 있을 때만. 그 밖에는 소음이라 숨긴다. */}
       {counts.done === 0 ? null : (
         <p className="mt-[var(--space-4)] flex items-center gap-[var(--space-2)] text-sm text-muted">

@@ -233,6 +233,44 @@ describe('삭제된 카테고리 그룹 (R16)', () => {
   });
 });
 
+describe('삭제된 카테고리의 이름·색 복원 (category R22)', () => {
+  const 요리_툼스톤 = makeCategory({
+    seq: 3,
+    name: '요리',
+    order: 2,
+    color: '#ffd27c',
+    deletedAt: '2026-01-16T00:00:00.000Z',
+  });
+
+  function 화면_툼스톤포함() {
+    return render(
+      <>
+        <CommandLayer />
+        <TodoList date={FIXTURE_DATE} categories={[공부, 운동, 요리_툼스톤]} />
+        <ToastHub />
+      </>,
+    );
+  }
+
+  it('호출부가 tombstone 을 넘기면 일반 라벨 대신 실제 이름 "(삭제됨)" 과 색을 보여준다', async () => {
+    화면_툼스톤포함();
+    await 목록이보일때까지();
+
+    expect(screen.queryByRole('region', { name: '삭제된 카테고리' })).toBeNull();
+    const group = screen.getByRole('region', { name: '요리 (삭제됨)' });
+    expect(within(group).getByText('김치찌개')).toBeInTheDocument();
+    const dot = group.querySelector('span[aria-hidden="true"]');
+    expect(dot).toHaveStyle({ backgroundColor: '#ffd27c' });
+  });
+
+  it('여전히 읽기 전용이다 — 체크를 풀 수 없다', async () => {
+    화면_툼스톤포함();
+    await 목록이보일때까지();
+
+    expect(screen.getByRole('checkbox', { name: '김치찌개' })).toBeDisabled();
+  });
+});
+
 describe('날짜 이동 (R10)', () => {
   it('"내일로" 는 목록에서 내리고 되돌리기 토스트를 띄운다', async () => {
     const user = userEvent.setup();

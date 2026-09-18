@@ -568,6 +568,60 @@ describe('종료 제안 (R16)', () => {
   });
 });
 
+describe('지난 기록 이름·색 지우기 (R22)', () => {
+  it('N>0 이면 체크박스가 나오고 기본은 꺼져 있다(3선택지 화면)', async () => {
+    await open();
+
+    const checkbox = screen.getByRole('checkbox', { name: '지난 기록에서도 이름·색 지우기' });
+    expect(checkbox).not.toBeChecked();
+  });
+
+  it('N=0 이면 체크박스가 없다(3선택지 화면)', async () => {
+    seed([공부, 운동], [할일[0], 할일[2]]);
+    await open();
+
+    expect(screen.queryByRole('checkbox', { name: '지난 기록에서도 이름·색 지우기' })).toBeNull();
+  });
+
+  it('켜고 삭제하면 카테고리 툼스톤에 historyHidden: true 가 저장된다', async () => {
+    const user = await open();
+
+    await user.click(screen.getByRole('checkbox', { name: '지난 기록에서도 이름·색 지우기' }));
+    await user.click(screen.getByRole('button', { name: '삭제' }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(tables.categories.rows.get(공부.id)?.historyHidden).toBe(true);
+  });
+
+  it('기본값(끄기) 그대로 삭제하면 historyHidden 이 안 실린다', async () => {
+    const user = await open();
+
+    await user.click(screen.getByRole('button', { name: '삭제' }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(tables.categories.rows.get(공부.id)?.historyHidden).toBeUndefined();
+  });
+
+  it('축약 화면(M=0)에서도 N>0 이면 체크박스가 나오고 반영된다', async () => {
+    seed([공부, 운동], [할일[1], 할일[3]]);
+    const user = await open();
+
+    expect(screen.queryByRole('radiogroup')).toBeNull();
+    await user.click(screen.getByRole('checkbox', { name: '지난 기록에서도 이름·색 지우기' }));
+    await user.click(screen.getByRole('button', { name: '삭제' }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(tables.categories.rows.get(공부.id)?.historyHidden).toBe(true);
+  });
+
+  it('축약 화면에서 N=0 이면 체크박스가 없다', async () => {
+    seed([공부, 운동], []);
+    await open();
+
+    expect(screen.queryByRole('checkbox', { name: '지난 기록에서도 이름·색 지우기' })).toBeNull();
+  });
+});
+
 describe('키보드만으로 (§5·app-shell R14)', () => {
   it('Tab 으로 세 갈래를 모두 지나 [삭제] 까지 닿고 Esc 로 취소한다', async () => {
     const user = await open();

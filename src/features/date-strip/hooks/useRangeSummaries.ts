@@ -63,7 +63,13 @@ async function loadRangeSummaries(days: readonly DateKey[]): Promise<Map<DateKey
     (id) => !known.has(id),
   );
   const deleted: Category[] =
-    missing.length === 0 ? [] : await categories.listDeletedByIds(missing);
+    missing.length === 0
+      ? []
+      : // `historyHidden`(category R22)이 켜진 카테고리는 제외한다 — 삭제 시점에 "지난 기록에서도
+        // 이름·색 지우기"를 고른 카테고리는 점 색도 복원하지 않는다.
+        (await categories.listDeletedByIds(missing)).filter(
+          (category) => category.historyHidden !== true,
+        );
   // 순서(활성 → 종료 → 삭제됨)는 도메인 `sortCategoriesForDisplay` 가 정한다 — 여기서는 합치기만 한다.
   return summarizeDays(days, todoList, [...living, ...deleted]);
 }

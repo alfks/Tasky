@@ -720,3 +720,50 @@ describe('상단 고정 알림 자리 비우기', () => {
     await waitFor(() => expect(spacer?.style.height).toBe('82px'));
   });
 });
+
+describe('삭제된 카테고리의 이름·색 복원 배선 (category R17·R22)', () => {
+  const DELETED = makeCategory({
+    seq: 2,
+    order: 1,
+    name: '요리',
+    color: '#FFB38A',
+    deletedAt: '2026-09-01T00:00:00.000Z',
+  });
+
+  it('본문 목록·인사이트 패널이 같은 tombstone 이름·색을 보여준다', async () => {
+    await seed(
+      [
+        makeTodo({ seq: 1, categoryId: STUDY.id, date: TODAY }),
+        makeTodo({ seq: 2, categoryId: DELETED.id, date: TODAY, done: true }),
+      ],
+      [STUDY],
+    );
+    // `seed()` 는 넘긴 카테고리만 `repositories.categories.upsert` 한다 — tombstone 은
+    // 스토어(byId)에 없어야 하므로 저장소에만 직접 심는다(실제로 삭제된 뒤의 모양과 같다).
+    await getRepositories().categories.upsert(adopt(DELETED));
+
+    await mount();
+
+    const group = await screen.findByRole('region', { name: '요리 (삭제됨)' });
+    expect(group).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('complementary')).toHaveTextContent('요리 (삭제됨)'),
+    );
+  });
+
+  it('사이드바·선택지에는 여전히 나오지 않는다', async () => {
+    await seed(
+      [
+        makeTodo({ seq: 1, categoryId: STUDY.id, date: TODAY }),
+        makeTodo({ seq: 2, categoryId: DELETED.id, date: TODAY, done: true }),
+      ],
+      [STUDY],
+    );
+    await getRepositories().categories.upsert(adopt(DELETED));
+
+    await mount();
+    await screen.findByRole('region', { name: '요리 (삭제됨)' });
+
+    expect(within(screen.getByRole('navigation')).queryByText('요리')).toBeNull();
+  });
+});

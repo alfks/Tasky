@@ -21,4 +21,11 @@ export type Category = Meta & {
   status: CategoryStatus;
   /** 활성을 떠난 시각(ISO UTC). 종료 섹션 정렬 키이고 재개하면 제거된다 (category R8·R9). */
   closedAt?: string;
+  /**
+   * 삭제 시점에 지난 기록(이미 체크한 투두)에서도 이름·색을 지우기로 골랐는지 (category R22).
+   * 켜져 있으면 `listDeletedByIds` 의 tombstone 복원 결과에서 **호출부가** 이 카테고리를 걸러내
+   * "삭제된 카테고리" 일반 표시로 떨어뜨린다 — 투두 자체·`categoryId` 는 손대지 않는다(물리 삭제
+   * 없음, ADR-0002·ADR-0005). 없으면(대부분의 삭제) 기본값처럼 이름·색이 그대로 남는다.
+   */
+  historyHidden?: boolean;
 };

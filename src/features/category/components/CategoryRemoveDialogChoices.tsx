@@ -172,3 +172,38 @@ export function CategoryRemoveDialogChoices({
     </div>
   );
 }
+
+type HistoryVisibilityOptionProps = {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+};
+
+/**
+ * "완료한 할 일 N개는 기록으로 남아요" 바로 아래에 붙는 선택지 (category R22). N=0 이면 호출부가
+ * 아예 렌더하지 않는다 — 남을 기록이 없으면 물을 것도 없다.
+ *
+ * 기본은 **꺼짐**(이름·색이 그대로 남는다) — 파괴적 선택지를 기본값으로 두지 않는다(R10 과 같은 근거).
+ * 켜도 투두·`categoryId` 는 손대지 않는다(물리 삭제 없음, ADR-0002·0005) — 그래서 문구는 "지운다"가
+ * 아니라 "가려진다"는 것을 분명히 한다.
+ */
+export function HistoryVisibilityOption({ checked, onChange }: HistoryVisibilityOptionProps) {
+  const hintId = useId();
+  return (
+    <div className="flex flex-col gap-[var(--space-1)]">
+      <label className={ROW_CLASS}>
+        <input
+          type="checkbox"
+          className={RADIO_CLASS}
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          aria-describedby={hintId}
+        />
+        지난 기록에서도 이름·색 지우기
+      </label>
+      <span id={hintId} className="pl-[var(--space-5)] text-sm text-muted">
+        선택하면 이 카테고리로 남은 기록이 이름·색 없이 일반 삭제됨 표시로만 보여요. 할 일 자체는
+        지워지지 않아요.
+      </span>
+    </div>
+  );
+}

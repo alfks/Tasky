@@ -26,6 +26,7 @@ import { ShellOverlays } from '@/features/shell/components/ShellOverlays';
 import { ShellSidebar } from '@/features/shell/components/ShellSidebar';
 import { SkipLink } from '@/features/shell/components/SkipLink';
 import { StorageFailureCard } from '@/features/shell/components/StorageFailureCard';
+import { useCategoriesWithHistory } from '@/features/shell/hooks/useCategoriesWithHistory';
 import { useCategoryFocus } from '@/features/shell/hooks/useCategoryFocus';
 import { useFocusStartReset } from '@/features/shell/hooks/useFocusStartReset';
 import { useRemovalReturnFocus } from '@/features/shell/hooks/useRemovalReturnFocus';
@@ -58,6 +59,9 @@ function ShellBody() {
 
   const date = useDateStripStore((s) => s.selectedDate);
   const categories = useCategories();
+  // 본문 목록·인사이트 패널 전용(category R17·R22) — 사이드바·선택지·팔레트는 여전히 `categories`
+  // 그대로 쓴다(아래 `focusCategory`·`ShellSidebar`). 자세한 이유는 훅 주석.
+  const categoriesWithHistory = useCategoriesWithHistory(categories);
   const categoryLoad = useCategoryLoadState();
   const { load: loadCategories } = useCategoryActions();
   const todoStatus = useTodoStore((s) => s.status);
@@ -139,7 +143,7 @@ function ShellBody() {
 
         <ShellMain
           date={date}
-          categories={categories}
+          categories={categoriesWithHistory}
           categoriesPending={categoriesPending}
           todosFirstLoading={todosFirstLoading}
           todosEmpty={summary.total === 0}
@@ -171,7 +175,7 @@ function ShellBody() {
             className="w-[280px] shrink-0 outline-none"
           >
             <ShellInsights
-              categories={categories}
+              categories={categoriesWithHistory}
               panelId={INSIGHT_PANEL_ID}
               onCollapse={panels.collapseInsight}
             />
@@ -182,7 +186,7 @@ function ShellBody() {
       <ShellGlobals onBackup={openBackupDialog} />
 
       <ShellOverlays
-        categories={categories}
+        categories={categoriesWithHistory}
         drawerOpen={drawerOpen}
         onDrawerClose={panels.closeDrawer}
         insightOverlayOpen={insightOverlayOpen}
