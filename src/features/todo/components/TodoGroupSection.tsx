@@ -177,6 +177,7 @@ export function TodoGroupSection({
   const name = category?.name ?? M.deletedCategory;
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- 드롭을 받는 것은 **영역**이다(R20): 그룹 어디에 떨어뜨려도 같은 결과여야 해서 헤더·빈 자리·행을 모두 덮는 이 `section` 말고는 걸 자리가 없다. 여기 붙는 것은 마우스·키보드 리스너가 아니라 드래그 전용(`dragover`·`dragleave`·`drop`)이고, 같은 일을 하는 시맨틱 경로가 따로 있다 — 항목 메뉴 `다른 카테고리로 옮기기`·편집 패널의 카테고리 선택(WCAG 2.5.7, todo.md §5).
     <section
       aria-label={name}
       onDragOver={handleDragOver}

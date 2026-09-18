@@ -15,7 +15,6 @@ import type { Todo } from '@/domain/todo/todo';
 import { getRepositories, setRepositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
-import { TODO_DRAG_MIME } from '@/features/date-strip';
 import { TodoList } from '@/features/todo/components/TodoList';
 import { useTodoStore } from '@/features/todo/store/todo-store';
 import { makeCategory } from '@/test/fixtures/category';
