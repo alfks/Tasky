@@ -100,23 +100,15 @@ describe('expandRoutineDates', () => {
     ).toThrow(DomainError);
   });
 
-  it('기간이 366일이면(경계값) 통과한다', () => {
-    // 2026-01-01 ~ 2027-01-01 은 시작·종료를 포함해 정확히 366일이다.
+  it('기간에는 상한이 없다 — 여러 해에 걸친 범위도 그대로 계산한다', () => {
     const dates = expandRoutineDates({
       startDate: '2026-01-01' as DateKey,
-      endDate: '2027-01-01' as DateKey,
+      endDate: '2030-01-01' as DateKey,
       recurrence: { type: 'monthly', daysOfMonth: [1] },
     });
-    expect(dates.length).toBeGreaterThan(0);
-  });
-
-  it('기간이 366일을 넘으면(367일) ROUTINE_RANGE_TOO_LONG', () => {
-    expect(() =>
-      expandRoutineDates({
-        startDate: '2026-01-01' as DateKey,
-        endDate: '2027-01-02' as DateKey,
-        recurrence: { type: 'monthly', daysOfMonth: [1] },
-      }),
-    ).toThrow(DomainError);
+    // 2026-01-01 ~ 2030-01-01, 매달 1일: 4년 + 1개월 = 49회.
+    expect(dates).toHaveLength(49);
+    expect(dates[0]).toBe('2026-01-01');
+    expect(dates.at(-1)).toBe('2030-01-01');
   });
 });

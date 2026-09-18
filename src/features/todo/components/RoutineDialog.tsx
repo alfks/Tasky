@@ -34,7 +34,8 @@ type RoutineDialogProps = {
  *
  * 성공 알림은 `sr-only` 낭독이 아니라 **토스트**로 띄운다(R10·R20과 같은 언어) — 만들어진 날짜가
  * 지금 보는 날짜 밖이면(매달 반복 등) 화면이 전혀 바뀌지 않으므로, 눈에 보이는 확인이 없으면
- * 등록됐는지 알 방법이 없다. 최대 366개까지 한 번에 만들 수 있어 되돌리기도 함께 준다.
+ * 등록됐는지 알 방법이 없다. 기간에 상한이 없어(날짜 범위는 date-strip 이 다루는 1970~2099 뿐)
+ * 한 번에 아주 많이 만들 수도 있으므로 되돌리기도 함께 준다.
  */
 export function RoutineDialog({ todo, categories, onClose, returnFocus }: RoutineDialogProps) {
   const form = useRoutineForm(todo);
