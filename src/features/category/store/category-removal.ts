@@ -38,6 +38,8 @@ export type CategoryRemovalActions = {
   removeCategory: (input: {
     category: Category;
     choice: CategoryRemovalChoice;
+    /** 지난 기록에서도 이름·색을 지우기로 골랐는가 (category R22). 기본 `false`. */
+    hideHistory?: boolean;
   }) => Promise<boolean>;
   /**
    * 되돌리기 (R15). `pendingRemoval` 이 없으면 `false` + `error` 는 그대로(되돌릴 것이 없는 것은 실패가 아니다).
@@ -69,6 +71,7 @@ async function planRemoval(
   ctx: CategoryContext,
   category: Category,
   choice: CategoryRemovalChoice,
+  hideHistory: boolean,
   box: { memo?: CategoryRemovalMemo },
 ): Promise<DatasetWrite[]> {
   const repositories = getRepositories();
@@ -84,6 +87,7 @@ async function planRemoval(
     deps: ctx.deps,
     // 삭제 시점의 전량(삭제 대상 자신 포함) — R5 order·R12 이름 유일성·개수의 모집단이다.
     categories: Object.values(ctx.get().byId),
+    hideHistory,
   });
   const createdCategory = createdIn(writes, result.createdCategoryId);
   box.memo = {
@@ -102,9 +106,11 @@ export function createRemovalActions(
   writer: CategoryWriter,
 ): CategoryRemovalActions {
   return {
-    removeCategory: async ({ category, choice }) => {
+    removeCategory: async ({ category, choice, hideHistory = false }) => {
       const box: { memo?: CategoryRemovalMemo } = {};
-      const saved = await writer.applyWrites(() => planRemoval(ctx, category, choice, box));
+      const saved = await writer.applyWrites(() =>
+        planRemoval(ctx, category, choice, hideHistory, box),
+      );
       const memo = box.memo;
       if (!saved || memo === undefined) {
         return false;

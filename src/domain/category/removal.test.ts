@@ -252,6 +252,67 @@ describe('③ 함께 삭제 (R14)', () => {
   });
 });
 
+describe('hideHistory — 지난 기록의 이름·색 지우기 선택 (R22)', () => {
+  it('기본값은 false — 기존과 같은 툼스톤(historyHidden 없음)', () => {
+    const { writes } = planCategoryRemoval({
+      category,
+      todos,
+      targetTodos: [],
+      choice: { incomplete: 'delete' },
+      deps: fixedDeps({ now: AT }),
+      categories: snapshot,
+    });
+    expect(categoryWrites(writes)[0].historyHidden).toBeUndefined();
+  });
+
+  it('true 면 툼스톤에 historyHidden: true 가 실린다', () => {
+    const { writes } = planCategoryRemoval({
+      category,
+      todos,
+      targetTodos: [],
+      choice: { incomplete: 'delete' },
+      deps: fixedDeps({ now: AT }),
+      categories: snapshot,
+      hideHistory: true,
+    });
+    expect(categoryWrites(writes)[0].historyHidden).toBe(true);
+  });
+
+  it('완료 투두는 여전히 writes 에 한 건도 들어가지 않는다 — R14 와 충돌하지 않는다', () => {
+    const { writes } = planCategoryRemoval({
+      category,
+      todos,
+      targetTodos: [],
+      choice: { incomplete: 'delete' },
+      deps: fixedDeps({ now: AT }),
+      categories: snapshot,
+      hideHistory: true,
+    });
+    const writtenIds = todoWrites(writes).map((t) => t.id);
+    expect(writtenIds).not.toContain(todos[3].id);
+    expect(writtenIds).not.toContain(todos[4].id);
+  });
+
+  it('카테고리 툼스톤 외 다른 필드는 그대로다', () => {
+    const { writes } = planCategoryRemoval({
+      category,
+      todos,
+      targetTodos: [],
+      choice: { incomplete: 'delete' },
+      deps: fixedDeps({ now: AT }),
+      categories: snapshot,
+      hideHistory: true,
+    });
+    const tombstone = categoryWrites(writes)[0];
+    expect(tombstone).toMatchObject({
+      id: category.id,
+      name: category.name,
+      color: category.color,
+      order: category.order,
+    });
+  });
+});
+
 describe('planCategoryRemovalUndo (R15)', () => {
   it('카테고리와 영향받은 투두만 삭제 직전 값으로 되감고, rev 는 앞으로만 간다', () => {
     const { result } = planCategoryRemoval({

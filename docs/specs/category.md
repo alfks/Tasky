@@ -75,11 +75,18 @@
 - R17. **삭제된 카테고리의 남은 투두**: 날짜 화면에서 그날 완료 투두가 있을 때만 맨 아래 "이름 (삭제됨)" 그룹(흐림, tombstone 색). 읽기 전용(체크 해제·편집·순서 불가), 메뉴 `다른 카테고리로 옮기기`·`삭제`. 사이드바·선택지·팔레트에 없음. 날짜 점·달성률에는 포함.
 - R18. **첫 실행 시드**: 카테고리 테이블이 비어 있고 `seededAt`이 없으면 `📝 todo`(스카이 `#7CC6FF`, active) 1개 생성 후 `seededAt` 기록. 지워도 재생성 없음. 근거: 이름은 사용자 지정, 색은 기본 강조색과 같아 첫 화면이 한 톤이고 색 바꾸기가 곧 첫 꾸미기, 📝는 특정 활동을 전제하지 않음.
 - R19. 사이드바 `n/m` = 선택 날짜 완료/전체(0개면 빈칸). R20. 색 변경은 재조회 없이 즉시 반영.
+- R22. **삭제 시점 선택: 지난 기록에서도 이름·색 지우기**. N>0(남길 기록이 있음)일 때만 삭제 대화상자에
+  체크박스 "지난 기록에서도 이름·색 지우기"(기본 **꺼짐**)가 나온다. 켜고 삭제하면 카테고리 tombstone에
+  `historyHidden: true`가 실린다 — **투두도 `categoryId`도 손대지 않는다**(물리 삭제 없음,
+  ADR-0002·0005). 화면(날짜 목록의 R17 삭제됨 그룹, 날짜 스트립 점, 달성률 막대)은 tombstone을 복원할
+  때 `historyHidden`이 켜진 것을 걸러내 일반 "삭제된 카테고리" 표시로 떨어뜨린다. 기본값이 꺼짐인
+  근거는 R10과 같다 — 파괴적 선택지를 기본으로 두지 않는다. 되돌리기(R15)는 삭제 직전 값(historyHidden
+  없음)으로 되감으므로 별도 처리가 필요 없다.
 
 ## 4. 데이터
 
-- domain `Category = { id, name, color, emoji?, order, status, closedAt?, createdAt, updatedAt, deletedAt? }`(초안의 `archivedAt` 대체). 전이 검증·재매김·시드·삭제 계획(`planCategoryRemoval` → `{ writes, result }`)·되감기 계획(`planCategoryRemovalUndo`)은 순수 함수(타입은 `CategoryRemovalChoice`·`CategoryRemovalResult`, 시그니처 TECH_PLAN §6). `Settings.seededAt?`.
-- 레포지토리: `CategoryRepository.list({ includeClosed })`·`getById`·`upsert(Persistable<Category>)`(쓰기는 `upsert` 하나 — 삭제도 `upsert(markDeleted(…))`, ADR-0007); `TodoRepository.listByCategory`(N·M 계산). R13·R15의 두 테이블 단일 트랜잭션은 `DatasetRepository.write(writes)`가 맡고, 무엇을 쓸지는 도메인 `planCategoryRemoval`/`planCategoryRemovalUndo`가 정한다. R17의 삭제됨 그룹이 tombstone 이름·색을 읽는 경로는 `DatasetRepository.readAll()` 하나다(엔티티 조회는 tombstone을 반환하지 않는다). 시그니처 TECH_PLAN §6.
+- domain `Category = { id, name, color, emoji?, order, status, closedAt?, historyHidden?, createdAt, updatedAt, deletedAt? }`(초안의 `archivedAt` 대체). `historyHidden?`은 R22 전용(기본 없음 = 이름·색이 그대로 남는다). 전이 검증·재매김·시드·삭제 계획(`planCategoryRemoval` → `{ writes, result }`, `hideHistory?` 입력이 R22를 만든다)·되감기 계획(`planCategoryRemovalUndo`)은 순수 함수(타입은 `CategoryRemovalChoice`·`CategoryRemovalResult`, 시그니처 TECH_PLAN §6). `Settings.seededAt?`.
+- 레포지토리: `CategoryRepository.list({ includeClosed })`·`getById`·`upsert(Persistable<Category>)`(쓰기는 `upsert` 하나 — 삭제도 `upsert(markDeleted(…))`, ADR-0007); `TodoRepository.listByCategory`(N·M 계산). R13·R15의 두 테이블 단일 트랜잭션은 `DatasetRepository.write(writes)`가 맡고, 무엇을 쓸지는 도메인 `planCategoryRemoval`/`planCategoryRemovalUndo`가 정한다. R17의 삭제됨 그룹·날짜 점(date-strip R7)·달성률 막대가 tombstone 이름·색을 읽는 경로는 `CategoryRepository.listDeletedByIds`(ADR-0014) — 살아 있는 목록에서 못 찾은 id만, 그리고 `historyHidden`이 아닌 것만 붙인다(R22). 본문 목록·인사이트 패널은 셸의 `useCategoriesWithHistory` 훅이 이 조회를 한 번만 모아서 한다. 시그니처 TECH_PLAN §6.
 
 ## 5. 접근성
 

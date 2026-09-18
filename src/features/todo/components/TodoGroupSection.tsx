@@ -5,6 +5,7 @@ import type { DragEvent as ReactDragEvent } from 'react';
 
 import type { Category } from '@/domain/category/category';
 import type { CategoryId, TodoId } from '@/domain/ids';
+import { isTombstone } from '@/domain/meta';
 import type { Todo } from '@/domain/todo/todo';
 
 import { TODO_DRAG_MIME } from '@/features/date-strip';
@@ -174,7 +175,14 @@ export function TodoGroupSection({
     onMovedToDate,
     onToggled: handleToggled,
   };
-  const name = category?.name ?? M.deletedCategory;
+  // 지워진 카테고리라도 이름·색을 찾았으면(category R22 로 가리지 않은 한, ADR-0014) 그대로 쓴다
+  // — `M.deletedCategory` 는 tombstone 조회마저 실패했을 때의 최후 폴백이다.
+  const name =
+    category === undefined
+      ? M.deletedCategory
+      : isTombstone(category)
+        ? M.deletedCategoryName(category.name)
+        : category.name;
 
   return (
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- 드롭을 받는 것은 **영역**이다(R20): 그룹 어디에 떨어뜨려도 같은 결과여야 해서 헤더·빈 자리·행을 모두 덮는 이 `section` 말고는 걸 자리가 없다. 여기 붙는 것은 마우스·키보드 리스너가 아니라 드래그 전용(`dragover`·`dragleave`·`drop`)이고, 같은 일을 하는 시맨틱 경로가 따로 있다 — 항목 메뉴 `다른 카테고리로 옮기기`·편집 패널의 카테고리 선택(WCAG 2.5.7, todo.md §5).

@@ -45,8 +45,12 @@ export const TODO_MESSAGES = {
   /** 날짜 이동 토스트 (R10). 되돌리기는 **대상 그룹 끝**으로 돌아가므로 "원래대로" 라고 하지 않는다. */
   movedToDate: (label: string): string => `${label}로 옮겼어요`,
   undo: '되돌리기',
-  /** 삭제된 카테고리 그룹 (R16·category R17). */
+  /**
+   * 삭제된 카테고리 그룹 (R16·category R17). `deletedCategory` 는 tombstone 마저 못 찾았을 때만
+   * 쓰는 **최후의 폴백**이다 — 보통은 `deletedCategoryName` 이 실제 이름을 쓴다(category R22).
+   */
   deletedCategory: '삭제된 카테고리',
+  deletedCategoryName: (name: string): string => `${name} (삭제됨)`,
   readOnlyHint: '삭제된 카테고리의 할 일이에요. 옮기거나 지울 수만 있어요.',
   /** 항목 메뉴 (§2-A). */
   menuLabel: (title: string): string => `${title} 메뉴`,
