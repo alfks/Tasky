@@ -1,6 +1,16 @@
 'use client';
 
-// 날짜 스트립의 셀 하나 (date-strip.md R3·R6·R7·R8·R9·R11·§5).
+// 날짜 스트립의 셀 하나 (date-strip.md R3·R6·R7·R8·R9·R11·R16·§5).
+//
+// **주 보기와 월 보기가 같은 셀을 쓴다**(R16). 오늘 링·선택 채움·잉크 링·카테고리 점·✓ 배지·드롭
+// 강조는 전부 여기 한 곳에만 있고, 보기별로 다른 것은 `variant` 가 가르는 세 가지뿐이다:
+//   1. 노출 역할 — 주 보기는 `radiogroup` 안의 `radio`, 월 보기는 `grid` 안의 `gridcell`.
+//      격자 안에 `radio` 를 넣으면 행/열 구조가 보조기술에 전달되지 않고, 반대로 한 줄짜리
+//      스트립을 격자로 부르면 없는 행이 읽힌다. 상태 속성도 역할을 따라간다(`aria-checked` ↔ `aria-selected`).
+//   2. 요일 글자 — 월 보기는 격자 맨 위 `columnheader` 줄이 한 번만 보여 준다(칸마다 반복하지 않는다).
+//      접근성 이름에는 두 보기 모두 요일이 들어간다(`formatCellName`) — 눈으로 훑는 것과 달리
+//      스크린리더는 열 위치를 볼 수 없기 때문이다.
+//   3. 높이 — 요일 줄이 빠진 만큼(한 줄) 월 보기 칸이 낮다. 폭·라운드·간격은 같다.
 import { useState, type CSSProperties, type KeyboardEvent, type Ref } from 'react';
 
 import type { DateKey } from '@/domain/date/date-key';
@@ -21,6 +31,9 @@ import { cn } from '@/lib/cn';
 /** 드래그 중인 투두 id 를 나르는 MIME 타입 (R13). 드래그를 시작하는 쪽(투두 목록)도 이 값을 쓴다. */
 export const TODO_DRAG_MIME = 'application/x-tasky-todo-id';
 
+/** 셀이 놓이는 자리 (R16). `week` = 한 줄 스트립, `month` = 달력 격자. */
+export type DateCellVariant = 'week' | 'month';
+
 type DateCellProps = {
   date: DateKey;
   isSelected: boolean;
@@ -29,6 +42,10 @@ type DateCellProps = {
   isFocusTarget: boolean;
   /** 이동 가능 범위(R6) 밖 — 주가 범위 끝을 걸칠 때만 생긴다. */
   isDisabled: boolean;
+  /** 어느 보기의 칸인지 (R16). 기본은 주 보기다. */
+  variant?: DateCellVariant;
+  /** 월 보기 격자에서 **보고 있는 달 밖**의 날짜인지 (R16). 누를 수는 있고 숫자만 흐려진다. */
+  isOutsideMonth?: boolean;
   /** 아직 못 읽었으면 `undefined` — 점·✓ 없이 셀만 그린다 (§2-C). */
   summary?: DaySummary;
   buttonRef?: Ref<HTMLButtonElement>;
@@ -39,8 +56,13 @@ type DateCellProps = {
   onDropTodo?: (todoId: string, date: DateKey) => void;
 };
 
-/** 요일 색 (R9). 색은 보조 정보이고 요일 글자가 항상 함께 있다. */
-function weekdayColor(index: number): string {
+/**
+ * 요일 색 (R9). 색은 보조 정보이고 요일 글자가 항상 함께 있다.
+ *
+ * 월 보기의 `columnheader` 줄도 이것을 쓴다 — 토·일 색이 두 보기에서 갈리면 같은 화면에서
+ * 토요일이 보기마다 다른 색이 된다.
+ */
+export function weekdayColor(index: number): string {
   if (index === SATURDAY_INDEX) return 'text-[var(--color-saturday)]';
   if (index === SUNDAY_INDEX) return 'text-[var(--color-sunday)]';
   return 'text-muted';
@@ -52,6 +74,8 @@ export function DateCell({
   isToday,
   isFocusTarget,
   isDisabled,
+  variant = 'week',
+  isOutsideMonth = false,
   summary,
   buttonRef,
   onSelect,
@@ -62,13 +86,17 @@ export function DateCell({
   const [isDropTarget, setIsDropTarget] = useState(false);
   const index = weekdayIndex(date);
   const canDrop = onDropTodo !== undefined && !isDisabled;
+  const isMonth = variant === 'month';
 
   return (
     <button
       ref={buttonRef}
       type="button"
-      role="radio"
-      aria-checked={isSelected}
+      // 역할과 선택 상태는 한 쌍이다 — `gridcell` 은 `aria-checked` 를 지원하지 않고
+      // `radio` 는 `aria-selected` 를 지원하지 않는다. 둘을 함께 뒤집는다 (R16).
+      role={isMonth ? 'gridcell' : 'radio'}
+      aria-checked={isMonth ? undefined : isSelected}
+      aria-selected={isMonth ? isSelected : undefined}
       aria-label={formatCellName({
         date,
         isToday,
@@ -99,7 +127,9 @@ export function DateCell({
           : undefined
       }
       className={cn(
-        'flex h-[72px] w-[56px] shrink-0 snap-center flex-col items-center justify-center gap-[var(--space-1)]',
+        'flex w-[56px] shrink-0 snap-center flex-col items-center justify-center gap-[var(--space-1)]',
+        // 요일 글자 한 줄이 빠지는 만큼 월 보기 칸이 낮다 (R16).
+        isMonth ? 'h-[56px]' : 'h-[72px]',
         // 날짜를 바꿀 때 실제로 움직이는 것이 이 색 전환이라, R10 의 120ms 상한이 걸리는 자리도 여기다.
         // 수치는 `--motion-xfast`(theme.md §3-D) 한 곳에만 산다 — `--motion-fast`(150ms)는 상한을 넘는다.
         'rounded-[var(--radius-lg)] motion-safe:transition-colors motion-safe:duration-[var(--motion-xfast)] motion-safe:ease-[var(--motion-ease)]',
@@ -127,15 +157,26 @@ export function DateCell({
         isDropTarget && 'border-2 border-dashed border-accent',
       )}
     >
+      {/* 월 보기는 격자 맨 위 columnheader 줄이 요일을 한 번만 보여 준다 (R16). */}
+      {!isMonth && (
+        <span
+          className={cn(
+            'text-xs leading-normal',
+            isSelected ? 'text-on-accent' : weekdayColor(index),
+          )}
+        >
+          {WEEKDAY_LABELS[index]}
+        </span>
+      )}
       <span
         className={cn(
-          'text-xs leading-normal',
-          isSelected ? 'text-on-accent' : weekdayColor(index),
+          'text-lg leading-normal',
+          isToday ? 'font-bold' : 'font-semibold',
+          // 이 달 밖 날짜는 숫자만 보조 색으로 물린다 — 투명도로 흐리면 대비가 예측 불가능해지고
+          // 점·✓ 까지 같이 흐려져 "할 일이 적은 날"처럼 보인다 (R16).
+          isOutsideMonth && !isSelected && 'text-muted',
         )}
       >
-        {WEEKDAY_LABELS[index]}
-      </span>
-      <span className={cn('text-lg leading-normal', isToday ? 'font-bold' : 'font-semibold')}>
         {formatDayNumber(date)}
       </span>
       <DaySummaryMarks summary={summary} />

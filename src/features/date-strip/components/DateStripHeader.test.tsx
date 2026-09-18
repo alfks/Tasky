@@ -7,14 +7,18 @@ import { MAX_DATE_KEY, MIN_DATE_KEY } from '@/features/date-strip/lib/week';
 
 function renderHeader(props: Partial<Parameters<typeof DateStripHeader>[0]> = {}) {
   const onSelect = vi.fn();
+  const onToggleView = vi.fn();
   render(
     <div>
       <DateStripHeader
-        weekStart="2026-09-14"
+        anchorDate="2026-09-14"
         selectedDate="2026-09-17"
         today="2026-09-17"
-        previousWeek="2026-09-10"
-        nextWeek="2026-09-24"
+        view="week"
+        previousStep="2026-09-10"
+        nextStep="2026-09-24"
+        hasStepAfter={() => true}
+        onToggleView={onToggleView}
         onSelect={onSelect}
         {...props}
       />
@@ -23,7 +27,7 @@ function renderHeader(props: Partial<Parameters<typeof DateStripHeader>[0]> = {}
       <input aria-label="바깥 입력" />
     </div>,
   );
-  return { onSelect };
+  return { onSelect, onToggleView };
 }
 
 const monthButton = () => screen.getByRole('button', { name: /2026년 9월/ });
@@ -151,7 +155,7 @@ describe('app-shell R7. 날짜 점프는 Popover 프리미티브를 타고 닫�
 
 describe('R5·R6. 범위 끝과 오늘에서 버튼이 비활성된다', () => {
   it('이동할 곳이 없으면 그 방향 버튼이 비활성이다', () => {
-    renderHeader({ previousWeek: undefined, nextWeek: undefined });
+    renderHeader({ previousStep: undefined, nextStep: undefined });
     expect(screen.getByRole('button', { name: '이전 주' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '다음 주' })).toBeDisabled();
   });
@@ -181,7 +185,11 @@ describe('§5. 자기 클릭으로 비활성되는 버튼은 포커스를 넘긴
 
   it('주 이동이 범위 끝에 닿아 버튼이 비활성될 때만 포커스 인계를 요청한다', async () => {
     const user = userEvent.setup();
-    const { onSelect } = renderHeader({ selectedDate: '2099-12-20', nextWeek: '2099-12-27' });
+    const { onSelect } = renderHeader({
+      selectedDate: '2099-12-20',
+      nextStep: '2099-12-27',
+      hasStepAfter: () => false,
+    });
     await user.click(screen.getByRole('button', { name: '다음 주' }));
     expect(onSelect).toHaveBeenCalledWith('2099-12-27', true);
   });
