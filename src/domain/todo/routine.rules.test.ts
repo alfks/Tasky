@@ -100,20 +100,21 @@ describe('expandRoutineDates', () => {
     ).toThrow(DomainError);
   });
 
-  it('기간이 366일 이내면 통과한다', () => {
+  it('기간이 366일이면(경계값) 통과한다', () => {
+    // 2026-01-01 ~ 2027-01-01 은 시작·종료를 포함해 정확히 366일이다.
     const dates = expandRoutineDates({
       startDate: '2026-01-01' as DateKey,
-      endDate: '2027-01-02' as DateKey,
+      endDate: '2027-01-01' as DateKey,
       recurrence: { type: 'monthly', daysOfMonth: [1] },
     });
     expect(dates.length).toBeGreaterThan(0);
   });
 
-  it('기간이 366일을 넘으면 ROUTINE_RANGE_TOO_LONG', () => {
+  it('기간이 366일을 넘으면(367일) ROUTINE_RANGE_TOO_LONG', () => {
     expect(() =>
       expandRoutineDates({
         startDate: '2026-01-01' as DateKey,
-        endDate: '2027-01-03' as DateKey,
+        endDate: '2027-01-02' as DateKey,
         recurrence: { type: 'monthly', daysOfMonth: [1] },
       }),
     ).toThrow(DomainError);

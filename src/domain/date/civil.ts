@@ -1,8 +1,11 @@
 // `DateKey`('YYYY-MM-DD') 전용 그레고리력 산술 — 루틴 반복(매주 n요일·매달 n일, todo R21) 계산의 기반.
 // `instant.ts` 와 달리 시:분:초가 없는 "그 날짜"만 다룬다. 알고리즘은 같은 Howard Hinnant 의
 // days_from_civil/civil_from_days(그레고리력, 윤년 정확, 타임존 없음)이며, 여기서는 **날짜만** 다루므로
-// (instant.ts 는 시:분:초까지의 ms 계산기라 공개 API 가 다르다) 작게 다시 둔다 — 둘 다 전부 사기 좁고
-// 스스로 검증하는 파일이라 공유로 인한 결합보다 중복의 대가가 더 싸다.
+// (instant.ts 는 시:분:초까지의 ms 계산기라 공개 API 가 다르다) 작게 다시 둔다 — 둘 다 전부 사용 범위가
+// 좁고 스스로 검증하는 파일이라 공유로 인한 결합보다 중복의 대가가 더 싸다.
+// **이 파일과 `instant.ts` 의 `daysFromCivil`/`civilFromDays` 는 같은 계산의 두 번째 구현이다** —
+// 알고리즘을 고치면 두 파일 모두 같은 PR 에서 함께 고친다(`lib/date.ts`:12-13 의 `DateKey` 타입 이중
+// 선언과 같은 경고).
 import type { DateKey } from '@/domain/date/date-key';
 
 const DATE_KEY_FORMAT = /^(\d{4})-(\d{2})-(\d{2})$/;

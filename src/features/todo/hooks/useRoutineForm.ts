@@ -1,28 +1,86 @@
-// 루틴 등록 다이얼로그의 폼 상태 + 검증 (todo R21). 검증은 도메인 함수(`expandRoutineDates`)를 그대로
-// 부른다 — 저장 직전 스토어가 부르는 것과 같은 함수라 화면 미리보기와 실제 결과가 갈리지 않는다.
+// 루틴 등록 다이얼로그의 폼 상태 + 검증 (todo R21). 검증은 도메인 함수를 그대로 부른다
+// (`validateTodoTitle`·`validateTodoMemo`·`expandRoutineDates`) — 저장 직전 스토어가 부르는 것과
+// 같은 함수라 화면 미리보기·인라인 오류 문구와 실제 결과가 갈리지 않는다.
+//
+// **저장(store) 실패는 여기서 문구를 다시 만들지 않는다.** `createRoutine` 이 `false` 를 돌려주면
+// 그대로 실패를 알리고 끝낸다 — 그 순간의 원인 문구는 스토어의 전역 `error` 에 있고, `TodoList` 의
+// effect 가 그것을 토스트로 띄우면서 **`clearError()` 로 지운다**(같은 렌더 사이클에 스토어를
+// 구독하는 다른 컴포넌트가 있으면 이 다이얼로그가 나중에 읽을 때는 이미 비어 있을 수 있다). 그 값을
+// 다시 읽어 인라인에 echo 하면 타이밍에 따라 틀린 문구(예: 다른 액션의 문구)가 뜬다 — `TodoEditPanel`
+// 도 저장 실패에는 인라인 문구 없이 같은 전역 토스트에만 맡긴다(같은 규칙).
 import { useState } from 'react';
 
+import { isValidDateKey } from '@/domain/date/civil';
 import type { DateKey } from '@/domain/date/date-key';
-import type { CategoryId } from '@/domain/ids';
+import { domainErrorMessage } from '@/domain/errors';
+import type { CategoryId, TodoId } from '@/domain/ids';
 import { expandRoutineDates, type RoutineRecurrence } from '@/domain/todo/routine.rules';
 import type { Todo } from '@/domain/todo/todo';
+import { validateTodoMemo, validateTodoTitle } from '@/domain/todo/todo.rules';
 
 import { useTodoActions } from '@/features/todo/hooks/useTodoActions';
 import { TODO_MESSAGES } from '@/features/todo/messages';
-import { messageOf, SAVE_FAILED } from '@/features/todo/store/todo-state';
-import { useTodoStore } from '@/features/todo/store/todo-store';
+import { messageOf } from '@/features/todo/store/todo-state';
 
 export type RoutineRecurrenceType = RoutineRecurrence['type'];
 
-/** 쉼표·공백으로 구분한 숫자 목록을 정수 배열로. 파싱 불가한 조각은 버린다(도메인이 범위를 검증한다). */
+/**
+ * 쉼표·공백으로 구분한 숫자 목록을 정수 배열로. 조각 하나라도 정수로 못 읽으면 **전체를 빈
+ * 배열로** 돌려준다 — 일부만 조용히 버리면("1, 15일" → `[1]`) 사용자가 알아채지 못한 채 의도한
+ * 날짜가 소실된다. 빈 배열은 도메인의 "반복 패턴 없음" 오류로 이어져 다시 고치라고 안내한다.
+ */
 function parseMonthDays(raw: string): number[] {
-  return raw
+  const pieces = raw
     .split(/[,\s]+/u)
     .map((piece) => piece.trim())
-    .filter((piece) => piece.length > 0)
-    .map(Number)
-    .filter((value) => Number.isInteger(value));
+    .filter((piece) => piece.length > 0);
+  const parsed = pieces.map(Number);
+  return parsed.some((value) => !Number.isInteger(value)) ? [] : parsed;
 }
+
+type RecurrenceInput = {
+  recurrenceType: RoutineRecurrenceType;
+  setRecurrenceType: (value: RoutineRecurrenceType) => void;
+  /** 0(일)~6(토). */
+  weekdays: readonly number[];
+  toggleWeekday: (day: number) => void;
+  monthDaysText: string;
+  setMonthDaysText: (value: string) => void;
+  recurrence: RoutineRecurrence;
+};
+
+/** 반복 패턴 입력만 따로 뗀 조각 — `useRoutineForm` 본문 길이를 줄인다(code-style §2). */
+function useRecurrenceInput(): RecurrenceInput {
+  const [recurrenceType, setRecurrenceType] = useState<RoutineRecurrenceType>('weekly');
+  const [weekdays, setWeekdays] = useState<readonly number[]>([]);
+  const [monthDaysText, setMonthDaysText] = useState('');
+
+  const toggleWeekday = (day: number): void => {
+    setWeekdays((current) =>
+      current.includes(day)
+        ? current.filter((value) => value !== day)
+        : [...current, day].sort((a, b) => a - b),
+    );
+  };
+
+  const recurrence: RoutineRecurrence =
+    recurrenceType === 'weekly'
+      ? { type: 'weekly', daysOfWeek: weekdays }
+      : { type: 'monthly', daysOfMonth: parseMonthDays(monthDaysText) };
+
+  return {
+    recurrenceType,
+    setRecurrenceType,
+    weekdays,
+    toggleWeekday,
+    monthDaysText,
+    setMonthDaysText,
+    recurrence,
+  };
+}
+
+/** 등록에 성공했을 때. `ids` 는 "되돌리기"가 지울 대상이다. 실패면 `null`. */
+export type RoutineSubmitResult = { count: number; ids: TodoId[] } | null;
 
 /** 다이얼로그가 쓰는 폼 한 벌. */
 export type RoutineForm = {
@@ -38,20 +96,18 @@ export type RoutineForm = {
   setEndDate: (value: string) => void;
   recurrenceType: RoutineRecurrenceType;
   setRecurrenceType: (value: RoutineRecurrenceType) => void;
-  /** 0(일)~6(토). */
   weekdays: readonly number[];
   toggleWeekday: (day: number) => void;
   monthDaysText: string;
   setMonthDaysText: (value: string) => void;
-  /** 검증 오류 또는 저장 실패 문구. */
+  /** 검증 오류 문구. 저장(store) 실패는 여기 담기지 않는다(위 파일 머리 주석). */
   error: string | null;
   saving: boolean;
-  /** 검증 → 저장. 성공하면 만들어진 투두 개수를 돌려준다(0 은 실패). */
-  submit: () => Promise<number>;
+  submit: () => Promise<RoutineSubmitResult>;
 };
 
 /**
- * 다이얼로그가 열릴 때마다 **새로 마운트되는 것**을 전제로 한다(호출자가 `key` 로 보장) —
+ * 다이얼로그가 열릴 때마다 **새로 마운트되는 것**을 전제로 한다(호출자가 조건부 렌더로 보장) —
  * `useEffect` 로 초기값을 다시 넣지 않는다(code-style §3: useEffect 상태 동기화 금지).
  */
 export function useRoutineForm(todo: Todo): RoutineForm {
@@ -60,57 +116,61 @@ export function useRoutineForm(todo: Todo): RoutineForm {
   const [memo, setMemo] = useState(todo.memo ?? '');
   const [startDate, setStartDate] = useState<string>(todo.date);
   const [endDate, setEndDate] = useState<string>(todo.date);
-  const [recurrenceType, setRecurrenceType] = useState<RoutineRecurrenceType>('weekly');
-  const [weekdays, setWeekdays] = useState<readonly number[]>([]);
-  const [monthDaysText, setMonthDaysText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const {
+    recurrenceType,
+    setRecurrenceType,
+    weekdays,
+    toggleWeekday,
+    monthDaysText,
+    setMonthDaysText,
+    recurrence,
+  } = useRecurrenceInput();
   const { createRoutine } = useTodoActions();
 
-  const toggleWeekday = (day: number): void => {
-    setWeekdays((current) =>
-      current.includes(day) ? current.filter((value) => value !== day) : [...current, day].sort(),
-    );
-  };
-
-  const submit = async (): Promise<number> => {
-    const recurrence: RoutineRecurrence =
-      recurrenceType === 'weekly'
-        ? { type: 'weekly', daysOfWeek: weekdays }
-        : { type: 'monthly', daysOfMonth: parseMonthDays(monthDaysText) };
+  const submit = async (): Promise<RoutineSubmitResult> => {
+    let validTitle: string;
+    let validMemo: string | undefined;
+    try {
+      validTitle = validateTodoTitle(title);
+      validMemo = validateTodoMemo(memo);
+    } catch (thrown) {
+      setError(messageOf(thrown));
+      return null;
+    }
+    if (!isValidDateKey(startDate) || !isValidDateKey(endDate)) {
+      setError(domainErrorMessage('ROUTINE_DATE_RANGE_INVALID'));
+      return null;
+    }
 
     let dates: DateKey[];
     try {
-      dates = expandRoutineDates({
-        startDate: startDate as DateKey,
-        endDate: endDate as DateKey,
-        recurrence,
-      });
+      dates = expandRoutineDates({ startDate, endDate, recurrence });
     } catch (thrown) {
       setError(messageOf(thrown));
-      return 0;
+      return null;
     }
     if (dates.length === 0) {
       setError(TODO_MESSAGES.routineEmptyResult);
-      return 0;
+      return null;
     }
 
     setSaving(true);
-    const ok = await createRoutine({
+    const ids = await createRoutine({
       categoryId,
-      title,
-      memo: memo === '' ? undefined : memo,
-      startDate: startDate as DateKey,
-      endDate: endDate as DateKey,
+      title: validTitle,
+      memo: validMemo,
+      startDate,
+      endDate,
       recurrence,
     });
     setSaving(false);
-    if (!ok) {
-      setError(useTodoStore.getState().error ?? SAVE_FAILED);
-      return 0;
+    if (ids === false) {
+      return null;
     }
     setError(null);
-    return dates.length;
+    return { count: ids.length, ids };
   };
 
   return {

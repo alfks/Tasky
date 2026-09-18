@@ -13,6 +13,7 @@
 // `false` + `error === null` 은 대상이 없는 것(이미 사라진 투두 — 다시 시도할 것이 없다).
 import type { DateKey } from '@/domain/date/date-key';
 import type { CategoryId, TodoId } from '@/domain/ids';
+import type { Persistable } from '@/domain/meta';
 import { moveTodoBy, reorderTodos, todosInGroup } from '@/domain/todo/ordering';
 import { expandRoutineDates, type RoutineRecurrence } from '@/domain/todo/routine.rules';
 import type { Todo } from '@/domain/todo/todo';
@@ -22,6 +23,7 @@ import {
   deleteTodo,
   editTodo as editTodoRule,
   moveTodoToDate,
+  normalizeTodoTitle,
   toggleTodoDone,
 } from '@/domain/todo/todo.rules';
 
@@ -61,7 +63,10 @@ export type TodoActions = {
   moveBy: (id: TodoId, direction: -1 | 1) => Promise<boolean>;
   /**
    * 루틴 등록 (R21): 시작~종료일 안에서 반복 패턴에 맞는 날짜마다 같은 카테고리·제목·메모의 투두를
-   * 새로 만든다. "루틴" 자체는 저장하지 않는다 — 만들어진 각 투두는 그 뒤로 독립된 투두다.
+   * 새로 만든다. 같은 날짜·카테고리에 같은 제목이 이미 있으면 그 날짜는 건너뛴다(중복 방지 —
+   * 등록 대상 항목 자신의 날짜도 이 규칙으로 제외된다). "루틴" 자체는 저장하지 않는다 — 만들어진
+   * 각 투두는 그 뒤로 독립된 투두다. 성공하면 실제로 만든 투두들의 id 를(하나도 못 만들면 빈
+   * 배열을) 돌려준다 — 호출부가 "되돌리기"로 그 id 들만 지울 수 있게 한다.
    */
   createRoutine: (input: {
     categoryId: CategoryId;
@@ -70,7 +75,7 @@ export type TodoActions = {
     startDate: DateKey;
     endDate: DateKey;
     recurrence: RoutineRecurrence;
-  }) => Promise<boolean>;
+  }) => Promise<TodoId[] | false>;
   /** 토스트를 닫을 때 문구를 지운다. */
   clearError: () => void;
 };
@@ -220,14 +225,21 @@ function createOrderActions(
   };
 }
 
-/** 루틴 등록 (R21). 날짜별 `order` 는 그 날짜·카테고리의 기존 투두 끝이다(그룹 끝 규칙과 같다). */
+/**
+ * 루틴 등록 (R21). 날짜별 `order` 는 그 날짜·카테고리의 기존 투두 끝이다(그룹 끝 규칙과 같다).
+ *
+ * `writer.commitMany` 는 성공 여부(`boolean`)만 돌려주므로, 실제로 만든 엔티티는 `build` 콜백이
+ * 도는 동안 `created` 에 직접 담아 둔다 — `build` 는 큐 차례가 왔을 때 딱 한 번 돌고 그 결과가
+ * `commitMany` 의 완료보다 먼저 채워지므로, 바깥에서 안전하게 읽을 수 있다.
+ */
 function createRoutineAction(
   ctx: TodoContext,
   writer: TodoWriter,
 ): Pick<TodoActions, 'createRoutine'> {
   return {
-    createRoutine: ({ categoryId, title, memo, startDate, endDate, recurrence }) =>
-      writer.commitMany(async () => {
+    createRoutine: async ({ categoryId, title, memo, startDate, endDate, recurrence }) => {
+      let created: readonly Persistable<Todo>[] = [];
+      const ok = await writer.commitMany(async () => {
         const dates = expandRoutineDates({ startDate, endDate, recurrence });
         if (dates.length === 0) {
           return [];
@@ -238,13 +250,25 @@ function createRoutineAction(
           if (todo.categoryId !== categoryId) continue;
           siblingsByDate.set(todo.date, [...(siblingsByDate.get(todo.date) ?? []), todo]);
         }
-        return dates.map((date) =>
+        // 같은 날짜·카테고리에 같은 제목이 이미 있으면 건너뛴다 — 등록 대상 항목 자신이 속한
+        // 날짜도 이 규칙으로 자연히 제외된다(원본을 그 날짜에 또 만들지 않는다).
+        const normalizedTitle = normalizeTodoTitle(title);
+        const toCreate = dates.filter(
+          (date) =>
+            !(siblingsByDate.get(date) ?? []).some(
+              (sibling) => normalizeTodoTitle(sibling.title) === normalizedTitle,
+            ),
+        );
+        created = toCreate.map((date) =>
           createTodo(
             { categoryId, date, title, memo, siblings: siblingsByDate.get(date) ?? [] },
             ctx.deps,
           ),
         );
-      }),
+        return created;
+      });
+      return ok ? created.map((todo) => todo.id) : false;
+    },
   };
 }
 

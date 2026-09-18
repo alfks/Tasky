@@ -27,8 +27,8 @@ export type TodoState = TodoSnapshot & {
    * 요약이고, 구독은 셸(`ShellHeader`)이 한다(`date-strip` 은 feature 그래프의 리프라 `todo` 를
    * import 할 수 없다 — 하면 `import/no-cycle` 이다).
    *
-   * 올라가는 자리는 `todo-writes.ts` 의 `commit`·`optimistic` **성공 경로 둘뿐**이다. 그래서
-   * 롤백된 쓰기는 올리지 않고(올리면 화면이 낡은 값으로 한 번 더 덮인다), 읽기인 `loadDate` 도
+   * 올라가는 자리는 `todo-writes.ts` 의 `commit`·`commitMany`·`optimistic` **성공 경로 셋뿐**이다.
+   * 그래서 롤백된 쓰기는 올리지 않고(올리면 화면이 낡은 값으로 한 번 더 덮인다), 읽기인 `loadDate` 도
    * 이 경로를 타지 않아 자동으로 빠진다.
    */
   writeRevision: number;

@@ -273,7 +273,6 @@ export function TodoItem({
           todo={todo}
           categories={categories}
           onClose={() => setRegisteringRoutine(false)}
-          onAnnounce={onAnnounce}
           returnFocus={returnFocus}
         />
       ) : null}
