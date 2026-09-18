@@ -12,9 +12,6 @@ export type RoutineRecurrence =
   | { type: 'weekly'; daysOfWeek: readonly number[] }
   | { type: 'monthly'; daysOfMonth: readonly number[] };
 
-/** 한 번에 만들 수 있는 최대 기간(일, 시작~종료 포함). 끝없는 반복으로 대량 생성되는 것을 막는다. */
-export const ROUTINE_MAX_SPAN_DAYS = 366;
-
 function validateRecurrence(recurrence: RoutineRecurrence): void {
   const values = recurrence.type === 'weekly' ? recurrence.daysOfWeek : recurrence.daysOfMonth;
   const [min, max] = recurrence.type === 'weekly' ? [0, 6] : [1, 31];
@@ -49,12 +46,7 @@ export function expandRoutineDates(input: {
 
   const dates: DateKey[] = [];
   let cursor = startDate;
-  // day 는 시작일을 0으로 세는 경과 일수다 — day 가 ROUTINE_MAX_SPAN_DAYS(366)에 이르면 이미
-  // 367번째 날이라, 시작~종료 포함 총 일수가 상한을 넘은 시점이다(day+1 = 총 일수).
-  for (let day = 0; cursor <= endDate; day += 1) {
-    if (day >= ROUTINE_MAX_SPAN_DAYS) {
-      throw new DomainError('ROUTINE_RANGE_TOO_LONG', `${startDate}~${endDate}`);
-    }
+  while (cursor <= endDate) {
     if (matches(cursor, recurrence)) {
       dates.push(cursor);
     }
