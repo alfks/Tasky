@@ -127,7 +127,13 @@ export function TodoItem({
     onDragChange(todo.id);
   };
 
-  const dropTarget = draggingId !== null && draggingId !== todo.id && canReorder;
+  // **순서 변경으로 받는 것은 같은 그룹의 드래그뿐이다** (R20). 다른 카테고리에서 온 드래그는 이
+  // 행 위에 있어도 여기서 받지 않고 그대로 지나가 **그룹 섹션**이 받는다(= 카테고리 이동). 항목 위냐
+  // 빈 자리냐로 제스처가 갈리면 같은 화면에서 같은 손짓이 두 가지 뜻이 된다 — 경계는 "같은
+  // 카테고리인가" 하나다. 지나가게 두는 것으로 충분한 이유: `dragover` 는 전파 경로 어디서든
+  // `preventDefault` 되면 드롭이 허용되고, 섹션이 그 자리에서 막아 준다.
+  const sameGroup = draggingId !== null && sequence.some((item) => item.id === draggingId);
+  const dropTarget = sameGroup && draggingId !== todo.id && canReorder;
   const memo = memoPreview(todo.memo);
   const minutes = Math.round((todo.focusSeconds ?? 0) / 60);
 

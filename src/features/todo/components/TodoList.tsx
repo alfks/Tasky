@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import type { Category } from '@/domain/category/category';
 import { activeCategories } from '@/domain/category/category.rules';
 import type { DateKey } from '@/domain/date/date-key';
-import type { TodoId } from '@/domain/ids';
+import type { CategoryId, TodoId } from '@/domain/ids';
 import { isTombstone } from '@/domain/meta';
 import type { Todo } from '@/domain/todo/todo';
 
@@ -34,6 +34,14 @@ type TodoListProps = {
   categories: readonly Category[];
 };
 
+/**
+ * 카테고리 이동 토스트 문구 (R20). `messages.ts` 가 아니라 여기 있는 이유는 그 파일 머리말의 기준
+ * 그대로다 — **이 컴포넌트에서만** 쓰는 문구다. "카테고리로" 로 받는 것은 조사 때문이기도 하다:
+ * 이름은 사용자가 쓴 글자라 받침을 알 수 없는데(`공부` → 로, `운동` → 으로), "카테고리" 를 끼우면
+ * 어떤 이름이 와도 문장이 맞는다.
+ */
+const movedToCategory = (name: string): string => `${name} 카테고리로 옮겼어요`;
+
 /** "9월 18일" — 날짜 이동 토스트 문구 (R10). */
 function dayLabel(date: DateKey): string {
   const at = fromDateKey(date);
@@ -49,7 +57,7 @@ function dayLabel(date: DateKey): string {
 export function TodoList({ date, categories }: TodoListProps) {
   const { status, error } = useTodoDate(date);
   const groups = useTodoGroups(categories);
-  const { removeTodo, moveToDate, clearError } = useTodoActions();
+  const { removeTodo, moveToDate, changeCategory, clearError } = useTodoActions();
   const [addOpenFor, setAddOpenFor] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: TodoId; field: 'title' | 'memo' } | null>(null);
   const [draggingId, setDraggingId] = useState<TodoId | null>(null);
@@ -75,6 +83,39 @@ export function TodoList({ date, categories }: TodoListProps) {
     pushToast({ message: M.deleted });
     // Dialog 가 앵커를 먼저 시도하고 사라졌을 때만 이 대상을 쓴다 — 여기서 한 번 더 확실히 한다.
     fallback?.focus();
+  };
+
+  /**
+   * 끌고 있는 투두가 속한 그룹 (R20). 그룹 하나하나는 자기 항목만 알기 때문에, "이 드래그가 남의
+   * 것인가" 는 **모든 그룹을 쥐고 있는 여기**에서만 답할 수 있다.
+   */
+  const draggingFrom =
+    draggingId === null
+      ? null
+      : (groups.find((group) => group.sequence.some((todo) => todo.id === draggingId))
+          ?.categoryId ?? null);
+
+  /**
+   * 다른 카테고리 그룹에 떨어뜨렸다 (R20). 옮기는 것도 되돌리기 토스트도 그룹의 일이 아니라 **둘을
+   * 나란히 세운 이 목록**의 일이다 — 날짜 이동에서 셸이 맡은 자리와 같다(`useTodoDropToDate`).
+   *
+   * 되돌리기는 **원래 카테고리 그룹의 끝**으로 되돌린다(R12). 날짜 이동의 되돌리기와 같은 성질이라
+   * 문구도 "원래대로" 가 아니라 "되돌리기" 그대로다.
+   */
+  const handleDropToCategory = (todoId: string, to: CategoryId): void => {
+    // `DataTransfer` 에서 나온 **문자열**이라 브랜드가 없다. 스토어가 없는 id 를 안전하게 처리하므로
+    // (`changeCategory` 는 `false` 를 돌려준다) 여기서 다시 검증하지 않고 좁힌다.
+    const id = todoId as TodoId;
+    const from = groups.find((group) => group.sequence.some((todo) => todo.id === id))?.categoryId;
+    const name = known.get(to)?.name;
+    if (from === undefined || from === to || name === undefined) return;
+    void changeCategory(id, to).then((ok) => {
+      if (!ok) return;
+      pushToast({
+        message: movedToCategory(name),
+        action: { label: M.undo, onAction: () => void changeCategory(id, from) },
+      });
+    });
   };
 
   const handleMovedToDate = (todo: Todo, to: DateKey): void => {
@@ -124,6 +165,8 @@ export function TodoList({ date, categories }: TodoListProps) {
             editing={editing}
             draggingId={draggingId}
             onDragChange={setDraggingId}
+            draggingFrom={draggingFrom}
+            onDropToCategory={handleDropToCategory}
             {...handlers}
           />
         );
