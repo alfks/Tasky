@@ -13,7 +13,9 @@
 // `false` + `error === null` 은 대상이 없는 것(이미 사라진 투두 — 다시 시도할 것이 없다).
 import type { DateKey } from '@/domain/date/date-key';
 import type { CategoryId, TodoId } from '@/domain/ids';
+import type { Persistable } from '@/domain/meta';
 import { moveTodoBy, reorderTodos, todosInGroup } from '@/domain/todo/ordering';
+import { expandRoutineDates, type RoutineRecurrence } from '@/domain/todo/routine.rules';
 import type { Todo } from '@/domain/todo/todo';
 import {
   changeTodoCategory,
@@ -21,6 +23,7 @@ import {
   deleteTodo,
   editTodo as editTodoRule,
   moveTodoToDate,
+  normalizeTodoTitle,
   toggleTodoDone,
 } from '@/domain/todo/todo.rules';
 
@@ -58,6 +61,27 @@ export type TodoActions = {
   reorder: (id: TodoId, targetIndex: number) => Promise<boolean>;
   /** `Alt+↑/↓`·메뉴 "위로/아래로" (R11). 완료 항목은 건너뛴다. */
   moveBy: (id: TodoId, direction: -1 | 1) => Promise<boolean>;
+  /**
+   * 루틴 등록 (R21): 시작~종료일 안에서 반복 패턴에 맞는 날짜마다 같은 카테고리·제목·메모의 투두를
+   * 새로 만든다. 같은 날짜·카테고리에 같은 제목이 이미 있으면 그 날짜는 건너뛴다(중복 방지 —
+   * 등록 대상 항목 자신의 날짜도 이 규칙으로 제외된다). "루틴" 자체는 저장하지 않는다 — 만들어진
+   * 각 투두는 그 뒤로 독립된 투두다. 성공하면 실제로 만든 투두들의 id 를(하나도 못 만들면 빈
+   * 배열을) 돌려준다 — 호출부가 "되돌리기"로 그 id 들만 지울 수 있게 한다.
+   */
+  createRoutine: (input: {
+    categoryId: CategoryId;
+    title: string;
+    memo?: string;
+    startDate: DateKey;
+    endDate: DateKey;
+    recurrence: RoutineRecurrence;
+  }) => Promise<TodoId[] | false>;
+  /**
+   * 루틴 등록 되돌리기 (R21): `createRoutine` 이 돌려준 id 들을 전부 소프트 삭제한다. 메모리에
+   * 없는 id(대부분 다른 날짜)도 저장소에서 집어 온다(R10 되돌리기와 같은 이유). 이미 없는 id는
+   * 조용히 건너뛴다.
+   */
+  undoRoutine: (ids: readonly TodoId[]) => Promise<boolean>;
   /** 토스트를 닫을 때 문구를 지운다. */
   clearError: () => void;
 };
@@ -207,6 +231,76 @@ function createOrderActions(
   };
 }
 
+/**
+ * 루틴 등록·되돌리기 (R21). 등록의 날짜별 `order` 는 그 날짜·카테고리의 기존 투두 끝이다(그룹 끝
+ * 규칙과 같다).
+ *
+ * `writer.commitMany` 는 성공 여부(`boolean`)만 돌려주므로, 실제로 만든/지운 엔티티는 `build`
+ * 콜백이 도는 동안 `entities` 에 직접 담아 둔다 — `build` 는 큐 차례가 왔을 때 딱 한 번 돌고 그
+ * 결과가 `commitMany` 의 완료보다 먼저 채워지므로, 바깥에서 안전하게 읽을 수 있다.
+ */
+function createRoutineAction(
+  ctx: TodoContext,
+  writer: TodoWriter,
+): Pick<TodoActions, 'createRoutine' | 'undoRoutine'> {
+  return {
+    createRoutine: async ({ categoryId, title, memo, startDate, endDate, recurrence }) => {
+      let entities: readonly Persistable<Todo>[] = [];
+      const ok = await writer.commitMany(
+        async () => {
+          const dates = expandRoutineDates({ startDate, endDate, recurrence });
+          if (dates.length === 0) {
+            return [];
+          }
+          const existing = await getRepositories().todos.listByDateRange(startDate, endDate);
+          const siblingsByDate = new Map<DateKey, Todo[]>();
+          for (const todo of existing) {
+            if (todo.categoryId !== categoryId) continue;
+            siblingsByDate.set(todo.date, [...(siblingsByDate.get(todo.date) ?? []), todo]);
+          }
+          // 같은 날짜·카테고리에 같은 제목이 이미 있으면 건너뛴다 — 등록 대상 항목 자신이 속한
+          // 날짜도 이 규칙으로 자연히 제외된다(원본을 그 날짜에 또 만들지 않는다). 기존 투두의
+          // `title` 은 **보통** 저장 시 이미 정규화된 값이지만, 백업 복원 경로(`domain/backup/
+          // validate-rows.ts`)는 형식만 검증하고 정규화한 값을 쓰지 않은 채 원본 문자열을 그대로
+          // 복원한다 — 그래서 기존 값도 다시 정규화해서 비교해야 한다(정규화하지 않으면 앞뒤
+          // 공백이 남은 복원 데이터가 이 규칙을 피해 중복이 생긴다).
+          const normalizedTitle = normalizeTodoTitle(title);
+          const toCreate = dates.filter(
+            (date) =>
+              !(siblingsByDate.get(date) ?? []).some(
+                (sibling) => normalizeTodoTitle(sibling.title) === normalizedTitle,
+              ),
+          );
+          entities = toCreate.map((date) =>
+            createTodo(
+              { categoryId, date, title, memo, siblings: siblingsByDate.get(date) ?? [] },
+              ctx.deps,
+            ),
+          );
+          return entities;
+        },
+        (byId, saved) => {
+          const currentDate = ctx.get().date;
+          const visible = saved.filter((entity) => entity.date === currentDate);
+          return visible.length === 0 ? byId : withTodos(byId, visible);
+        },
+      );
+      return ok ? entities.map((todo) => todo.id) : false;
+    },
+
+    undoRoutine: (ids) =>
+      writer.commitMany(
+        async () => {
+          const found = await Promise.all(ids.map((id) => getRepositories().todos.getById(id)));
+          return found
+            .filter((todo): todo is Todo => todo !== undefined)
+            .map((todo) => deleteTodo(todo, ctx.deps));
+        },
+        (byId, saved) => saved.reduce((acc, todo) => withoutTodo(acc, todo.id), byId),
+      ),
+  };
+}
+
 /** 액션 전부. 스토어는 이 결과를 상태에 펼쳐 넣기만 한다. */
 export function createTodoActions(ctx: TodoContext): TodoActions {
   const writer = createTodoWriter(ctx);
@@ -215,6 +309,7 @@ export function createTodoActions(ctx: TodoContext): TodoActions {
     ...createEntryActions(ctx, writer),
     ...createMoveActions(ctx, writer),
     ...createOrderActions(ctx, writer),
+    ...createRoutineAction(ctx, writer),
     clearError: () => {
       ctx.set({ error: null });
     },

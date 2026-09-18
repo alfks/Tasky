@@ -9,6 +9,7 @@ import type { CategoryId, TodoId } from '@/domain/ids';
 import type { Todo } from '@/domain/todo/todo';
 
 import { TODO_DRAG_MIME } from '@/features/date-strip';
+import { RoutineDialog } from '@/features/todo/components/RoutineDialog';
 import { FLIP_ATTR } from '@/features/todo/components/todo-focus';
 import { TodoEditPanel } from '@/features/todo/components/TodoEditPanel';
 import { DatePickRow, DragHandle } from '@/features/todo/components/TodoItemControls';
@@ -79,6 +80,7 @@ export function TodoItem({
   const titleRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const [pickingDate, setPickingDate] = useState(false);
+  const [registeringRoutine, setRegisteringRoutine] = useState(false);
   const canReorder = !readOnly && !todo.done;
 
   const { toggle, move, goToDate, toCategory, closeEdit, returnFocus, snapshotFocus } =
@@ -236,6 +238,7 @@ export function TodoItem({
           onPickDate={() => setPickingDate(true)}
           onMove={move}
           onChangeCategory={(id: CategoryId) => toCategory(id)}
+          onRegisterRoutine={() => setRegisteringRoutine(true)}
           onDelete={() => onRequestDelete(todo, returnFocus)}
         />
       </div>
@@ -264,6 +267,15 @@ export function TodoItem({
           onDelete={() => onRequestDelete(todo, returnFocus)}
         />
       )}
+
+      {registeringRoutine ? (
+        <RoutineDialog
+          todo={todo}
+          categories={categories}
+          onClose={() => setRegisteringRoutine(false)}
+          returnFocus={returnFocus}
+        />
+      ) : null}
     </li>
   );
 }

@@ -40,7 +40,12 @@ function daysInMonth(year: number, month: number): number {
   return month === 4 || month === 6 || month === 9 || month === 11 ? 30 : 31;
 }
 
-/** 그레고리력 (y, m, d) → 1970-01-01 부터의 일수 (Hinnant days_from_civil). */
+/**
+ * 그레고리력 (y, m, d) → 1970-01-01 부터의 일수 (Hinnant days_from_civil).
+ *
+ * `domain/date/civil.ts` 가 `DateKey`(날짜만) 전용으로 같은 알고리즘을 다시 둔다(공개 API가 달라
+ * 공유하지 않는다) — 알고리즘을 고치면 두 파일 모두 같은 PR 에서 함께 고친다.
+ */
 function daysFromCivil(year: number, month: number, day: number): number {
   const y = year - (month <= 2 ? 1 : 0);
   const era = Math.floor(y / 400);

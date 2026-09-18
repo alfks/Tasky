@@ -62,4 +62,19 @@ export const TODO_MESSAGES = {
   hasMemo: '메모 있음',
   focusChip: (minutes: number): string => `⏱ ${minutes}분`,
   focusLabel: (minutes: number): string => `집중 ${minutes}분`,
+  /**
+   * 루틴 등록 (R21). 다이얼로그 안의 필드 라벨(제목·메모·카테고리·시작일·종료일·반복 주기·반복
+   * 요일·반복 일)은 `TodoEditPanel` 의 같은 라벨들처럼 **그 컴포넌트에서만** 쓰여 여기 없다
+   * (code-style §3 — 한 곳에서만 쓰는 문구는 그 컴포넌트에 직접 적는다).
+   */
+  menuRoutine: '루틴으로 등록',
+  routineDialogTitle: '루틴 등록',
+  routineSubmit: '루틴 등록',
+  routineCreated: (count: number): string => `${count}개의 할 일을 만들었어요`,
+  routineEmptyResult: '이 기간에는 반복 조건에 맞는 날짜가 없어요',
+  routineDatesRequired: '시작일과 종료일을 골라 주세요',
+  /** 시작·종료 순서는 맞지만 날짜 스트립 범위(1970~2099) 밖일 때 — 순서 오류와 다른 문구를 쓴다. */
+  routineDateOutOfRange: '1970-01-01~2099-12-31 사이 날짜만 골라 주세요',
+  /** 반복 조건에 맞는 날짜가 있었지만 전부 이미 등록돼 있던 경우(중복 방지). */
+  routineAllDuplicates: '이미 전부 등록돼 있어요',
 } as const;
