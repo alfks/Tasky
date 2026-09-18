@@ -451,6 +451,24 @@ describe('moveToDate · changeCategory (R10·R12 대상 그룹 끝으로)', () =
     expect(state().byId[id].done).toBe(true);
     expect(orderedTitles(OTHER_CATEGORY_ID)).toEqual(['X', 'Y', 'Z', '옮길 것']);
   });
+
+  // 드래그(R20)는 손이 빠르면 저장이 끝나기 전에 다음 항목을 떨어뜨린다. 큐가 없으면 두 호출이
+  // 같은 스냅샷을 읽어 **같은 `order` 를 발급**한다(R5 위반) — 그러면 대상 그룹의 순서가 뒤집힌다.
+  it('연달아 두 건을 같은 그룹으로 옮겨도 `order` 가 겹치지 않는다 (R5 쓰기 직렬화)', async () => {
+    await seed('A', 'B');
+    await state().addTodo({ categoryId: OTHER_CATEGORY_ID, title: 'X' });
+    const a = find('A').id;
+    const b = find('B').id;
+
+    // 앞 저장을 **기다리지 않고** 두 번 부른다.
+    await Promise.all([
+      state().changeCategory(a, OTHER_CATEGORY_ID),
+      state().changeCategory(b, OTHER_CATEGORY_ID),
+    ]);
+
+    expect(orders(OTHER_CATEGORY_ID)).toEqual([0, 1, 2]);
+    expect(orderedTitles(OTHER_CATEGORY_ID)).toEqual(['X', 'A', 'B']);
+  });
 });
 
 describe('reorder · moveBy (R11 재매김)', () => {
