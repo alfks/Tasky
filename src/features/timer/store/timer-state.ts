@@ -8,6 +8,11 @@ import { DomainError } from '@/domain/errors';
 import type { FocusSession } from '@/domain/focus/focus-session';
 import type { TodoId } from '@/domain/ids';
 
+import type {
+  PomodoroBreak,
+  PomodoroBreakDone,
+  PomodoroCycle,
+} from '@/features/timer/store/pomodoro';
 import type { TimerPrefs } from '@/features/timer/store/timer-prefs';
 import { DEFAULT_TIMER_PREFS } from '@/features/timer/store/timer-prefs';
 
@@ -46,6 +51,17 @@ export type TimerState = {
   minutes: number;
   /** 완료 차임 끄기 (R9). */
   soundOff: boolean;
+  /** 뽀모도로 모드 (P1). 꺼져 있으면 지금까지의 단일 집중 세션 그대로다. */
+  pomodoro: boolean;
+  /**
+   * 진행 중인 휴식 (P2·P3). `session` 과 **동시에 존재하지 않는다** — 집중과 휴식은 한 번에 하나다.
+   * 저장소 레코드가 아니라 기기별 값이다(`pomodoro.ts` 머리말).
+   */
+  breakSession: PomodoroBreak | null;
+  /** 끝난 휴식 카드 (P4). */
+  breakDone: PomodoroBreakDone | null;
+  /** 오늘 끝낸 뽀모도로 수 (P5). 다른 날짜의 기록이면 화면에서 0 으로 읽힌다. */
+  cycle: PomodoroCycle | null;
   /** 대기 화면에서 고른 투두. `null` 은 "할 일 없이 집중". */
   selectedTodoId: TodoId | null;
   completion: TimerCompletion | null;
@@ -79,6 +95,10 @@ export function initialTimerState(
     now,
     minutes: prefs.minutes,
     soundOff: prefs.soundOff,
+    pomodoro: prefs.pomodoro,
+    breakSession: null,
+    breakDone: null,
+    cycle: null,
     selectedTodoId: null,
     completion: null,
     notice: null,

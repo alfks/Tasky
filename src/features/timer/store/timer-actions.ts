@@ -7,7 +7,8 @@ import {
 } from '@/domain/focus/focus-session.rules';
 import type { TodoId } from '@/domain/ids';
 
-import { writeTimerPrefs } from '@/features/timer/store/timer-prefs';
+import { savePomodoro } from '@/features/timer/store/pomodoro-flow';
+import { saveTimerPrefs } from '@/features/timer/store/timer-prefs';
 import { createStartAction } from '@/features/timer/store/timer-start';
 import { timerMessageOf, type TimerState } from '@/features/timer/store/timer-state';
 import {
@@ -42,6 +43,8 @@ export type TimerActions = {
   setMinutes: (minutes: number) => void;
   /** 완료 차임 끄기 (R9). */
   setSoundOff: (soundOff: boolean) => void;
+  /** 뽀모도로 모드 켜기/끄기 (P1). 끄면 진행 중인 휴식도 함께 걷는다. */
+  setPomodoro: (pomodoro: boolean) => void;
   /** 대기 화면의 투두 선택. `null` 은 "할 일 없이 집중". */
   selectTodo: (todoId: TodoId | null) => void;
   /** 시작 (R2·R5). 저장소에 활성 세션이 있으면 거부하고 그 세션을 보여 준다. */
@@ -52,20 +55,18 @@ export type TimerActions = {
   stop: () => Promise<boolean>;
   /** `[5분 더]` (R10). 같은 투두로 5분 세션을 새로 시작한다. */
   extend: () => Promise<boolean>;
+  /** 휴식 건너뛰기 (P3). 사용자가 누른 것이라 끝난 휴식 카드를 띄우지 않는다. */
+  skipBreak: () => void;
   dismissCompletion: () => void;
   dismissNotice: () => void;
+  dismissBreakDone: () => void;
   clearError: () => void;
 };
 
-/** 설정 저장 (R1·R9 — 둘이 같은 키를 쓴다). */
-function savePrefs(state: Pick<TimerState, 'minutes' | 'soundOff'>): void {
-  writeTimerPrefs({ minutes: state.minutes, soundOff: state.soundOff });
-}
-
-/** 대기 화면의 설정 액션 3개. */
+/** 대기 화면의 설정 액션 4개. */
 function createSettingActions(
   ctx: TimerContext,
-): Pick<TimerActions, 'setMinutes' | 'setSoundOff' | 'selectTodo'> {
+): Pick<TimerActions, 'setMinutes' | 'setSoundOff' | 'setPomodoro' | 'selectTodo'> {
   return {
     setMinutes: (minutes) => {
       try {
@@ -75,11 +76,18 @@ function createSettingActions(
         return;
       }
       ctx.set({ minutes, error: null });
-      savePrefs(ctx.get());
+      saveTimerPrefs(ctx.get());
     },
     setSoundOff: (soundOff) => {
       ctx.set({ soundOff });
-      savePrefs(ctx.get());
+      saveTimerPrefs(ctx.get());
+    },
+    setPomodoro: (pomodoro) => {
+      // 모드를 끄면 진행 중인 휴식은 의미가 없다 — 남겨 두면 뽀모도로를 껐는데 휴식 화면이
+      // 계속 떠 있는 상태가 된다. 끝난 휴식 카드도 같이 걷는다.
+      ctx.set(pomodoro ? { pomodoro } : { pomodoro, breakSession: null, breakDone: null });
+      saveTimerPrefs(ctx.get());
+      savePomodoro(ctx.get());
     },
     selectTodo: (todoId) => {
       ctx.set({ selectedTodoId: todoId });
@@ -149,11 +157,21 @@ export function createTimerActions(ctx: TimerContext): TimerActions {
         remember: false,
       });
     },
+    skipBreak: () => {
+      if (ctx.get().breakSession === null) {
+        return;
+      }
+      ctx.set({ breakSession: null, breakDone: null });
+      savePomodoro(ctx.get());
+    },
     dismissCompletion: () => {
       ctx.set({ completion: null });
     },
     dismissNotice: () => {
       ctx.set({ notice: null });
+    },
+    dismissBreakDone: () => {
+      ctx.set({ breakDone: null });
     },
     clearError: () => {
       ctx.set({ error: null });

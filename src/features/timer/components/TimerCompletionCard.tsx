@@ -18,6 +18,9 @@ import { Button } from '@/components/ui/Button';
 
 export function TimerCompletionCard() {
   const completion = useTimerStore((state) => state.completion);
+  // P3: 뽀모도로에서는 이 카드 아래에 휴식이 돌고 있다. 그 위에서 `[5분 더]`·`[다음 할 일 고르기]` 를
+  // 내밀면 두 화면이 서로 다른 다음 걸음을 가리킨다 — 휴식 중에는 이 카드를 **기록만** 하게 둔다.
+  const resting = useTimerStore((state) => state.breakSession !== null);
   const dismiss = useTimerStore((state) => state.dismissCompletion);
   const extend = useTimerStore((state) => state.extend);
   const selectTodo = useTimerStore((state) => state.selectTodo);
@@ -66,19 +69,23 @@ export function TimerCompletionCard() {
         {recorded}을 기록했어요
       </p>
       <div className="flex flex-wrap gap-[var(--space-2)]">
-        <Button size="sm" onClick={() => void extend()}>
-          5분 더
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            selectTodo(null);
-            dismiss();
-          }}
-        >
-          다음 할 일 고르기
-        </Button>
+        {!resting && (
+          <>
+            <Button size="sm" onClick={() => void extend()}>
+              5분 더
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                selectTodo(null);
+                dismiss();
+              }}
+            >
+              다음 할 일 고르기
+            </Button>
+          </>
+        )}
         <Button ref={closeRef} variant="ghost" size="sm" onClick={dismiss}>
           닫기
         </Button>

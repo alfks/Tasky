@@ -20,6 +20,12 @@ import type { MetaDeps } from '@/domain/meta';
 
 import { getRepositories } from '@/repositories/container';
 
+import {
+  pomodoroAfterComplete,
+  savePomodoro,
+  sweepPomodoroBreak,
+} from '@/features/timer/store/pomodoro-flow';
+import { readPomodoroState } from '@/features/timer/store/pomodoro-state';
 import { readTimerPrefs } from '@/features/timer/store/timer-prefs';
 import {
   timerMessageOf,
@@ -90,6 +96,18 @@ async function endSessionNow(
       : null;
   const notice: TimerNotice | null = ending === 'expire' ? { todoTitle, recordedSeconds } : null;
 
+  // P3·P5: 완료했을 때만 사이클이 늘고 휴식이 붙는다. 중지(R7)·24시간 만료(R6)는 사용자가 끝까지
+  // 집중한 것이 아니므로 뽀모도로를 한 개로 세지 않고 휴식도 주지 않는다.
+  const advance =
+    completion === null
+      ? null
+      : pomodoroAfterComplete(current, {
+          date: entity.date,
+          plannedSeconds: entity.plannedSeconds,
+          signal: completion.signal,
+          at: now,
+        });
+
   ctx.set({
     session: null,
     todoTitle: null,
@@ -98,7 +116,11 @@ async function endSessionNow(
     completion: completion ?? ctx.get().completion,
     notice: notice ?? ctx.get().notice,
     error: null,
+    ...(advance ?? {}),
   });
+  if (advance !== null) {
+    savePomodoro(ctx.get());
+  }
 
   try {
     await persistEnding(entity, ctx.deps);
@@ -134,6 +156,21 @@ export function tickNow(ctx: TimerContext): void {
   if (session !== null) {
     sweepSession(ctx, session, now);
   }
+  sweepBreak(ctx, now);
+}
+
+/**
+ * 휴식의 정리 판정 (P4). **새 인터벌을 만들지 않는다** — 이미 도는 1초 틱에 얹는다.
+ * 남은 시간만큼의 `setTimeout` 을 걸었다면 WebIDL `long`(32비트) 범위 밖의 지연이 `ToInt32` 로
+ * 0 이 되어 즉시 발화하는 함정(T-52)을 다시 밟았을 것이다. 여기서는 그 위험 자체가 없다.
+ */
+export function sweepBreak(ctx: TimerContext, now: string): void {
+  const swept = sweepPomodoroBreak(ctx.get(), now);
+  if (swept === null) {
+    return;
+  }
+  ctx.set(swept);
+  savePomodoro(ctx.get());
 }
 
 /**
@@ -171,7 +208,22 @@ export async function syncActiveSession(ctx: TimerContext): Promise<void> {
 /** 앱 시작 (R1·R2·R4·R6). 기기 설정을 읽고 저장소의 세션을 이어 붙인다. */
 export async function hydrateTimer(ctx: TimerContext): Promise<void> {
   const prefs = readTimerPrefs();
-  ctx.set({ minutes: prefs.minutes, soundOff: prefs.soundOff });
+  ctx.set({ minutes: prefs.minutes, soundOff: prefs.soundOff, pomodoro: prefs.pomodoro });
+
+  // P4: 휴식과 사이클 수는 기기별 저장에서 이어 붙인다. 휴식도 시각 기준이라(`pomodoro.ts`)
+  // 꺼져 있던 동안 지나간 시간은 그냥 지나간 것이고, 아래 정리 판정이 그 자리에서 끝낸다.
+  const stored = readPomodoroState();
+  ctx.set({ breakSession: stored.breakSession, cycle: stored.cycle });
+
   await syncActiveSession(ctx);
+
+  // 집중 세션이 살아 있으면 휴식은 남아 있을 수 없다(둘은 동시에 존재하지 않는다). 저장된 값이
+  // 그렇게 말한다면 그 쪽이 낡은 것이다 — 저장소 레코드가 원천이므로(R2) 휴식을 버린다.
+  if (ctx.get().session !== null && ctx.get().breakSession !== null) {
+    ctx.set({ breakSession: null });
+    savePomodoro(ctx.get());
+  } else {
+    sweepBreak(ctx, ctx.deps.now());
+  }
   ctx.set({ hydrated: true });
 }
