@@ -10,6 +10,8 @@
 // 새 화면의 주 버튼(`[일시정지]` / `[집중 시작]`)으로 옮긴다. 옮기는 조건은 아래 `useFocusHandoff` 참조.
 import { useEffect, useId, useRef } from 'react';
 
+import { TimerBreak } from '@/features/timer/components/TimerBreak';
+import { TimerBreakCard } from '@/features/timer/components/TimerBreakCard';
 import { TimerCompletionCard } from '@/features/timer/components/TimerCompletionCard';
 import { TimerNoticeCard } from '@/features/timer/components/TimerNoticeCard';
 import { TimerRunning } from '@/features/timer/components/TimerRunning';
@@ -17,12 +19,22 @@ import { TimerSetup } from '@/features/timer/components/TimerSetup';
 import { useTimerAnnouncement } from '@/features/timer/hooks/useTimerAnnouncement';
 import { useTimerRuntime } from '@/features/timer/hooks/useTimerRuntime';
 import { useTimerSignals } from '@/features/timer/hooks/useTimerSignals';
-import { selectTimerPhase } from '@/features/timer/store/timer-selectors';
 import { useTimerStore } from '@/features/timer/store/timer-store';
 
 import { cn } from '@/lib/cn';
 
 type TimerPanelSectionProps = { className?: string };
+
+/** 패널이 지금 그리는 화면 셋 (P2). 실행↔일시정지는 같은 화면이다. */
+type TimerScreen = 'idle' | 'running' | 'break';
+
+/** 집중이 있으면 실행, 없고 휴식이 있으면 휴식, 둘 다 없으면 대기 — 셋은 동시에 서지 않는다. */
+function selectTimerScreen(state: { session: unknown; breakSession: unknown }): TimerScreen {
+  if (state.session !== null) {
+    return 'running';
+  }
+  return state.breakSession !== null ? 'break' : 'idle';
+}
 
 /** 패널 안에서 방금 사용자의 조작이 있었는지 + 대기↔실행 전이를 함께 본다. */
 type FocusHandoff = {
@@ -34,14 +46,15 @@ type FocusHandoff = {
 /**
  * 화면이 갈릴 때 포커스를 새 주 버튼으로 넘긴다. **옮기는 조건 네 가지를 모두** 만족할 때만이다:
  *
- * 1. 대기↔실행이 실제로 갈렸다(같은 화면 안의 갱신에서는 움직이지 않는다).
+ * 1. 그리는 화면이 실제로 갈렸다(대기·실행·휴식 셋 중 하나에서 다른 하나로. 실행↔일시정지처럼
+ *    같은 화면 안의 갱신에서는 움직이지 않는다).
  * 2. 방금 이 패널 안에서 사용자가 눌렀다 — 앱을 열자마자 세션이 복원되는 경로(R2)나 시간이 만든
  *    완료·만료에서는 포커스가 튀지 않는다(WCAG 3.2.1/3.2.2 의 예기치 않은 컨텍스트 변경).
  * 3. 포커스가 패널 안이거나 `<body>` 로 떨어진 상태다 — 사용자가 다른 곳을 보고 있으면 뺏지 않는다.
  * 4. 막 끝난 완료 카드가 떠 있지 않다 — 그때는 카드가 `[닫기]` 로 포커스를 가져간다(R9-a).
  */
 function useFocusHandoff(freshCompletion: boolean): FocusHandoff {
-  const phase = useTimerStore(selectTimerPhase);
+  const screen = useTimerStore(selectTimerScreen);
   const rootRef = useRef<HTMLElement | null>(null);
   const primaryRef = useRef<HTMLButtonElement | null>(null);
   const previousRef = useRef<string | null>(null);
@@ -49,12 +62,12 @@ function useFocusHandoff(freshCompletion: boolean): FocusHandoff {
 
   useEffect(() => {
     const previous = previousRef.current;
-    previousRef.current = phase;
+    previousRef.current = screen;
     const intent = intentRef.current;
     intentRef.current = false;
 
-    const idleChanged = previous !== null && (previous === 'idle') !== (phase === 'idle');
-    if (!idleChanged || !intent || freshCompletion) {
+    const changed = previous !== null && previous !== screen;
+    if (!changed || !intent || freshCompletion) {
       return;
     }
     const active = document.activeElement;
@@ -63,7 +76,7 @@ function useFocusHandoff(freshCompletion: boolean): FocusHandoff {
       return;
     }
     primaryRef.current?.focus();
-  }, [phase, freshCompletion]);
+  }, [screen, freshCompletion]);
 
   return {
     rootRef,
@@ -80,7 +93,7 @@ export function TimerPanelSection({ className }: TimerPanelSectionProps) {
   useTimerSignals();
 
   const headingId = useId();
-  const session = useTimerStore((state) => state.session);
+  const screen = useTimerStore(selectTimerScreen);
   const error = useTimerStore((state) => state.error);
   const clearError = useTimerStore((state) => state.clearError);
   const freshCompletion = useTimerStore((state) => state.completion?.signal === 'full');
@@ -105,11 +118,10 @@ export function TimerPanelSection({ className }: TimerPanelSectionProps) {
 
       <TimerNoticeCard />
       <TimerCompletionCard />
-      {session === null ? (
-        <TimerSetup startRef={primaryRef} />
-      ) : (
-        <TimerRunning pauseRef={primaryRef} />
-      )}
+      <TimerBreakCard />
+      {screen === 'running' && <TimerRunning pauseRef={primaryRef} />}
+      {screen === 'break' && <TimerBreak skipRef={primaryRef} />}
+      {screen === 'idle' && <TimerSetup startRef={primaryRef} />}
 
       {error !== null && (
         <p role="alert" className="flex items-center gap-[var(--space-2)] text-sm text-text">

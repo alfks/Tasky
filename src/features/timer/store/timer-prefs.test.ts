@@ -28,14 +28,21 @@ describe('저장 키 (R1)', () => {
 describe('parseTimerPrefs', () => {
   it('기본값은 25분·소리 켬이다', () => {
     expect(FOCUS_DEFAULT_MINUTES).toBe(25);
-    expect(DEFAULT_TIMER_PREFS).toEqual({ minutes: 25, soundOff: false });
-    expect(parseTimerPrefs(null)).toEqual({ minutes: 25, soundOff: false });
+    expect(DEFAULT_TIMER_PREFS).toEqual({ minutes: 25, soundOff: false, pomodoro: false });
+    expect(parseTimerPrefs(null)).toEqual({ minutes: 25, soundOff: false, pomodoro: false });
   });
 
   it('길이와 소리를 한 레코드에서 함께 읽는다 (R1·R9 가 같은 키)', () => {
+    expect(parseTimerPrefs('{"minutes":50,"soundOff":true,"pomodoro":true}')).toEqual({
+      minutes: 50,
+      soundOff: true,
+      pomodoro: true,
+    });
+    // 뽀모도로를 모르던 때에 적힌 레코드도 그대로 읽힌다 — 모드는 꺼진 것으로 본다(P1 기본값).
     expect(parseTimerPrefs('{"minutes":50,"soundOff":true}')).toEqual({
       minutes: 50,
       soundOff: true,
+      pomodoro: false,
     });
   });
 
@@ -64,9 +71,11 @@ describe('parseTimerPrefs', () => {
 
 describe('읽기·쓰기', () => {
   it('왕복한다', () => {
-    writeTimerPrefs({ minutes: 45, soundOff: true });
-    expect(localStorage.getItem(TIMER_PREFS_KEY)).toBe('{"minutes":45,"soundOff":true}');
-    expect(readTimerPrefs()).toEqual({ minutes: 45, soundOff: true });
+    writeTimerPrefs({ minutes: 45, soundOff: true, pomodoro: true });
+    expect(localStorage.getItem(TIMER_PREFS_KEY)).toBe(
+      '{"minutes":45,"soundOff":true,"pomodoro":true}',
+    );
+    expect(readTimerPrefs()).toEqual({ minutes: 45, soundOff: true, pomodoro: true });
   });
 
   it('저장소가 막혀 있어도 던지지 않는다 (사생활 보호 모드)', () => {
@@ -76,7 +85,7 @@ describe('읽기·쓰기', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('blocked');
     });
-    expect(readTimerPrefs()).toEqual({ minutes: 25, soundOff: false });
-    expect(() => writeTimerPrefs({ minutes: 50, soundOff: false })).not.toThrow();
+    expect(readTimerPrefs()).toEqual({ minutes: 25, soundOff: false, pomodoro: false });
+    expect(() => writeTimerPrefs({ minutes: 50, soundOff: false, pomodoro: false })).not.toThrow();
   });
 });

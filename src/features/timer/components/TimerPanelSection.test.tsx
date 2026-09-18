@@ -66,6 +66,9 @@ describe('키보드만으로 한 바퀴', () => {
     await user.tab(); // 소리 토글
     expect(screen.getByRole('checkbox', { name: '끝났을 때 소리로 알리기' })).toHaveFocus();
 
+    await user.tab(); // 뽀모도로 토글 (P1)
+    expect(screen.getByRole('checkbox', { name: '뽀모도로로 집중하기' })).toHaveFocus();
+
     await user.tab();
     const startButton = screen.getByRole('button', { name: '집중 시작' });
     expect(startButton).toHaveFocus();

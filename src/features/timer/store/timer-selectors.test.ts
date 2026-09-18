@@ -97,18 +97,26 @@ describe('세션 파생 값', () => {
   });
 
   it('탭 제목은 실행 중에만 바뀐다 (R11)', () => {
-    expect(selectDocumentTitle({ session, now: at(378), todoTitle: '장보기' }, 'Tasky')).toBe(
-      '18:42 · 장보기 · Tasky',
-    );
-    expect(selectDocumentTitle({ session, now: at(378), todoTitle: null }, 'Tasky')).toBe(
-      '18:42 · Tasky',
-    );
+    const resting = { breakSession: null };
+    expect(
+      selectDocumentTitle({ session, ...resting, now: at(378), todoTitle: '장보기' }, 'Tasky'),
+    ).toBe('18:42 · 장보기 · Tasky');
+    expect(
+      selectDocumentTitle({ session, ...resting, now: at(378), todoTitle: null }, 'Tasky'),
+    ).toBe('18:42 · Tasky');
     expect(
       selectDocumentTitle(
-        { session: makeFocusSession({ status: 'paused' }), now: at(0), todoTitle: null },
+        {
+          session: makeFocusSession({ status: 'paused' }),
+          ...resting,
+          now: at(0),
+          todoTitle: null,
+        },
         'Tasky',
       ),
     ).toBeNull();
-    expect(selectDocumentTitle({ session: null, now: at(0), todoTitle: null }, 'Tasky')).toBeNull();
+    expect(
+      selectDocumentTitle({ session: null, ...resting, now: at(0), todoTitle: null }, 'Tasky'),
+    ).toBeNull();
   });
 });

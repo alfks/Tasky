@@ -6,6 +6,7 @@
 // - 아무것도 읽지 않으면 남은 시간을 알 방법이 포커스 이동밖에 없다.
 // 그래서 **상태가 바뀌는 순간**(시작·일시정지·재개·완료·중지)과 **5분 눈금을 넘는 순간**만 읽는다.
 // 5분은 §5 가 정한 값이고, 25분 세션에서 낭독이 4번뿐이라는 뜻이다.
+import { pomodoroBreakLabel, type PomodoroBreakKind } from '@/features/timer/store/pomodoro';
 import { formatSpokenDuration } from '@/features/timer/store/timer-selectors';
 import type { TimerPhase } from '@/features/timer/store/timer-state';
 
@@ -20,6 +21,11 @@ export type TimerAnnounceSnapshot = {
   readonly sessionId: string | null;
   /** 완료 카드가 떠 있는가. `running → idle` 이 완료인지 중지인지 가른다. */
   readonly completed: boolean;
+  /** 진행 중인 휴식의 종류 (P2). 없으면 `null`. */
+  readonly breakKind: PomodoroBreakKind | null;
+  readonly breakRemainingSeconds: number;
+  /** 끝난 휴식 카드가 떠 있는가 (P4). */
+  readonly breakDone: boolean;
 };
 
 /**
@@ -38,8 +44,22 @@ export function timerAnnouncement(
   prev: TimerAnnounceSnapshot,
   next: TimerAnnounceSnapshot,
 ): string | null {
+  // P3: 완료와 휴식 시작은 **같은 갱신에서** 함께 일어난다. 둘을 따로 읽으려 하면 뒤엣것이
+  // 앞엣것을 덮어 "휴식이 시작됐다" 가 통째로 사라진다 — 한 문장으로 잇는다.
+  const breakStarted =
+    next.breakKind !== null && prev.breakKind === null
+      ? `${pomodoroBreakLabel(next.breakKind)} ${formatSpokenDuration(next.breakRemainingSeconds)} 시작`
+      : null;
+
   if (!prev.completed && next.completed) {
-    return '집중이 끝났어요';
+    return breakStarted === null ? '집중이 끝났어요' : `집중이 끝났어요, ${breakStarted}`;
+  }
+  if (breakStarted !== null) {
+    return breakStarted;
+  }
+  // P4. 휴식 중에는 5분 눈금을 읽지 않는다 — 쉬라고 만든 구간에서 낭독이 끼어들면 그 목적을 깬다.
+  if (!prev.breakDone && next.breakDone) {
+    return '휴식이 끝났어요, 다음 집중을 시작할 수 있어요';
   }
   if (next.sessionId !== prev.sessionId && next.phase === 'running') {
     return `집중 ${formatSpokenDuration(next.remainingSeconds)} 시작`;

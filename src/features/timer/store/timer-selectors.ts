@@ -2,10 +2,14 @@
 // `session` + `now` 에서 매번 다시 계산된다 — 그래서 인터벌이 지연돼도 표시가 어긋나지 않는다.
 import { focusElapsedSeconds, focusRemainingSeconds } from '@/domain/focus/focus-session.rules';
 
+import { pomodoroBreakLabel, pomodoroBreakRemainingSeconds } from '@/features/timer/store/pomodoro';
 import { timerPhaseOf, type TimerPhase, type TimerState } from '@/features/timer/store/timer-state';
 
 /** 선택자가 보는 최소 상태. 스토어 전체를 구독하지 않게 필요한 조각만 요구한다. */
 export type TimerSnapshot = Pick<TimerState, 'session' | 'now'>;
+
+/** 휴식 선택자가 보는 최소 상태 (P2). */
+export type TimerBreakSnapshot = Pick<TimerState, 'breakSession' | 'now'>;
 
 const SECONDS_PER_MINUTE = 60;
 const SECONDS_PER_HOUR = 3600;
@@ -84,6 +88,35 @@ export function selectClockText(state: TimerSnapshot): string {
   return formatClock(selectRemainingSeconds(state));
 }
 
+/** 휴식의 남은 초 (P2). 휴식 중이 아니면 0 이다. */
+export function selectBreakRemainingSeconds(state: TimerBreakSnapshot): number {
+  return state.breakSession === null
+    ? 0
+    : pomodoroBreakRemainingSeconds(state.breakSession, state.now);
+}
+
+/** 휴식 링이 그릴 비율. 휴식 중이 아니면 `null`. */
+export function selectBreakRingRatio(state: TimerBreakSnapshot): number | null {
+  if (state.breakSession === null) {
+    return null;
+  }
+  return selectBreakRemainingSeconds(state) / state.breakSession.plannedSeconds;
+}
+
+/** 휴식 링·칩의 시계 문자열. */
+export function selectBreakClockText(state: TimerBreakSnapshot): string {
+  return formatClock(selectBreakRemainingSeconds(state));
+}
+
+/** 휴식 중 헤더 칩의 접근 이름 (P2·§5). 어떤 휴식인지가 남은 시간 뒤에 온다. */
+export function selectBreakChipLabel(state: TimerBreakSnapshot): string {
+  if (state.breakSession === null) {
+    return '';
+  }
+  const remaining = formatSpokenDuration(selectBreakRemainingSeconds(state));
+  return `${pomodoroBreakLabel(state.breakSession.kind)} ${remaining} 남음`;
+}
+
 /**
  * 헤더 칩의 접근 이름 (§5). 투두가 있으면 뒤에 붙인다.
  * 일시정지 중이면 그 사실이 먼저 온다 — 멈춘 줄 모르고 기다리는 일이 없게.
@@ -100,12 +133,17 @@ export function selectChipLabel(state: TimerSnapshot & { todoTitle: string | nul
  * 앱 셸이 정한 제목(app-shell R9)이 그대로 남는다.
  */
 export function selectDocumentTitle(
-  state: TimerSnapshot & { todoTitle: string | null },
+  state: TimerSnapshot & TimerBreakSnapshot & { todoTitle: string | null },
   appTitle: string,
 ): string | null {
-  if (state.session === null || state.session.status !== 'running') {
-    return null;
+  if (state.session !== null && state.session.status === 'running') {
+    const todo = state.todoTitle === null ? '' : `${state.todoTitle} · `;
+    return `${selectClockText(state)} · ${todo}${appTitle}`;
   }
-  const todo = state.todoTitle === null ? '' : `${state.todoTitle} · `;
-  return `${selectClockText(state)} · ${todo}${appTitle}`;
+  // P2: 휴식도 돌고 있는 타이머다. 탭 제목이 대기 상태로 돌아가면 다른 탭에 가 있는 동안
+  // 휴식이 흐르는지 알 방법이 사라진다.
+  if (state.breakSession !== null) {
+    return `${selectBreakClockText(state)} · ${pomodoroBreakLabel(state.breakSession.kind)} · ${appTitle}`;
+  }
+  return null;
 }

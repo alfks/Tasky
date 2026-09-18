@@ -18,14 +18,17 @@ const selectActions = (state: TimerStore): TimerActions => ({
   tick: state.tick,
   setMinutes: state.setMinutes,
   setSoundOff: state.setSoundOff,
+  setPomodoro: state.setPomodoro,
   selectTodo: state.selectTodo,
   start: state.start,
   pause: state.pause,
   resume: state.resume,
   stop: state.stop,
   extend: state.extend,
+  skipBreak: state.skipBreak,
   dismissCompletion: state.dismissCompletion,
   dismissNotice: state.dismissNotice,
+  dismissBreakDone: state.dismissBreakDone,
   clearError: state.clearError,
 });
 

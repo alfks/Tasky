@@ -20,11 +20,17 @@ export type TimerPrefs = {
   readonly minutes: number;
   /** 완료 차임을 끄는가 (R9). 끄더라도 카드·탭 제목은 남는다 — 소리는 유일한 통로가 아니다. */
   readonly soundOff: boolean;
+  /**
+   * 뽀모도로 모드로 집중하는가 (P1). 길이·소리와 같은 **다음에 쓸 값**이라 같은 레코드에 산다.
+   * 기본은 꺼짐 — 뽀모도로는 옵션이고, 기존의 단일 집중 세션이 그대로 기본 동작이다.
+   */
+  readonly pomodoro: boolean;
 };
 
 export const DEFAULT_TIMER_PREFS: TimerPrefs = {
   minutes: FOCUS_DEFAULT_MINUTES,
   soundOff: false,
+  pomodoro: false,
 };
 
 /** 범위를 벗어난 길이는 기본값으로. 저장된 값이 깨져 있어도 타이머는 떠야 한다. */
@@ -58,6 +64,7 @@ export function parseTimerPrefs(raw: string | null): TimerPrefs {
   return {
     minutes: normalizeMinutes(record.minutes),
     soundOff: record.soundOff === true,
+    pomodoro: record.pomodoro === true,
   };
 }
 
@@ -68,6 +75,14 @@ export function readTimerPrefs(): TimerPrefs {
   } catch {
     return DEFAULT_TIMER_PREFS;
   }
+}
+
+/**
+ * 상태에서 설정 세 조각만 뽑아 저장한다. 액션마다 손으로 객체를 만들면 새 설정을 더할 때
+ * 한 군데를 빠뜨려 **그 설정만 기억되지 않는** 결함이 생긴다 — 모으는 곳을 하나로 둔다.
+ */
+export function saveTimerPrefs(state: TimerPrefs): void {
+  writeTimerPrefs({ minutes: state.minutes, soundOff: state.soundOff, pomodoro: state.pomodoro });
 }
 
 /** 저장 실패는 조용히 넘긴다 — 설정 기억은 편의이고, 못 적었다고 알릴 일이 아니다. */

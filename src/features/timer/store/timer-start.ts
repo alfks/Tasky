@@ -9,18 +9,14 @@ import type { Persistable } from '@/domain/meta';
 
 import { getRepositories } from '@/repositories/container';
 
+import { savePomodoro } from '@/features/timer/store/pomodoro-flow';
 import type { TimerActions, TimerStartInput } from '@/features/timer/store/timer-actions';
-import { writeTimerPrefs } from '@/features/timer/store/timer-prefs';
-import { timerMessageOf, type TimerState } from '@/features/timer/store/timer-state';
+import { saveTimerPrefs } from '@/features/timer/store/timer-prefs';
+import { timerMessageOf } from '@/features/timer/store/timer-state';
 import type { TimerContext } from '@/features/timer/store/timer-sync';
 import { persistSession, readTodoTitle } from '@/features/timer/store/timer-writes';
 
 import { todayKey } from '@/lib/date';
-
-/** 설정 저장 (R1·R9 — 둘이 같은 키를 쓴다). */
-function savePrefs(state: Pick<TimerState, 'minutes' | 'soundOff'>): void {
-  writeTimerPrefs({ minutes: state.minutes, soundOff: state.soundOff });
-}
 
 /** 선택한 투두의 제목·카테고리 스냅샷. 없는 투두면 "할 일 없이" 로 떨어진다 (timer §4). */
 async function resolveTodo(todoId: TodoId | null) {
@@ -74,11 +70,16 @@ async function beginSession(
     now: session.startedAt,
     completion: null,
     notice: null,
+    // P3: 집중을 시작한다는 것은 휴식이 끝났다는 뜻이다(휴식 중 `[집중 시작]`·건너뛰기 둘 다 여기로 온다).
+    // 집중과 휴식은 동시에 존재하지 않는다.
+    breakSession: null,
+    breakDone: null,
     error: null,
     ...(remember === null ? {} : { minutes: remember.length }),
   });
+  savePomodoro(ctx.get());
   if (remember !== null) {
-    savePrefs(ctx.get());
+    saveTimerPrefs(ctx.get());
   }
   try {
     await persistSession(session);

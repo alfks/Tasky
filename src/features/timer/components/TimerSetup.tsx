@@ -6,6 +6,7 @@ import { useId, useState, type Ref } from 'react';
 import { FOCUS_MAX_MINUTES, FOCUS_MIN_MINUTES } from '@/domain/focus/focus-session.rules';
 import type { Todo } from '@/domain/todo/todo';
 
+import { PomodoroOption } from '@/features/timer/components/PomodoroOption';
 import { useTimerStore } from '@/features/timer/store/timer-store';
 import { selectTodos, useTodoStore } from '@/features/todo';
 
@@ -119,6 +120,8 @@ export function TimerSetup({ startRef }: TimerSetupProps) {
         />
         <span id={soundLabelId}>끝났을 때 소리로 알리기</span>
       </label>
+
+      <PomodoroOption />
 
       <Button ref={startRef} onClick={() => void start()}>
         집중 시작

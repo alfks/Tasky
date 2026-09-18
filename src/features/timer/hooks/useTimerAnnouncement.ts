@@ -8,7 +8,11 @@ import {
   timerAnnouncement,
   type TimerAnnounceSnapshot,
 } from '@/features/timer/store/timer-announce';
-import { selectRemainingSeconds, selectTimerPhase } from '@/features/timer/store/timer-selectors';
+import {
+  selectBreakRemainingSeconds,
+  selectRemainingSeconds,
+  selectTimerPhase,
+} from '@/features/timer/store/timer-selectors';
 import { useTimerStore } from '@/features/timer/store/timer-store';
 
 /** 지금 읽어야 할 문구. 읽을 것이 없으면 직전 문구가 그대로 남는다(다시 읽히지는 않는다). */
@@ -17,6 +21,9 @@ export function useTimerAnnouncement(): string {
   const remainingSeconds = useTimerStore(selectRemainingSeconds);
   const sessionId = useTimerStore((state) => state.session?.id ?? null);
   const completed = useTimerStore((state) => state.completion !== null);
+  const breakKind = useTimerStore((state) => state.breakSession?.kind ?? null);
+  const breakRemainingSeconds = useTimerStore(selectBreakRemainingSeconds);
+  const breakDone = useTimerStore((state) => state.breakDone !== null);
 
   const [message, setMessage] = useState('');
   const previousRef = useRef<TimerAnnounceSnapshot>({
@@ -24,16 +31,27 @@ export function useTimerAnnouncement(): string {
     remainingSeconds: 0,
     sessionId: null,
     completed: false,
+    breakKind: null,
+    breakRemainingSeconds: 0,
+    breakDone: false,
   });
 
   useEffect(() => {
-    const next: TimerAnnounceSnapshot = { phase, remainingSeconds, sessionId, completed };
+    const next: TimerAnnounceSnapshot = {
+      phase,
+      remainingSeconds,
+      sessionId,
+      completed,
+      breakKind,
+      breakRemainingSeconds,
+      breakDone,
+    };
     const spoken = timerAnnouncement(previousRef.current, next);
     previousRef.current = next;
     if (spoken !== null) {
       setMessage(spoken);
     }
-  }, [phase, remainingSeconds, sessionId, completed]);
+  }, [phase, remainingSeconds, sessionId, completed, breakKind, breakRemainingSeconds, breakDone]);
 
   return message;
 }

@@ -7,17 +7,22 @@ import {
   type TimerAnnounceSnapshot,
 } from '@/features/timer/store/timer-announce';
 
+/** 휴식과 무관한 시점(P2 가 붙기 전과 같은 상태). 뽀모도로 자체의 낭독은 아래 전용 블록이 잰다. */
+const noBreak = { breakKind: null, breakRemainingSeconds: 0, breakDone: false } as const;
+
 const idle: TimerAnnounceSnapshot = {
   phase: 'idle',
   remainingSeconds: 0,
   sessionId: null,
   completed: false,
+  ...noBreak,
 };
 const running = (remainingSeconds: number, sessionId = 's1'): TimerAnnounceSnapshot => ({
   phase: 'running',
   remainingSeconds,
   sessionId,
   completed: false,
+  ...noBreak,
 });
 
 describe('눈금 상수', () => {
@@ -35,11 +40,12 @@ describe('상태가 바뀌는 순간만 읽는다', () => {
         remainingSeconds: 1122,
         sessionId: 's1',
         completed: false,
+        ...noBreak,
       }),
     ).toBe('일시정지, 18분 42초 남음');
     expect(
       timerAnnouncement(
-        { phase: 'paused', remainingSeconds: 1122, sessionId: 's1', completed: false },
+        { phase: 'paused', remainingSeconds: 1122, sessionId: 's1', completed: false, ...noBreak },
         running(1122),
       ),
     ).toBe('재개, 18분 42초 남음');

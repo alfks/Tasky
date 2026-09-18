@@ -29,6 +29,8 @@ export const CHIME_GAIN = 0.2;
 export const TITLE_BLINK_MS = 1000;
 /** R9 (c) 의 문구 앞머리. 뒤에는 앱 셸이 쓰던 제목이 그대로 붙는다. */
 export const COMPLETION_TITLE_PREFIX = '⏰ 끝!';
+/** P4 의 같은 자리. 집중이 끝난 것과 휴식이 끝난 것은 해야 할 일이 달라서 문구를 나눈다. */
+export const BREAK_TITLE_PREFIX = '☕ 휴식 끝!';
 
 type AudioContextCtor = typeof AudioContext;
 
@@ -99,8 +101,12 @@ type Installed = {
   /** 앱 셸이 쓰던 제목. 걷을 때 그대로 되돌린다. */
   readonly base: string;
   blinkId: ReturnType<typeof setInterval> | null;
+  /** 지금 깜빡이는 문구. 바뀌면(집중 끝 → 휴식 끝) 깜빡임을 새 문구로 다시 건다. */
+  blinkText: string | null;
   /** 이미 차임을 울린 완료 세션 id. 인스턴스가 아니라 설치 한 벌이 기억하므로 중복이 없다. */
   playedId: string | null;
+  /** 지금 떠 있는 끝난 휴식 카드에 이미 차임을 울렸는가 (P4). 카드가 닫히면 다시 false 가 된다. */
+  playedBreak: boolean;
 };
 
 type Signals = { mounts: number; stop: (() => void) | null };
@@ -114,15 +120,37 @@ export function resetTimerSignals(): void {
   signals.stop = null;
 }
 
-/** (c) 탭 제목 — 완료면 깜빡임(R9 c), 아니면 실행 중 제목(R11)이나 원래 제목. */
+/**
+ * (c) 의 깜빡일 문구. 없으면 `null`.
+ * R9-a: 오래된 완료(`record-only`)는 (c)를 주지 않는다 — 카드만 뜬다.
+ * P4: 끝난 휴식 카드는 **막 끝났을 때만** 만들어지므로(`pomodoro.ts`) 등급을 다시 보지 않는다.
+ * 끝난 휴식이 더 최근의 사건이라 집중 완료 카드가 아직 떠 있어도 이쪽을 앞세운다.
+ */
+function loudTitleOf(state: TimerState, base: string): string | null {
+  if (state.breakDone !== null) {
+    return `${BREAK_TITLE_PREFIX} · ${base}`;
+  }
+  return state.completion?.signal === 'full' ? `${COMPLETION_TITLE_PREFIX} · ${base}` : null;
+}
+
+function stopBlink(installed: Installed): void {
+  if (installed.blinkId !== null) {
+    globalThis.clearInterval(installed.blinkId);
+    installed.blinkId = null;
+  }
+  installed.blinkText = null;
+}
+
+/** (c) 탭 제목 — 끝났으면 깜빡임(R9 c·P4), 아니면 실행 중 제목(R11·P2)이나 원래 제목. */
 function applyTitle(state: TimerState, installed: Installed): void {
-  // R9-a: 오래된 완료(`record-only`)는 (c)를 주지 않는다 — 카드만 뜬다.
-  if (state.completion?.signal === 'full') {
-    const loud = `${COMPLETION_TITLE_PREFIX} · ${installed.base}`;
-    if (installed.blinkId !== null) {
-      return; // 이미 깜빡이는 중이다
+  const loud = loudTitleOf(state, installed.base);
+  if (loud !== null) {
+    if (installed.blinkText === loud) {
+      return; // 이미 같은 문구로 깜빡이는 중이다
     }
+    stopBlink(installed);
     document.title = loud;
+    installed.blinkText = loud;
     if (prefersReducedMotion()) {
       return; // 고정된 "끝!" 문구로 남는다
     }
@@ -133,15 +161,25 @@ function applyTitle(state: TimerState, installed: Installed): void {
     }, TITLE_BLINK_MS);
     return;
   }
-  if (installed.blinkId !== null) {
-    globalThis.clearInterval(installed.blinkId);
-    installed.blinkId = null;
-  }
+  stopBlink(installed);
   document.title = selectDocumentTitle(state, installed.base) ?? installed.base;
 }
 
-/** (b) 차임 — 막 끝난 완료(`full`)에만, 세션당 한 번, 소리를 켠 경우에만 (R9·R9-a). */
+/**
+ * (b) 차임 — 막 끝난 완료(`full`)에만, 세션당 한 번, 소리를 켠 경우에만 (R9·R9-a).
+ *
+ * P4 의 끝난 휴식도 **같은 차임**을 쓴다. 새 알림 수단이 아니라 이미 있는 합성음 하나를 다시 쓰는 것이고,
+ * 같은 `soundOff` 토글이 그대로 끈다 — 권한도 의존성도 늘지 않는다. 휴식이 끝났다는 것은 정의상
+ * 사용자가 화면을 보고 있지 않은 순간이라, 시각 신호만으로는 닿지 않는다.
+ */
 function applyChime(state: TimerState, installed: Installed): void {
+  if (state.breakDone === null) {
+    installed.playedBreak = false;
+  } else if (!installed.playedBreak && !state.soundOff) {
+    installed.playedBreak = true;
+    void playFocusChime();
+  }
+
   const completion = state.completion;
   if (completion === null || completion.signal !== 'full' || state.soundOff) {
     return;
@@ -155,7 +193,13 @@ function applyChime(state: TimerState, installed: Installed): void {
 
 /** 신호 한 벌을 건다. 돌려주는 함수가 인터벌·구독·탭 제목을 전부 되돌린다. */
 function install(): () => void {
-  const installed: Installed = { base: document.title, blinkId: null, playedId: null };
+  const installed: Installed = {
+    base: document.title,
+    blinkId: null,
+    blinkText: null,
+    playedId: null,
+    playedBreak: false,
+  };
   const apply = (state: TimerState): void => {
     applyTitle(state, installed);
     applyChime(state, installed);
@@ -166,10 +210,7 @@ function install(): () => void {
 
   return () => {
     unsubscribe();
-    if (installed.blinkId !== null) {
-      globalThis.clearInterval(installed.blinkId);
-      installed.blinkId = null;
-    }
+    stopBlink(installed);
     document.title = installed.base;
   };
 }
