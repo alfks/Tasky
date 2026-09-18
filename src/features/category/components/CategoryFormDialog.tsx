@@ -4,6 +4,7 @@ import { useRef } from 'react';
 
 import type { CategoryStatus } from '@/domain/category/category';
 import { CATEGORY_NAME_MAX_LENGTH } from '@/domain/category/category.rules';
+import { CATEGORY_EMOJIS } from '@/domain/theme/emoji';
 import { DEFAULT_ACCENT_COLOR, PALETTE } from '@/domain/theme/palette';
 
 import { useCategoryActions } from '@/features/category/hooks/useCategoryActions';
@@ -12,6 +13,7 @@ import { useCategoryForm, type CategoryFormMode } from '@/features/category/hook
 import { Button } from '@/components/ui/Button';
 import { ColorSwatchGroup } from '@/components/ui/ColorSwatchGroup';
 import { Dialog } from '@/components/ui/Dialog';
+import { EmojiPicker } from '@/components/ui/EmojiPicker';
 
 /** 색 선택지 = 팔레트 12색. 저장값(라이트 HEX)을 그대로 라디오 값으로 쓴다 (R3). */
 const COLOR_OPTIONS = PALETTE.map((preset) => ({
@@ -77,37 +79,38 @@ export function CategoryFormDialog({ open, mode, onClose, returnFocus }: Categor
       }
     >
       <div className="flex flex-col gap-[var(--space-4)]">
-        <div className="flex items-end gap-[var(--space-3)]">
-          <label className="flex w-[72px] shrink-0 flex-col gap-[var(--space-1)] text-sm text-muted">
-            이모지
-            {/*
-              이모지 입력에는 Enter 핸들러를 두지 않는다 — 제출은 **이름 입력의 `onKeyDown` 만** 한다.
-              `Dialog` 의 `applyOverlayEnterRule` 이 입력 위의 Enter 기본 동작을 이미 막으므로
-              여기서 `preventDefault` 를 한 번 더 하면 아무것도 바꾸지 못하는 코드가 남는다
-              (테스트로 고정할 수 없는 코드는 두지 않는다). 규약은 category §5 "Enter 제출(이모지 입력 제외)".
-            */}
-            <input
-              value={form.emoji}
-              onChange={(e) => form.setEmoji(e.target.value)}
-              className="h-[var(--control-height)] w-full rounded-[var(--radius-md)] border border-border bg-surface px-[var(--space-2)] text-center text-base text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-            />
-          </label>
-          <label className="flex flex-1 flex-col gap-[var(--space-1)] text-sm text-muted">
-            이름
-            <input
-              ref={nameRef}
-              value={form.name}
-              onChange={(e) => form.setName(e.target.value)}
-              maxLength={CATEGORY_NAME_MAX_LENGTH * 2}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  void save();
-                }
-              }}
-              className="h-[var(--control-height)] w-full rounded-[var(--radius-md)] border border-border bg-surface px-[var(--space-3)] text-base text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-            />
-          </label>
+        <label className="flex flex-col gap-[var(--space-1)] text-sm text-muted">
+          이름
+          <input
+            ref={nameRef}
+            value={form.name}
+            onChange={(e) => form.setName(e.target.value)}
+            maxLength={CATEGORY_NAME_MAX_LENGTH * 2}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void save();
+              }
+            }}
+            className="h-[var(--control-height)] w-full rounded-[var(--radius-md)] border border-border bg-surface px-[var(--space-3)] text-base text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          />
+        </label>
+
+        {/*
+          이모지는 **제공 목록에서 고른다**(T-70). 자유 입력이던 시절에는 이모지가 아닌 글자·여러
+          글자가 그대로 들어왔다 — 색을 12개로 좁힌 것과 같은 이유로 집합을 좁혔다(§2-B·R4).
+          Enter 는 여전히 이름 입력의 `onKeyDown` 만 제출로 읽는다: 여기 칸은 `button` 이라 Enter 가
+          "그 이모지를 고르기" 로 끝나고 다이얼로그를 제출하지 않는다(category §5 와 같은 결론,
+          이제는 입력이 아니라 **역할**이 그것을 보장한다).
+        */}
+        <div className="flex flex-col gap-[var(--space-2)]">
+          <span className="text-sm text-muted">이모지</span>
+          <EmojiPicker
+            label="이모지"
+            options={CATEGORY_EMOJIS}
+            value={form.emoji}
+            onChange={form.setEmoji}
+          />
         </div>
 
         <div className="flex flex-col gap-[var(--space-2)]">

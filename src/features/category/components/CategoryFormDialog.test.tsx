@@ -49,6 +49,11 @@ function names(): string[] {
   return Object.values(useCategoryStore.getState().byId).map((category) => category.name);
 }
 
+/** 이름으로 찾은 카테고리의 **저장된** 이모지. 화면이 아니라 저장소를 본다. */
+function emojiOf(name: string): string | undefined {
+  return Object.values(useCategoryStore.getState().byId).find((c) => c.name === name)?.emoji;
+}
+
 describe('만들기', () => {
   it('이름과 색을 고르면 카테고리가 만들어지고 다이얼로그가 닫힌다', async () => {
     const user = userEvent.setup();
@@ -66,18 +71,29 @@ describe('만들기', () => {
     expect(독서?.order).toBe(2);
   });
 
-  it('이모지를 함께 저장한다', async () => {
+  // 고른 이모지가 **저장소에 남았는가**를 잰다 — 화면의 미리보기만 보면 낙관적 갱신에 속는다.
+  it('제공 목록에서 고른 이모지를 함께 저장한다', async () => {
     const user = userEvent.setup();
     render(<CategoryFormDialog open mode={{ kind: 'create' }} onClose={vi.fn()} />);
 
-    await user.type(screen.getByLabelText('이모지'), '📚');
+    await user.click(screen.getByRole('radio', { name: '책' }));
     await user.type(screen.getByLabelText('이름'), '독서');
     await user.click(screen.getByRole('button', { name: '만들기' }));
 
     await waitFor(() => expect(names()).toContain('독서'));
-    expect(
-      Object.values(useCategoryStore.getState().byId).find((c) => c.name === '독서')?.emoji,
-    ).toBe('📚');
+    expect(emojiOf('독서')).toBe('📚');
+  });
+
+  it('이모지는 고르지 않아도 된다 — 기본이 "없음" 이다', async () => {
+    const user = userEvent.setup();
+    render(<CategoryFormDialog open mode={{ kind: 'create' }} onClose={vi.fn()} />);
+
+    expect(screen.getByRole('radio', { name: '없음' })).toBeChecked();
+    await user.type(screen.getByLabelText('이름'), '독서');
+    await user.click(screen.getByRole('button', { name: '만들기' }));
+
+    await waitFor(() => expect(names()).toContain('독서'));
+    expect(emojiOf('독서')).toBeUndefined();
   });
 
   it('빈 이름·중복 이름을 입력 아래 문구로 알리고 다이얼로그를 유지한다', async () => {
@@ -151,18 +167,20 @@ describe('한글 조합 중의 Enter (app-shell R14)', () => {
     expect(names()).toContain('독서');
   });
 
-  // 막는 주체는 이 컴포넌트가 아니라 `Dialog` 의 `applyOverlayEnterRule`(입력 위 Enter 의 기본 동작을
-  // 막고, 제출은 이름 입력의 `onKeyDown` 만 한다)이다. 단언하는 것은 그 기전이 아니라 §5 의 계약 —
-  // "이모지 입력에서 Enter 를 눌러도 만들어지지 않는다" — 이고, 바로 위 양성 대조와 같은 키다.
-  it('이모지 입력의 Enter 는 제출하지 않는다 (§5)', async () => {
+  // 단언하는 것은 기전이 아니라 §5 의 계약 — "이모지 자리에서 Enter 를 눌러도 만들어지지 않는다" —
+  // 이고, 바로 위 양성 대조와 같은 키다. 이제 그 자리는 입력이 아니라 라디오 버튼이라, Enter 는
+  // "그 이모지를 고르기" 로 끝나야 한다(제출도, 무반응도 아니다).
+  it('이모지 칸의 Enter 는 고르기로 끝나고 제출하지 않는다 (§5)', async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
     render(<CategoryFormDialog open mode={{ kind: 'create' }} onClose={onClose} />);
 
     await user.type(screen.getByLabelText('이름'), '독서');
-    fireEvent.keyDown(screen.getByLabelText('이모지'), { key: 'Enter' });
+    screen.getByRole('radio', { name: '책' }).focus();
+    await user.keyboard('{Enter}');
     await flush();
 
+    expect(screen.getByRole('radio', { name: '책' })).toBeChecked();
     expect(onClose).not.toHaveBeenCalled();
     expect(names()).toEqual(['공부', '운동']);
   });
@@ -185,6 +203,50 @@ describe('수정', () => {
     expect(names()).toEqual(['공부방', '운동']);
     // 순서는 수정으로 바뀌지 않는다.
     expect(useCategoryStore.getState().byId[공부.id].order).toBe(0);
+  });
+
+  it('저장된 이모지가 목록에서 선택된 채로 열리고 다른 것으로 바꿔 저장한다', async () => {
+    const user = userEvent.setup();
+    const 독서 = makeCategory({ seq: 4, name: '독서', emoji: '📚', order: 2 });
+    useCategoryStore.setState({ byId: indexCategories([공부, 운동, 독서]) });
+    render(<CategoryFormDialog open mode={{ kind: 'edit', category: 독서 }} onClose={vi.fn()} />);
+
+    expect(screen.getByRole('radio', { name: '책' })).toBeChecked();
+    await user.click(screen.getByRole('radio', { name: '커피' }));
+    await user.click(screen.getByRole('button', { name: '저장' }));
+
+    await waitFor(() => expect(emojiOf('독서')).toBe('☕'));
+  });
+
+  it('"없음" 을 고르면 이모지가 지워진다', async () => {
+    const user = userEvent.setup();
+    const 독서 = makeCategory({ seq: 4, name: '독서', emoji: '📚', order: 2 });
+    useCategoryStore.setState({ byId: indexCategories([공부, 운동, 독서]) });
+    render(<CategoryFormDialog open mode={{ kind: 'edit', category: 독서 }} onClose={vi.fn()} />);
+
+    await user.click(screen.getByRole('radio', { name: '없음' }));
+    await user.click(screen.getByRole('button', { name: '저장' }));
+
+    await waitFor(() => expect(useCategoryStore.getState().byId[독서.id].rev).toBe(2));
+    expect(emojiOf('독서')).toBeUndefined();
+  });
+
+  // 자유 입력이던 시절(T-70 이전)에 저장된 값은 제공 목록에 없을 수 있다. **사용자 데이터라 지우지
+  // 않는다** — 피커가 "직접 고른 이모지" 칸으로 보여 주고, 이름만 고쳐 저장해도 그대로 남는다.
+  it('목록 밖의 옛 이모지는 칸으로 남고 이름만 고쳐도 지워지지 않는다', async () => {
+    const user = userEvent.setup();
+    const 유니콘 = makeCategory({ seq: 5, name: '상상', emoji: '🦄', order: 2 });
+    useCategoryStore.setState({ byId: indexCategories([공부, 운동, 유니콘]) });
+    render(<CategoryFormDialog open mode={{ kind: 'edit', category: 유니콘 }} onClose={vi.fn()} />);
+
+    expect(screen.getByRole('radio', { name: '직접 고른 이모지 🦄' })).toBeChecked();
+
+    await user.clear(screen.getByLabelText('이름'));
+    await user.type(screen.getByLabelText('이름'), '공상');
+    await user.click(screen.getByRole('button', { name: '저장' }));
+
+    await waitFor(() => expect(names()).toContain('공상'));
+    expect(emojiOf('공상')).toBe('🦄');
   });
 
   it('활성 카테고리는 완료·중단 두 갈래로 종료할 수 있다 (R7)', async () => {
