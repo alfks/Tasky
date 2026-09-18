@@ -15,6 +15,7 @@ const selectActions = (state: TodoStore): TodoActions => ({
   reorder: state.reorder,
   moveBy: state.moveBy,
   createRoutine: state.createRoutine,
+  undoRoutine: state.undoRoutine,
   clearError: state.clearError,
 });
 

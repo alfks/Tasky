@@ -38,25 +38,20 @@ type RoutineDialogProps = {
  */
 export function RoutineDialog({ todo, categories, onClose, returnFocus }: RoutineDialogProps) {
   const form = useRoutineForm(todo);
-  const { removeTodo } = useTodoActions();
-
-  const undoAll = async (ids: readonly string[]): Promise<void> => {
-    for (const id of ids) {
-      await removeTodo(id);
-    }
-  };
+  const { undoRoutine } = useTodoActions();
 
   const save = async (): Promise<void> => {
     const result = await form.submit();
     if (result === null) {
-      // 검증 실패는 위 인라인 alert 가 알린다. 저장(store) 실패는 전역 토스트가 알린다
-      // (useRoutineForm 머리 주석) — 여기서 다시 알리지 않는다.
+      // 검증 실패·전부 중복(만든 것 0개)은 위 인라인 alert 가 알린다. 저장(store) 실패는 전역
+      // 토스트가 알린다(useRoutineForm 머리 주석) — 여기서 다시 알리지 않는다. `submit` 이
+      // `null` 이 아닌 결과를 주면 `count`·`ids` 는 항상 1개 이상이다(0개는 위에서 이미 걸린다).
       return;
     }
     const { count, ids } = result;
     pushToast({
       message: M.routineCreated(count),
-      action: ids.length === 0 ? undefined : { label: M.undo, onAction: () => void undoAll(ids) },
+      action: { label: M.undo, onAction: () => void undoRoutine(ids) },
     });
     onClose();
   };

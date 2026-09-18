@@ -53,7 +53,7 @@ export async function saveAll(entities: readonly Persistable<Todo>[]): Promise<v
  */
 export type TodoBuild = () => Promise<Persistable<Todo> | null> | Persistable<Todo> | null;
 
-/** `commitMany` 가 만드는 여러 건. 루틴 등록(R21)처럼 한 액션이 여러 날짜에 걸쳐 새 투두를 만들 때 쓴다. */
+/** `commitMany` 가 만드는 여러 건. 루틴 등록·되돌리기(R21)처럼 한 액션이 여러 건을 한 번에 쓸 때 쓴다. */
 export type TodoBuildMany = () =>
   Promise<readonly Persistable<Todo>[]> | readonly Persistable<Todo>[];
 
@@ -62,10 +62,14 @@ export type TodoWriter = {
   /** 저장이 성공한 뒤에만 상태를 바꾼다 (낙관적이지 않은 액션의 공통 경로). */
   commit: (build: TodoBuild, apply: (byId: TodoMap, saved: Todo) => TodoMap) => Promise<boolean>;
   /**
-   * `commit` 의 여러 건 버전. 한 트랜잭션(`saveAll`)으로 저장하고, 그 중 **지금 보고 있는 날짜**에
-   * 속한 것만 메모리에 반영한다(R17) — 다른 날짜는 그쪽으로 이동해야 `loadDate` 가 집어 온다.
+   * `commit` 의 여러 건 버전. 한 트랜잭션(`saveAll`)으로 저장한다. `apply` 는 호출부가 정한다 —
+   * 루틴 등록은 **지금 보고 있는 날짜**에 속한 것만 메모리에 더하고(R17, 다른 날짜는 `loadDate` 가
+   * 집어 온다), 되돌리기는 만든 것 전부를 메모리에서 뺀다(있으면).
    */
-  commitMany: (build: TodoBuildMany) => Promise<boolean>;
+  commitMany: (
+    build: TodoBuildMany,
+    apply: (byId: TodoMap, saved: readonly Todo[]) => TodoMap,
+  ) => Promise<boolean>;
   /** 화면에 먼저 반영하고 저장한다. 실패하면 `previous` 로 되돌린다 (R6·R11). */
   optimistic: (
     previous: readonly Todo[],
@@ -115,7 +119,7 @@ export function createTodoWriter(ctx: TodoContext): TodoWriter {
         }
       }),
 
-    commitMany: (build) =>
+    commitMany: (build, apply) =>
       serialize(async () => {
         try {
           const entities = await build();
@@ -123,10 +127,8 @@ export function createTodoWriter(ctx: TodoContext): TodoWriter {
             return true;
           }
           await saveAll(entities);
-          const currentDate = ctx.get().date;
-          const visible = entities.filter((entity) => entity.date === currentDate);
           ctx.set({
-            byId: visible.length === 0 ? ctx.get().byId : withTodos(ctx.get().byId, visible),
+            byId: apply(ctx.get().byId, entities),
             error: null,
             writeRevision: bumpWriteRevision(ctx),
           });

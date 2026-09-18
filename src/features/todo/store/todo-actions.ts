@@ -76,6 +76,12 @@ export type TodoActions = {
     endDate: DateKey;
     recurrence: RoutineRecurrence;
   }) => Promise<TodoId[] | false>;
+  /**
+   * 루틴 등록 되돌리기 (R21): `createRoutine` 이 돌려준 id 들을 전부 소프트 삭제한다. 메모리에
+   * 없는 id(대부분 다른 날짜)도 저장소에서 집어 온다(R10 되돌리기와 같은 이유). 이미 없는 id는
+   * 조용히 건너뛴다.
+   */
+  undoRoutine: (ids: readonly TodoId[]) => Promise<boolean>;
   /** 토스트를 닫을 때 문구를 지운다. */
   clearError: () => void;
 };
@@ -226,49 +232,70 @@ function createOrderActions(
 }
 
 /**
- * 루틴 등록 (R21). 날짜별 `order` 는 그 날짜·카테고리의 기존 투두 끝이다(그룹 끝 규칙과 같다).
+ * 루틴 등록·되돌리기 (R21). 등록의 날짜별 `order` 는 그 날짜·카테고리의 기존 투두 끝이다(그룹 끝
+ * 규칙과 같다).
  *
- * `writer.commitMany` 는 성공 여부(`boolean`)만 돌려주므로, 실제로 만든 엔티티는 `build` 콜백이
- * 도는 동안 `created` 에 직접 담아 둔다 — `build` 는 큐 차례가 왔을 때 딱 한 번 돌고 그 결과가
- * `commitMany` 의 완료보다 먼저 채워지므로, 바깥에서 안전하게 읽을 수 있다.
+ * `writer.commitMany` 는 성공 여부(`boolean`)만 돌려주므로, 실제로 만든/지운 엔티티는 `build`
+ * 콜백이 도는 동안 `entities` 에 직접 담아 둔다 — `build` 는 큐 차례가 왔을 때 딱 한 번 돌고 그
+ * 결과가 `commitMany` 의 완료보다 먼저 채워지므로, 바깥에서 안전하게 읽을 수 있다.
  */
 function createRoutineAction(
   ctx: TodoContext,
   writer: TodoWriter,
-): Pick<TodoActions, 'createRoutine'> {
+): Pick<TodoActions, 'createRoutine' | 'undoRoutine'> {
   return {
     createRoutine: async ({ categoryId, title, memo, startDate, endDate, recurrence }) => {
-      let created: readonly Persistable<Todo>[] = [];
-      const ok = await writer.commitMany(async () => {
-        const dates = expandRoutineDates({ startDate, endDate, recurrence });
-        if (dates.length === 0) {
-          return [];
-        }
-        const existing = await getRepositories().todos.listByDateRange(startDate, endDate);
-        const siblingsByDate = new Map<DateKey, Todo[]>();
-        for (const todo of existing) {
-          if (todo.categoryId !== categoryId) continue;
-          siblingsByDate.set(todo.date, [...(siblingsByDate.get(todo.date) ?? []), todo]);
-        }
-        // 같은 날짜·카테고리에 같은 제목이 이미 있으면 건너뛴다 — 등록 대상 항목 자신이 속한
-        // 날짜도 이 규칙으로 자연히 제외된다(원본을 그 날짜에 또 만들지 않는다).
-        const normalizedTitle = normalizeTodoTitle(title);
-        const toCreate = dates.filter(
-          (date) =>
-            !(siblingsByDate.get(date) ?? []).some(
-              (sibling) => normalizeTodoTitle(sibling.title) === normalizedTitle,
+      let entities: readonly Persistable<Todo>[] = [];
+      const ok = await writer.commitMany(
+        async () => {
+          const dates = expandRoutineDates({ startDate, endDate, recurrence });
+          if (dates.length === 0) {
+            return [];
+          }
+          const existing = await getRepositories().todos.listByDateRange(startDate, endDate);
+          const siblingsByDate = new Map<DateKey, Todo[]>();
+          for (const todo of existing) {
+            if (todo.categoryId !== categoryId) continue;
+            siblingsByDate.set(todo.date, [...(siblingsByDate.get(todo.date) ?? []), todo]);
+          }
+          // 같은 날짜·카테고리에 같은 제목이 이미 있으면 건너뛴다 — 등록 대상 항목 자신이 속한
+          // 날짜도 이 규칙으로 자연히 제외된다(원본을 그 날짜에 또 만들지 않는다). 기존 투두의
+          // `title` 은 저장 시 이미 정규화된 값이라 새로 정규화할 필요가 없다(`normalizeTodoTitle`
+          // 은 입력값 하나에만 적용).
+          const normalizedTitle = normalizeTodoTitle(title);
+          const toCreate = dates.filter(
+            (date) =>
+              !(siblingsByDate.get(date) ?? []).some(
+                (sibling) => sibling.title === normalizedTitle,
+              ),
+          );
+          entities = toCreate.map((date) =>
+            createTodo(
+              { categoryId, date, title, memo, siblings: siblingsByDate.get(date) ?? [] },
+              ctx.deps,
             ),
-        );
-        created = toCreate.map((date) =>
-          createTodo(
-            { categoryId, date, title, memo, siblings: siblingsByDate.get(date) ?? [] },
-            ctx.deps,
-          ),
-        );
-        return created;
-      });
-      return ok ? created.map((todo) => todo.id) : false;
+          );
+          return entities;
+        },
+        (byId, saved) => {
+          const currentDate = ctx.get().date;
+          const visible = saved.filter((entity) => entity.date === currentDate);
+          return visible.length === 0 ? byId : withTodos(byId, visible);
+        },
+      );
+      return ok ? entities.map((todo) => todo.id) : false;
     },
+
+    undoRoutine: (ids) =>
+      writer.commitMany(
+        async () => {
+          const found = await Promise.all(ids.map((id) => getRepositories().todos.getById(id)));
+          return found
+            .filter((todo): todo is Todo => todo !== undefined)
+            .map((todo) => deleteTodo(todo, ctx.deps));
+        },
+        (byId, saved) => saved.reduce((acc, todo) => withoutTodo(acc, todo.id), byId),
+      ),
   };
 }
 

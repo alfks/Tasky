@@ -18,6 +18,7 @@ import { expandRoutineDates, type RoutineRecurrence } from '@/domain/todo/routin
 import type { Todo } from '@/domain/todo/todo';
 import { validateTodoMemo, validateTodoTitle } from '@/domain/todo/todo.rules';
 
+import { MAX_DATE_KEY, MIN_DATE_KEY } from '@/features/date-strip';
 import { useTodoActions } from '@/features/todo/hooks/useTodoActions';
 import { TODO_MESSAGES } from '@/features/todo/messages';
 import { messageOf } from '@/features/todo/store/todo-state';
@@ -139,7 +140,21 @@ export function useRoutineForm(todo: Todo): RoutineForm {
       setError(messageOf(thrown));
       return null;
     }
-    if (!isValidDateKey(startDate) || !isValidDateKey(endDate)) {
+    if (startDate === '' || endDate === '') {
+      setError(TODO_MESSAGES.routineDatesRequired);
+      return null;
+    }
+    // `<input type="date">` 의 `min`/`max` 는 표시 계층 힌트일 뿐 값을 막지 않는다(직접 타이핑·
+    // 붙여넣기로 벗어날 수 있다) — date-strip 이 다루는 범위(date-strip.md R6) 밖의 날짜는 스트립
+    // 으로 다시 찾아갈 수 없으므로 여기서 실제로 거절한다.
+    if (
+      !isValidDateKey(startDate) ||
+      !isValidDateKey(endDate) ||
+      startDate < MIN_DATE_KEY ||
+      startDate > MAX_DATE_KEY ||
+      endDate < MIN_DATE_KEY ||
+      endDate > MAX_DATE_KEY
+    ) {
       setError(domainErrorMessage('ROUTINE_DATE_RANGE_INVALID'));
       return null;
     }
@@ -167,6 +182,12 @@ export function useRoutineForm(todo: Todo): RoutineForm {
     });
     setSaving(false);
     if (ids === false) {
+      return null;
+    }
+    if (ids.length === 0) {
+      // 반복 조건에 맞는 날짜는 있었지만 전부 이미 등록돼 있었다(중복 방지, todo-actions.ts) —
+      // "0개를 만들었다" 는 토스트를 띄우고 닫는 것보다, 여기서 멈추고 왜인지 알리는 편이 낫다.
+      setError(TODO_MESSAGES.routineAllDuplicates);
       return null;
     }
     setError(null);

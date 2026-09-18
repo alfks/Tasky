@@ -148,3 +148,48 @@ describe('createRoutine', () => {
     expect(state().error).not.toBeNull();
   });
 });
+
+describe('undoRoutine', () => {
+  it('메모리에 없는(다른 날짜) 항목도 저장소에서 지운다', async () => {
+    // 등록만 하고 그 날짜를 "보고" 있지 않다 — 되돌리기 대상은 대부분 메모리 밖이다(R17).
+    const ids = await state().createRoutine({
+      categoryId: FIXTURE_CATEGORY_ID,
+      title: '아침 스트레칭',
+      startDate: FIXTURE_DATE,
+      endDate: '2026-01-29' as DateKey,
+      recurrence: { type: 'weekly', daysOfWeek: [4] },
+    });
+    const created = ids as string[];
+    expect(created).toHaveLength(3);
+    expect(Object.keys(state().byId)).toHaveLength(0); // 아무 날짜도 loadDate 하지 않았다.
+
+    const ok = await state().undoRoutine(created);
+    expect(ok).toBe(true);
+
+    const left = await getRepositories().todos.listByDateRange(
+      FIXTURE_DATE,
+      '2026-01-29' as DateKey,
+    );
+    expect(left).toHaveLength(0);
+  });
+
+  it('지금 보고 있는 날짜의 항목은 메모리에서도 빠진다', async () => {
+    await state().loadDate(FIXTURE_DATE);
+    const ids = await state().createRoutine({
+      categoryId: FIXTURE_CATEGORY_ID,
+      title: '아침 스트레칭',
+      startDate: FIXTURE_DATE,
+      endDate: '2026-01-29' as DateKey,
+      recurrence: { type: 'weekly', daysOfWeek: [4] },
+    });
+    expect(Object.keys(state().byId)).toHaveLength(1);
+
+    await state().undoRoutine(ids as string[]);
+    expect(Object.keys(state().byId)).toHaveLength(0);
+  });
+
+  it('이미 없는 id 는 조용히 건너뛴다', async () => {
+    const ok = await state().undoRoutine(['f0000000-0000-4000-8000-000000009999']);
+    expect(ok).toBe(true);
+  });
+});
