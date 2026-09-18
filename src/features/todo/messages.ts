@@ -73,6 +73,8 @@ export const TODO_MESSAGES = {
   routineCreated: (count: number): string => `${count}개의 할 일을 만들었어요`,
   routineEmptyResult: '이 기간에는 반복 조건에 맞는 날짜가 없어요',
   routineDatesRequired: '시작일과 종료일을 골라 주세요',
+  /** 시작·종료 순서는 맞지만 날짜 스트립 범위(1970~2099) 밖일 때 — 순서 오류와 다른 문구를 쓴다. */
+  routineDateOutOfRange: '1970-01-01~2099-12-31 사이 날짜만 골라 주세요',
   /** 반복 조건에 맞는 날짜가 있었지만 전부 이미 등록돼 있던 경우(중복 방지). */
   routineAllDuplicates: '이미 전부 등록돼 있어요',
 } as const;

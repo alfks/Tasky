@@ -260,13 +260,15 @@ function createRoutineAction(
           }
           // 같은 날짜·카테고리에 같은 제목이 이미 있으면 건너뛴다 — 등록 대상 항목 자신이 속한
           // 날짜도 이 규칙으로 자연히 제외된다(원본을 그 날짜에 또 만들지 않는다). 기존 투두의
-          // `title` 은 저장 시 이미 정규화된 값이라 새로 정규화할 필요가 없다(`normalizeTodoTitle`
-          // 은 입력값 하나에만 적용).
+          // `title` 은 **보통** 저장 시 이미 정규화된 값이지만, 백업 복원 경로(`domain/backup/
+          // validate-rows.ts`)는 형식만 검증하고 정규화한 값을 쓰지 않은 채 원본 문자열을 그대로
+          // 복원한다 — 그래서 기존 값도 다시 정규화해서 비교해야 한다(정규화하지 않으면 앞뒤
+          // 공백이 남은 복원 데이터가 이 규칙을 피해 중복이 생긴다).
           const normalizedTitle = normalizeTodoTitle(title);
           const toCreate = dates.filter(
             (date) =>
               !(siblingsByDate.get(date) ?? []).some(
-                (sibling) => sibling.title === normalizedTitle,
+                (sibling) => normalizeTodoTitle(sibling.title) === normalizedTitle,
               ),
           );
           entities = toCreate.map((date) =>

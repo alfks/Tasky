@@ -128,7 +128,35 @@ describe('매주 반복', () => {
     await user.click(screen.getByRole('button', { name: '목' }));
     await user.click(screen.getByRole('button', { name: '루틴 등록' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('종료일은 시작일');
+    expect(await screen.findByRole('alert')).toHaveTextContent('1970-01-01~2099-12-31');
+    expect(await getRepositories().todos.listAll()).toEqual([]);
+  });
+
+  it('시작·종료 순서는 맞지만 범위 밖이면 "순서" 문구가 아니라 "범위" 문구를 보인다', async () => {
+    // 회귀 방지: 순서는 맞는데(2099-12-31 < 2100-01-01) 범위만 벗어난 입력에서
+    // "종료일은 시작일과 같거나 이후여야 해요" 를 보이면 사용자가 멀쩡한 종료일을 고치려 헤맨다.
+    const user = userEvent.setup();
+    render(<RoutineDialog todo={todo} categories={[공부]} onClose={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText('시작일'), { target: { value: '2099-12-31' } });
+    fireEvent.change(screen.getByLabelText('종료일'), { target: { value: '2100-01-01' } });
+    await user.click(screen.getByRole('button', { name: '목' }));
+    await user.click(screen.getByRole('button', { name: '루틴 등록' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('1970-01-01~2099-12-31');
+    expect(alert).not.toHaveTextContent('종료일은 시작일');
+  });
+
+  it('시작일·종료일을 비우면 안내하고 다이얼로그를 유지한다', async () => {
+    const user = userEvent.setup();
+    render(<RoutineDialog todo={todo} categories={[공부]} onClose={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText('시작일'), { target: { value: '' } });
+    await user.click(screen.getByRole('button', { name: '목' }));
+    await user.click(screen.getByRole('button', { name: '루틴 등록' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('시작일과 종료일을 골라 주세요');
     expect(await getRepositories().todos.listAll()).toEqual([]);
   });
 

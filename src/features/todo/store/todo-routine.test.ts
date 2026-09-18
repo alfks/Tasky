@@ -2,6 +2,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { DateKey } from '@/domain/date/date-key';
+import type { Persistable } from '@/domain/meta';
+import type { Todo } from '@/domain/todo/todo';
 
 import { getRepositories, setRepositories, type Repositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
@@ -9,7 +11,7 @@ import { RepositoryError } from '@/repositories/repository-error';
 
 import { createTodoStore, type TodoStore } from '@/features/todo/store/todo-store';
 import { fixedDeps, FIXTURE_DATE } from '@/test/fixtures/deps';
-import { FIXTURE_CATEGORY_ID } from '@/test/fixtures/todo';
+import { FIXTURE_CATEGORY_ID, makeTodo } from '@/test/fixtures/todo';
 
 type Store = ReturnType<typeof createTodoStore>;
 
@@ -69,6 +71,29 @@ describe('createRoutine', () => {
     );
     expect(all.filter((todo) => todo.date === FIXTURE_DATE)).toHaveLength(1);
     expect(all).toHaveLength(3);
+  });
+
+  it('기존 투두의 제목이 정규화되지 않았어도(백업 복원 등) 중복으로 본다', async () => {
+    // 백업 복원 경로(domain/backup/validate-rows.ts)는 형식만 검증하고 정규화한 값을 쓰지 않아,
+    // 저장소에 앞뒤 공백이 남은 제목이 있을 수 있다 — 그런 값도 픽스처로 직접 넣어 재현한다.
+    await getRepositories().todos.upsert(
+      makeTodo({
+        date: FIXTURE_DATE,
+        categoryId: FIXTURE_CATEGORY_ID,
+        title: ' 아침 스트레칭 ',
+      }) as Persistable<Todo>,
+    );
+
+    const ids = await state().createRoutine({
+      categoryId: FIXTURE_CATEGORY_ID,
+      title: '아침 스트레칭',
+      startDate: FIXTURE_DATE,
+      endDate: FIXTURE_DATE,
+      recurrence: { type: 'weekly', daysOfWeek: [4] },
+    });
+
+    expect(ids).toEqual([]);
+    expect(await getRepositories().todos.listAll()).toHaveLength(1);
   });
 
   it('지금 보고 있는 날짜에 생성된 투두만 메모리에 반영한다(R17)', async () => {

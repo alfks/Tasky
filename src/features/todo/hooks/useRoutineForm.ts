@@ -144,18 +144,23 @@ export function useRoutineForm(todo: Todo): RoutineForm {
       setError(TODO_MESSAGES.routineDatesRequired);
       return null;
     }
+    if (!isValidDateKey(startDate) || !isValidDateKey(endDate)) {
+      setError(domainErrorMessage('ROUTINE_DATE_RANGE_INVALID'));
+      return null;
+    }
     // `<input type="date">` 의 `min`/`max` 는 표시 계층 힌트일 뿐 값을 막지 않는다(직접 타이핑·
     // 붙여넣기로 벗어날 수 있다) — date-strip 이 다루는 범위(date-strip.md R6) 밖의 날짜는 스트립
-    // 으로 다시 찾아갈 수 없으므로 여기서 실제로 거절한다.
+    // 으로 다시 찾아갈 수 없으므로 여기서 실제로 거절한다. **종료일이 시작일보다 빠른 경우와는
+    // 다른 문구를 쓴다** — 둘 다 같은 "종료일은 시작일과 같거나 이후여야 해요"로 뭉치면, 시작·
+    // 종료 순서는 맞는데 범위만 벗어난 입력(예: 2099-12-31~2100-01-01)에서 사용자가 멀쩡한
+    // 종료일을 고치려 헤매게 된다(진짜 원인은 어디에도 안 보인다).
     if (
-      !isValidDateKey(startDate) ||
-      !isValidDateKey(endDate) ||
       startDate < MIN_DATE_KEY ||
       startDate > MAX_DATE_KEY ||
       endDate < MIN_DATE_KEY ||
       endDate > MAX_DATE_KEY
     ) {
-      setError(domainErrorMessage('ROUTINE_DATE_RANGE_INVALID'));
+      setError(TODO_MESSAGES.routineDateOutOfRange);
       return null;
     }
 
