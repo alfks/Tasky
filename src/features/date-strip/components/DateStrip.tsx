@@ -1,15 +1,27 @@
 'use client';
 
-// 날짜 스트립 (date-strip.md §2·§5). 이 앱을 열면 가장 먼저 보이고 가장 자주 만지는 부분이다.
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+// 날짜 스트립 (date-strip.md §2·§5·R14~R17). 이 앱을 열면 가장 먼저 보이고 가장 자주 만지는 부분이다.
+//
+// 주 보기와 월 보기는 **같은 컴포넌트의 두 배치**다(R14). 선택·포커스·요약 조회·키보드 이동은 여기
+// 한 곳에서 돌고, 갈리는 것은 (1) 보이는 날짜 목록, (2) 칸을 어떤 상자에 담느냐 둘뿐이다. 보기마다
+// 컴포넌트를 나누면 무효화 배선(T-56)과 포커스 규약이 두 벌이 되고, 한쪽만 고쳐지는 순간 다른 쪽에서
+// 조용히 되살아난다.
+import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react';
 
 import type { DateKey } from '@/domain/date/date-key';
 
 import { DateCell } from '@/features/date-strip/components/DateCell';
 import { DateStripHeader } from '@/features/date-strip/components/DateStripHeader';
+import { MonthGrid } from '@/features/date-strip/components/MonthGrid';
+import { useRangeSummaries } from '@/features/date-strip/hooks/useRangeSummaries';
 import { useTodayTick } from '@/features/date-strip/hooks/useTodayTick';
-import { useWeekSummaries } from '@/features/date-strip/hooks/useWeekSummaries';
-import { isWithinRange, shiftWithinRange, weekDays } from '@/features/date-strip/lib/week';
+import { monthGridDays, shiftMonthWithinRange } from '@/features/date-strip/lib/month';
+import {
+  DAYS_IN_WEEK,
+  isWithinRange,
+  shiftWithinRange,
+  weekDays,
+} from '@/features/date-strip/lib/week';
 import { useDateStripStore } from '@/features/date-strip/store/date-strip-store';
 
 type DateStripProps = {
@@ -38,6 +50,8 @@ export function DateStrip({ summaryRevision, onDropTodo, onSummaryError }: DateS
   const selectedDate = useDateStripStore((state) => state.selectedDate);
   const today = useDateStripStore((state) => state.today);
   const select = useDateStripStore((state) => state.select);
+  const view = useDateStripStore((state) => state.view);
+  const toggleView = useDateStripStore((state) => state.toggleView);
   useTodayTick();
 
   // 키보드 포커스는 선택과 **별개**다(§5: ←/→ 는 포커스 이동, Enter/Space 가 선택). 포커스가 주를
@@ -45,9 +59,18 @@ export function DateStrip({ summaryRevision, onDropTodo, onSummaryError }: DateS
   // 포커스가 스트립을 떠나면 null 로 돌려 보이는 주가 선택 날짜와 다시 맞는다.
   const [focusedDate, setFocusedDate] = useState<DateKey | null>(null);
   const activeDate = focusedDate ?? selectedDate;
-  const days = weekDays(activeDate);
-  const weekStart = days[0];
-  const summaries = useWeekSummaries(weekStart, summaryRevision, onSummaryError);
+  const isMonth = view === 'month';
+  // 보이는 날짜. 주 보기는 7칸, 월 보기는 그 달의 격자 전부(28~42칸) — 둘 다 **연속 범위**다 (R15).
+  const days = isMonth ? monthGridDays(activeDate) : weekDays(activeDate);
+  // 그래서 요약은 칸 수와 무관하게 **양끝만 넘겨 한 번**에 읽는다 (R17).
+  const summaries = useRangeSummaries(
+    days[0],
+    days[days.length - 1],
+    summaryRevision,
+    onSummaryError,
+  );
+  // ↑/↓ · Home/End 는 보기와 무관하게 **활성 날짜가 속한 주**를 기준으로 움직인다 (R18).
+  const activeWeek = weekDays(activeDate);
 
   const cellRefs = useRef(new Map<DateKey, HTMLButtonElement>());
   // 클릭·Tab 으로 들어온 포커스까지 다시 focus() 하지 않도록, 키 조작으로 옮길 때만 켠다.
@@ -97,9 +120,16 @@ export function DateStrip({ summaryRevision, onDropTodo, onSummaryError }: DateS
     const handlers: Record<string, () => void> = {
       ArrowLeft: () => moveFocus(shiftWithinRange(activeDate, -1)),
       ArrowRight: () => moveFocus(shiftWithinRange(activeDate, 1)),
-      Home: () => moveFocus(days[0]),
-      End: () => moveFocus(days[days.length - 1]),
+      Home: () => moveFocus(activeWeek[0]),
+      End: () => moveFocus(activeWeek[DAYS_IN_WEEK - 1]),
     };
+    // ↑/↓ 는 **월 보기에서만** 잡는다 (R18). 한 줄짜리 주 보기에서 위아래는 갈 곳이 없고, 거기서
+    // 삼키면 브라우저 기본 스크롤만 죽는다. 등록된 전역 단축키와도 겹치지 않는다
+    // (shortcut-catalog: ↑/↓ 단독은 없고 Alt+↑/↓ 는 투두 항목에 포커스가 있을 때만 도는 item 범위다).
+    if (isMonth) {
+      handlers.ArrowUp = () => moveFocus(shiftWithinRange(activeDate, -DAYS_IN_WEEK));
+      handlers.ArrowDown = () => moveFocus(shiftWithinRange(activeDate, DAYS_IN_WEEK));
+    }
     const handler = handlers[event.key];
     if (handler === undefined) return;
     event.preventDefault();
@@ -107,47 +137,85 @@ export function DateStrip({ summaryRevision, onDropTodo, onSummaryError }: DateS
     handler();
   };
 
+  /** 한 칸 이동(주 보기 ±7일, 월 보기 ±1달)한 날짜. 범위(R6) 밖이면 `undefined` 다. */
+  const stepFrom = (date: DateKey, direction: -1 | 1): DateKey | undefined =>
+    isMonth
+      ? shiftMonthWithinRange(date, direction)
+      : shiftWithinRange(date, direction * DAYS_IN_WEEK);
+
+  const registerCell = (date: DateKey, element: HTMLButtonElement | null) => {
+    if (element === null) cellRefs.current.delete(date);
+    else cellRefs.current.set(date, element);
+  };
+
+  /**
+   * 포커스가 칸 묶음을 **떠나면** 보이는 날짜가 선택 날짜와 다시 맞는다. 헤더는 이 묶음 밖이라,
+   * 셀에서 [오늘]·‹ 로 Tab 하면 여기가 돈다 — 두 보기가 같은 규약을 쓰도록 한 곳에 둔다.
+   */
+  const clearFocusOnLeave = (event: FocusEvent<HTMLElement>) => {
+    if (event.currentTarget.contains(event.relatedTarget)) return;
+    setFocusedDate(null);
+  };
+
   return (
     <div className="flex flex-col gap-[var(--space-2)]">
       <DateStripHeader
-        weekStart={weekStart}
+        // 월 표시는 주 보기에서 보이는 주의 월요일을, 월 보기에서 보고 있는 달을 따른다.
+        anchorDate={isMonth ? activeDate : days[0]}
         selectedDate={selectedDate}
         today={today}
-        previousWeek={shiftWithinRange(selectedDate, -7)}
-        nextWeek={shiftWithinRange(selectedDate, 7)}
+        view={view}
+        previousStep={stepFrom(selectedDate, -1)}
+        nextStep={stepFrom(selectedDate, 1)}
+        hasStepAfter={(target, direction) => stepFrom(target, direction) !== undefined}
+        onToggleView={toggleView}
         onSelect={selectFromHeader}
       />
-      <div
-        role="radiogroup"
-        aria-label="날짜 선택"
-        onBlur={(event) => {
-          if (event.currentTarget.contains(event.relatedTarget)) return;
-          setFocusedDate(null);
-        }}
-        // 간격은 어느 폭에서도 --space-2(8px) 다 (§2-A). 넓은 화면에서 `justify-between` 으로 늘리면
-        // 조밀한 주 블록이 흩어진 버튼 7개로 읽히므로, 남는 폭은 블록을 가운데로 미는 데만 쓴다.
-        className="flex snap-x snap-mandatory gap-[var(--space-2)] overflow-x-auto overscroll-x-contain md:justify-center md:overflow-x-visible"
-      >
-        {days.map((day) => (
-          <DateCell
-            key={day}
-            date={day}
-            isSelected={day === selectedDate}
-            isToday={day === today}
-            isFocusTarget={day === activeDate}
-            isDisabled={!isWithinRange(day)}
-            summary={summaries?.get(day)}
-            buttonRef={(element) => {
-              if (element === null) cellRefs.current.delete(day);
-              else cellRefs.current.set(day, element);
-            }}
+      {isMonth ? (
+        <div onBlur={clearFocusOnLeave}>
+          <MonthGrid
+            days={days}
+            anchorDate={activeDate}
+            selectedDate={selectedDate}
+            today={today}
+            focusDate={activeDate}
+            summaries={summaries}
+            onCellRef={registerCell}
             onSelect={select}
             onFocusCell={setFocusedDate}
             onKeyDown={handleKeyDown}
             onDropTodo={onDropTodo}
           />
-        ))}
-      </div>
+        </div>
+      ) : (
+        <div
+          role="radiogroup"
+          aria-label="날짜 선택"
+          onBlur={clearFocusOnLeave}
+          // 간격은 어느 폭에서도 --space-2(8px) 다 (§2-A). 넓은 화면에서 `justify-between` 으로 늘리면
+          // 조밀한 주 블록이 흩어진 버튼 7개로 읽히므로, 남는 폭은 블록을 가운데로 미는 데만 쓴다.
+          className="flex snap-x snap-mandatory gap-[var(--space-2)] overflow-x-auto overscroll-x-contain md:justify-center md:overflow-x-visible"
+        >
+          {days.map((day) => (
+            <DateCell
+              key={day}
+              date={day}
+              isSelected={day === selectedDate}
+              isToday={day === today}
+              isFocusTarget={day === activeDate}
+              isDisabled={!isWithinRange(day)}
+              summary={summaries?.get(day)}
+              buttonRef={(element) => {
+                registerCell(day, element);
+              }}
+              onSelect={select}
+              onFocusCell={setFocusedDate}
+              onKeyDown={handleKeyDown}
+              onDropTodo={onDropTodo}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

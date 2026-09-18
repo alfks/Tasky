@@ -9,7 +9,7 @@ import { setRepositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
 import { DateStrip } from '@/features/date-strip/components/DateStrip';
-import { SUMMARY_ERROR_MESSAGE } from '@/features/date-strip/hooks/useWeekSummaries';
+import { SUMMARY_ERROR_MESSAGE } from '@/features/date-strip/hooks/useRangeSummaries';
 import { useDateStripStore } from '@/features/date-strip/store/date-strip-store';
 import { makeCategory } from '@/test/fixtures/category';
 import { makeTodo, makeTodos } from '@/test/fixtures/todo';
