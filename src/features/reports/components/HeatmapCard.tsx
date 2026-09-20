@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState, type FocusEvent, type KeyboardEvent } from 'react';
 
 import type { DateKey } from '@/domain/date/date-key';
 
@@ -75,6 +75,38 @@ export function HeatmapCard({ weeks, today }: HeatmapCardProps) {
   const flatCells = weeks.flat().filter((cell) => cell.date <= today);
   const [activeCell, setActiveCell] = useState<HeatmapCell | null>(null);
 
+  // roving tabindex(review 라운드2 m20, `DateStrip.tsx`·`DateCell.tsx` 와 같은 처방) — 칸 84개가
+  // 전부 탭 스톱이면 아래 카드로 가는 데 Tab 을 84번 눌러야 한다. 그룹 안엔 `tabIndex=0` 인 칸이
+  // 하나뿐이고(기본은 가장 최근 칸 = 오늘), 그 안에서는 방향키로만 옮긴다.
+  const [focusedDate, setFocusedDate] = useState<DateKey | null>(null);
+  const focusTargetDate = focusedDate ?? flatCells.at(-1)?.date ?? null;
+  const cellRefs = useRef(new Map<DateKey, HTMLButtonElement>());
+
+  const moveFocus = (target: DateKey | undefined) => {
+    if (target === undefined || target > today) return; // 격자 밖 또는 아직 안 그려진(오늘 이후) 칸
+    setFocusedDate(target);
+    cellRefs.current.get(target)?.focus();
+  };
+
+  const handleCellKeyDown = (weekIndex: number, dayIndex: number) => (e: KeyboardEvent) => {
+    const deltas: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0],
+      ArrowRight: [1, 0],
+      ArrowUp: [0, -1],
+      ArrowDown: [0, 1],
+    };
+    const delta = deltas[e.key];
+    if (delta === undefined) return;
+    e.preventDefault();
+    moveFocus(weeks[weekIndex + delta[0]]?.[dayIndex + delta[1]]?.date);
+  };
+
+  /** 포커스가 격자를 떠나면 다음에 Tab 으로 들어올 때 다시 기본 칸(오늘)에서 시작한다. */
+  const clearFocusOnLeave = (e: FocusEvent<HTMLElement>) => {
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setFocusedDate(null);
+  };
+
   if (flatCells.every((cell) => cell.total === 0)) {
     return <p className="text-sm text-muted">최근 12주 동안 기록이 없어요</p>;
   }
@@ -98,39 +130,58 @@ export function HeatmapCard({ weeks, today }: HeatmapCardProps) {
         가 지금 `bg-surface` 라 사실상 같은 면이지만, 그 우연에 기대지 않는다(다른 카드 안에
         중첩되거나 `ReportsCard` 의 배경이 바뀌어도 히트맵은 항상 자기 배경을 스스로 정한다).
       */}
-      <div
-        role="img"
-        aria-label={gridSummaryLabel(flatCells)}
-        className="grid grid-flow-col gap-[var(--space-1)] rounded-[var(--radius-md)] bg-surface p-[var(--space-1)]"
-      >
-        {weeks.map((week) => (
-          <div key={week[0]?.date} className="flex flex-col gap-[var(--space-1)]">
-            {week.map((cell) =>
-              cell.date > today ? (
-                <div key={cell.date} aria-hidden="true" className="h-[10px] w-[10px]" />
-              ) : (
-                // 화면판독기의 1차 채널은 아래 sr-only 표다(role=img 안의 인터랙티브 자손은 AT
-                // 가상 커서에서 일관되게 읽히지 않는다) — 이 버튼의 aria-label 은 Tab 으로 실제
-                // 도달했을 때를 위한 보조 채널이다(중복이지 무의미하지 않다). 목적은 포커스만으로
-                // 위 카드 상단 수치가 바뀌는 것(review m6·m16, 마우스 hover 전용이던 것을 대체).
-                <button
-                  key={cell.date}
-                  type="button"
-                  aria-label={cellLabel(cell)}
-                  onMouseEnter={() => setActiveCell(cell)}
-                  onMouseLeave={() => setActiveCell(null)}
-                  onFocus={() => setActiveCell(cell)}
-                  onBlur={() => setActiveCell(null)}
-                  className={cn(
-                    'h-[10px] w-[10px] rounded-[2px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
-                    FORCED_COLORS_CELL_BORDER,
-                  )}
-                  style={{ backgroundColor: LEVEL_VAR[cell.level] }}
-                />
-              ),
-            )}
-          </div>
-        ))}
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- `role="img"` 안엔
+          onBlur 를 못 단다(jsx-a11y/no-noninteractive-element-interactions, img 는 비인터랙티브
+          역할이다) — 포커스가 격자를 떠났는지만 보는 감싸는 껍데기다. 조작 자체는 안의 button
+          칸들이 받는다(Toast.tsx 의 호버 감지 div 와 같은 처방). */}
+      <div onBlur={clearFocusOnLeave}>
+        <div
+          role="img"
+          aria-label={gridSummaryLabel(flatCells)}
+          className="grid grid-flow-col gap-[var(--space-1)] rounded-[var(--radius-md)] bg-surface p-[var(--space-1)]"
+        >
+          {weeks.map((week, weekIndex) => (
+            <div key={week[0]?.date} className="flex flex-col gap-[var(--space-1)]">
+              {week.map((cell, dayIndex) =>
+                cell.date > today ? (
+                  <div key={cell.date} aria-hidden="true" className="h-[10px] w-[10px]" />
+                ) : (
+                  // 화면판독기의 1차 채널은 아래 sr-only 표다(role=img 안의 인터랙티브 자손은 AT
+                  // 가상 커서에서 일관되게 읽히지 않는다) — 이 버튼의 aria-label 은 Tab 으로 실제
+                  // 도달했을 때를 위한 보조 채널이다(중복이지 무의미하지 않다). 목적은 포커스만으로
+                  // 위 카드 상단 수치가 바뀌는 것(review m6·m16, 마우스 hover 전용이던 것을 대체).
+                  // tabIndex 는 roving(review m20) — 그룹에 0 인 칸이 하나뿐이라 Tab 은 격자를
+                  // 한 번에 드나든다. 격자 안에서는 방향키(handleCellKeyDown)로만 옮긴다.
+                  <button
+                    key={cell.date}
+                    type="button"
+                    ref={(el) => {
+                      if (el) cellRefs.current.set(cell.date, el);
+                      else cellRefs.current.delete(cell.date);
+                    }}
+                    tabIndex={cell.date === focusTargetDate ? 0 : -1}
+                    aria-label={cellLabel(cell)}
+                    onMouseEnter={() => setActiveCell(cell)}
+                    onMouseLeave={() => setActiveCell(null)}
+                    onFocus={() => {
+                      setActiveCell(cell);
+                      // `DateCell.tsx` 와 같은 규약 — 어떻게 도달했든(Tab·클릭·방향키) 포커스가
+                      // 실제로 간 칸이 roving 진입점이 된다.
+                      setFocusedDate(cell.date);
+                    }}
+                    onBlur={() => setActiveCell(null)}
+                    onKeyDown={handleCellKeyDown(weekIndex, dayIndex)}
+                    className={cn(
+                      'h-[10px] w-[10px] rounded-[2px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
+                      FORCED_COLORS_CELL_BORDER,
+                    )}
+                    style={{ backgroundColor: LEVEL_VAR[cell.level] }}
+                  />
+                ),
+              )}
+            </div>
+          ))}
+        </div>
       </div>
       {/* 범례(review m15) — 훑어보는 사람이 진한 칸이 몇 %인지 짐작이라도 하게. 새 토큰을 만들지
           않고 `--color-heatmap-*` 5단계를 그대로 스와치로 쓴다. 장식이라 aria-hidden. */}
@@ -148,23 +199,27 @@ export function HeatmapCard({ weeks, today }: HeatmapCardProps) {
         ))}
         <span>많음</span>
       </div>
-      <table className="sr-only">
-        <caption>날짜별 활동</caption>
-        <thead>
-          <tr>
-            <th scope="col">날짜</th>
-            <th scope="col">완료 정도</th>
-          </tr>
-        </thead>
-        <tbody>
-          {flatCells.map((cell) => (
-            <tr key={cell.date}>
-              <th scope="row">{formatHeatmapDate(cell.date)}</th>
-              <td>{cellStatText(cell)}</td>
+      {/* review 라운드2 M5(Blocker) — `sr-only` 를 `<table>` 에 직접 주지 않는다(TrendChart.tsx
+          와 같은 이유: `display:table` 박스는 1px 지정을 최소값으로만 받아 표가 안 접힌다). */}
+      <div className="sr-only">
+        <table>
+          <caption>날짜별 활동</caption>
+          <thead>
+            <tr>
+              <th scope="col">날짜</th>
+              <th scope="col">완료 정도</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {flatCells.map((cell) => (
+              <tr key={cell.date}>
+                <th scope="row">{formatHeatmapDate(cell.date)}</th>
+                <td>{cellStatText(cell)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

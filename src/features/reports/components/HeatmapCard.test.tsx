@@ -31,8 +31,9 @@ describe('HeatmapCard (stats.md R6·§5)', () => {
     expect(
       screen.getByRole('img', { name: '최근 12주 활동 히트맵, 평균 달성률 50퍼센트' }),
     ).toBeInTheDocument();
+    // review 라운드2 M5 — sr-only 는 표를 감싼 div 에 있다(table 자신에 주면 접히지 않는다).
     const table = screen.getByRole('table', { name: '날짜별 활동' });
-    expect(table).toHaveClass('sr-only');
+    expect(table.parentElement).toHaveClass('sr-only');
     expect(screen.getByRole('cell', { name: '4개 중 4개 완료' })).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: '기록 없음' })).toBeInTheDocument();
   });
@@ -96,5 +97,78 @@ describe('HeatmapCard (stats.md R6·§5)', () => {
 
     expect(cellButton).toHaveFocus();
     expect(screen.getByText(/4개 중 3개 완료/, { selector: 'p' })).toBeInTheDocument();
+  });
+
+  describe('roving tabindex (review 라운드2 m20, DateStrip.tsx·DateCell.tsx 와 같은 처방)', () => {
+    /** 2주(14칸) 픽스처 — 화살표로 주(Left/Right)·요일(Up/Down) 이동을 검증하기 충분하다. */
+    function twoWeeks(): HeatmapCell[][] {
+      const week1: DateKey[] = [
+        '2026-09-07',
+        '2026-09-08',
+        '2026-09-09',
+        '2026-09-10',
+        '2026-09-11',
+        '2026-09-12',
+        '2026-09-13',
+      ];
+      const week2: DateKey[] = [
+        '2026-09-14',
+        '2026-09-15',
+        '2026-09-16',
+        '2026-09-17',
+        '2026-09-18',
+        '2026-09-19',
+        '2026-09-20',
+      ];
+      return [week1, week2].map((week) => week.map((d) => cell(d, 4, 1, 1)));
+    }
+    const GRID_TODAY: DateKey = '2026-09-20';
+
+    it('칸 14개 중 tabIndex=0 인 칸이 하나뿐이고, 기본은 가장 최근 칸(오늘)이다', () => {
+      render(<HeatmapCard weeks={twoWeeks()} today={GRID_TODAY} />);
+
+      const buttons = screen.getAllByRole('button');
+      expect(buttons).toHaveLength(14);
+      const tabbable = buttons.filter((b) => b.getAttribute('tabindex') === '0');
+      expect(tabbable).toHaveLength(1);
+      expect(tabbable[0]).toHaveAccessibleName(/2026년 9월 20일/);
+    });
+
+    it('Tab 한 번으로 격자에 들어가고(84번이 아니라), ArrowLeft 는 한 주 전 같은 요일로 옮긴다', async () => {
+      const user = userEvent.setup();
+      render(<HeatmapCard weeks={twoWeeks()} today={GRID_TODAY} />);
+
+      await user.tab();
+      const today = screen.getByRole('button', { name: /2026년 9월 20일/ });
+      expect(today).toHaveFocus();
+
+      await user.keyboard('{ArrowLeft}');
+      const prevWeekSameDay = screen.getByRole('button', { name: /2026년 9월 13일/ });
+      expect(prevWeekSameDay).toHaveFocus();
+      // roving 진입점도 옮겨 간다 — 이제 이 칸이 tabIndex=0, 나머지는 -1.
+      expect(prevWeekSameDay).toHaveAttribute('tabindex', '0');
+      expect(today).toHaveAttribute('tabindex', '-1');
+    });
+
+    it('ArrowUp 은 같은 주 안에서 하루 전(요일)로 옮긴다', async () => {
+      const user = userEvent.setup();
+      render(<HeatmapCard weeks={twoWeeks()} today={GRID_TODAY} />);
+
+      await user.tab();
+      await user.keyboard('{ArrowUp}');
+
+      expect(screen.getByRole('button', { name: /2026년 9월 19일/ })).toHaveFocus();
+    });
+
+    it('격자 맨 앞에서 ArrowLeft 를 눌러도(더 갈 곳이 없으면) 포커스를 잃지 않는다', async () => {
+      const user = userEvent.setup();
+      render(<HeatmapCard weeks={twoWeeks()} today={GRID_TODAY} />);
+
+      const firstCell = screen.getByRole('button', { name: /2026년 9월 7일/ });
+      firstCell.focus();
+      await user.keyboard('{ArrowLeft}');
+
+      expect(firstCell).toHaveFocus();
+    });
   });
 });
