@@ -74,6 +74,17 @@ describe('focusAfterRowRemoval (R14 순서)', () => {
     expect(focusAfterRowRemoval(anchor)?.textContent).toBe('+ 추가');
   });
 
+  it('목록이 `<nav>` 밖(예: D-day 카드)에서 통째로 사라지면 region 폴백도 없어 null 이다', () => {
+    const list = document.createElement('ul');
+    const row = document.createElement('li');
+    row.append(document.createElement('button'));
+    list.append(row);
+    document.body.append(list);
+    const anchor = rowAnchorOf(row.querySelector('button'));
+    list.remove();
+    expect(focusAfterRowRemoval(anchor)).toBeNull();
+  });
+
   it('행에 포커스 가능한 것이 없으면 목록 컨테이너로 가되 `tabindex=-1` 을 달아 준다', () => {
     const { rows } = buildList(2);
     const anchor = rowAnchorOf(rows[0]?.querySelector('button') ?? null);
