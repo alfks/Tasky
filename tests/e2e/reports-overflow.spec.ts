@@ -78,4 +78,29 @@ test('통계를 "올해"로 열어도 문서 높이가 비정상으로 늘지 �
   // 더 엄격한 불변식도 함께 잰다 — 셸은 뷰포트에 고정돼 있어(CLAUDE.md), 리포트 카드가 무엇을
   // 그리든 문서 자체는 통계를 열기 전과 사실상 같아야 한다(`<main>` 내부 스크롤이 전부 담는다).
   expect(thisYearHeight).toBeLessThanOrEqual(closedHeight * RATIO_THRESHOLD);
+
+  // nit2 — m18 의 유일한 단위 테스트는 `whitespace-nowrap` 클래스 유무만 세는 구조 단정이라
+  // 라운드2 의 거짓 초록불과 같은 모양이다. 여기서는 클래스가 아니라 **렌더된 박스**를 잰다:
+  // 월 눈금("10월")이 실제로 한 줄(≈10px)인지, 서로 겹치지 않는지.
+  const tickBoxes = await trendImg.locator('span').evaluateAll((spans) =>
+    spans
+      .filter((s) => (s.textContent ?? '').trim() !== '')
+      .map((s) => {
+        const r = s.getBoundingClientRect();
+        return { text: s.textContent, x: r.x, width: r.width, height: r.height };
+      }),
+  );
+  expect(tickBoxes.length).toBeGreaterThan(0); // 올해(365일 안팎)엔 월 눈금이 여러 개 찍힌다
+  for (const box of tickBoxes) {
+    // 두 줄로 접히면("1"/"월") 높이가 거의 두 배로 뛴다 — 한 줄(10px 폰트 + leading-none) 근처인지.
+    expect(box.height, `"${box.text}" 의 높이`).toBeLessThanOrEqual(16);
+  }
+  const byX = [...tickBoxes].sort((a, b) => a.x - b.x);
+  for (let i = 1; i < byX.length; i++) {
+    const prev = byX[i - 1]!;
+    const cur = byX[i]!;
+    expect(cur.x, `"${prev.text}" 다음 "${cur.text}" 가 겹치지 않는다`).toBeGreaterThanOrEqual(
+      prev.x + prev.width,
+    );
+  }
 });
