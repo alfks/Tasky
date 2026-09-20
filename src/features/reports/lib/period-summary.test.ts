@@ -27,6 +27,7 @@ describe('buildReportsPeriodData — 재사용 확인 (R2·R3·R6)', () => {
       period: { from: PERIOD_DAYS[0], to: PERIOD_DAYS[2] },
       periodDays: PERIOD_DAYS,
       heatmapDays: HEATMAP_DAYS,
+      today: PERIOD_DAYS[2],
       todos,
       categories: [category],
       focusSessions: [],
@@ -51,6 +52,7 @@ describe('buildReportsPeriodData — 재사용 확인 (R2·R3·R6)', () => {
       period: { from: PERIOD_DAYS[0], to: PERIOD_DAYS[2] },
       periodDays: PERIOD_DAYS,
       heatmapDays: HEATMAP_DAYS,
+      today: PERIOD_DAYS[2],
       todos,
       categories: [catA, catB],
       focusSessions: [],
@@ -73,6 +75,7 @@ describe('buildReportsPeriodData — 재사용 확인 (R2·R3·R6)', () => {
       period: { from: PERIOD_DAYS[0], to: PERIOD_DAYS[2] },
       periodDays: PERIOD_DAYS,
       heatmapDays: HEATMAP_DAYS,
+      today: PERIOD_DAYS[2],
       todos,
       categories: [category],
       focusSessions: [],
@@ -107,6 +110,7 @@ describe('buildReportsPeriodData — 스트릭 (R4)', () => {
       period: { from: PERIOD_DAYS[0], to: PERIOD_DAYS[2] },
       periodDays: PERIOD_DAYS,
       heatmapDays: HEATMAP_DAYS,
+      today: PERIOD_DAYS[2],
       todos,
       categories: [category],
       focusSessions: [],
@@ -127,12 +131,71 @@ describe('buildReportsPeriodData — 스트릭 (R4)', () => {
       period: { from: PERIOD_DAYS[0], to: PERIOD_DAYS[2] },
       periodDays: PERIOD_DAYS,
       heatmapDays: HEATMAP_DAYS,
+      today: PERIOD_DAYS[2],
       todos,
       categories: [category],
       focusSessions: [],
     });
 
     expect(data.streak).toBe(2);
+  });
+
+  it('선택한 기간(periodDays)을 바꿔도 스트릭은 그대로다 — today·heatmapDays 로만 정해진다(review M1)', () => {
+    const category = makeCategory();
+    const todos = [
+      makeTodo({ seq: 1, date: '2026-09-18', categoryId: category.id, done: true }),
+      makeTodo({ seq: 2, date: '2026-09-19', categoryId: category.id, done: true }),
+      makeTodo({ seq: 3, date: '2026-09-20', categoryId: category.id, done: true }),
+    ];
+    const heatmapDays = HEATMAP_DAYS;
+    const today = PERIOD_DAYS[2];
+
+    // "지난 1일" 처럼 기간을 하루로 좁혀도(짧은 기간)...
+    const short = buildReportsPeriodData({
+      period: { from: today, to: today },
+      periodDays: [today],
+      heatmapDays,
+      today,
+      todos,
+      categories: [category],
+      focusSessions: [],
+    });
+    // ...기간을 3일로 넓혀도 스트릭 숫자는 같다 — 기간이 아니라 항상 today 기준 히트맵 창에서만 센다.
+    const long = buildReportsPeriodData({
+      period: { from: PERIOD_DAYS[0], to: PERIOD_DAYS[2] },
+      periodDays: PERIOD_DAYS,
+      heatmapDays,
+      today,
+      todos,
+      categories: [category],
+      focusSessions: [],
+    });
+
+    expect(short.streak).toBe(long.streak);
+    expect(short.streak).toBe(3);
+  });
+
+  it('todayTotal·todayIsAllDone 은 오늘 하루의 값을 그대로 옮긴다(review M4 재현: 2개 중 1개만 완료)', () => {
+    const category = makeCategory();
+    const today = PERIOD_DAYS[2];
+    const todos = [
+      makeTodo({ seq: 1, date: today, categoryId: category.id, done: true }),
+      makeTodo({ seq: 2, date: today, categoryId: category.id, done: false }),
+    ];
+
+    const data = buildReportsPeriodData({
+      period: { from: PERIOD_DAYS[0], to: PERIOD_DAYS[2] },
+      periodDays: PERIOD_DAYS,
+      heatmapDays: HEATMAP_DAYS,
+      today,
+      todos,
+      categories: [category],
+      focusSessions: [],
+    });
+
+    expect(data.streak).toBe(0); // 오늘 미완료라 스트릭은 0(정상)
+    expect(data.todayTotal).toBe(2); // 그런데 오늘 투두는 2개 있다 — "기록 없음"이 아니다
+    expect(data.todayIsAllDone).toBe(false);
   });
 });
 
@@ -155,6 +218,7 @@ describe('buildReportsPeriodData — 집중 시간 (R5)', () => {
       period: { from: PERIOD_DAYS[0], to: PERIOD_DAYS[2] },
       periodDays: PERIOD_DAYS,
       heatmapDays: HEATMAP_DAYS,
+      today: PERIOD_DAYS[2],
       todos: [],
       categories: [],
       focusSessions: sessions,
@@ -173,6 +237,7 @@ describe('buildReportsPeriodData — 집중 시간 (R5)', () => {
       period: { from: PERIOD_DAYS[0], to: PERIOD_DAYS[2] },
       periodDays: PERIOD_DAYS,
       heatmapDays: HEATMAP_DAYS,
+      today: PERIOD_DAYS[2],
       todos: [todo],
       categories: [],
       focusSessions: [],

@@ -5,9 +5,9 @@
 import type { Category } from '@/domain/category/category';
 import type { DateKey } from '@/domain/date/date-key';
 import type { FocusSession } from '@/domain/focus/focus-session';
+import { FOCUS_SUMMARY_NONE_KEY, summarizeFocusSeconds } from '@/domain/focus/focus-summary';
 import { summarizeByCategory, type CategoryCompletion } from '@/domain/todo/completion-rate';
 import { summarizeDays, type DaySummary } from '@/domain/todo/day-summary';
-import { FOCUS_SUMMARY_NONE_KEY, summarizeFocusSeconds } from '@/domain/todo/focus-summary';
 import { computeStreak } from '@/domain/todo/streak';
 import type { Todo } from '@/domain/todo/todo';
 
@@ -27,6 +27,11 @@ export const FOCUS_OTHER_KEY = '__other__';
 export type ReportsPeriodData = {
   trend: TrendPoint[];
   streak: number;
+  /** 오늘(`today`)의 `total`·`isAllDone`(review M4) — `streak === 0` 이 "기록이 아예 없음"인지
+   * "오늘 아직 다 못 했음"인지 `StreakCard` 가 갈라 말하는 근거다. 계산은 하지 않고 이미 만든
+   * `summaries` 에서 오늘 한 칸만 그대로 옮긴다. */
+  todayTotal: number;
+  todayIsAllDone: boolean;
   categoryBars: CategoryCompletion[];
   focusTotalSeconds: number;
   focusByTodo: FocusBucket[];
@@ -39,7 +44,9 @@ type BuildInput = {
   period: PeriodRange;
   periodDays: readonly DateKey[];
   heatmapDays: readonly DateKey[][];
-  /** 기간 ∪ 히트맵 범위를 한 번 읽은 결과(R7) — 여기서 다시 조회하지 않는다. */
+  /** 오늘(달력상 오늘 — 선택한 기간과 무관, review M1). 스트릭 창의 기준일이다. */
+  today: DateKey;
+  /** 기간 ∪ 히트맵 범위를 한 번(또는 review M2 의 분리 조회 두 번) 읽은 결과 — 여기서 다시 조회하지 않는다. */
   todos: readonly Todo[];
   categories: readonly Category[];
   /** 기간 범위만 읽은 결과(R7) — 히트맵은 세션을 쓰지 않는다. */
@@ -101,7 +108,7 @@ function topFocusBuckets(totals: ReadonlyMap<string, number>): FocusBucket[] {
  * `categories`·`focusSessions` 는 훅이 이미 읽어 온 것을 그대로 받는다.
  */
 export function buildReportsPeriodData(input: BuildInput): ReportsPeriodData {
-  const { period, periodDays, heatmapDays, todos, categories, focusSessions } = input;
+  const { period, periodDays, heatmapDays, today, todos, categories, focusSessions } = input;
 
   // 추이·스트릭·히트맵이 같은 summarizeDays 결과를 나눠 쓴다 — 날짜별 요약을 두 번 만들지 않는다.
   const summaryDays = [...new Set([...periodDays, ...heatmapDays.flat()])];
@@ -110,9 +117,19 @@ export function buildReportsPeriodData(input: BuildInput): ReportsPeriodData {
   const periodTodos = todos.filter((todo) => todo.date >= period.from && todo.date <= period.to);
   const focusTotals = summarizeFocusSeconds(focusSessions, 'todo');
 
+  // 스트릭은 기간의 속성이 아니라 이력의 속성이다(review M1) — 프리셋을 바꿔도 같은 화면의
+  // "연속 달성" 숫자가 바뀌면 안 된다. 그래서 `periodDays`(선택 기간)가 아니라 항상 `today` 로
+  // 끝나는 고정 창에서만 센다. 새로 읽지 않는다 — 이미 union 으로 읽어 온 `heatmapDays`(12주)
+  // 범위면 충분하고(코디네이터 지시), `today` 이후 칸(히트맵이 "다음 주" 칸을 포함할 수 있다,
+  // period.ts `heatmapWeeks` 주석)은 걷어내 `HeatmapCard`와 같은 필터를 쓴다.
+  const streakDays = heatmapDays.flat().filter((date) => date <= today);
+  const todaySummary = summaries.get(today);
+
   return {
     trend: trendOf(periodDays, summaries),
-    streak: computeStreak(periodDays.map((date) => summaries.get(date) ?? EMPTY_DAY)),
+    streak: computeStreak(streakDays.map((date) => summaries.get(date) ?? EMPTY_DAY)),
+    todayTotal: todaySummary?.total ?? 0,
+    todayIsAllDone: todaySummary?.isAllDone ?? false,
     categoryBars: summarizeByCategory(periodTodos, categories),
     focusTotalSeconds: [...focusTotals.values()].reduce((sum, seconds) => sum + seconds, 0),
     focusByTodo: topFocusBuckets(focusTotals),
