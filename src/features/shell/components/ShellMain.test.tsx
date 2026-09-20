@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DateKey } from '@/domain/date/date-key';
 
 import { useDateStripStore } from '@/features/date-strip';
+import { useDiaryStore } from '@/features/diary';
 import {
   EMPTY_TODOS_TEXT,
   EMPTY_TODOS_TEXT_FUTURE,
@@ -36,6 +37,13 @@ beforeEach(() => {
   vi.setSystemTime(new Date(2026, 0, 1, 12, 0, 0));
   useDateStripStore.setState({ selectedDate: TODAY, today: TODAY });
   useTodoStore.setState({ byId: {}, date: null, status: 'idle', error: null });
+  useDiaryStore.setState({
+    date: null,
+    entry: undefined,
+    status: 'idle',
+    error: null,
+    pendingRemoval: null,
+  });
 });
 
 afterEach(() => {
@@ -136,6 +144,33 @@ describe('빈 상태 한 줄이 보고 있는 날짜를 말한다 (§2-C)', () =
     for (const text of [EMPTY_TODOS_TEXT, EMPTY_TODOS_TEXT_PAST, EMPTY_TODOS_TEXT_FUTURE]) {
       expect(screen.queryByText(text)).not.toBeInTheDocument();
     }
+  });
+});
+
+describe('다이어리 카드 (diary.md §2)', () => {
+  it('failureCard 가 없으면 오늘의 기록 카드가 함께 그려진다', async () => {
+    await mount(TODAY);
+    expect(screen.getByRole('region', { name: '오늘의 기록' })).toBeInTheDocument();
+  });
+
+  it('failureCard 가 있으면 다이어리 카드를 그리지 않는다(같은 저장소가 죽은 상태)', async () => {
+    render(
+      <ShellMain
+        date={TODAY}
+        categories={[STUDY]}
+        categoriesPending={false}
+        todosFirstLoading={false}
+        failureCard={<p>문제가 생겼어요</p>}
+        todosEmpty
+        header={null}
+        onCreateCategory={() => {}}
+        showBottomAdd={false}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole('region', { name: '오늘의 기록' })).not.toBeInTheDocument();
   });
 });
 
