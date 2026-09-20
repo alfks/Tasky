@@ -8,6 +8,7 @@ import type { ReactNode } from 'react';
 
 import type { Category } from '@/domain/category/category';
 
+import { DdayPanelSection } from '@/features/calendar';
 import { useCommandStore } from '@/features/command';
 import { CategoryPanelSection, CompletionPanelSection } from '@/features/stats';
 import { TimerPanelSection } from '@/features/timer';
@@ -59,6 +60,9 @@ export function ShellInsights({ categories, onCollapse, panelId, className }: Sh
       </Card>
       <Card>
         <CategoryPanelSection categories={categories} />
+      </Card>
+      <Card>
+        <DdayPanelSection />
       </Card>
 
       <div className="mt-auto flex shrink-0 items-center justify-between gap-[var(--space-2)] pt-[var(--space-3)]">
