@@ -2,15 +2,18 @@
 
 // 사이드바 (app-shell.md §2-A · R1 `nav` · R12 하단 고정 영역 · R16~R18 면과 밀도).
 //
-// 상단에는 **앱 이름만** 둔다(R12). 진입점은 하단 셋(테마 토글 · 설정 · 백업/복원)이 전부이고
-// 여기에 다른 버튼을 더하지 않는다 — 레퍼런스 앱의 헤더가 답답했던 이유가 그것이다.
+// 상단에는 **앱 이름만** 둔다(R12). 도구 줄은 테마 토글 · 설정 · 백업/복원 · **루틴**(routine.md §2,
+// T-83) 넷이다 — R12 원문("하단 셋")은 이 티켓으로 넷째 진입점이 붙어 갱신이 필요하다(문서 갱신은
+// 별도 `docs` 티켓 몫이라 여기서는 코드만 앞서 고친다).
 import type { Category } from '@/domain/category/category';
 import type { CategoryId } from '@/domain/ids';
 
 import { BackupLauncher } from '@/features/backup';
 import { CategoryList } from '@/features/category';
+import { useRemovalReturnFocus } from '@/features/shell/hooks/useRemovalReturnFocus';
 import { APP_NAME } from '@/features/shell/lib/title';
 import { ThemeModeToggle, ThemeSettingsPopover } from '@/features/theme';
+import { RoutineManager } from '@/features/todo';
 
 import { cn } from '@/lib/cn';
 
@@ -34,6 +37,8 @@ type ShellSidebarProps = {
    * 겹치고 보더만 한 줄 더 생긴다(면을 두 번 겹치지 않는다 — R18).
    */
   framed?: boolean;
+  /** 루틴 관리 화면(RoutineManager)이 필요로 한다 — 출처·순환 회피 이유는 그 컴포넌트 주석. */
+  categories: readonly Category[];
   onSelectCategory: (id: CategoryId) => void;
   onRemoveCategory: (category: Category) => void;
 };
@@ -41,9 +46,13 @@ type ShellSidebarProps = {
 export function ShellSidebar({
   showTitle,
   framed = false,
+  categories,
   onSelectCategory,
   onRemoveCategory,
 }: ShellSidebarProps) {
+  // 루틴 삭제로 그 행이 사라진 뒤 포커스가 `<body>` 로 떨어지지 않게(app-shell R14) — 카테고리
+  // 삭제가 쓰는 것과 같은 헬퍼, 인스턴스만 이 사이드바 전용으로 새로 둔다.
+  const routineRemovalFocus = useRemovalReturnFocus();
   return (
     <nav
       aria-label="카테고리"
@@ -92,6 +101,11 @@ export function ShellSidebar({
           <ThemeSettingsPopover />
         </div>
         <BackupLauncher />
+        <RoutineManager
+          categories={categories}
+          captureRemovalFocus={routineRemovalFocus.capture}
+          removalReturnFocus={routineRemovalFocus.returnFocus}
+        />
       </div>
     </nav>
   );

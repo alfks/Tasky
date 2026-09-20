@@ -135,6 +135,7 @@ function ShellBody() {
             <ShellSidebar
               showTitle
               framed
+              categories={categories}
               onSelectCategory={focusCategory}
               onRemoveCategory={requestRemove}
             />
