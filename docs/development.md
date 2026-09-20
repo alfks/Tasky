@@ -32,6 +32,31 @@ pnpm check              # PR 전 필수 게이트 (10개 검사)
 
 E2E 브라우저는 설치돼 있다(`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`). `playwright install` 은 쓰지 않는다.
 
+## 동기화(로그인) 로컬 개발
+
+동기화는 Cloudflare Worker(`worker/`)가 붙어야 실제로 동작한다. **이 절 작성 시점에는 Worker
+코드·D1 마이그레이션 파일이 아직 없다**(T-91~T-94 예정) — 지금 들어가 있는 것은 배선뿐이다:
+`wrangler.jsonc` 의 D1 바인딩(`DB`/`tasky`)·`GOOGLE_CLIENT_ID` vars, 그리고 `.env.example`·
+`.dev.vars.example` 의 관련 키. Worker 가 붙은 뒤에는 아래 절차로 로컬에서 로그인·동기화를
+확인한다(SYNC_CREDENTIALS_GUIDE.md §2·§9-7).
+
+```bash
+cp .dev.vars.example .dev.vars                              # 로컬 전용 — .env 와 별개, 직접 채운다
+pnpm exec wrangler d1 migrations apply tasky --local         # 로컬 D1 스키마 적용(마이그레이션 파일이 생긴 뒤)
+pnpm start                                                    # wrangler dev, **8787** — Worker + 로컬 D1
+```
+
+- **`pnpm dev`(Vite, 5173)만으로는 로그인이 안 된다** — Worker 가 없어 `/auth/*`·`/api/*` 를 받을 곳이
+  없다. `vite.config.ts` 의 프록시(`/api`·`/auth` → `127.0.0.1:8787`)로 두 프로세스를 같이 띄워야
+  Vite HMR 을 유지한 채 로그인을 탄다. 실제 로그인 왕복을 확인할 때는 `pnpm start`(8787)를 쓴다.
+- **`.env` 와 `.dev.vars` 는 별개 파일이다.** 배포 자격증명(`scripts/deploy.sh`·CI 가 읽음)은 `.env`,
+  로컬 `wrangler dev` 가 읽는 시크릿은 `.dev.vars` — 값이 같아도 두 파일에 각각 채운다.
+- **로컬 스텁 로그인**: `.dev.vars` 의 `AUTH_STUB=1`(호스트가 localhost/127.0.0.1 일 때만 적용)이면
+  구글 왕복 없이 로그인 플로우를 확인할 수 있다. 배포된 Worker 의 vars 에는 이 키 자체가 없어야
+  한다.
+- 자격증명 발급(구글 OAuth·Cloudflare D1)은 `SYNC_CREDENTIALS_GUIDE.md`(로컬 스크래치패드, 레포
+  미포함 — 오케스트레이터/프로젝트 소유자가 보관)를 따른다.
+
 ## 문서
 
 - **프로젝트 규칙(단일 소스)**: [CLAUDE.md](../CLAUDE.md) · 협업 프로토콜: [AGENTS.md](../AGENTS.md)
