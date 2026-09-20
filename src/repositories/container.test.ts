@@ -25,18 +25,19 @@ describe('container', () => {
     expect(getRepositories()).toBe(repositories);
   });
 
-  it('여섯 저장소를 모두 노출한다 (엔티티 4 + dataset + dday)', () => {
+  it('일곱 저장소를 모두 노출한다 (엔티티 4 + dataset + dday + routines)', () => {
     expect(Object.keys(getRepositories()).sort()).toEqual([
       'categories',
       'dataset',
       'dday',
       'focusSessions',
+      'routines',
       'settings',
       'todos',
     ]);
   });
 
-  it('memory 묶음의 다섯 저장소는 같은 상태를 공유한다', async () => {
+  it('memory 묶음의 여섯 저장소(dday 제외)는 같은 상태를 공유한다', async () => {
     const repositories = getRepositories();
     const todo = contractTodo(contractDeps());
 

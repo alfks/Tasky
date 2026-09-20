@@ -36,6 +36,7 @@ function withRollback(tables: MemoryTables, apply: () => Promise<void>): Promise
     snapshotTable(tables.categories),
     snapshotTable(tables.focusSessions),
     snapshotTable(tables.settings),
+    snapshotTable(tables.routines),
   ];
   return apply().catch((error: unknown) => {
     for (const restore of restores) {
@@ -52,6 +53,7 @@ function puttersFor(tables: MemoryTables): DatasetWriteAppliers {
     categories: (entity) => put(tables.categories, entity),
     focusSessions: (entity) => put(tables.focusSessions, entity),
     settings: (entity) => put(tables.settings, entity),
+    routines: (entity) => put(tables.routines, entity),
   };
 }
 
