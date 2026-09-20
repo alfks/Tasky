@@ -22,7 +22,7 @@
 | `pwa.md`              | 설치·오프라인·업데이트·저장소 지속성                                       | 기능 스펙                 |
 | `timer.md`            | 포커스 타이머(카운트다운·투두 연결·세션 기록·영속화)                       | 기능 스펙                 |
 
-Phase 2: `calendar.md` `stats.md` `routine.md` `diary.md` `sync.md`, Phase 3: `social.md` (지금은 만들지 않음, 라벨 `phase:2`).
+Phase 2(작성됨, 상태 draft — 구현 티켓 발행 전 리뷰·승인 필요): `calendar.md` `stats.md` `routine.md` `diary.md` `sync.md`(동기화는 ADR 선행 필요). Phase 3: `social.md`(아직 만들지 않음, 라벨 `phase:2`).
 기술 계획(마일스톤·티켓 분해·스키마·테스트·성능 예산)은 [../TECH_PLAN.md](../TECH_PLAN.md) — 스펙에 중복 기재 금지.
 
 ## 스펙 포맷 (150줄 이하)
