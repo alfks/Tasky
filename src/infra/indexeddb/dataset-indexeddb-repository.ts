@@ -67,6 +67,9 @@ export function createIndexedDbDatasetRepository(store: Store): DatasetRepositor
         categories: await allRows(store.categories),
         focusSessions: await allRows(store.focusSessions),
         settings,
+        ddays: await allRows(store.ddays),
+        diaryEntries: await allRows(store.diaryEntries),
+        routines: await allRows(store.routines),
       };
     },
     write: async (writes) => {
@@ -89,6 +92,9 @@ export function createIndexedDbDatasetRepository(store: Store): DatasetRepositor
         await replaceRows(store.categories, snapshot.categories);
         await replaceRows(store.focusSessions, snapshot.focusSessions);
         await replaceRows(store.settings, [snapshot.settings]);
+        await replaceRows(store.ddays, snapshot.ddays);
+        await replaceRows(store.diaryEntries, snapshot.diaryEntries);
+        await replaceRows(store.routines, snapshot.routines);
       });
     },
   };

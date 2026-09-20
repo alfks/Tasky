@@ -7,11 +7,13 @@
 // 색만 예외적으로 팔레트 소속을 보지 않고 HEX 형식만 본다 — 프리셋 밖 색이 들어온 파일을 **표시**하는
 // 것은 허용이고(theme R4) 사용자가 그 색을 **선택**할 수 없을 뿐이다(`setAccentColor` 가 막는다).
 import {
+  asArray,
   assertMeta,
   failAt,
   isBackupShapeError,
   META_KEYS,
   optionalBoolean,
+  optionalDateKey,
   optionalInstant,
   optionalNumber,
   optionalString,
@@ -25,9 +27,15 @@ import {
 } from '@/domain/backup/shape';
 import type { Category } from '@/domain/category/category';
 import { validateCategoryEmoji, validateCategoryName } from '@/domain/category/category.rules';
+import type { Dday } from '@/domain/dday/dday';
+import { validateDdayTitle } from '@/domain/dday/dday.rules';
+import type { DiaryEntry } from '@/domain/diary/diary-entry';
+import { validateDiaryContent, validateMoodEmoji } from '@/domain/diary/diary.rules';
 import type { FocusSession } from '@/domain/focus/focus-session';
+import type { Routine } from '@/domain/routine/routine';
 import { normalizeHexColor } from '@/domain/theme/palette';
 import { SETTINGS_ID, type Settings } from '@/domain/theme/settings';
+import { validateRecurrence, type RoutineRecurrence } from '@/domain/todo/routine.rules';
 import type { Todo } from '@/domain/todo/todo';
 import { validateTodoMemo, validateTodoTitle } from '@/domain/todo/todo.rules';
 
@@ -100,6 +108,83 @@ const SETTINGS_KEYS = whitelist<Settings>()([
   'seededAt',
   'lastBackupAt',
 ]);
+const DDAY_KEYS = whitelist<Dday>()([...META_KEYS, 'title', 'date']);
+const DIARY_KEYS = whitelist<DiaryEntry>()([...META_KEYS, 'date', 'emoji', 'content']);
+/**
+ * **`materializedThrough`(루틴 워터마크, ADR-0017)를 넣는다 — 뺀 게 아니라 고른 것이다.**
+ * (리뷰 #108 Major 1 로 아래 근거를 고쳤다 — 원래 문장 중 "구간 전체를 다시 훑어 중복", "유일하게
+ * 안전한 선택" 둘 다 실측과 달라 내렸다.)
+ *
+ * 뺐을 때 복원 뒤 이 필드가 무엇이 될지부터 본다: `Routine` 타입이 이 필드를 필수로 요구하므로
+ * (routine.ts) 어떤 값이든 채워야 `restore()` 가 쓸 `Persistable<Routine>` 이 만들어진다. 후보는
+ * 둘뿐이다 — ① `startDate` 전날(생성 시 기본값, `createRoutine`)로 되돌리기, ② 파일의 `todos` 에서
+ * 그 `routineId` 를 가진 가장 늦은 날짜로 역산하기. **둘 다 위험을 만든다**:
+ * - ①은 그 구간을 지연 생성(`planRoutineFill`)이 다시 훑지만, **구간 전체가 중복되는 것은 아니다**
+ *   — 그 함수는 (날짜·카테고리·정규화 제목)으로 **살아 있는 기존 투두와 대조해 건너뛴다**
+ *   (`routine-fill.ts:53-59`, 실측: 손대지 않은 인스턴스는 재방문해도 생성 0건). 실제로 새로
+ *   생기는 것은 그 사이 **제목을 고쳤거나 다른 날짜로 옮긴** 인스턴스(대조 키가 안 맞아 "없다"로
+ *   보인다)와, **지운** 인스턴스의 부활(대조 대상 자체가 없다)뿐이다.
+ * - ②는 `export-backup.ts` 가 **툼스톤 투두를 내보내지 않으므로**(R2, `todos` 는 항상 살아있는
+ *   것만) 삭제된 인스턴스가 있는 날짜만큼 워터마크가 실제보다 뒤로 밀리고, 그 구간은 지연 생성이
+ *   다시 방문해 **사용자가 지운 인스턴스를 부활**시킨다(routine.md R9 "그 뒤는 완전히 독립" 을
+ *   깬다).
+ *
+ * 둘 다 "복원했더니 지운 인스턴스가 되살아난다" 는 사용자 관점의 데이터 손상이라 제외하는 쪽이
+ * 더 위험하다고 판단했다.
+ *
+ * **넣었을 때도 위험이 없는 것은 아니다.** ADR-0017 "감수하는 점"이 경고하는 "루틴 레코드와 투두가
+ * **따로** 병합되면 워터마크가 앞선 채 투두가 유실될 수 있다"는 위험은, 교체(R7)에서는 성립하지
+ * 않지만(파일 하나가 전량을 갈아치우므로 항상 같이 간다) **병합(R6)에서는 여전히 성립한다** —
+ * `plan-import.ts#planMergeRoutines` 가 병합에서만 워터마크를 "두 값 중 더 늦은 값" 으로 고정해
+ * 두지만, 이것은 위험을 **없앤 것이 아니라 중복·부활(눈에 보이고 국지적) 쪽을 골라 영구 공백(안
+ * 보이고 전역적) 쪽을 피한 것**이다 — 중지→재개(`resumeRoutine`)처럼 인스턴스 없이 워터마크만
+ * 점프하는 경로가 있어서 "합집합에 그 구간 몫이 이미 있다"는 가정이 항상 성립하지는 않는다
+ * (`plan-import.ts#planMergeRoutines` 문서, `plan-import.test.ts` "반례(S5)" 가 실제로 재현한다).
+ * 그래도 넣는 쪽을 고른 이유: 뺐을 때의 두 대안(위 ①·②)은 병합이 아니라 **모든 복원**에서
+ * 매번 지운 인스턴스를 부활시키는 확정된 손상인 반면, 워터마크를 실었을 때의 영구 공백은 "병합 +
+ * 두 기기가 실제로 갈라져 있었다" 는 조건이 겹쳐야만 나는 조건부 위험이다.
+ */
+const ROUTINE_KEYS = whitelist<Routine>()([
+  ...META_KEYS,
+  'title',
+  'memo',
+  'categoryId',
+  'recurrence',
+  'startDate',
+  'endDate',
+  'active',
+  'materializedThrough',
+]);
+
+/** `recurrence.daysOfWeek`/`daysOfMonth` — 숫자 배열인지만 본다(범위는 `validateRecurrence` 가 본다). */
+function asNumberArray(value: unknown, path: string): number[] {
+  const raw = asArray(value, path);
+  if (!raw.every((item): item is number => typeof item === 'number' && Number.isFinite(item))) {
+    failAt(path);
+  }
+  return raw;
+}
+
+/** `Routine.recurrence` (routine.md §4). `type` 이 무엇이냐에 따라 필요한 배열이 갈린다. */
+function readRecurrence(value: unknown, path: string): RoutineRecurrence {
+  const row = pickFields(value, ['type', 'daysOfWeek', 'daysOfMonth'], path);
+  let recurrence: RoutineRecurrence;
+  if (row['type'] === 'weekly') {
+    recurrence = {
+      type: 'weekly',
+      daysOfWeek: asNumberArray(row['daysOfWeek'], `${path}.daysOfWeek`),
+    };
+  } else if (row['type'] === 'monthly') {
+    recurrence = {
+      type: 'monthly',
+      daysOfMonth: asNumberArray(row['daysOfMonth'], `${path}.daysOfMonth`),
+    };
+  } else {
+    return failAt(`${path}.type`);
+  }
+  guard(path, () => void validateRecurrence(recurrence));
+  return recurrence;
+}
 
 /**
  * 도메인 규칙 함수를 검증기로 빌려 쓴다. 규칙 함수는 `DomainError` 를 던지므로 이 경로로 바꿔 준다.
@@ -200,5 +285,57 @@ export function readSettings(value: unknown, path: string): Settings {
   }
   optionalInstant(row, 'seededAt', path);
   optionalInstant(row, 'lastBackupAt', path);
+  return entity;
+}
+
+/** D-day 한 건 (calendar R1). */
+export function readDday(value: unknown, path: string): Dday {
+  const row = pickFields(value, DDAY_KEYS, path);
+  const entity = row as unknown as Dday;
+  assertMeta(entity, path);
+
+  const title = requireString(row, 'title', path);
+  guard(`${path}.title`, () => void validateDdayTitle(title));
+  requireDateKey(row, 'date', path);
+  return entity;
+}
+
+/**
+ * 다이어리 한 건 (diary R1~R3). `content` 는 **빈 문자열이 정상**이다(이모지만 있는 기록) —
+ * `requireString` 에 `allowEmpty: true` 를 준다(diary R3).
+ */
+export function readDiaryEntry(value: unknown, path: string): DiaryEntry {
+  const row = pickFields(value, DIARY_KEYS, path);
+  const entity = row as unknown as DiaryEntry;
+  assertMeta(entity, path);
+
+  requireDateKey(row, 'date', path);
+  const emoji = optionalString(row, 'emoji', path);
+  guard(`${path}.emoji`, () => void validateMoodEmoji(emoji));
+  const content = requireString(row, 'content', path, { allowEmpty: true });
+  guard(`${path}.content`, () => void validateDiaryContent(content));
+  return entity;
+}
+
+/**
+ * 무기한 루틴 한 건 (routine.md §4, ADR-0017). `categoryId` 는 **형식만** 본다 — 삭제된 카테고리를
+ * 계속 가리키는 것이 정상 상태다(routine.md, `routine.ts` 필드 주석). `materializedThrough` 를
+ * 싣는 이유는 `ROUTINE_KEYS` 주석을 본다.
+ */
+export function readRoutine(value: unknown, path: string): Routine {
+  const row = pickFields(value, ROUTINE_KEYS, path);
+  const entity = row as unknown as Routine;
+  assertMeta(entity, path);
+
+  const title = requireString(row, 'title', path);
+  guard(`${path}.title`, () => void validateTodoTitle(title));
+  const memo = optionalString(row, 'memo', path);
+  guard(`${path}.memo`, () => void validateTodoMemo(memo));
+  requireString(row, 'categoryId', path);
+  readRecurrence(row['recurrence'], `${path}.recurrence`);
+  requireDateKey(row, 'startDate', path);
+  optionalDateKey(row, 'endDate', path);
+  requireBoolean(row, 'active', path);
+  requireDateKey(row, 'materializedThrough', path);
   return entity;
 }

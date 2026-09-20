@@ -5,11 +5,16 @@ import { buildBackupDocument, serializeBackup } from '@/domain/backup/export-bac
 import { planImport, planMerge } from '@/domain/backup/plan-import';
 import { parseBackup } from '@/domain/backup/validate-backup';
 import type { DatasetSnapshot } from '@/domain/dataset';
+import { planRoutineFill } from '@/domain/routine/routine-fill';
+import { resumeRoutine } from '@/domain/routine/routine.rules';
 import type { Todo } from '@/domain/todo/todo';
 
 import { makeCategories, makeCategory } from '@/test/fixtures/category';
-import { FIXTURE_INSTANT } from '@/test/fixtures/deps';
+import { makeDday } from '@/test/fixtures/dday';
+import { FIXTURE_INSTANT, fixedDeps } from '@/test/fixtures/deps';
+import { makeDiaryEntry } from '@/test/fixtures/diary';
 import { makeFocusSession } from '@/test/fixtures/focus-session';
+import { makeRoutine } from '@/test/fixtures/routine';
 import { makeSettings } from '@/test/fixtures/settings';
 import { makeTodo, makeTodos } from '@/test/fixtures/todo';
 
@@ -21,6 +26,9 @@ const snapshot = (over: Partial<DatasetSnapshot> = {}): DatasetSnapshot => ({
   categories: [],
   focusSessions: [],
   settings: makeSettings(),
+  ddays: [],
+  diaryEntries: [],
+  routines: [],
   ...over,
 });
 
@@ -172,6 +180,134 @@ describe('planImport — 병합 (R6·ADR-0009 결정 4)', () => {
   });
 });
 
+// T-86, ADR-0017 §재검토 트리거. 병합에서만 워터마크를 max 로 고르는 안전장치 — 함정 노트의 핵심.
+// 리뷰 #108 Major 1: 원래 제목 "위험 없음 증명"은 거짓이었다 — max 도 안전을 보장하지 않고
+// 중복/영구공백 사이의 트레이드오프일 뿐이다(plan-import.ts#planMergeRoutines 문서 참고).
+describe('planImport — 루틴 병합의 materializedThrough (max 트레이드오프, ADR-0017)', () => {
+  it('파일 쪽 다른 필드가 이겨도(newer updatedAt) 워터마크는 두 값 중 더 늦은 쪽을 쓴다', () => {
+    // 로컬이 더 최근(updatedAt)이라 title 등은 로컬이 이기지만, 로컬의 워터마크가 파일보다 이르다.
+    const local = makeRoutine({
+      title: '로컬 제목',
+      updatedAt: LATER,
+      materializedThrough: '2026-02-01',
+    });
+    const incoming = makeRoutine({
+      title: '파일 제목',
+      updatedAt: EARLIER,
+      materializedThrough: '2026-06-01',
+    });
+    const plan = planImport({
+      mode: 'merge',
+      local: snapshot({ routines: [local] }),
+      document: documentOf({ routines: [incoming] }),
+    });
+    const [saved] = plan.snapshot.routines;
+    expect(saved.title).toBe('로컬 제목');
+    // 더 이른 값(로컬)을 그대로 뒀다면 이미 파일 쪽이 만든 구간을 지연 생성이 중복 생성한다.
+    expect(saved.materializedThrough).toBe('2026-06-01');
+  });
+
+  it('로컬 쪽 워터마크가 더 늦으면 그대로 유지한다(뒤로 가지 않는다)', () => {
+    const local = makeRoutine({ updatedAt: EARLIER, materializedThrough: '2026-06-01' });
+    const incoming = makeRoutine({ updatedAt: LATER, materializedThrough: '2026-02-01' });
+    const plan = planImport({
+      mode: 'merge',
+      local: snapshot({ routines: [local] }),
+      document: documentOf({ routines: [incoming] }),
+    });
+    expect(plan.snapshot.routines[0].materializedThrough).toBe('2026-06-01');
+  });
+
+  it('한쪽에만 있는 루틴은 그 쪽 워터마크를 그대로 쓴다', () => {
+    const fileOnly = makeRoutine({ materializedThrough: '2026-04-01' });
+    const plan = planImport({
+      mode: 'merge',
+      local: snapshot(),
+      document: documentOf({ routines: [fileOnly] }),
+    });
+    expect(plan.snapshot.routines[0].materializedThrough).toBe('2026-04-01');
+  });
+
+  it('교체(R7)는 파일 쪽 워터마크를 그대로 쓴다 — max 규칙을 적용하지 않는다', () => {
+    const local = makeRoutine({ materializedThrough: '2026-06-01' });
+    const incoming = makeRoutine({ materializedThrough: '2026-02-01' });
+    const plan = planImport({
+      mode: 'replace',
+      local: snapshot({ routines: [local] }),
+      document: documentOf({ routines: [incoming] }),
+    });
+    expect(plan.snapshot.routines[0].materializedThrough).toBe('2026-02-01');
+  });
+
+  /**
+   * **반례(리뷰 #108 Major 1, S5).** `resumeRoutine`(routine.rules.ts)은 인스턴스를 하나도 만들지
+   * 않고 워터마크만 `today` 전날로 점프시킨다(R7 "소급 없음"). 로컬이 중지된 채 뒤처져 있는 동안
+   * 파일 쪽이 먼저 재개하면, 병합의 max 가 그 앞선 워터마크를 택하는 순간 로컬이 원래 채웠어야 할
+   * 구간이 **영구히** 사라진다 — 재방문해도 복구되지 않는다(다음 지연 생성은 새 워터마크 다음부터만
+   * 본다). 이 테스트는 그 손실을 실제로 재현한다 — "그 구간 몫은 합집합에 이미 있다"는 낡은 주장이
+   * 거짓임을 보여준다.
+   */
+  it('반례(S5): 중지 후 재개는 인스턴스 없이 워터마크만 점프해 — max 가 그 구간을 영구히 건너뛴다', () => {
+    // 매주 목요일 루틴(기본값). 1/22(목)까지 채운 뒤 중지됐다 — 다음은 1/29 부터였어야 한다.
+    const paused = makeRoutine({
+      active: false,
+      materializedThrough: '2026-01-22',
+      updatedAt: EARLIER,
+    });
+    // 파일(다른 기기): 같은 루틴을 3/1 에 재개했다 — 그 사이(1/29~2/26) 인스턴스는 하나도 안 만들고
+    // 워터마크만 재개일 전날(2/28)로 점프한다.
+    const resumed = resumeRoutine(paused, '2026-03-01', fixedDeps({ now: LATER }));
+
+    const plan = planImport({
+      mode: 'merge',
+      local: snapshot({ routines: [paused] }),
+      document: documentOf({ routines: [resumed] }),
+    });
+    const merged = plan.snapshot.routines[0];
+    expect(merged.materializedThrough).toBe('2026-02-28');
+
+    // 병합 직후 지연 생성을 다시 계획해도 1/29·2/5·2/12·2/19·2/26(원래 채웠어야 할 다섯 목요일)은
+    // 다시는 나오지 않는다 — `from` 이 이미 2/28 다음부터라 그 구간은 아예 훑지 않는다.
+    const fillPlan = planRoutineFill(
+      { routine: merged, through: '2026-03-05', existing: [] },
+      fixedDeps(),
+    );
+    const filledDates = (fillPlan?.todos ?? []).map((todo) => todo.date);
+    expect(filledDates).toEqual(['2026-03-05']);
+    for (const lost of ['2026-01-29', '2026-02-05', '2026-02-12', '2026-02-19', '2026-02-26']) {
+      expect(filledDates).not.toContain(lost);
+    }
+  });
+});
+
+/**
+ * **알려진 한계(리뷰 #108 Minor 1) — 고치지 않고 결정만 고정한다.** diary R1("하루 1개")은 `date`
+ * 단위 유일성인데 병합은 `id` 단위 newer-wins 라, id 가 다른 두 행이 같은 날짜를 가리키면 병합이
+ * 막지 못한다. `plan-import.ts`의 diaryEntries 절 주석에 고치지 않는 이유(소프트 삭제엔 `now` 가
+ * 필요한데 `planImport` 가 순수 함수라 그 입력이 없다)를 적었다 — 이 테스트는 그 결정이 실제로
+ * 무엇을 허용하는지를 고정한다.
+ */
+describe('planImport — diaryEntries 병합의 알려진 한계 (diary R1, Minor 1)', () => {
+  it('같은 날짜를 가리키는 서로 다른 id 의 다이어리 두 건이 병합 후에도 둘 다 살아남는다', () => {
+    const oldEntry = makeDiaryEntry({ seq: 1, content: '옛 기록' });
+    // B(로컬)는 옛 기록을 그대로 갖고 있다.
+    // A(파일)는 그 날짜 기록을 지우고(export 가 안 실음) 새 id 로 다시 썼다 — 같은 date, 다른 id.
+    const newEntry = makeDiaryEntry({ seq: 2, content: '새 기록' });
+    expect(newEntry.date).toBe(oldEntry.date);
+    expect(newEntry.id).not.toBe(oldEntry.id);
+
+    const plan = planImport({
+      mode: 'merge',
+      local: snapshot({ diaryEntries: [oldEntry] }),
+      document: documentOf({ diaryEntries: [newEntry] }),
+    });
+
+    // 두 행 다 살아 있는 채로 남는다 — diary R1 위반이지만, 이번 라운드에서는 고치지 않기로 했다.
+    const live = plan.snapshot.diaryEntries.filter((entry) => entry.deletedAt === undefined);
+    expect(live.map((entry) => entry.id).sort()).toEqual([oldEntry.id, newEntry.id].sort());
+  });
+});
+
 describe('planImport — 교체 (R7)', () => {
   it('로컬에만 있던 항목은 사라진다', () => {
     const plan = planImport({
@@ -253,6 +389,55 @@ describe('왕복 — 내보내기 → 파일 → 교체 가져오기 (R2·완료
     expect(plan.snapshot.settings).toEqual(origin.settings);
   });
 
+  // T-86: ddays·diaryEntries·routines 도 왕복을 거친다. **ddays·diaryEntries 의 툼스톤은 애초에
+  // 내보내지 않는다**(export-backup.test.ts "삭제된 D-day·다이어리는 내보내지 않는다") — 아무도 그
+  // id 를 참조하지 않아 categories 처럼 남겨 둘 이유가 없다(todos 와 같은 판단). **routines 의
+  // 툼스톤은 남은 투두가 routineId 로 가리키면 실린다**(routine.md R10 "기록 보존") — 그래서 셋의
+  // 왕복 결과가 다르다(하나라도 빠지면 조용히 사라진다는 원래 취지는 살아 있는 행에 대해서다).
+  it('ddays·diaryEntries 는 살아 있는 행만, routines 는 참조되는 툼스톤까지 살아남는다', () => {
+    const liveDday = makeDday({ seq: 1 });
+    const deletedDday = makeDday({ seq: 2, deletedAt: EARLIER, updatedAt: EARLIER, rev: 4 });
+    const liveDiary = makeDiaryEntry({ seq: 1, emoji: '😄' });
+    const deletedDiary = makeDiaryEntry({ seq: 2, deletedAt: EARLIER, updatedAt: EARLIER });
+    const liveRoutine = makeRoutine({ seq: 1, materializedThrough: '2026-05-01' });
+    const deletedRoutine = makeRoutine({
+      seq: 2,
+      deletedAt: EARLIER,
+      updatedAt: EARLIER,
+      materializedThrough: '2026-03-01',
+    });
+    const linkingTodo = makeTodo({ seq: 3, routineId: deletedRoutine.id });
+
+    const origin = snapshot({
+      ddays: [liveDday, deletedDday],
+      diaryEntries: [liveDiary, deletedDiary],
+      routines: [liveRoutine, deletedRoutine],
+      categories: [makeCategory()],
+      todos: [linkingTodo],
+    });
+
+    const text = serializeBackup(buildBackupDocument(origin, FIXTURE_INSTANT));
+    const parsed = parseBackup(text);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) {
+      return;
+    }
+    const plan = planImport({ mode: 'replace', local: snapshot(), document: parsed.document });
+
+    // ddays·diaryEntries 는 살아 있는 행만 왕복한다 — 툼스톤은 export 단계에서 이미 빠졌다.
+    expect(plan.snapshot.ddays).toEqual([liveDday]);
+    expect(plan.snapshot.diaryEntries).toEqual([liveDiary]);
+    // routines 는 살아 있는 것 + 투두가 가리키는 툼스톤까지 왕복한다.
+    expect([...plan.snapshot.routines].sort((a, b) => (a.id < b.id ? -1 : 1))).toEqual(
+      [liveRoutine, deletedRoutine].sort((a, b) => (a.id < b.id ? -1 : 1)),
+    );
+    // 삭제된 루틴도 투두가 routineId 로 가리키는 한 실린다(routine.md R10 "기록 보존").
+    expect(plan.snapshot.routines.map((routine) => routine.id)).toContain(deletedRoutine.id);
+    // 워터마크(materializedThrough)도 한 글자도 안 바뀐다.
+    const restoredLive = plan.snapshot.routines.find((routine) => routine.id === liveRoutine.id);
+    expect(restoredLive?.materializedThrough).toBe('2026-05-01');
+  });
+
   it('왕복한 파일을 다시 내보내면 문자열이 같다', () => {
     const origin = snapshot({
       categories: [makeCategory()],
@@ -273,6 +458,9 @@ describe('왕복 — 내보내기 → 파일 → 교체 가져오기 (R2·완료
           categories: [...plan.snapshot.categories],
           focusSessions: [...plan.snapshot.focusSessions],
           settings: plan.snapshot.settings,
+          ddays: [...plan.snapshot.ddays],
+          diaryEntries: [...plan.snapshot.diaryEntries],
+          routines: [...plan.snapshot.routines],
         },
         FIXTURE_INSTANT,
       ),

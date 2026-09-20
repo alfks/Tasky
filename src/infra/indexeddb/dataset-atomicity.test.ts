@@ -103,6 +103,9 @@ describe('IndexedDB 트랜잭션 롤백 뒤의 인덱스 상태 (계약이 보�
         categories: [],
         focusSessions: [],
         settings: settingsOf(),
+        ddays: [],
+        diaryEntries: [],
+        routines: [],
       }),
     ).rejects.toThrow();
 

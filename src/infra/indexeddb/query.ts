@@ -19,11 +19,12 @@
 //   - allRows(table)                 툼스톤 **포함** 전량(id asc)        readAll
 //   - clear(table)                   물리 삭제                           restore
 //   - bulkPut(table, entities)       청크 쓰기                           restore
-//   - store.transaction(run)         네 테이블 rw 트랜잭션               write · restore
+//   - store.transaction(run)         일곱 테이블 rw 트랜잭션              write · restore
 //
-// `Store` 는 다섯 테이블(D-day 신설로 넷에서 늘었다, ADR-0016)과 그 중 넷을 묶는 트랜잭션을 하나로
-// 들고 있고, 레포지토리 구현이 그 묶음을 **주입받는다**(아래 `Store` 주석). `ddays` 는 아직
-// `DatasetRepository`(백업/복원)에 들어가지 않으므로 트랜잭션에는 끼지 않는다 — 넷인 채로 남는다.
+// `Store` 는 일곱 테이블(D-day·다이어리·루틴 신설로 넷에서 늘었다, ADR-0016)과 그 전부를 묶는
+// 트랜잭션을 하나로 들고 있고, 레포지토리 구현이 그 묶음을 **주입받는다**(아래 `Store` 주석).
+// `ddays`·`diaryEntries` 는 T-86 부터 `DatasetRepository`(백업/복원)에 들어가며 트랜잭션에도 합류했다
+// (그 전에는 백업 payload 밖이라 넷인 채로 남아 있었다).
 //
 // `store.open()` 은 조회·쓰기가 아니라 **스키마를 여는** 통로다. Dexie 의 지연 오픈 때문에 업그레이드
 // 실패가 아무 호출에서나 raw Dexie 에러로 터지는 것을 막고 `RepositoryError('SCHEMA_UPGRADE_FAILED')`
@@ -76,8 +77,9 @@ const raw = <T extends Meta>(table: LiveTable<T, string>): EntityTable<T, 'id'> 
 const live = <T extends Meta>(rows: T[]): T[] => rows.filter((row) => !isTombstone(row));
 
 /**
- * **한 Dexie 인스턴스**에 묶인 테이블 다섯과 그 중 넷을 묶는 트랜잭션. 레포지토리 구현이 db.ts 를
- * 직접 import 하지 않게 하는 통로이자, 구현이 어느 DB 위에서 도는지를 정하는 유일한 손잡이다.
+ * **한 Dexie 인스턴스**에 묶인 테이블 일곱과 그 전부를 묶는 트랜잭션(T-86 부터 — `ddays`·
+ * `diaryEntries` 가 백업/복원에 들어가며 합류했다, 아래 `transaction` 주석). 레포지토리 구현이
+ * db.ts 를 직접 import 하지 않게 하는 통로이자, 구현이 어느 DB 위에서 도는지를 정하는 유일한 손잡이다.
  *
  * 묶음을 인자로 주고받는 이유는 **테스트 격리**다. IndexedDB 는 브라우저당 이름 하나에 DB 하나라,
  * 예전 계약 테스트처럼 "네 테이블을 비우고 같은 인스턴스를 다시 내주는" 방식은 격리가 아니라 전역
@@ -90,26 +92,29 @@ export type Store = {
   readonly settings: LiveTable<Settings, IndexOf<typeof STORES.settings>>;
   readonly focusSessions: LiveTable<FocusSession, IndexOf<typeof STORES.focusSessions>>;
   /**
-   * D-day (ADR-0016, calendar.md). `DatasetRepository`(백업/복원, 아래 `transaction`)에는 아직 들어가지
-   * 않는다 — `dday-repository.ts` 머리주석 참고.
+   * D-day (ADR-0016, calendar.md). **T-86 부터** `DatasetRepository`(백업/복원, 아래 `transaction`)
+   * 에 들어간다 — 그 전에는 백업 payload 밖이라 기기를 옮기면 조용히 사라졌다(ADR-0016 정정 2).
+   * 다른 테이블과 원자적으로 커밋할 일은 없지만(`routines` 와 달리 단독 `put()` 으로 충분), `restore`
+   * 는 일곱 테이블을 한 트랜잭션으로 갈아치워야 하므로 여기 낀다.
    */
   readonly ddays: LiveTable<Dday, IndexOf<typeof STORES.ddays>>;
   /**
-   * 다이어리(diary.md, ADR-0016). D-day 와 같은 이유로 `DatasetRepository`(아래 `transaction`)에는
-   * 아직 들어가지 않는다 — 백업 payload 에 넣는 일은 별도 티켓(T-86)이다(`dday-repository.ts`
-   * 머리주석과 같은 판단). `getByDate` 가 `date` 인덱스를 탄다(유일 인덱스 아님 — 소프트 삭제
+   * 다이어리(diary.md, ADR-0016). **T-86 부터** `DatasetRepository`(아래 `transaction`)에 D-day 와
+   * 같은 이유로 들어간다. `getByDate` 가 `date` 인덱스를 탄다(유일 인덱스 아님 — 소프트 삭제
    * 툼스톤이 같은 `date` 로 남는다).
    */
   readonly diaryEntries: LiveTable<DiaryEntry, IndexOf<typeof STORES.diaryEntries>>;
   /**
-   * 루틴(routine.md §4, ADR-0016). D-day 와 달리 `DatasetRepository`(아래 `transaction`)**에 들어간다**
-   * — 무기한 루틴의 지연 생성이 그 구간에서 만든 투두들과 루틴의 워터마크(`materializedThrough`)를
-   * 한 트랜잭션으로 커밋해야 하기 때문이다(ADR-0017). `list({ includeInactive })` 는 전량을 읽고
-   * 메모리에서 거른다(`routines: 'id'` 뿐 — ADR-0016 정정, boolean 인덱스는 못 만든다).
+   * 루틴(routine.md §4, ADR-0016). `DatasetRepository`(아래 `transaction`)**에 들어간다** — 무기한
+   * 루틴의 지연 생성이 그 구간에서 만든 투두들과 루틴의 워터마크(`materializedThrough`)를 한
+   * 트랜잭션으로 커밋해야 하기 때문이다(ADR-0017). `list({ includeInactive })` 는 전량을 읽고
+   * 메모리에서 거른다(`routines: 'id'` 뿐 — ADR-0016 정정, boolean 인덱스는 못 만든다). **T-86 부터**
+   * 백업/복원에도 들어간다 — `materializedThrough` 를 그대로 싣는 판단은 `validate-rows.ts` 의
+   * `ROUTINE_KEYS` 주석·ADR-0017 정정을 본다.
    */
   readonly routines: LiveTable<Routine, IndexOf<typeof STORES.routines>>;
   /**
-   * **`DatasetRepository.write`·`restore` 전용** — 이 묶음의 다섯 테이블을 묶는 rw 트랜잭션. 중간에 던지면
+   * **`DatasetRepository.write`·`restore` 전용** — 이 묶음의 일곱 테이블을 묶는 rw 트랜잭션. 중간에 던지면
    * Dexie 가 전부 롤백한다(ADR-0009 결정 2 가 이 둘에만 허용한 예외).
    *
    * **`run` 안에서는 이 파일의 헬퍼만 부른다.** Dexie 트랜잭션은 존(zone)으로 동작해서, 콜백 안에서
@@ -177,14 +182,20 @@ export function storeOn(database: TaskyDb): Store {
     ddays: brand(database.ddays, STORES.ddays),
     diaryEntries: brand(database.diaryEntries, STORES.diaryEntries),
     routines: brand(database.routines, STORES.routines),
+    // Dexie 의 테이블별 오버로드는 최대 5개까지만 타입이 있다 — 일곱 개는 배열 오버로드로 넘긴다
+    // (Dexie 공식 API, 동작은 같다).
     transaction: (run) =>
       database.transaction(
         'rw',
-        database.todos,
-        database.categories,
-        database.settings,
-        database.focusSessions,
-        database.routines,
+        [
+          database.todos,
+          database.categories,
+          database.settings,
+          database.focusSessions,
+          database.routines,
+          database.ddays,
+          database.diaryEntries,
+        ],
         run,
       ),
     open: async () => {

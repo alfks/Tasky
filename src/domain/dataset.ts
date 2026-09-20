@@ -5,6 +5,8 @@
 // (`DatasetRepository`)는 `src/repositories/dataset-repository.ts` 에 두고, 그 파일이 이 타입들을 import 한다
 // (repositories → domain 은 허용 방향). 타입의 단일 소스는 여기 하나다.
 import type { Category } from '@/domain/category/category';
+import type { Dday } from '@/domain/dday/dday';
+import type { DiaryEntry } from '@/domain/diary/diary-entry';
 import type { FocusSession } from '@/domain/focus/focus-session';
 import type { Persistable } from '@/domain/meta';
 import type { Routine } from '@/domain/routine/routine';
@@ -26,12 +28,21 @@ export type DatasetWrite =
   | { table: 'settings'; entity: Persistable<Settings> }
   | { table: 'routines'; entity: Persistable<Routine> };
 
-/** `readAll()` 이 돌려주는 **툼스톤 포함** 전량 스냅샷. 브랜드가 없으므로 그대로 `restore` 에 넘길 수 없다. */
+/**
+ * `readAll()` 이 돌려주는 **툼스톤 포함** 전량 스냅샷. 브랜드가 없으므로 그대로 `restore` 에 넘길 수 없다.
+ *
+ * `ddays`·`diaryEntries`·`routines` 가 있는 이유(T-86, ADR-0016 정정 2·ADR-0017 재검토 트리거):
+ * 백업 내보내기/가져오기(`DatasetRepository.readAll`/`restore`)가 이 스냅샷 하나로 도니, 여기 없는
+ * 테이블은 백업 파일에 실리지 않고 기기를 옮기면 조용히 사라진다 — 세 테이블 모두 그 상태였다.
+ */
 export type DatasetSnapshot = {
   todos: Todo[];
   categories: Category[];
   focusSessions: FocusSession[];
   settings: Settings;
+  ddays: Dday[];
+  diaryEntries: DiaryEntry[];
+  routines: Routine[];
 };
 
 /** `restore()` 가 받는 스냅샷. 원소가 전부 `Persistable` 이다 (ADR-0009 규칙 2). */
@@ -40,4 +51,7 @@ export type PersistableSnapshot = {
   categories: readonly Persistable<Category>[];
   focusSessions: readonly Persistable<FocusSession>[];
   settings: Persistable<Settings>;
+  ddays: readonly Persistable<Dday>[];
+  diaryEntries: readonly Persistable<DiaryEntry>[];
+  routines: readonly Persistable<Routine>[];
 };

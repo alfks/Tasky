@@ -77,10 +77,18 @@ export function pickFields(
 
 const at = (path: string, key: string): string => `${path}.${key}`;
 
-/** 필수 문자열(빈 문자열 불가). */
-export function requireString(row: Record<string, unknown>, key: string, path: string): string {
+/**
+ * 필수 문자열. 기본은 빈 문자열 불가지만, `allowEmpty: true` 를 주면 허용한다 — `DiaryEntry.content`
+ * 처럼 **필수 필드이면서 빈 값이 정상**인 경우가 있다(diary R3: 이모지가 있으면 본문은 비어도 된다).
+ */
+export function requireString(
+  row: Record<string, unknown>,
+  key: string,
+  path: string,
+  options: { allowEmpty?: boolean } = {},
+): string {
   const value: unknown = row[key];
-  if (typeof value !== 'string' || value.length === 0) {
+  if (typeof value !== 'string' || (value.length === 0 && options.allowEmpty !== true)) {
     failAt(at(path, key));
   }
   return value;
@@ -199,6 +207,13 @@ export function requireDateKey(row: Record<string, unknown>, key: string, path: 
     failAt(at(path, key));
   }
   return value;
+}
+
+/** 있으면 `requireDateKey` 와 같은 검사, 없으면 그냥 통과(`Routine.endDate` 처럼 선택 필드). */
+export function optionalDateKey(row: Record<string, unknown>, key: string, path: string): void {
+  if (row[key] !== undefined) {
+    requireDateKey(row, key, path);
+  }
 }
 
 /** `Meta` 공통 필드 이름. `pickFields` 의 키 목록이 이 배열로 시작한다. */

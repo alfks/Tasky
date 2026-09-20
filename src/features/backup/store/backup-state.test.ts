@@ -33,13 +33,16 @@ const selection: BackupSelection = {
     categories: [],
     todos: [],
     focusSessions: [],
+    ddays: [],
+    diaryEntries: [],
+    routines: [],
   },
-  counts: { categories: 4, todos: 312 },
+  counts: { categories: 4, todos: 312, hasOtherData: false },
 };
 
 const state = (over: Partial<BackupState> = {}): BackupState => ({
   ...initialBackupState,
-  current: { categories: 2, todos: 5 },
+  current: { categories: 2, todos: 5, hasOtherData: false },
   ...over,
 });
 
@@ -49,9 +52,16 @@ describe('내보내기 가능 여부 (§2 빈 상태)', () => {
   });
 
   it('데이터가 0개면 내보낼 수 없다', () => {
-    const empty = state({ current: { categories: 0, todos: 0 } });
+    const empty = state({ current: { categories: 0, todos: 0, hasOtherData: false } });
     expect(isEmptyDataset(empty)).toBe(true);
     expect(canExport(empty)).toBe(false);
+  });
+
+  // 리뷰 #108 Major 3.
+  it('카테고리·할 일이 0개라도 그 밖의 데이터(D-day·다이어리·루틴)가 있으면 빈 상태가 아니다', () => {
+    const other = state({ current: { categories: 0, todos: 0, hasOtherData: true } });
+    expect(isEmptyDataset(other)).toBe(false);
+    expect(canExport(other)).toBe(true);
   });
 
   it('아직 읽지 못했으면 "없다" 로 보지 않는다', () => {
@@ -92,7 +102,7 @@ describe('문구', () => {
     expect(
       importResultMessage({
         counts: { added: 20, updated: 3, kept: 289 },
-        source: { categories: 4, todos: 312 },
+        source: { categories: 4, todos: 312, hasOtherData: false },
       }),
     ).toBe('카테고리 4개, 할 일 312개를 가져왔어요 (추가 20 · 갱신 3 · 유지 289)');
   });

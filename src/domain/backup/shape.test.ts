@@ -6,6 +6,7 @@ import {
   assertMeta,
   isBackupShapeError,
   META_KEYS,
+  optionalDateKey,
   optionalString,
   pickFields,
   requireDateKey,
@@ -82,6 +83,38 @@ describe('requireDateKey', () => {
       expect(pathOf(() => requireDateKey({ date: value }, 'date', 'row'))).toBe('row.date');
     },
   );
+});
+
+describe('optionalDateKey', () => {
+  it('없으면 통과한다(선택 필드)', () => {
+    expect(() => optionalDateKey({}, 'endDate', 'row')).not.toThrow();
+  });
+
+  it('있으면 requireDateKey 와 같은 검사를 한다', () => {
+    expect(() => optionalDateKey({ endDate: '2026-01-15' }, 'endDate', 'row')).not.toThrow();
+    expect(pathOf(() => optionalDateKey({ endDate: '2026-02-30' }, 'endDate', 'row'))).toBe(
+      'row.endDate',
+    );
+  });
+});
+
+describe('requireString — allowEmpty (DiaryEntry.content 처럼 빈 값이 정상인 필드)', () => {
+  it('기본값은 빈 문자열을 거부한다(기존 동작 유지)', () => {
+    expect(pathOf(() => requireString({ content: '' }, 'content', 'row'))).toBe('row.content');
+  });
+
+  it('allowEmpty: true 면 빈 문자열을 받는다', () => {
+    expect(requireString({ content: '' }, 'content', 'row', { allowEmpty: true })).toBe('');
+  });
+
+  it('allowEmpty: true 라도 필드 자체가 없거나 문자열이 아니면 거부한다', () => {
+    expect(pathOf(() => requireString({}, 'content', 'row', { allowEmpty: true }))).toBe(
+      'row.content',
+    );
+    expect(
+      pathOf(() => requireString({ content: 1 }, 'content', 'row', { allowEmpty: true })),
+    ).toBe('row.content');
+  });
 });
 
 describe('requireNumber', () => {

@@ -71,6 +71,22 @@ boolean 값을 색인 키로 쓸 수 없다(`Routine.active: boolean`) — 그 �
 버전을 하나 올리는 방식의 마이그레이션으로는 표현할 수 없다. 회귀 테스트로
 `migrate-backup.test.ts`(리뷰 라운드 1 Major-4 대응 테스트)가 이 계약을 고정한다.
 
+**T-86 완료 기록.** 위 정정이 예고한 대로 세 배열을 실제로 읽게 됐다 — `readDocument`는
+`body['ddays'] ?? []` **그대로가 아니라** `body['ddays'] === undefined ? [] : body['ddays']` 로
+읽는다(`??`는 명시적으로 들어온 `null`까지 "없음"으로 묻어 버려, 형식 오류여야 할 값이 조용히
+빈 배열로 통과한다 — `validate-backup.test.ts` "routines 가 배열이 아님 → { routines: null }" 가
+이 차이를 고정한다). `BACKUP_SCHEMA_VERSION`은 **올리지 않았다** — `DB_VERSION`과 반드시 같아야
+한다는 계약(`backup-document.test.ts`)이 있고, 이번 변경은 IndexedDB 스키마(테이블 신설)를 새로
+하지 않으므로 `DB_VERSION`을 올릴 이유가 없다. `ddays`·`diaryEntries`는 내보낼 때 툼스톤을 뺀다
+(아무 배열도 그 id를 참조하지 않는다 — `todos`와 같은 판단). `routines`는 `categories`와 같은 자리에
+있다 — 살아 있는 것 + 남은 `todos`가 `routineId`로 가리키는 툼스톤까지 싣는다(routine.md R10
+"기록 보존"). `Routine.materializedThrough`(루틴 워터마크, ADR-0017)는 **그대로 싣는다** — 제외를
+검토했으나 대안(초기값 재설정·투두에서 역산)이 모두 "복원했더니 투두가 중복되거나 지운 인스턴스가
+부활한다"는 더 큰 위험을 낳아 기각했다(근거는 `validate-rows.ts` `ROUTINE_KEYS` 주석). 병합(R6)이
+루틴 레코드와 투두를 따로 합치며 생기는 위험(ADR-0017 "감수하는 점")은 `plan-import.ts` 의
+`planMergeRoutines` 가 병합에서만 워터마크를 "두 값 중 더 늦은 쪽"으로 고정해 막는다. 상세는
+`docs/decisions/ADR-0017-routine-watermark-materialization.md` 재검토 트리거 항목을 본다.
+
 ## 재검토 트리거
 
 - **sync.md(ADR-0015) 구현 착수 시 `(routineId, date)` 중복 생성 경합을 반드시 재검토한다**(§결정 2) — 두 기기가 같은 미생성 구간에 동시에 들어가면 애플리케이션 레벨 dedup만으로는 같은 인스턴스가 두 번 생길 수 있다. 그때 `[routineId+date]` 복합 유일 인덱스(조회용이 아니라 DB 레벨 제약용)를 v4에서 추가할지, 서버(D1) 쪽 유일 제약으로 해결할지 sync 구현 티켓에서 정한다.

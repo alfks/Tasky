@@ -23,15 +23,18 @@ const selection: BackupSelection = {
     categories: [],
     todos: [],
     focusSessions: [],
+    ddays: [],
+    diaryEntries: [],
+    routines: [],
   },
-  counts: { categories: 4, todos: 312 },
+  counts: { categories: 4, todos: 312, hasOtherData: false },
 };
 
 function openWith(over: Partial<typeof initialBackupState> = {}) {
   useBackupStore.setState({
     ...initialBackupState,
     open: true,
-    current: { categories: 4, todos: 312 },
+    current: { categories: 4, todos: 312, hasOtherData: false },
     refreshedAt: '2026-09-15T09:00:00.000Z',
     ...over,
   });
@@ -71,9 +74,16 @@ describe('BackupDialog — 구조 (§2)', () => {
   });
 
   it('데이터가 없으면 내보내기 버튼이 꺼지고 빈 상태 문구가 나온다', () => {
-    openWith({ current: { categories: 0, todos: 0 } });
+    openWith({ current: { categories: 0, todos: 0, hasOtherData: false } });
     expect(screen.getByText('아직 내보낼 데이터가 없어요')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'JSON 내보내기' })).toBeDisabled();
+  });
+
+  // 리뷰 #108 Major 3: D-day·다이어리만 있어도(카테고리·할 일 0개) 내보내기를 막지 않는다.
+  it('카테고리·할 일이 0개라도 그 밖의 데이터가 있으면 내보내기 버튼이 켜진다', () => {
+    openWith({ current: { categories: 0, todos: 0, hasOtherData: true } });
+    expect(screen.getByText('카테고리·할 일은 없지만 그 밖의 데이터가 있어요')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'JSON 내보내기' })).toBeEnabled();
   });
 
   it('파일을 고르면 그 파일이 담고 있는 개수를 보여준다', () => {

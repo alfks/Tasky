@@ -23,7 +23,8 @@ export interface DatasetRepository {
    */
   write(writes: readonly DatasetWrite[]): Promise<void>;
   /**
-   * 백업 가져오기 전용: 네 테이블을 물리적으로 비우고 스냅샷으로 대체하는 단일 트랜잭션.
+   * 백업 가져오기 전용: 일곱 테이블(T-86 이후 `ddays`·`diaryEntries`·`routines` 포함)을 물리적으로
+   * 비우고 스냅샷으로 대체하는 단일 트랜잭션.
    * 인자가 **툼스톤을 포함한 최종 전량**이라 물리 삭제가 정보를 지우지 않는다(ADR-0009 결정 4).
    * 인자는 `PersistableSnapshot` 이므로 `readAll()` 결과를 그대로 넘기면 컴파일 에러다(ADR-0009 규칙 2).
    */

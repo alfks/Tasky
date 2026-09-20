@@ -120,9 +120,18 @@ export function issueMessage(issue: BackupIssue | null): string | null {
   return issue === null ? null : backupIssueMessage(issue);
 }
 
-/** 내보낼 것이 하나도 없는 상태 (§2 빈 상태). 아직 못 읽었으면 "없다" 로 보지 않는다. */
+/**
+ * 내보낼 것이 하나도 없는 상태 (§2 빈 상태). 아직 못 읽었으면 "없다" 로 보지 않는다.
+ * 카테고리·할 일이 0개라도 `hasOtherData`(D-day·다이어리·루틴, T-86)가 있으면 빈 상태가 아니다
+ * (리뷰 #108 Major 3 — 이 조건이 없으면 그 데이터만 있는 사용자가 내보내기를 못 누른다).
+ */
 export function isEmptyDataset(state: BackupState): boolean {
-  return state.current !== null && state.current.categories === 0 && state.current.todos === 0;
+  return (
+    state.current !== null &&
+    state.current.categories === 0 &&
+    state.current.todos === 0 &&
+    !state.current.hasOtherData
+  );
 }
 
 /** 내보내기 버튼을 누를 수 있는가. */

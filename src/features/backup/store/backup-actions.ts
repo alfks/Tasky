@@ -102,16 +102,28 @@ async function reloadViews(): Promise<void> {
 }
 
 export function createBackupActions(ctx: BackupContext): BackupActions {
-  /** 다이얼로그가 쓰는 정확한 개수. 엔티티 조회라 툼스톤이 섞이지 않는다(= `backupCounts` 와 같은 수). */
+  /**
+   * 다이얼로그가 쓰는 정확한 개수. 엔티티 조회라 툼스톤이 섞이지 않는다(= `backupCounts` 와 같은 수).
+   * `hasOtherData`(리뷰 #108 Major 3, T-86)도 같은 방식으로 구한다 — 셋 다 엔티티 조회라 각자
+   * 툼스톤을 감춘다.
+   */
   const refresh = async (): Promise<void> => {
     try {
       const repositories = getRepositories();
-      const [categoryList, todoList, settings] = await Promise.all([
-        repositories.categories.list({ includeClosed: true }),
-        repositories.todos.listAll(),
-        repositories.settings.get(),
-      ]);
-      const current = { categories: categoryList.length, todos: todoList.length };
+      const [categoryList, todoList, settings, ddayList, diaryList, routineList] =
+        await Promise.all([
+          repositories.categories.list({ includeClosed: true }),
+          repositories.todos.listAll(),
+          repositories.settings.get(),
+          repositories.dday.list(),
+          repositories.diaryEntries.list(),
+          repositories.routines.list({ includeInactive: true }),
+        ]);
+      const current = {
+        categories: categoryList.length,
+        todos: todoList.length,
+        hasOtherData: ddayList.length > 0 || diaryList.length > 0 || routineList.length > 0,
+      };
       const lastBackupAt = settings?.lastBackupAt;
       const confirmation = readBackupConfirmation(lastBackupAt);
       const now = ctx.deps.now();

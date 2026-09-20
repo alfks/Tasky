@@ -37,6 +37,8 @@ function withRollback(tables: MemoryTables, apply: () => Promise<void>): Promise
     snapshotTable(tables.focusSessions),
     snapshotTable(tables.settings),
     snapshotTable(tables.routines),
+    snapshotTable(tables.ddays),
+    snapshotTable(tables.diaryEntries),
   ];
   return apply().catch((error: unknown) => {
     for (const restore of restores) {
@@ -73,6 +75,9 @@ export function createMemoryDatasetRepository(tables: MemoryTables): DatasetRepo
         categories: allRows(tables.categories),
         focusSessions: allRows(tables.focusSessions),
         settings,
+        ddays: allRows(tables.ddays),
+        diaryEntries: allRows(tables.diaryEntries),
+        routines: allRows(tables.routines),
       };
     },
     write: async (writes) => {
@@ -90,6 +95,9 @@ export function createMemoryDatasetRepository(tables: MemoryTables): DatasetRepo
       replaceRows(tables.categories, snapshot.categories);
       replaceRows(tables.focusSessions, snapshot.focusSessions);
       replaceRows(tables.settings, [snapshot.settings]);
+      replaceRows(tables.ddays, snapshot.ddays);
+      replaceRows(tables.diaryEntries, snapshot.diaryEntries);
+      replaceRows(tables.routines, snapshot.routines);
     },
   };
 }

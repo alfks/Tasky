@@ -4,7 +4,10 @@
 //
 // `DatasetRepository` 는 엔티티 레포지토리가 아니므로 `READS` 전수 대조의 대상이 아니다(ADR-0007 규칙 2).
 import type { DatasetWrite } from '@/domain/dataset';
-import { markDeleted } from '@/domain/meta';
+import type { Dday } from '@/domain/dday/dday';
+import type { DiaryEntry } from '@/domain/diary/diary-entry';
+import { createMeta, markDeleted, type MetaDeps, type Persistable } from '@/domain/meta';
+import type { Routine } from '@/domain/routine/routine';
 import { SETTINGS_ID } from '@/domain/theme/settings';
 
 import type { Repositories } from '@/repositories/container';
@@ -15,6 +18,8 @@ import {
   contractSettings,
   contractTodo,
   idsOf,
+  CONTRACT_CATEGORY_ID,
+  CONTRACT_DATE,
   type ContractTarget,
 } from '@/repositories/contract';
 import { runCategoryRemovalContract } from '@/repositories/dataset-removal.contract';
@@ -22,6 +27,38 @@ import { isRepositoryError, type RepositoryErrorCode } from '@/repositories/repo
 
 const T1 = '2026-01-16T09:30:00.000Z';
 const OLD = '2025-12-01T00:00:00.000Z';
+
+/**
+ * D-day·다이어리·루틴 한 건씩(리뷰 Major 2). 각자의 `.contract.ts`(`dday-repository.contract.ts` 등)
+ * 가 이미 쓰는 것과 같은 모양의 로컬 팩토리다 — `@/test/fixtures` 를 못 쓰는 이유는 이 파일 머리주석과
+ * 같다(ARCHITECTURE §1 허용 목록).
+ */
+function contractDday(
+  deps: MetaDeps,
+  fields: Partial<Dday> & { id?: string } = {},
+): Persistable<Dday> {
+  return createMeta<Dday>(deps, { title: 'D-day', date: CONTRACT_DATE, ...fields });
+}
+function contractDiaryEntry(
+  deps: MetaDeps,
+  fields: Partial<DiaryEntry> & { id?: string } = {},
+): Persistable<DiaryEntry> {
+  return createMeta<DiaryEntry>(deps, { date: CONTRACT_DATE, content: '기록', ...fields });
+}
+function contractRoutine(
+  deps: MetaDeps,
+  fields: Partial<Routine> & { id?: string } = {},
+): Persistable<Routine> {
+  return createMeta<Routine>(deps, {
+    title: '운동',
+    categoryId: CONTRACT_CATEGORY_ID,
+    recurrence: { type: 'weekly', daysOfWeek: [4] },
+    startDate: CONTRACT_DATE,
+    active: true,
+    materializedThrough: CONTRACT_DATE,
+    ...fields,
+  });
+}
 
 /**
  * 거절의 **타입과 code 까지** 단언한다.
@@ -162,6 +199,9 @@ export function runDatasetRepositoryContract(target: ContractTarget): void {
         categories: [category],
         focusSessions: [],
         settings,
+        ddays: [],
+        diaryEntries: [],
+        routines: [],
       });
 
       const snapshot = await repos.dataset.readAll();
@@ -169,6 +209,49 @@ export function runDatasetRepositoryContract(target: ContractTarget): void {
       expect(idsOf(snapshot.categories)).toEqual([category.id]);
       expect(snapshot.settings).toEqual({ ...settings });
       expect(await repos.todos.getById(stale.id)).toBeUndefined();
+    });
+
+    /**
+     * 리뷰 Major 2(#108): 세 테이블을 `[]` 로만 넘기는 계약은 `replaceRows(store.ddays, …)` 같은
+     * 통로 한 줄이 통째로 빠져도 계약 55건이 전부 통과한다(실측: 지워 보고 확인). 이 테스트는 실제로
+     * 채운 로우로 왕복시키고 **엔티티 저장소에서도 같은 결과가 보이는지**까지 본다 — `readAll` 만
+     * 보면 memory·indexeddb 가 `dataset` 전용 테이블에만 쓰고 엔티티 저장소가 보는 테이블은 안
+     * 갈아치우는 배선 실수를 놓친다(이 PR 자체가 memory 쪽에서 그 둘을 분리했다가 합친 이력이 있다).
+     */
+    it('② restore 는 ddays·diaryEntries·routines 도 물리적으로 갈아치운다 — 엔티티 저장소도 같은 결과를 본다', async () => {
+      const deps = contractDeps();
+      const staleDday = contractDday(deps, { title: '지워질 것' });
+      await repos.dday.upsert(staleDday);
+      const staleDiary = contractDiaryEntry(deps, { content: '지워질 것' });
+      await repos.diaryEntries.upsert(staleDiary);
+      const staleRoutine = contractRoutine(deps, { title: '지워질 것' });
+      await repos.routines.upsert(staleRoutine);
+
+      const keptDeps = contractDeps({ seed: 50 });
+      const category = contractCategory(keptDeps);
+      const dday = contractDday(keptDeps, { title: '남을 것' });
+      const diary = contractDiaryEntry(keptDeps, { content: '남을 것' });
+      const routine = contractRoutine(keptDeps, { title: '남을 것', categoryId: category.id });
+
+      await repos.dataset.restore({
+        todos: [],
+        categories: [category],
+        focusSessions: [],
+        settings: contractSettings(contractDeps()),
+        ddays: [dday],
+        diaryEntries: [diary],
+        routines: [routine],
+      });
+
+      const snapshot = await repos.dataset.readAll();
+      expect(idsOf(snapshot.ddays)).toEqual([dday.id]);
+      expect(idsOf(snapshot.diaryEntries)).toEqual([diary.id]);
+      expect(idsOf(snapshot.routines)).toEqual([routine.id]);
+
+      expect(await repos.dday.list()).toEqual([dday]);
+      expect(idsOf(await repos.diaryEntries.list())).toEqual([diary.id]);
+      expect(idsOf(await repos.routines.list())).toEqual([routine.id]);
+      expect(idsOf(await repos.dday.list())).not.toContain(staleDday.id);
     });
 
     it('④ 병합에서 로컬 툼스톤이 파일의 더 오래된 비삭제 로우로 부활하지 않는다 (ADR-0009 규칙 3)', async () => {
@@ -188,6 +271,9 @@ export function runDatasetRepositoryContract(target: ContractTarget): void {
         categories: [tombstone],
         focusSessions: [],
         settings: contractSettings(contractDeps()),
+        ddays: [],
+        diaryEntries: [],
+        routines: [],
       });
 
       const snapshot = await repos.dataset.readAll();

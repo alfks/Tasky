@@ -83,5 +83,11 @@ describe('migrateBackup (R3)', () => {
     const result = validateBackup(v3WithoutNewTables);
 
     expect(result.ok).toBe(true);
+    // T-86: 이제 이 세 배열을 실제로 읽으므로, 없는 값은 빈 배열로 채워져야지 거부되면 안 된다.
+    if (result.ok) {
+      expect(result.document.ddays).toEqual([]);
+      expect(result.document.diaryEntries).toEqual([]);
+      expect(result.document.routines).toEqual([]);
+    }
   });
 });

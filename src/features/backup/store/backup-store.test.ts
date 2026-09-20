@@ -45,6 +45,9 @@ const baseSnapshot = (over: Partial<DatasetSnapshot> = {}): DatasetSnapshot => (
   todos: makeTodos(3),
   focusSessions: [makeFocusSession({ status: 'completed' })],
   settings: makeSettings(),
+  ddays: [],
+  diaryEntries: [],
+  routines: [],
   ...over,
 });
 
@@ -95,6 +98,9 @@ async function seed(snapshot: DatasetSnapshot): Promise<void> {
     todos: snapshot.todos.map(persist),
     focusSessions: snapshot.focusSessions.map(persist),
     settings: persist(snapshot.settings),
+    ddays: snapshot.ddays.map(persist),
+    diaryEntries: snapshot.diaryEntries.map(persist),
+    routines: snapshot.routines.map(persist),
   });
 }
 
@@ -108,6 +114,9 @@ function fileTextOf(snapshot: DatasetSnapshot): string {
     todos: snapshot.todos,
     focusSessions: snapshot.focusSessions,
     settings: snapshot.settings,
+    ddays: snapshot.ddays,
+    diaryEntries: snapshot.diaryEntries,
+    routines: snapshot.routines,
   });
 }
 
@@ -127,7 +136,7 @@ beforeEach(async () => {
 
 describe('refresh — 현재 상태 읽기 (§2·R10·R14)', () => {
   it('개수와 마지막 백업 시각을 읽는다', () => {
-    expect(store.getState().current).toEqual({ categories: 1, todos: 3 });
+    expect(store.getState().current).toEqual({ categories: 1, todos: 3, hasOtherData: false });
     expect(store.getState().lastBackupAt).toBeUndefined();
   });
 
@@ -178,7 +187,7 @@ describe('exportBackup (R1·R2·R10)', () => {
   });
 
   it('데이터가 없으면 내보내지 않는다 (§2 빈 상태)', async () => {
-    await seed({ categories: [], todos: [], focusSessions: [], settings: makeSettings() });
+    await seed(baseSnapshot({ categories: [], todos: [], focusSessions: [] }));
     await store.getState().refresh();
     expect(await store.getState().exportBackup()).toBe(false);
     expect(downloads).toHaveLength(0);
@@ -301,7 +310,11 @@ describe('selectFile — 손상된 파일 주입 (R4·R8·R9)', () => {
 
   it('정상 파일은 담고 있는 개수를 미리 보여준다', async () => {
     await store.getState().selectFile(fakeFile('ok.json', fileTextOf(baseSnapshot())));
-    expect(store.getState().selection?.counts).toEqual({ categories: 1, todos: 3 });
+    expect(store.getState().selection?.counts).toEqual({
+      categories: 1,
+      todos: 3,
+      hasOtherData: false,
+    });
   });
 });
 
@@ -407,7 +420,9 @@ describe('왕복 — 내보낸 파일을 그대로 교체 가져오기', () => {
     const exported = downloads[0].text;
 
     // 빈 브라우저 프로필: 설정 행만 있는 저장소에 같은 파일을 교체로 넣는다.
-    await seed({ categories: [], todos: [], focusSessions: [], settings: before.settings });
+    await seed(
+      baseSnapshot({ categories: [], todos: [], focusSessions: [], settings: before.settings }),
+    );
     await store.getState().refresh();
     await store.getState().selectFile(fakeFile('roundtrip.json', exported));
     store.getState().setMode('replace');
@@ -427,6 +442,9 @@ describe('runImport — 교체 (R7)', () => {
         todos: [],
         focusSessions: [],
         settings: makeSettings({ accentColor: '#123456' }),
+        ddays: [],
+        diaryEntries: [],
+        routines: [],
       }),
     );
 
@@ -786,6 +804,9 @@ describe('runImport — 파일은 신뢰하지 않는다', () => {
           todos: [],
           focusSessions: [older, newer],
           settings: makeSettings(),
+          ddays: [],
+          diaryEntries: [],
+          routines: [],
         }),
       ),
     );

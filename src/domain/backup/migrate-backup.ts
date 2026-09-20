@@ -22,10 +22,14 @@ const migrateV1ToV2: MigrationStep = (body) => {
 };
 
 /**
- * v2 → v3 (ADR-0016): **항등 함수.** `ddays`·`diaryEntries`·`routines` 테이블 신설은 아직 백업
- * payload 에 들어가지 않는다(T-86 범위) — v3 문서의 모양은 v2 와 같으므로 값을 더하거나 바꾸지 않는다.
- * `BACKUP_SCHEMA_VERSION` 이 `DB_VERSION` 을 따라 오르기만 해도(§결정 2 범위 밖) 이 단계가 없으면
- * v2 파일을 가져올 때 `migrateBackup` 이 "변환 단계가 없다" 며 거부한다.
+ * v2 → v3 (ADR-0016): **항등 함수 — T-86 이후에도 그대로다.** `ddays`·`diaryEntries`·`routines`
+ * 테이블은 v3 에서 신설됐고(스키마), T-86 이 그 값을 백업 payload 에 싣게 했지만(내용) 문서의
+ * **모양**(스키마 버전 번호)은 바뀌지 않았다 — 세 배열의 유무는 "버전이 다르다" 가 아니라 "같은
+ * v3 안에서 내보내기 시점이 다르다" 는 뜻이라(ADR-0016 정정 2), 여기(버전 단계)가 아니라
+ * `validate-backup.ts#readDocument` 가 `body['ddays'] === undefined ? [] : body['ddays']` 로
+ * 흡수한다(있는데 `null` 처럼 잘못된 값이면 그대로 형식 오류로 거부한다). `BACKUP_SCHEMA_VERSION`
+ * 이 `DB_VERSION` 을 따라 오르기만 해도(§결정 2 범위 밖) 이 단계가 없으면 v2 파일을 가져올 때
+ * `migrateBackup` 이 "변환 단계가 없다" 며 거부한다.
  */
 const migrateV2ToV3: MigrationStep = (body) => body;
 
