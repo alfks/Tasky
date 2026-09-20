@@ -93,12 +93,13 @@ const PALETTE: [string, string, string][] = [
 ];
 
 // docs/specs/theme.md §3-H — [토큰, 라이트, 다크] (기록 없음 → 100%, 진해지는 순서)
+// — 잉크 명도 램프, 4단계 = --color-text
 const HEATMAP: [string, string, string][] = [
-  ['color-heatmap-0', '#e2e4e9', '#2c2e35'],
-  ['color-heatmap-1', '#a9cdef', '#324d67'],
-  ['color-heatmap-2', '#76afe5', '#366da1'],
-  ['color-heatmap-3', '#3b92e3', '#458fd3'],
-  ['color-heatmap-4', '#1776cf', '#70afeb'],
+  ['color-heatmap-0', '#e7e7f0', '#28282f'],
+  ['color-heatmap-1', '#73747b', '#43434a'],
+  ['color-heatmap-2', '#5a5a61', '#5d5d64'],
+  ['color-heatmap-3', '#414249', '#787880'],
+  ['color-heatmap-4', '#2b2b33', '#ededf2'],
 ];
 
 describe('디자인 토큰: 의미 토큰(§3-A)', () => {
@@ -350,42 +351,90 @@ describe('디자인 토큰: "선택됨" 표현(§3-G)', () => {
   });
 });
 
-describe('디자인 토큰: 히트맵 진하기 5단계(§3-H)', () => {
+describe('디자인 토큰: 데이터 표현 색 — 히트맵 진하기 5단계(§3-H)', () => {
   it.each(HEATMAP)('%s — 라이트 %s / 다크 %s 가 정확히 대응한다', (token, light, dark) => {
     expect(base.get(token)).toBe(light);
     expect(mediaDark.get(token)).toBe(dark);
     expect(explicitDark.get(token)).toBe(dark);
   });
 
-  it('정확히 5단계다(더 많지도 적지도 않다)', () => {
-    const tokens = [...base.keys()].filter((k) => /^color-heatmap-\d+$/.test(k));
-    expect(tokens).toHaveLength(5);
-  });
-
-  it('라이트 — 단계가 깊어질수록 --color-bg 대비가 단조 증가한다(R25)', () => {
-    const bg = base.get('color-bg') as string;
-    const ratios = HEATMAP.map(([token]) => contrastRatio(base.get(token) as string, bg));
-    for (let i = 1; i < ratios.length; i += 1) {
-      expect(ratios[i], `단계 ${i - 1}→${i}: 대비가 커져야 한다`).toBeGreaterThan(ratios[i - 1]);
+  it('정확히 5단계다(더 많지도 적지도 않다) — 라이트·두 다크 블록 모두', () => {
+    // 다크 두 블록에만 6번째 토큰이 몰래 생기면 base 카운트만으로는 안 걸린다(Nit).
+    for (const [name, scope] of [
+      ['라이트(base)', base],
+      ['@media 다크', mediaDark],
+      ['명시 다크', explicitDark],
+    ] as const) {
+      const tokens = [...scope.keys()].filter((k) => /^color-heatmap-\d+$/.test(k));
+      expect(tokens, name).toHaveLength(5);
     }
   });
 
-  it('다크 — 단계가 깊어질수록 --color-bg 대비가 단조 증가한다(R25)', () => {
-    const bg = explicitDark.get('color-bg') as string;
-    const ratios = HEATMAP.map(([, , dark]) => contrastRatio(dark, bg));
-    for (let i = 1; i < ratios.length; i += 1) {
-      expect(ratios[i], `단계 ${i - 1}→${i}: 대비가 커져야 한다`).toBeGreaterThan(ratios[i - 1]);
+  it('4단계는 --color-text 와 같다(R24)', () => {
+    expect(base.get('color-heatmap-4')).toBe(base.get('color-text'));
+    expect(explicitDark.get('color-heatmap-4')).toBe(explicitDark.get('color-text'));
+  });
+
+  it('다섯 값 모두 무채색이다(R24) — RGB 채널 최대-최소 ≤ 10', () => {
+    const chroma = (hex: string) => {
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+      return (
+        Math.max(r as number, g as number, b as number) -
+        Math.min(r as number, g as number, b as number)
+      );
+    };
+    for (const [token, light, dark] of HEATMAP) {
+      expect(chroma(light), `${token} 라이트`).toBeLessThanOrEqual(10);
+      expect(chroma(dark), `${token} 다크`).toBeLessThanOrEqual(10);
     }
   });
 
-  it('인접 단계 사이 대비가 라이트 ≥ 1.2 / 다크 ≥ 1.3 이다(R25, 육안 구분 기준)', () => {
+  it.each([
+    ['라이트', SURFACES.map((s) => base.get(s) as string)],
+    ['다크', SURFACES.map((s) => explicitDark.get(s) as string)],
+  ] as const)(
+    '%s — 세 면(bg·surface·surface-2) 모두에서 대비가 단조 증가한다(R25)',
+    (name, surfaces) => {
+      const cells =
+        name === '라이트' ? HEATMAP.map(([, light]) => light) : HEATMAP.map(([, , dark]) => dark);
+      for (const surface of surfaces) {
+        const ratios = cells.map((hex) => contrastRatio(hex, surface));
+        for (let i = 1; i < ratios.length; i += 1) {
+          expect(ratios[i], `${name} ${surface}: 단계 ${i - 1}→${i}`).toBeGreaterThan(
+            ratios[i - 1],
+          );
+        }
+      }
+    },
+  );
+
+  it('인접 단계 사이 대비가 라이트 ≥ 1.35 / 다크 ≥ 1.45 이다(R25, 육안 구분 기준)', () => {
     for (let i = 1; i < HEATMAP.length; i += 1) {
       const [, lightHi, darkHi] = HEATMAP[i] as [string, string, string];
       const [, lightLo, darkLo] = HEATMAP[i - 1] as [string, string, string];
       expect(contrastRatio(lightHi, lightLo), `라이트 단계 ${i - 1}→${i}`).toBeGreaterThanOrEqual(
-        1.2,
+        1.35,
       );
-      expect(contrastRatio(darkHi, darkLo), `다크 단계 ${i - 1}→${i}`).toBeGreaterThanOrEqual(1.3);
+      expect(contrastRatio(darkHi, darkLo), `다크 단계 ${i - 1}→${i}`).toBeGreaterThanOrEqual(1.45);
+    }
+  });
+
+  it.each(PALETTE)(
+    '단계 1~4 가 %s 프리셋과 대비 ≥ 1.3 이다(R26 — 카테고리 색과 혼동되지 않는다)',
+    (_id, light, dark) => {
+      for (const [, lightHex, darkHex] of HEATMAP.slice(1)) {
+        expect(contrastRatio(lightHex, light)).toBeGreaterThanOrEqual(1.3);
+        expect(contrastRatio(darkHex, dark)).toBeGreaterThanOrEqual(1.3);
+      }
+    },
+  );
+
+  it('단계 1~4 가 sky(기본 강조색)와 대비 ≥ 1.8 이다(R26)', () => {
+    const sky = PALETTE.find(([id]) => id === 'sky') as [string, string, string];
+    const [, skyLight, skyDark] = sky;
+    for (const [, lightHex, darkHex] of HEATMAP.slice(1)) {
+      expect(contrastRatio(lightHex, skyLight)).toBeGreaterThanOrEqual(1.8);
+      expect(contrastRatio(darkHex, skyDark)).toBeGreaterThanOrEqual(1.8);
     }
   });
 });
