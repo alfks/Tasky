@@ -96,6 +96,26 @@ describe('createTodo (R5)', () => {
     );
     expect(todo.memo).toBe('우유\n달걀');
   });
+
+  it('routineId 를 주면 그대로 찍히고, 안 주면 필드 자체가 없다 (routine.md §4)', () => {
+    const withRoutine = createTodo(
+      {
+        categoryId: FIXTURE_CATEGORY_ID,
+        date: FIXTURE_DATE,
+        title: '운동',
+        siblings: [],
+        routineId: 'r1',
+      },
+      deps,
+    );
+    expect(withRoutine.routineId).toBe('r1');
+
+    const withoutRoutine = createTodo(
+      { categoryId: FIXTURE_CATEGORY_ID, date: FIXTURE_DATE, title: '운동', siblings: [] },
+      deps,
+    );
+    expect('routineId' in withoutRoutine).toBe(false);
+  });
 });
 
 describe('toggleTodoDone (R6)', () => {

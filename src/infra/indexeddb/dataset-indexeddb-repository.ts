@@ -47,6 +47,7 @@ function puttersFor(store: Store): DatasetWriteAppliers {
     categories: (entity) => put(store.categories, entity),
     focusSessions: (entity) => put(store.focusSessions, entity),
     settings: (entity) => put(store.settings, entity),
+    routines: (entity) => put(store.routines, entity),
   };
 }
 

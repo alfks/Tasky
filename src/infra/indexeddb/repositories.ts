@@ -11,6 +11,7 @@ import { createIndexedDbDatasetRepository } from '@/infra/indexeddb/dataset-inde
 import { createIndexedDbDdayRepository } from '@/infra/indexeddb/dday-indexeddb-repository';
 import { createIndexedDbFocusSessionRepository } from '@/infra/indexeddb/focus-session-indexeddb-repository';
 import { tables, type Store } from '@/infra/indexeddb/query';
+import { createIndexedDbRoutineRepository } from '@/infra/indexeddb/routine-indexeddb-repository';
 import { createIndexedDbSettingsRepository } from '@/infra/indexeddb/settings-indexeddb-repository';
 import { createIndexedDbTodoRepository } from '@/infra/indexeddb/todo-indexeddb-repository';
 
@@ -23,6 +24,7 @@ export function createIndexedDbRepositories(store: Store = tables): Repositories
     focusSessions: createIndexedDbFocusSessionRepository(store),
     dataset: createIndexedDbDatasetRepository(store),
     dday: createIndexedDbDdayRepository(store),
+    routines: createIndexedDbRoutineRepository(store),
   };
 }
 

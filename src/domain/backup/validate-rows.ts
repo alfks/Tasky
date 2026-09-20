@@ -49,6 +49,7 @@ const TODO_KEYS = [
   'doneAt',
   'order',
   'focusSeconds',
+  'routineId',
 ] as const;
 const SESSION_KEYS = [
   ...META_KEYS,
@@ -100,7 +101,11 @@ export function readCategory(value: unknown, path: string): Category {
   return entity;
 }
 
-/** 투두 한 건 (todo R1·R2·R5). `categoryId` 의 참조 검사는 문서 단위(`validate-backup.ts`)에서 한다. */
+/**
+ * 투두 한 건 (todo R1·R2·R5). `categoryId` 의 참조 검사는 문서 단위(`validate-backup.ts`)에서 한다.
+ * `routineId`(routine.md §4)는 **형식만** 본다 — 그 루틴이 실제로 있는지는 검사하지 않는다(다른
+ * 필드 없는 참조와 같은 결로, R10 삭제 뒤에도 인스턴스의 `routineId` 는 남는 것이 계약이다).
+ */
 export function readTodo(value: unknown, path: string): Todo {
   const row = pickFields(value, TODO_KEYS, path);
   const entity = row as unknown as Todo;
@@ -116,6 +121,7 @@ export function readTodo(value: unknown, path: string): Todo {
   optionalInstant(row, 'doneAt', path);
   requireNumber(row, 'order', path);
   optionalNumber(row, 'focusSeconds', path, { min: 0 });
+  optionalString(row, 'routineId', path);
   return entity;
 }
 

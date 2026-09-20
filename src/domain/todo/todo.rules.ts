@@ -2,7 +2,7 @@
 // 모든 변경 함수는 touch()/markDeleted() 로 끝나 `Persistable<Todo>` 를 돌려준다 — 그 값만 upsert 할 수 있다(ADR-0007).
 import type { DateKey } from '@/domain/date/date-key';
 import { DomainError } from '@/domain/errors';
-import type { CategoryId } from '@/domain/ids';
+import type { CategoryId, RoutineId } from '@/domain/ids';
 import { createMeta, markDeleted, touch, type MetaDeps, type Persistable } from '@/domain/meta';
 import { nextTodoOrder } from '@/domain/todo/ordering';
 import type { Todo } from '@/domain/todo/todo';
@@ -50,7 +50,12 @@ export function validateTodoMemo(raw: string | undefined): string | undefined {
   return memo;
 }
 
-/** 새 투두 (todo R5). `order` 는 같은 날짜·카테고리 그룹의 끝이고 `done` 은 항상 false 로 시작한다. */
+/**
+ * 새 투두 (todo R5). `order` 는 같은 날짜·카테고리 그룹의 끝이고 `done` 은 항상 false 로 시작한다.
+ * `routineId` 는 무기한 루틴의 지연 생성(routine.md R6, `@/domain/routine/routine-fill.ts`)만 채운다 —
+ * R21 의 즉시 채우기와 사용자가 직접 추가하는 투두는 이 필드를 넘기지 않는다(선택 필드라 기존 호출은
+ * 그대로다).
+ */
 export function createTodo(
   input: {
     categoryId: CategoryId;
@@ -59,6 +64,7 @@ export function createTodo(
     memo?: string;
     /** 같은 날짜·카테고리의 기존 투두. `order` 계산에만 쓴다. */
     siblings: readonly Todo[];
+    routineId?: RoutineId;
   },
   deps: MetaDeps,
 ): Persistable<Todo> {
@@ -71,6 +77,7 @@ export function createTodo(
     ...(memo === undefined ? {} : { memo }),
     done: false,
     order: nextTodoOrder(input.siblings),
+    ...(input.routineId === undefined ? {} : { routineId: input.routineId }),
   });
 }
 

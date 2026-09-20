@@ -16,6 +16,10 @@ const selectActions = (state: TodoStore): TodoActions => ({
   moveBy: state.moveBy,
   createRoutine: state.createRoutine,
   undoRoutine: state.undoRoutine,
+  loadRoutines: state.loadRoutines,
+  pauseRoutine: state.pauseRoutine,
+  resumeRoutine: state.resumeRoutine,
+  removeRoutine: state.removeRoutine,
   clearError: state.clearError,
 });
 

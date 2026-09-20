@@ -34,6 +34,7 @@ import type { Category } from '@/domain/category/category';
 import type { Dday } from '@/domain/dday/dday';
 import type { FocusSession } from '@/domain/focus/focus-session';
 import { isTombstone, type Meta, type Persistable } from '@/domain/meta';
+import type { Routine } from '@/domain/routine/routine';
 import type { Settings } from '@/domain/theme/settings';
 import type { Todo } from '@/domain/todo/todo';
 
@@ -93,7 +94,14 @@ export type Store = {
    */
   readonly ddays: LiveTable<Dday, IndexOf<typeof STORES.ddays>>;
   /**
-   * **`DatasetRepository.write`·`restore` 전용** — 이 묶음의 네 테이블을 묶는 rw 트랜잭션. 중간에 던지면
+   * 루틴(routine.md §4, ADR-0016). D-day 와 달리 `DatasetRepository`(아래 `transaction`)**에 들어간다**
+   * — 무기한 루틴의 지연 생성이 그 구간에서 만든 투두들과 루틴의 워터마크(`materializedThrough`)를
+   * 한 트랜잭션으로 커밋해야 하기 때문이다(ADR-0017). `list({ includeInactive })` 는 전량을 읽고
+   * 메모리에서 거른다(`routines: 'id'` 뿐 — ADR-0016 정정, boolean 인덱스는 못 만든다).
+   */
+  readonly routines: LiveTable<Routine, IndexOf<typeof STORES.routines>>;
+  /**
+   * **`DatasetRepository.write`·`restore` 전용** — 이 묶음의 다섯 테이블을 묶는 rw 트랜잭션. 중간에 던지면
    * Dexie 가 전부 롤백한다(ADR-0009 결정 2 가 이 둘에만 허용한 예외).
    *
    * **`run` 안에서는 이 파일의 헬퍼만 부른다.** Dexie 트랜잭션은 존(zone)으로 동작해서, 콜백 안에서
@@ -159,6 +167,7 @@ export function storeOn(database: TaskyDb): Store {
     settings: brand(database.settings, STORES.settings),
     focusSessions: brand(database.focusSessions, STORES.focusSessions),
     ddays: brand(database.ddays, STORES.ddays),
+    routines: brand(database.routines, STORES.routines),
     transaction: (run) =>
       database.transaction(
         'rw',
@@ -166,6 +175,7 @@ export function storeOn(database: TaskyDb): Store {
         database.categories,
         database.settings,
         database.focusSessions,
+        database.routines,
         run,
       ),
     open: async () => {

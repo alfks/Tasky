@@ -88,6 +88,10 @@ export function planWrite(
       const entity = checkedEntity(write);
       return () => appliers.settings(entity);
     }
+    case 'routines': {
+      const entity = checkedEntity(write);
+      return () => appliers.routines(entity);
+    }
     default: {
       // **소진성 가드.** 이것이 없으면 `DatasetWrite` 에 테이블이 하나 늘었을 때 두 구현의
       // `DatasetWriteAppliers` 에서만 컴파일 에러가 나고(실측 2건) 이 파일은 조용히 통과한다 —

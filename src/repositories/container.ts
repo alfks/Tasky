@@ -4,6 +4,7 @@ import type { CategoryRepository } from '@/repositories/category-repository';
 import type { DatasetRepository } from '@/repositories/dataset-repository';
 import type { DdayRepository } from '@/repositories/dday-repository';
 import type { FocusSessionRepository } from '@/repositories/focus-session-repository';
+import type { RoutineRepository } from '@/repositories/routine-repository';
 import type { SettingsRepository } from '@/repositories/settings-repository';
 import type { TodoRepository } from '@/repositories/todo-repository';
 
@@ -11,6 +12,8 @@ import type { TodoRepository } from '@/repositories/todo-repository';
  * 앱이 쓰는 저장소 묶음. 넷(todos·categories·settings·focusSessions)은 엔티티 저장소이고 `dataset`
  * 은 별개 계약이다 (ADR-0009). `dday`(calendar.md, ADR-0016)는 `dataset`(백업/복원)에 아직 들어가지
  * 않는 독립 저장소다 — 그래서 그 넷과 같은 테이블 공유 계약을 지지 않는다(memory/repositories.ts 주석).
+ * `routines`(routine.md, ADR-0017)는 반대로 **그 넷과 같은 테이블 묶음을 공유한다** — 무기한 루틴의
+ * 지연 생성이 만드는 투두와 루틴 워터마크를 `dataset.write()` 한 트랜잭션으로 커밋해야 하기 때문이다.
  */
 export type Repositories = {
   todos: TodoRepository;
@@ -19,6 +22,7 @@ export type Repositories = {
   focusSessions: FocusSessionRepository;
   dataset: DatasetRepository;
   dday: DdayRepository;
+  routines: RoutineRepository;
 };
 
 let current: Repositories | undefined;

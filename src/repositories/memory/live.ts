@@ -7,6 +7,7 @@
 import type { Category } from '@/domain/category/category';
 import type { FocusSession } from '@/domain/focus/focus-session';
 import { isTombstone, type Meta, type Persistable } from '@/domain/meta';
+import type { Routine } from '@/domain/routine/routine';
 import type { Settings } from '@/domain/theme/settings';
 import type { Todo } from '@/domain/todo/todo';
 
@@ -19,12 +20,19 @@ import type { Todo } from '@/domain/todo/todo';
  */
 export type MemoryTable<T extends Meta> = { readonly rows: Map<string, T> };
 
-/** 네 테이블 묶음. 한 memory 인스턴스의 전체 상태다. */
+/**
+ * 다섯 테이블 묶음. 한 memory 인스턴스의 전체 상태다.
+ *
+ * `routines` 가 D-day(`memory/dday-repository.ts`)와 달리 여기 끼는 이유: 루틴 지연 생성의 워터마크
+ * (`Routine.materializedThrough`)는 그 구간에서 만든 투두들과 **한 트랜잭션**(`DatasetRepository.write`)
+ * 으로 커밋해야 한다(ADR-0017) — dataset 저장소가 이 묶음을 공유해야만 그 원자성이 성립한다.
+ */
 export type MemoryTables = {
   todos: MemoryTable<Todo>;
   categories: MemoryTable<Category>;
   settings: MemoryTable<Settings>;
   focusSessions: MemoryTable<FocusSession>;
+  routines: MemoryTable<Routine>;
 };
 
 /** 빈 테이블 묶음. 테스트는 이것을 새로 만들어 격리한다. */
@@ -34,6 +42,7 @@ export function createMemoryTables(): MemoryTables {
     categories: { rows: new Map<string, Category>() },
     settings: { rows: new Map<string, Settings>() },
     focusSessions: { rows: new Map<string, FocusSession>() },
+    routines: { rows: new Map<string, Routine>() },
   };
 }
 

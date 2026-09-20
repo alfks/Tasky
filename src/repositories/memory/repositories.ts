@@ -23,6 +23,7 @@ import {
   type MemoryTable,
   type MemoryTables,
 } from '@/repositories/memory/live';
+import { createMemoryRoutineRepository } from '@/repositories/memory/routine-repository';
 import { createMemorySettingsRepository } from '@/repositories/memory/settings-repository';
 import { createMemoryTodoRepository } from '@/repositories/memory/todo-repository';
 
@@ -43,5 +44,6 @@ export function createMemoryRepositories(
     focusSessions: createMemoryFocusSessionRepository(tables),
     dataset: createMemoryDatasetRepository(tables),
     dday: createMemoryDdayRepository(ddayTable),
+    routines: createMemoryRoutineRepository(tables),
   };
 }

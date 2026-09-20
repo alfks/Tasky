@@ -57,6 +57,16 @@ export type TodoBuild = () => Promise<Persistable<Todo> | null> | Persistable<To
 export type TodoBuildMany = () =>
   Promise<readonly Persistable<Todo>[]> | readonly Persistable<Todo>[];
 
+/**
+ * `commitWrites` 가 만드는 계획. 여러 테이블(투두·루틴)에 걸친 쓰기를 한 트랜잭션으로 내고, 성공하면
+ * `apply` 로 상태 조각을 바꾼다. `null` 은 "쓸 것이 없다" — 저장소를 부르지 않고 성공(`true`)으로
+ * 끝난다(무기한 루틴 지연 생성이 채울 것이 없을 때의 보통 경로, routine.md R6).
+ */
+export type TodoWritesPlan = {
+  writes: readonly DatasetWrite[];
+  apply: (state: TodoState) => Partial<TodoState>;
+};
+
 /** 액션이 쓰는 세 가지 저장 경로. */
 export type TodoWriter = {
   /** 저장이 성공한 뒤에만 상태를 바꾼다 (낙관적이지 않은 액션의 공통 경로). */
@@ -76,6 +86,13 @@ export type TodoWriter = {
     build: () => readonly Persistable<Todo>[],
     save: (entities: readonly Persistable<Todo>[]) => Promise<void>,
   ) => Promise<boolean>;
+  /**
+   * 투두 하나로 좁혀지지 않는 쓰기(루틴 관리 액션 — 중지·재개·삭제, routine.md R7·R10)를 위한
+   * 원시. `commit`/`commitMany` 는 상태의 `byId`(투두 맵) 하나만 바꿀 수 있어 `routines` 조각을
+   * 바꿀 수 없다 — 그래서 `apply` 가 `Partial<TodoState>` 를 직접 돌려준다. `build` 가 `null` 을
+   * 내면(대상이 없는 등) 저장소를 부르지 않고 `true` 로 끝난다.
+   */
+  commitWrites: (build: () => Promise<TodoWritesPlan | null>) => Promise<boolean>;
 };
 
 /** 앞의 쓰기가 끝난 뒤에 `task` 를 시작한다. 앞이 실패해도 큐는 이어진다. */
@@ -131,6 +148,30 @@ export function createTodoWriter(ctx: TodoContext): TodoWriter {
             byId: apply(ctx.get().byId, entities),
             error: null,
             writeRevision: bumpWriteRevision(ctx),
+          });
+          return true;
+        } catch (error) {
+          ctx.set({ error: messageOf(error) });
+          return false;
+        }
+      }),
+
+    commitWrites: (build) =>
+      serialize(async () => {
+        try {
+          const plan = await build();
+          if (plan === null) {
+            return false;
+          }
+          if (plan.writes.length > 0) {
+            await getRepositories().dataset.write(plan.writes);
+          }
+          ctx.set({
+            ...plan.apply(ctx.get()),
+            error: null,
+            // 실제로 쓴 것이 없으면(루틴 지연 생성이 채울 게 없던 보통의 경우) writeRevision 을
+            // 올리지 않는다 — "저장소에 반영된 쓰기마다 +1"(todo-state.ts) 를 지킨다.
+            ...(plan.writes.length > 0 ? { writeRevision: bumpWriteRevision(ctx) } : {}),
           });
           return true;
         } catch (error) {

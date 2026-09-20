@@ -14,3 +14,6 @@ export type CategoryId = string;
 
 /** `FocusSession.id`. */
 export type FocusSessionId = string;
+
+/** `Routine.id` (routine.md §4). */
+export type RoutineId = string;
