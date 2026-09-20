@@ -2,42 +2,43 @@ import { describe, expect, it } from 'vitest';
 
 import { computeStreak } from '@/domain/todo/streak';
 
-describe('computeStreak (stats.md R4)', () => {
+/** 테스트용 축약 — `DaySummary` 의 `total`·`isAllDone` 만 있으면 된다. */
+function day(total: number, isAllDone: boolean) {
+  return { total, isAllDone };
+}
+
+describe('computeStreak (stats.md R4, 시그니처 정정: total 포함 배열)', () => {
   it('빈 배열이면 0이다', () => {
-    expect(computeStreak([], 0)).toBe(0);
+    expect(computeStreak([])).toBe(0);
   });
 
   it('전부 완료면 배열 길이만큼이다', () => {
-    expect(computeStreak([true, true, true], 2)).toBe(3);
+    expect(computeStreak([day(3, true), day(2, true), day(1, true)])).toBe(3);
   });
 
-  it('어제 100% + 오늘 미완료 → 스트릭 0 (완료 조건 경계)', () => {
-    // index 0 = 어제(true), index 1 = 오늘(false)
-    expect(computeStreak([true, false], 1)).toBe(0);
+  it('어제 100% + 오늘 미완료(투두 있음) → 스트릭 0 (완료 조건 경계)', () => {
+    expect(computeStreak([day(3, true), day(2, false)])).toBe(0);
   });
 
-  it('중간에 끊기면 그 지점 이후만 센다', () => {
-    // false, true, true, true 를 뒤에서부터 훑으면 3
-    expect(computeStreak([false, true, true, true], 3)).toBe(3);
+  it('오늘 투두 0개 + 어제 100% → 1 (오늘은 건너뛰고 어제로 이어진다)', () => {
+    expect(computeStreak([day(3, true), day(0, false)])).toBe(1);
   });
 
-  it('from 이전 값이 더 있어도 개의치 않고 from 부터만 본다', () => {
-    // from=1 이면 index 2 는 안 본다(더 길게 이어져도 무시).
-    expect(computeStreak([true, true, false], 1)).toBe(2);
+  it('투두 0개인 날은 중간에 있어도 건너뛰고(끊지 않고) 이어진다', () => {
+    // 월(완료) · 화(투두 0개, 세지 않지만 끊지도 않는다) · 수(완료) → 완료한 2일이 이어진 것으로 센다.
+    expect(computeStreak([day(2, true), day(0, false), day(1, true)])).toBe(2);
   });
 
-  it('투두 0개 날 건너뛰기는 호출부가 배열에서 그 날짜를 빼는 방식으로 표현된다', () => {
-    // 예: 월(완료) · 화(투두 0개, 배열에서 제외) · 수(완료) → [월, 수] = [true, true] 로 이어진다.
-    // 이 함수 자체는 "제외됐다"는 사실을 모르고 그냥 인접한 true 를 센다 — 그것이 "자연히 맞아떨어진다"는 뜻이다.
-    expect(computeStreak([true, true], 1)).toBe(2);
+  it('중간에 미완료가 있으면 그 지점에서 멈춘다', () => {
+    // 옛날(미완료) · 그저께(완료) · 어제(완료) · 오늘(완료) → 뒤에서 3일만 센다.
+    expect(computeStreak([day(1, false), day(1, true), day(1, true), day(1, true)])).toBe(3);
   });
 
-  it('from 이 범위를 벗어나면(음수·길이 이상) 0이다', () => {
-    expect(computeStreak([true, true], -1)).toBe(0);
-    expect(computeStreak([true, true], 2)).toBe(0);
+  it('연속된 투두 0개 날은 전부 건너뛴다', () => {
+    expect(computeStreak([day(1, true), day(0, false), day(0, false), day(1, true)])).toBe(2);
   });
 
-  it('from 이 정수가 아니면 0이다', () => {
-    expect(computeStreak([true, true], 1.5)).toBe(0);
+  it('전부 투두 0개면 0이다', () => {
+    expect(computeStreak([day(0, false), day(0, false)])).toBe(0);
   });
 });
