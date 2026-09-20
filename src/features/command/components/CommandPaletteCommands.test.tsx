@@ -4,6 +4,7 @@ import { PALETTE_COMMANDS } from '@/features/command/components/CommandPaletteCo
 import { availableCommands, type Command } from '@/features/command/store/command-registry';
 import { useCommandStore } from '@/features/command/store/command-store';
 import { useDateStripStore } from '@/features/date-strip';
+import { useReportsStore } from '@/features/reports';
 import { useThemeStore } from '@/features/theme';
 
 import { todayKey } from '@/lib/date';
@@ -23,6 +24,7 @@ beforeEach(() => {
   useDateStripStore.setState({ selectedDate: '2026-09-10', today: '2026-09-17' });
   // `도움말 명령이 도움말을 연다` 가 `helpOpen: true` 를 남긴다 — 모듈 전역이라 언마운트로 안 돌아온다.
   useCommandStore.setState({ helpOpen: false, paletteOpen: false });
+  useReportsStore.setState({ open: false });
 });
 
 describe('PALETTE_COMMANDS (R7)', () => {
@@ -61,6 +63,12 @@ describe('PALETTE_COMMANDS (R7)', () => {
     // 각자의 feature 가 등록해야 한다(파일 머리말 표). 그때까지는 목록에 없어야 한다.
     const ids = PALETTE_COMMANDS.map((command) => command.id);
     expect(ids.filter((id) => /^(timer|todo|category|backup|shell)\./.test(id))).toEqual([]);
+  });
+
+  it('통계 보기 명령이 reports 스토어를 연다 — todo 를 거치지 않아 순환 없이 바로 등록된다', async () => {
+    expect(useReportsStore.getState().open).toBe(false);
+    await byId('reports.open').run();
+    expect(useReportsStore.getState().open).toBe(true);
   });
 
   it('도움말 명령이 도움말을 연다', async () => {
