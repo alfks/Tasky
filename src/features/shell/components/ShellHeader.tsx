@@ -55,7 +55,7 @@ export const INSIGHT_OVERLAY_ID = 'shell-insight-overlay';
 
 /**
  * 접힌 영역의 **자리를 잇는 컨트롤** 표식. 접기 토글이 자기 영역을 없앨 때 셸이 이 표식으로 후임을
- * 찾아 포커스를 넘긴다(`lib/focus-fallback.ts`). 접근 이름이 아니라 표식으로 찾는 이유는 문구가
+ * 찾아 포커스를 넘긴다(`@/lib/focus-fallback`). 접근 이름이 아니라 표식으로 찾는 이유는 문구가
  * 바뀌어도 배선이 끊기지 않게 하려는 것이다.
  */
 export const DRAWER_OPENER_ATTR = 'data-shell-drawer-opener';

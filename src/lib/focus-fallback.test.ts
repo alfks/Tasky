@@ -1,12 +1,14 @@
 // 사라진 요소 대신 갈 곳 (app-shell.md R14).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { OVERLAY_ALWAYS_LIVE_ATTR } from '@/components/ui/overlay-rules';
+
 import {
   focusAfterRowRemoval,
   handoffFocus,
   rowAnchorOf,
   toastActionButton,
-} from '@/features/shell/lib/focus-fallback';
+} from '@/lib/focus-fallback';
 
 /** `<nav><ul><li><button>n</button></li>…</ul><button>+ 추가</button></nav>` */
 function buildList(count: number): { nav: HTMLElement; rows: HTMLElement[] } {
@@ -88,9 +90,12 @@ describe('focusAfterRowRemoval (R14 순서)', () => {
 });
 
 describe('toastActionButton', () => {
+  // `OVERLAY_ALWAYS_LIVE_ATTR` 를 import 해서 단다 — `toastActionButton` 의 셀렉터 리터럴과 이
+  // 상수가 갈라지면(lib 는 그 상수를 직접 import 할 수 없다, 함수 주석 참고) 이 테스트가 빨간불이
+  // 된다. 그것이 이 테스트의 존재 이유다.
   function addToast(label: string | null): HTMLElement {
     const viewport = document.createElement('div');
-    viewport.setAttribute('data-overlay-always-live', '');
+    viewport.setAttribute(OVERLAY_ALWAYS_LIVE_ATTR, '');
     const region = document.createElement('div');
     if (label !== null) {
       const button = document.createElement('button');

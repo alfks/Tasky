@@ -7,9 +7,10 @@ import { useEffect, useRef, type RefObject } from 'react';
 
 import { DRAWER_OPENER_ATTR, INSIGHT_OPENER_ATTR } from '@/features/shell/components/ShellHeader';
 import { useShellLayout } from '@/features/shell/hooks/useShellLayout';
-import { handoffFocus, revealAndFocus } from '@/features/shell/lib/focus-fallback';
 import { hasInsightColumn, hasSidebarColumn, type ShellLayout } from '@/features/shell/lib/layout';
 import { useShellUiStore } from '@/features/shell/store/shell-ui-store';
+
+import { handoffFocus, revealAndFocus } from '@/lib/focus-fallback';
 
 export type ShellPanels = {
   layout: ShellLayout;

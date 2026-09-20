@@ -6,6 +6,12 @@
 //
 // 규칙(R14): **다음 형제 → 이전 형제 → 목록 컨테이너**. 목록마저 사라졌으면 그 목록을 담고 있던
 // 영역의 첫 조작 지점으로 간다(카테고리를 전부 지우면 `[첫 카테고리 만들기]` 가 그 자리다).
+//
+// **`src/lib/` 에 있다 — shell 전용이 아니다.** shell(카테고리 삭제)·calendar(D-day 삭제) 가 함께
+// 쓴다. 배럴(`@/features/shell`)을 거치면 `AppShell → ShellInsights → calendar → shell` 순환이
+// 생겨 calendar 는 이 파일을 배럴로도 직접 경로로도 가져올 수 없었다(`import/no-cycle` 실측 6건,
+// `src/features/AGENTS.md` 규칙 5) — 그래서 두 feature 가 공유하는 순수 유틸의 자리인 여기로
+// 올렸다. `src/lib/AGENTS.md` "무엇이 여기 올라오는가" 참고.
 
 /** 브라우저 기본 탭 순서와 같은 집합. `Dialog` 의 것과 같은 목록이다. */
 const FOCUSABLE =
@@ -66,6 +72,12 @@ export function focusAfterRowRemoval(anchor: RowAnchor | null): HTMLElement | nu
  * 그래서 **파괴 확인의 결과로 포커스가 갈 곳을 잃었을 때에 한해** 그 버튼을 첫 후보로 삼는다.
  * 방금 사용자가 실행한 동작을 되돌리는 컨트롤이고, `Toast` 는 포커스가 들어오면 자동 닫힘 타이머를
  * 멈추므로(R8) 6초 제한도 함께 풀린다. 되돌릴 것이 없으면(액션 없는 토스트) `null` 이다.
+ *
+ * 셀렉터는 `'[data-overlay-always-live]'` **리터럴**이다 — `lib` 는 `@/components/ui/overlay-rules`
+ * 의 `OVERLAY_ALWAYS_LIVE_ATTR` 를 import 할 수 없다(lib 밖을 import 하지 않는다는 경계 규칙,
+ * `src/lib/AGENTS.md`). 두 선언이 갈라지면 이 함수는 조용히 아무것도 못 찾는다 — `focus-fallback.test.ts`
+ * 의 `toastActionButton` 테스트가 그 상수를 import 해 속성을 달기 때문에, 갈라지는 순간 그 테스트가
+ * 빨간불이 된다(어떤 도구도 이 둘을 정적으로 묶지 않는다 — 테스트가 유일한 안전망).
  */
 export function toastActionButton(doc: Document): HTMLElement | null {
   const viewports = Array.from(
