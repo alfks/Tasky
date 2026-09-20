@@ -387,34 +387,37 @@ describe('§5. 헤더 버튼이 자기 클릭으로 비활성돼도 포커스가
   });
 });
 
-describe('onVisibleRange — 보이는 범위를 디바운스 후 알린다(routine.md R6 배선 지점, 리뷰 Major 2)', () => {
+describe('onVisibleRange — leading+trailing 디바운스로 알린다(routine.md R6 배선 지점, 리뷰 Major 2·Minor 1)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
 
-  it('디바운스 폭이 지나기 전에는 부르지 않고, 지나면 보이는 주의 양끝으로 한 번 부른다', async () => {
+  it('마운트하면 기다리지 않고 즉시(leading) 보이는 주의 양끝으로 부른다', async () => {
     const onVisibleRange = vi.fn();
     render(<DateStrip summaryRevision={0} onVisibleRange={onVisibleRange} />);
     await act(async () => {
       await Promise.resolve();
     });
-    expect(onVisibleRange).not.toHaveBeenCalled();
+
+    // 디바운스 폭을 기다리지 않아도 이미 불렀다 — 첫 이동이 250ms 늦게 반영돼 빈 상태가 잠깐
+    // 보였다 사라지는 깜빡임을 없앤다(리뷰 Minor 1).
+    expect(onVisibleRange).toHaveBeenCalledTimes(1);
+    expect(onVisibleRange).toHaveBeenCalledWith('2026-09-14', '2026-09-20');
 
     act(() => {
       vi.advanceTimersByTime(VISIBLE_RANGE_DEBOUNCE_MS);
     });
-    expect(onVisibleRange).toHaveBeenCalledTimes(1);
-    expect(onVisibleRange).toHaveBeenCalledWith('2026-09-14', '2026-09-20');
+    expect(onVisibleRange).toHaveBeenCalledTimes(1); // 트레일링으로 미룬 것이 없어 더 부르지 않는다.
   });
 
-  it('연속 이동(연타)은 멈춘 뒤 한 번으로 묶인다 — 걸음마다 부르지 않는다', async () => {
+  it('연속 이동(연타)은 첫 걸음만 즉시, 나머지는 멈춘 뒤 한 번(trailing)으로 묶인다', async () => {
     const onVisibleRange = vi.fn();
     render(<DateStrip summaryRevision={0} onVisibleRange={onVisibleRange} />);
     await act(async () => {
       await Promise.resolve();
     });
     act(() => {
-      vi.advanceTimersByTime(VISIBLE_RANGE_DEBOUNCE_MS); // 마운트 호출을 먼저 소진해 둔다.
+      vi.advanceTimersByTime(VISIBLE_RANGE_DEBOUNCE_MS); // 마운트(leading) 호출을 먼저 소진해 둔다.
     });
     onVisibleRange.mockClear();
 
@@ -426,13 +429,35 @@ describe('onVisibleRange — 보이는 범위를 디바운스 후 알린다(rout
         vi.advanceTimersByTime(50);
       });
     }
-    expect(onVisibleRange).not.toHaveBeenCalled(); // 연타가 끝나기 전에는 아직 안 부른다.
+    // 첫 걸음은 이미 leading 으로 나갔고(쿨다운 진입), 나머지 네 걸음은 trailing 대기 중이다.
+    expect(onVisibleRange).toHaveBeenCalledTimes(1);
+    expect(onVisibleRange).toHaveBeenCalledWith('2026-09-21', '2026-09-27'); // 첫 걸음의 범위
 
     act(() => {
       vi.advanceTimersByTime(VISIBLE_RANGE_DEBOUNCE_MS);
     });
-    expect(onVisibleRange).toHaveBeenCalledTimes(1); // 다섯 걸음이 한 번으로 묶였다.
-    expect(onVisibleRange).toHaveBeenCalledWith('2026-10-19', '2026-10-25'); // 5주 뒤(최종 범위)
+    expect(onVisibleRange).toHaveBeenCalledTimes(2); // leading 1 + trailing 1 — 다섯 걸음이 둘로 묶였다.
+    expect(onVisibleRange).toHaveBeenLastCalledWith('2026-10-19', '2026-10-25'); // 5주 뒤(최종 범위)
+    await act(async () => {
+      await Promise.resolve(); // 요약 재조회(useRangeSummaries)까지 흘려보내 act 경고를 없앤다.
+    });
+  });
+
+  it('쿨다운이 끝난 뒤 다시 이동하면 또 즉시(leading) 부른다', async () => {
+    const onVisibleRange = vi.fn();
+    render(<DateStrip summaryRevision={0} onVisibleRange={onVisibleRange} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      vi.advanceTimersByTime(VISIBLE_RANGE_DEBOUNCE_MS); // 마운트(leading) 호출을 소진하고 쿨다운도 끝낸다.
+    });
+    onVisibleRange.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: '다음 주' }));
+
+    expect(onVisibleRange).toHaveBeenCalledTimes(1); // 쿨다운 중이 아니었으니 이번에도 즉시 부른다.
+    expect(onVisibleRange).toHaveBeenCalledWith('2026-09-21', '2026-09-27');
     await act(async () => {
       await Promise.resolve(); // 요약 재조회(useRangeSummaries)까지 흘려보내 act 경고를 없앤다.
     });
