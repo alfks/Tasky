@@ -99,6 +99,13 @@ async function planCreateRoutine(
   if (filled === null) {
     return { plan: null, createdIds: [] };
   }
+  // **종료일이 있는데 0건이면 Routine 레코드를 아예 안 쓴다**(중복 검사를 저장 전에 끝낸다 —
+  // 리뷰 Major 1). R21 그대로 이 경우는 "전부 이미 등록돼 있다" 오류지 등록이 아니다 — 오류인데
+  // 레코드만 남으면 관리 화면(T-83) 없이는 지울 방법이 없는 유령 레코드가 된다. 무기한(endDate
+  // undefined)은 R4·R5 그대로 0건도 성공이라 이 분기를 타지 않는다 — 아래에서 항상 저장한다.
+  if (input.endDate !== undefined && filled.todos.length === 0) {
+    return { plan: { writes: [], apply: () => ({}) }, createdIds: [] };
+  }
   const writes: DatasetWrite[] = [
     ...filled.todos.map((entity) => ({ table: 'todos' as const, entity })),
     { table: 'routines' as const, entity: filled.routine },
@@ -206,6 +213,14 @@ async function planMaterializeRoutines(
 }
 
 export function createRoutineFillActions(ctx: TodoContext, writer: TodoWriter): RoutineFillActions {
+  // 낭비 방지 캐시(리뷰 Major 2): 이미 확인을 마친 `to`(와 그 시점의 `writeRevision`)를 기억해 뒀다가,
+  // 그 뒤로 아무 쓰기도 없었는데 같은 범위(또는 더 좁은 범위)를 다시 열면 저장소를 아예 안 읽는다.
+  // `writeRevision` 은 투두 쓰기에도 오르므로(루틴이 아닌 쓰기에도) "과도하게 무효화"될 수 있지만
+  // — 그때는 그냥 한 번 더 읽을 뿐 안전하다 — 그 반대(캐시가 실제로 밀린 일을 놓치는 것)는 없다:
+  // 루틴 쓰기(등록·중지·재개·삭제)는 전부 `commitWrites` 를 거쳐 이 값을 올린다(공통 배선, 이 파일이
+  // 따로 구독할 필요가 없다).
+  let lastHandled: { to: DateKey; writeRevisionAtCheck: number } | null = null;
+
   return {
     createRoutine: async (input) => {
       let createdIds: TodoId[] = [];
@@ -223,7 +238,30 @@ export function createRoutineFillActions(ctx: TodoContext, writer: TodoWriter): 
       // 다음 등록(`createRoutine`)의 R3 "보이는 범위 끝" 이 이 값을 읽는다 — 쓰기 큐 밖에서 즉시
       // 반영해야, 이 호출이 아직 큐를 기다리는 중이어도 그 사이의 등록이 최신 범위를 본다.
       ctx.set({ visibleRange: { from, to } });
-      return writer.commitWrites(() => planMaterializeRoutines(ctx, { to, today }));
+
+      const cached = lastHandled;
+      if (
+        cached !== null &&
+        to <= cached.to &&
+        ctx.get().writeRevision === cached.writeRevisionAtCheck
+      ) {
+        return Promise.resolve(true); // 이미 이 구간까지 확인했고 그 뒤로 아무 쓰기도 없었다.
+      }
+
+      return writer
+        .commitWrites(() => planMaterializeRoutines(ctx, { to, today }))
+        .then((ok) => {
+          if (ok) {
+            lastHandled = { to, writeRevisionAtCheck: ctx.get().writeRevision };
+          } else {
+            // 지연 생성은 조용해야 한다(routine.md R6 "토스트 없음") — 사용자가 한 일은 "날짜 이동"
+            // 이지 "루틴 만들기"가 아니므로, 이 배경 작업의 실패가 방금 사용자가 한 다른 쓰기의 성공
+            // 문구를 덮거나 없던 실패 토스트를 새로 띄우면 안 된다(리뷰 m1). `commitWrites` 가 실패
+            // 시 채운 `error` 를 다음 렌더가 커밋되기 전에 비운다.
+            ctx.set({ error: null });
+          }
+          return ok;
+        });
     },
   };
 }

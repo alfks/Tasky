@@ -125,6 +125,9 @@ describe('매주 반복', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('이미 전부 등록돼 있어요');
     expect(onClose).not.toHaveBeenCalled();
     expect(getToasts()).toEqual([]);
+    // 리뷰 Major 1: 오류를 낸 뒤 유령 Routine 레코드가 남으면 안 된다 — 관리 화면이 아직 없어
+    // 지울 방법도 없다.
+    expect(await getRepositories().routines.list({ includeInactive: true })).toEqual([]);
   });
 
   it('시작일이 날짜 스트립 범위(1970~2099) 밖이면 거절한다(입력 min/max 를 우회해도)', async () => {

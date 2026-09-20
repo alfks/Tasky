@@ -13,10 +13,11 @@ import { pauseRoutine } from '@/domain/routine/routine.rules';
 import { getRepositories, setRepositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
+import { MATERIALIZE_HORIZON_DAYS } from '@/features/todo/store/todo-routine-fill';
 import { createTodoStore, type TodoStore } from '@/features/todo/store/todo-store';
 import { makeCategory } from '@/test/fixtures/category';
 import { fixedDeps, FIXTURE_DATE } from '@/test/fixtures/deps';
-import { FIXTURE_CATEGORY_ID } from '@/test/fixtures/todo';
+import { FIXTURE_CATEGORY_ID, makeTodo } from '@/test/fixtures/todo';
 
 type Store = ReturnType<typeof createTodoStore>;
 
@@ -72,6 +73,36 @@ describe('createRoutine — 무기한 등록(routine.md R2~R5)', () => {
 
     const saved = await getRepositories().routines.list();
     expect(saved[0]?.materializedThrough).toBe('2026-01-29');
+  });
+});
+
+describe('createRoutine — 종료일 있는 등록이 전부 중복이면 Routine 도 안 남는다(리뷰 Major 1)', () => {
+  it('오류 후 저장소에 Routine 이 하나도 없다 — 재시도해도 유령이 쌓이지 않는다', async () => {
+    // 등록 대상 항목 자신을 미리 저장소에 넣어, 반복 조건에 맞는 유일한 날짜가 이미 있게 만든다
+    // (기존 todo-routine.test.ts 의 "맞는 날짜가 없으면…" 픽스처와 같은 모양).
+    await getRepositories().todos.upsert(adopt(makeTodo({ title: '아침 명상' })));
+
+    const ids = await state().createRoutine({
+      categoryId: FIXTURE_CATEGORY_ID,
+      title: '아침 명상',
+      startDate: FIXTURE_DATE,
+      endDate: FIXTURE_DATE,
+      recurrence: WEEKLY_RECURRENCE,
+    });
+    expect(ids).toEqual([]); // 성공(빈 배열) — 다이얼로그가 이걸 "전부 중복" 오류로 안내한다.
+
+    // 리뷰 실측 그대로: 오류를 낸 뒤 routines.list() 가 0건이어야 한다(main 과 같은 "아무것도 안
+    // 남긴다"). 세 번 재시도해도(사용자가 버튼을 연타해도) 유령이 쌓이지 않는지까지 확인한다.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await state().createRoutine({
+        categoryId: FIXTURE_CATEGORY_ID,
+        title: '아침 명상',
+        startDate: FIXTURE_DATE,
+        endDate: FIXTURE_DATE,
+        recurrence: WEEKLY_RECURRENCE,
+      });
+    }
+    expect(await getRepositories().routines.list({ includeInactive: true })).toEqual([]);
   });
 });
 
@@ -187,6 +218,76 @@ describe('materializeRoutines — 지연 생성 배선(routine.md R6·R7·R11)',
     await state().materializeRoutines({ from: FIXTURE_DATE, to: farFuture, today: FIXTURE_DATE });
 
     const [routine] = await getRepositories().routines.list();
-    expect(routine?.materializedThrough).toBe(addCivilDays(FIXTURE_DATE, 366));
+    expect(routine?.materializedThrough).toBe(addCivilDays(FIXTURE_DATE, MATERIALIZE_HORIZON_DAYS));
+  });
+});
+
+describe('materializeRoutines — 낭비 방지 캐시(리뷰 Major 2)', () => {
+  /** `routines.list` 호출 수를 세는 저장소로 바꿔 끼운다. */
+  function countRoutineListCalls(): () => number {
+    const base = getRepositories();
+    let calls = 0;
+    setRepositories({
+      ...base,
+      routines: {
+        ...base.routines,
+        list: (options) => {
+          calls += 1;
+          return base.routines.list(options);
+        },
+      },
+    });
+    return () => calls;
+  }
+
+  it('같은(또는 더 좁은) 범위를 아무 쓰기 없이 다시 열면 저장소를 다시 읽지 않는다', async () => {
+    const listCalls = countRoutineListCalls();
+    const range = { from: FIXTURE_DATE, to: '2026-02-28' as DateKey, today: FIXTURE_DATE };
+
+    await state().materializeRoutines(range);
+    expect(listCalls()).toBe(1);
+
+    await state().materializeRoutines(range); // 같은 범위, 그 사이 쓰기 없음
+    expect(listCalls()).toBe(1); // 저장소를 다시 읽지 않았다
+
+    const narrower = { from: FIXTURE_DATE, to: '2026-01-20' as DateKey, today: FIXTURE_DATE };
+    await state().materializeRoutines(narrower); // 더 좁은 범위도 스킵된다
+    expect(listCalls()).toBe(1);
+  });
+
+  it('그 사이에 루틴을 등록하면(writeRevision 이 오르면) 다시 읽는다', async () => {
+    const listCalls = countRoutineListCalls();
+    const range = { from: FIXTURE_DATE, to: '2026-02-28' as DateKey, today: FIXTURE_DATE };
+
+    await state().materializeRoutines(range);
+    expect(listCalls()).toBe(1);
+
+    await state().createRoutine({
+      categoryId: FIXTURE_CATEGORY_ID,
+      title: '아침 명상',
+      startDate: FIXTURE_DATE,
+      recurrence: WEEKLY_RECURRENCE,
+    });
+
+    await state().materializeRoutines(range);
+    expect(listCalls()).toBe(2); // 새 쓰기가 있었으니 다시 읽는다
+  });
+
+  it('전에 처리한 to 보다 먼 범위로 넘어가면 다시 읽는다', async () => {
+    const listCalls = countRoutineListCalls();
+
+    await state().materializeRoutines({
+      from: FIXTURE_DATE,
+      to: '2026-01-20' as DateKey,
+      today: FIXTURE_DATE,
+    });
+    expect(listCalls()).toBe(1);
+
+    await state().materializeRoutines({
+      from: FIXTURE_DATE,
+      to: '2026-02-28' as DateKey,
+      today: FIXTURE_DATE,
+    });
+    expect(listCalls()).toBe(2);
   });
 });
