@@ -94,12 +94,17 @@ export function ReportsScreen() {
       {state.status === 'loading' ? <ReportsSkeleton /> : null}
 
       {state.status === 'error' ? (
-        <ReportsCard title="통계">
-          <p className="text-sm text-muted">불러오지 못했어요</p>
-          <Button variant="outline" size="sm" onClick={state.reload}>
-            다시 시도
-          </Button>
-        </ReportsCard>
+        // review 라운드3 nit3 — [다시 시도] 를 누르면 SWR(m17) 로 status 는 'error' 에 머문 채
+        // isFetching 만 다시 켜진다(review m17). ready 쪽과 같은 신호를 준다 — 안 붙이면 재시도
+        // 중에 바쁨이 전혀 알려지지 않는다.
+        <div aria-busy={state.isFetching}>
+          <ReportsCard title="통계">
+            <p className="text-sm text-muted">불러오지 못했어요</p>
+            <Button variant="outline" size="sm" onClick={state.reload}>
+              다시 시도
+            </Button>
+          </ReportsCard>
+        </div>
       ) : null}
 
       {state.status === 'ready' ? (

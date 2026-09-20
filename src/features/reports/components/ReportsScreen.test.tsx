@@ -1,9 +1,10 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { adopt } from '@/domain/meta';
 
+import type { Repositories } from '@/repositories/container';
 import { setRepositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
@@ -20,6 +21,37 @@ beforeEach(() => {
   useReportsStore.setState(INITIAL_REPORTS_STATE, true);
   useDateStripStore.setState({ today: TODAY, selectedDate: TODAY });
 });
+
+/**
+ * `listByDateRange` 를 원할 때만 묶어 둘 수 있게 감싼다(review 라운드2 n7 회귀 고정). 게이트를
+ * 열기 전 호출은 그대로 통과하고(첫 마운트가 정상적으로 ready 가 되게), 연 뒤의 호출은
+ * `release()` 를 부를 때까지 멈춰 있어 그 사이의 `isFetching`/`aria-busy` 를 붙잡을 수 있다.
+ */
+function withGate(base: Repositories) {
+  let gateOpen = false;
+  const pending: Array<() => void> = [];
+  const wrap = <T extends object>(target: T): T =>
+    new Proxy(target, {
+      get(t, prop: string) {
+        const value = Reflect.get(t, prop);
+        if (prop !== 'listByDateRange' || typeof value !== 'function') return value;
+        return async (...args: unknown[]) => {
+          if (gateOpen) await new Promise<void>((resolve) => pending.push(resolve));
+          return (value as (...a: unknown[]) => unknown).apply(t, args);
+        };
+      },
+    });
+  return {
+    repo: { ...base, todos: wrap(base.todos), focusSessions: wrap(base.focusSessions) },
+    openGate: () => {
+      gateOpen = true;
+    },
+    release: () => {
+      const waiting = pending.splice(0);
+      for (const resolve of waiting) resolve();
+    },
+  };
+}
 
 async function seed() {
   const repo = createMemoryRepositories();
@@ -135,5 +167,35 @@ describe('ReportsScreen (stats.md §2, 화면 조립)', () => {
       .closest('section')!;
     expect(within(streakCard).getByText('오늘 아직 다 못 했어요')).toBeInTheDocument();
     expect(within(streakCard).queryByText(/기록이 없어요/)).not.toBeInTheDocument();
+  });
+
+  it('다시 읽는 동안 카드 묶음에 aria-busy 가 실렸다가, 끝나면 벗겨진다(review 라운드2 n7)', async () => {
+    const category = adopt(makeCategory({ name: '공부' }));
+    const base = createMemoryRepositories();
+    await base.categories.upsert(category);
+    await base.todos.upsert(
+      adopt(makeTodo({ seq: 1, date: TODAY, categoryId: category.id, done: true })),
+    );
+    const gated = withGate(base);
+    setRepositories(gated.repo);
+    const user = userEvent.setup();
+    render(<ReportsScreen />);
+
+    const heading = await screen.findByRole('heading', { level: 3, name: '달성률 추이' });
+    // section(카드) → grid(ReportsCards 의 div) → aria-busy 를 든 래퍼(ReportsScreen.tsx).
+    const cardsWrapper = heading.closest('section')!.parentElement!.parentElement!;
+    expect(cardsWrapper).toHaveAttribute('aria-busy', 'false');
+
+    gated.openGate();
+    const thisYear = screen.getByRole('radio', { name: '올해' });
+    thisYear.focus();
+    await user.keyboard(' ');
+
+    // SWR(m17) 이라 카드·제목은 그대로다 — 그 상태에서 aria-busy 만 켜져 있어야 한다.
+    await waitFor(() => expect(cardsWrapper).toHaveAttribute('aria-busy', 'true'));
+
+    gated.release();
+
+    await waitFor(() => expect(cardsWrapper).toHaveAttribute('aria-busy', 'false'));
   });
 });
