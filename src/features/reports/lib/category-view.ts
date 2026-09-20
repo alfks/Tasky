@@ -6,6 +6,19 @@
 // 구독한다) — `todo → command` 로 이어져 `command → reports → stats → todo → command` 순환이
 // 된다(`CommandPaletteCommands.tsx` 머리 주석의 표와 같은 문제). 그래서 이 작은 장식 함수만
 // domain 값 위에 별도로 둔다. 계산 자체(`summarizeByCategory`)는 절대 다시 하지 않는다.
+//
+// review m3(design review 라운드1) — 공용 위치로 올리는 세 갈래를 검토하고 전부 기각했다:
+//   1) `src/components/ui/` 로 (행 렌더링까지) 승격 — `components/AGENTS.md` 규칙4가 "세 번째
+//      사용처가 생길 때"만 승격하라고 명시한다. 지금 사용처는 `stats`·`reports` 둘뿐이다.
+//   2) `src/lib/` 로 이 함수만 이동 — `lib/AGENTS.md` 는 "프레임워크·도메인 무관 순수 유틸"만
+//      둔다고 못박는다. 이 함수는 `Category`·`CategoryCompletion`(둘 다 domain)에 의존해 그
+//      계약을 깬다.
+//   3) `reports` 가 `@/features/stats/completion-view` 를 배럴을 건너뛰고 직접(deep) import —
+//      그 파일 자체엔 feature 의존이 없어 `import/no-cycle`은 통과하겠지만, 이 레포의 다른 모든
+//      교차 feature 참조는 배럴을 거친다(barrel 이 캡슐화 경계다) — 이 파일 하나만 예외를 두면
+//      다음에 `stats` 내부를 바꿀 때 `reports` 가 조용히 깨질 수 있는 숨은 결합을 남긴다.
+// 남은 중복은 이 변환 함수(계산 없는 장식)뿐이고, **렌더링 쪽 중복이 실제로 버그였던 부분**
+// (막대 전환 애니메이션 누락)은 `CategoryRatioCard.tsx` 에서 직접 고쳤다.
 import type { Category } from '@/domain/category/category';
 import { isTombstone } from '@/domain/meta';
 import type { CategoryCompletion } from '@/domain/todo/completion-rate';

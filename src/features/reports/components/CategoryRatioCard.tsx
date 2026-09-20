@@ -26,7 +26,8 @@ export function CategoryRatioCard({ counts, categories }: CategoryRatioCardProps
   const bars = toCategoryBarView(counts, categories);
 
   if (bars.length === 0) {
-    return <p className="text-sm text-muted">이 기간에 기록이 없어요</p>;
+    // review n6 — 카드마다 다른 빈 문구.
+    return <p className="text-sm text-muted">이 기간엔 분류할 카테고리가 없어요</p>;
   }
 
   return (
@@ -63,8 +64,9 @@ function CategoryBarRow({ bar }: { bar: CategoryBarView }) {
       >
         <span
           aria-hidden="true"
+          // review m3 — `stats/CategoryBars.tsx` 의 같은 막대와 전환이 갈려 있었다(빠진 트랜지션).
           className={cn(
-            'block h-full rounded-[var(--radius-full)] bg-[var(--cat-color,var(--color-faint))]',
+            'block h-full rounded-[var(--radius-full)] bg-[var(--cat-color,var(--color-faint))] transition-[width] duration-[var(--motion-base)] ease-[var(--motion-ease)]',
           )}
           style={{ width: `${bar.ratio * 100}%` }}
         />
