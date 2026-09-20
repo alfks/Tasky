@@ -72,4 +72,26 @@ routine.md §4 원문: "`listByDateRange` 결과에 없는 `(routine, date)` 쌍
 
 - sync(ADR-0015) 구현 착수 시: 위 감수하는 점의 두 방향(중복 생성·투두 유실)을 다시 본다 — 워터마크를
   LWW 대상에서 빼거나 `(routineId, date)` 단위 원장으로 바꾸는 안을 검토한다.
-- T-86(백업 v3 확장) 착수 시: `routines`를 백업 스냅샷에 넣을지, 워터마크도 실을지 결정한다.
+- ~~T-86(백업 v3 확장) 착수 시: `routines`를 백업 스냅샷에 넣을지, 워터마크도 실을지 결정한다.~~
+  **T-86 에서 결정함**: 둘 다 **넣는다**. `routines`는 살아 있는 것 + 남은 `todos`가 `routineId`로
+  가리키는 툼스톤까지(`categories`와 같은 자리, routine.md R10 "기록 보존") 백업 스냅샷
+  (`DatasetSnapshot`/`PersistableSnapshot`, `@/domain/dataset`)에 들어간다. `materializedThrough`도
+  그대로 싣는다 — 제외하면 복원 시점에 안전하게 되살릴 방법이 없다(초기값으로 되돌리면 이미 만든
+  구간이 중복 생성되고, `todos`에서 역산하면 `export-backup.ts`가 툼스톤 투두를 내보내지 않아
+  실제보다 뒤로 밀린 값이 나와 지운 인스턴스가 부활한다 — `validate-rows.ts`의 `ROUTINE_KEYS`
+  주석이 이 판단을 자세히 적어 둔다).
+
+  **위 "감수하는 점" 의 병합(R6) 경로는 막았다.** 백업 병합이 "루틴 레코드와 투두가 따로 병합"되는
+  또 하나의 실제 경로가 됐지만(이 ADR이 sync를 염두에 두고 경고한 것과 같은 모양), `plan-import.ts`의
+  `planMergeRoutines`가 병합에서만 `materializedThrough`를 일반 newer-wins 규칙에서 빼내 **두
+  워터마크 중 더 늦은 값**을 쓴다. 병합은 로우를 지우지 않고 id 합집합을 만들므로(`planMerge`) 어느
+  쪽 워터마크를 쓰든 그 구간의 인스턴스는 결과에 이미 있다 — 더 늦은 값을 써도 "만든 적 없는 구간을
+  있다고 착각"하지 않고, 더 이른 값을 쓰면 이미 있는 구간을 지연 생성이 다시 훑어 **중복**을 낳는다.
+  그래서 "다른 필드는 newer-wins, 워터마크만 max" 가 유일하게 안전한 조합이다
+  (`plan-import.test.ts` "루틴 병합의 materializedThrough" 가 이 판단을 고정한다). 교체(R7)는 파일
+  하나가 전량을 갈아치우므로(같은 스냅샷의 루틴·투두가 항상 같이 간다) 이 위험이 아예 성립하지 않아
+  별도 처리가 없다.
+
+  두 기기가 실제로 백업을 주고받는 sync 시나리오는 여전히 이 ADR의 범위 밖이다 — 위 max 규칙은
+  "병합은 로우를 지우지 않는다"는 `plan-import.ts`의 성질에 기대므로, sync 구현이 그 성질을 깨지
+  않는 한 유효하다. sync 착수 시 재검토 항목(위)에서 함께 다시 본다.
