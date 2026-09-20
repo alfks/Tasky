@@ -8,6 +8,7 @@ import type { DateKey } from '@/domain/date/date-key';
 
 import { useCommandStore } from '@/features/command';
 import { useDateStripStore } from '@/features/date-strip';
+import { DiaryCard } from '@/features/diary';
 import { useDelayedFlag } from '@/features/shell/hooks/useDelayedFlag';
 import { TodoList } from '@/features/todo';
 
@@ -156,6 +157,12 @@ export function ShellMain({
             </div>
           </>
         )}
+        {/*
+          다이어리 카드(diary.md §2 — 투두 목록 아래). 카테고리·투두와 무관한 독립 기록이라
+          `noCategories`/`categoriesPending` 과 상관없이 항상 보인다 — 저장소 자체가 죽은
+          `failureCard` 상태에서만 함께 숨는다(다이어리도 같은 컨테이너의 저장소를 쓴다).
+        */}
+        {failureCard === null ? <DiaryCard date={date} /> : null}
       </div>
 
       {showBottomAdd && todoAreaLive ? (

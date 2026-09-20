@@ -32,6 +32,7 @@ import { type EntityTable, type IDType, type IndexableType } from 'dexie';
 
 import type { Category } from '@/domain/category/category';
 import type { Dday } from '@/domain/dday/dday';
+import type { DiaryEntry } from '@/domain/diary/diary-entry';
 import type { FocusSession } from '@/domain/focus/focus-session';
 import { isTombstone, type Meta, type Persistable } from '@/domain/meta';
 import type { Routine } from '@/domain/routine/routine';
@@ -93,6 +94,13 @@ export type Store = {
    * 않는다 — `dday-repository.ts` 머리주석 참고.
    */
   readonly ddays: LiveTable<Dday, IndexOf<typeof STORES.ddays>>;
+  /**
+   * 다이어리(diary.md, ADR-0016). D-day 와 같은 이유로 `DatasetRepository`(아래 `transaction`)에는
+   * 아직 들어가지 않는다 — 백업 payload 에 넣는 일은 별도 티켓(T-86)이다(`dday-repository.ts`
+   * 머리주석과 같은 판단). `getByDate` 가 `date` 인덱스를 탄다(유일 인덱스 아님 — 소프트 삭제
+   * 툼스톤이 같은 `date` 로 남는다).
+   */
+  readonly diaryEntries: LiveTable<DiaryEntry, IndexOf<typeof STORES.diaryEntries>>;
   /**
    * 루틴(routine.md §4, ADR-0016). D-day 와 달리 `DatasetRepository`(아래 `transaction`)**에 들어간다**
    * — 무기한 루틴의 지연 생성이 그 구간에서 만든 투두들과 루틴의 워터마크(`materializedThrough`)를
@@ -167,6 +175,7 @@ export function storeOn(database: TaskyDb): Store {
     settings: brand(database.settings, STORES.settings),
     focusSessions: brand(database.focusSessions, STORES.focusSessions),
     ddays: brand(database.ddays, STORES.ddays),
+    diaryEntries: brand(database.diaryEntries, STORES.diaryEntries),
     routines: brand(database.routines, STORES.routines),
     transaction: (run) =>
       database.transaction(

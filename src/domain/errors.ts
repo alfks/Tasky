@@ -31,6 +31,10 @@ export type DomainErrorCode =
   | 'DDAY_TITLE_TOO_LONG'
   | 'DDAY_DATE_INVALID'
   | 'DDAY_LIMIT_EXCEEDED'
+  | 'DIARY_DATE_TAKEN'
+  | 'DIARY_EMPTY'
+  | 'DIARY_CONTENT_TOO_LONG'
+  | 'DIARY_EMOJI_INVALID'
   | 'INSTANT_FORMAT_INVALID'
   | 'META_FORMAT_INVALID';
 
@@ -62,6 +66,10 @@ const MESSAGES: Record<DomainErrorCode, string> = {
   DDAY_TITLE_TOO_LONG: '30자까지 쓸 수 있어요',
   DDAY_DATE_INVALID: '날짜를 골라 주세요',
   DDAY_LIMIT_EXCEEDED: 'D-day는 50개까지 만들 수 있어요',
+  DIARY_DATE_TAKEN: '이날의 기록은 이미 있어요',
+  DIARY_EMPTY: '기분이나 한 줄을 남겨 주세요',
+  DIARY_CONTENT_TOO_LONG: '기록은 500자까지 적을 수 있어요',
+  DIARY_EMOJI_INVALID: '목록에 있는 이모지만 고를 수 있어요',
   INSTANT_FORMAT_INVALID: '시각 형식이 올바르지 않아요',
   META_FORMAT_INVALID: '파일 형식이 올바르지 않아요',
 };

@@ -17,3 +17,6 @@ export type FocusSessionId = string;
 
 /** `Routine.id` (routine.md §4). */
 export type RoutineId = string;
+
+/** `DiaryEntry.id` (diary.md §4). */
+export type DiaryEntryId = string;
