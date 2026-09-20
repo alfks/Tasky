@@ -63,16 +63,18 @@ describe('HeatmapCard (stats.md R6·§5)', () => {
     expect(screen.getByText('이 기간에 기록이 없어요')).toBeInTheDocument();
   });
 
-  it('고대비(forced-colors) 모드에서는 배경색이 아니라 테두리 굵기로 단계가 구분된다', () => {
+  it('고대비(forced-colors) 모드에서는 5단계 전부 같은 테두리로 격자 자체가 보인다(theme.md R27 — 단계 구분은 대체 표의 몫)', () => {
     const weeks: HeatmapCell[][] = [[cell('2026-09-18', 0, 0, 0), cell('2026-09-17', 4, 4, 4)]];
 
     render(<HeatmapCard weeks={weeks} today={TODAY} />);
 
-    // "기록 없음"(0단계)은 테두리가 없다 — forced-colors 에서도 배경만으로 뭉개지는 값이 없다.
+    // "기록 없음"(0단계)도 다른 단계와 같은 테두리를 갖는다 — 없으면 배경(Canvas)에 녹아
+    // 격자 자체가 빈 상자로 보인다.
     const empty = screen.getByTitle(/기록 없음/);
-    expect(empty.className).not.toContain('forced-colors:[border-width');
-    // "완료 100%"(4단계)는 가장 굵은 테두리를 갖는다.
     const full = screen.getByTitle(/완료 100%/);
-    expect(full.className).toContain('forced-colors:[border-width:4px]');
+    expect(empty.className).toContain('forced-colors:[border-width:1px]');
+    expect(full.className).toContain('forced-colors:[border-width:1px]');
+    // 레벨로 굵기를 다시 인코딩하지 않는다 — 5단계 전부 같은 클래스.
+    expect(empty.className).toBe(full.className);
   });
 });

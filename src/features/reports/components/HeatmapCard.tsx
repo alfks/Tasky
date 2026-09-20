@@ -17,18 +17,20 @@ const LEVEL_VAR: Record<HeatmapCell['level'], string> = {
 };
 
 /**
- * 고대비(Windows forced-colors) 모드 전용 테두리(`DateCell`·`CommandPaletteList` 와 같은 처방 —
- * `forced-colors:` 는 색이 아니라 굵기로 상태를 낸다). 강제 색 모드는 `background-color` 5단계를
- * 시스템 색 하나로 뭉갠다(접근성 리뷰 Major) — 칸이 배경색 대신 **테두리 굵기**로 읽히게 한다.
- * 색은 지정하지 않는다 — 강제 색 모드는 어차피 시스템 색으로 덮어쓴다(`DateCell` 주석과 같다).
+ * 고대비(Windows forced-colors) 모드에서 칸 **하나하나가 격자로 보이게** 하는 균일한 테두리
+ * (`DateCell`·`CommandPaletteList` 와 같은 처방 — `forced-colors:` 에서는 색을 지정하지 않고
+ * 테두리만 그으면 UA 가 시스템 색을 알아서 입힌다).
+ *
+ * **5단계 전부에 같은 굵기를 쓴다 — 레벨별로 굵기를 다르게 하지 않는다.** theme.md R27 은
+ * "칸에 forced-colors 전용 무늬·텍스트를 새로 그려 5단계를 표현하지 않는다"고 이미 못박았다
+ * (그 정보는 대체 `table` 채널이 낸다). 여기서 굵기를 맡는 문제는 그것과 다르다 — 강제 색
+ * 모드는 `background-color` 5단계를 전부 `Canvas` 하나로 뭉개므로, 테두리조차 없으면 칸
+ * **전체가 페이지 배경과 구분되지 않는 빈 상자**가 된다(격자의 존재 자체가 안 보임).
+ * 그래서 "기록 없음"(0단계)을 포함한 **모든 칸**에 같은 1px 테두리를 준다 — 데이터 5단계를
+ * 다시 인코딩하는 것이 아니라, 격자라는 도형 자체를 보이게 하는 것이다.
  */
-const LEVEL_FORCED_BORDER: Record<HeatmapCell['level'], string> = {
-  0: '',
-  1: 'forced-colors:[border-style:solid] forced-colors:[border-width:1px]',
-  2: 'forced-colors:[border-style:solid] forced-colors:[border-width:2px]',
-  3: 'forced-colors:[border-style:solid] forced-colors:[border-width:3px]',
-  4: 'forced-colors:[border-style:solid] forced-colors:[border-width:4px]',
-};
+const FORCED_COLORS_CELL_BORDER =
+  'forced-colors:[border-style:solid] forced-colors:[border-width:1px]';
 
 const LEVEL_TEXT: Record<HeatmapCell['level'], string> = {
   0: '기록 없음',
@@ -82,7 +84,7 @@ export function HeatmapCard({ weeks, today }: HeatmapCardProps) {
                   key={cell.date}
                   aria-hidden="true"
                   title={cellLabel(cell)}
-                  className={cn('h-[10px] w-[10px] rounded-[2px]', LEVEL_FORCED_BORDER[cell.level])}
+                  className={cn('h-[10px] w-[10px] rounded-[2px]', FORCED_COLORS_CELL_BORDER)}
                   style={{ backgroundColor: LEVEL_VAR[cell.level] }}
                 />
               ),
