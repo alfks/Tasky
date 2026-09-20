@@ -479,3 +479,12 @@ completion-rate.md의 "오늘" 한 장을 기간(지난 7일/30일/올해/지정
     가 `ddayTable` 을 별도 인자로 받는 것도 임시 우회다(리뷰 라운드 1 Minor-6) — `live.ts` 의
     `MemoryTables` 에 `ddays`·`diaryEntries`·`routines` 를 흡수하면(T-86 과 묶어도 된다) 다른
     다섯 저장소처럼 `tables` 하나만으로 공유되게 정리할 수 있다.
+
+- **T-88**(T-87 PR #107 리뷰에서 나옴, 아직 티켓 원문 없음): `DdayPanelSection.tsx`(두 곳)와
+  `CategoryRemoveDialog.tsx`가 `document.querySelector(\`[${OVERLAY_ALWAYS_LIVE_ATTR}] button\`)`로`@/lib/focus-fallback#toastActionButton`을 **손수 재구현**하고 있다 — T-87 이전엔 그 함수가
+shell 에 갇혀 있어 이 컴포넌트들이 직접 셀렉터를 짜야 했지만, 지금은`@/lib/focus-fallback`을
+아무 feature 나 import 할 수 있으니 통일 가능하다. **의미가 미묘하게 다르다는 점을 먼저 고친다**:
+lib 판은 뷰포트를`reverse()`해 **마지막**(가장 최근) 토스트의 버튼을 고르고, 인라인 재구현
+둘은`querySelector`라 문서 순서 **첫** 뷰포트를 고른다 — 토스트가 겹치는 경로(연달아 삭제)에서
+결과가 갈릴 수 있다. 셋을`toastActionButton(document)` 호출로 교체하기 전에 그 차이가 실제
+  버그인지(아니면 지금 동작이 의도된 것인지) 확인하고, 필요하면 테스트로 고정한 뒤 통일한다.
