@@ -4,7 +4,7 @@ import { isActiveFocusSession } from '@/domain/focus/focus-session.rules';
 import type { FocusSessionRepository } from '@/repositories/focus-session-repository';
 import { compareFocusSessions } from '@/repositories/ordering';
 
-import { liveAll, liveBy, liveOne, put, type Store } from '@/infra/indexeddb/query';
+import { liveAll, liveBetween, liveBy, liveOne, put, type Store } from '@/infra/indexeddb/query';
 
 /**
  * Dexie 테이블 위에서 동작하는 집중 세션 저장소.
@@ -22,6 +22,8 @@ export function createIndexedDbFocusSessionRepository(store: Store): FocusSessio
     },
     getById: (id) => liveOne(table, id),
     listByDate: async (date) => (await liveBy(table, 'date', date)).sort(compareFocusSessions),
+    listByDateRange: async (from, to) =>
+      (await liveBetween(table, 'date', from, to)).sort(compareFocusSessions),
     listByTodo: async (todoId) =>
       (await liveBy(table, 'todoId', todoId)).sort(compareFocusSessions),
     listAll: async () => (await liveAll(table)).sort(compareFocusSessions),

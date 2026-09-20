@@ -16,12 +16,13 @@ import {
   useCategoryStore,
 } from '@/features/category';
 import { useDateStripStore } from '@/features/date-strip';
+import { ReportsScreen, useReportsStore } from '@/features/reports';
 import { MemoryModeBanner } from '@/features/shell/components/MemoryModeBanner';
 import { ShellErrorBoundary } from '@/features/shell/components/ShellErrorBoundary';
 import { ShellGlobals } from '@/features/shell/components/ShellGlobals';
 import { ShellHeader } from '@/features/shell/components/ShellHeader';
 import { INSIGHT_PANEL_ID, ShellInsights } from '@/features/shell/components/ShellInsights';
-import { ShellMain } from '@/features/shell/components/ShellMain';
+import { SHELL_MAIN_ID, ShellMain } from '@/features/shell/components/ShellMain';
 import { ShellOverlays } from '@/features/shell/components/ShellOverlays';
 import { ShellSidebar } from '@/features/shell/components/ShellSidebar';
 import { SkipLink } from '@/features/shell/components/SkipLink';
@@ -72,6 +73,30 @@ function ShellBody() {
   const reportFailure = useShellStorageStore((s) => s.reportFailure);
   const [categoryFormOpen, setCategoryFormOpen] = useState(false);
   const openBackupDialog = useBackupStore((s) => s.openDialog);
+
+  // 통계 화면(T-85, stats.md "메인 컬럼 전체 대체"). 커맨드 팔레트 "통계 보기"가 `open` 을 켠다.
+  const reportsOpen = useReportsStore((s) => s.open);
+  const reportsOpener = useReportsStore((s) => s.opener);
+  const wasReportsOpen = useRef(false);
+  // `closeReports` 가 `opener` 를 스토어에서 함께 비운다(review m8, 스토어 누수 감사) — 그래서
+  // "방금 닫혔다" 순간엔 `reportsOpener` 를 store 에서 다시 읽어도 이미 null 이다(같은 `set()` 로
+  // 한 번에 바뀌었으므로). 닫히기 **직전** 값을 여기 로컬 ref 에 스냅샷해 둔다 — 셸 컴포넌트 하나가
+  // 앱 생애주기 내내 사는 지역 변수라 스토어처럼 전역에 남거나 `getState()` 로 다시 노출되지 않는다.
+  const reportsOpenerRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (reportsOpen) reportsOpenerRef.current = reportsOpener;
+  }, [reportsOpen, reportsOpener]);
+  useEffect(() => {
+    // 방금 닫혔다 — 열었던 요소로, 사라졌으면 본문 랜드마크로(`Dialog` 의 `restoreFocus` 와 같은
+    // 규약: 열 때 잡아 둔 요소가 살아 있으면 그리로, 없으면 대체 랜드마크로. `ShellMain` 은 통째로
+    // 새로 마운트되므로 그 안의 옛 opener 는 거의 항상 끊겨 있고, 그때는 `#shell-main` 으로 간다).
+    if (wasReportsOpen.current && !reportsOpen) {
+      const opener = reportsOpenerRef.current;
+      if (opener !== null && opener.isConnected) opener.focus();
+      else document.getElementById(SHELL_MAIN_ID)?.focus();
+    }
+    wasReportsOpen.current = reportsOpen;
+  }, [reportsOpen]);
 
   useShellDocumentTitle(date, summary);
   useShellShortcuts({ toggleSidebar: panels.toggleSidebar });
@@ -141,30 +166,34 @@ function ShellBody() {
           </div>
         ) : null}
 
-        <ShellMain
-          date={date}
-          categories={categoriesWithHistory}
-          categoriesPending={categoriesPending}
-          todosFirstLoading={todosFirstLoading}
-          todosEmpty={summary.total === 0}
-          showBottomAdd={hasBottomAddButton(panels.layout)}
-          failureCard={
-            failed ? <StorageFailureCard onContinue={() => void loadCategories()} /> : null
-          }
-          onCreateCategory={() => setCategoryFormOpen(true)}
-          header={
-            <ShellHeader
-              summary={summary}
-              sidebarIsColumn={sidebarIsColumn}
-              insightIsColumn={insightIsColumn}
-              insightOverlayOpen={insightOverlayOpen}
-              onOpenDrawer={panels.openDrawer}
-              onOpenInsight={panels.openInsight}
-              onSummaryError={(message) => pushToast({ message, variant: 'error' })}
-              onDropTodo={handleDropTodo}
-            />
-          }
-        />
+        {reportsOpen ? (
+          <ReportsScreen />
+        ) : (
+          <ShellMain
+            date={date}
+            categories={categoriesWithHistory}
+            categoriesPending={categoriesPending}
+            todosFirstLoading={todosFirstLoading}
+            todosEmpty={summary.total === 0}
+            showBottomAdd={hasBottomAddButton(panels.layout)}
+            failureCard={
+              failed ? <StorageFailureCard onContinue={() => void loadCategories()} /> : null
+            }
+            onCreateCategory={() => setCategoryFormOpen(true)}
+            header={
+              <ShellHeader
+                summary={summary}
+                sidebarIsColumn={sidebarIsColumn}
+                insightIsColumn={insightIsColumn}
+                insightOverlayOpen={insightOverlayOpen}
+                onOpenDrawer={panels.openDrawer}
+                onOpenInsight={panels.openInsight}
+                onSummaryError={(message) => pushToast({ message, variant: 'error' })}
+                onDropTodo={handleDropTodo}
+              />
+            }
+          />
+        )}
 
         {insightIsColumn ? (
           <aside

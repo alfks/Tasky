@@ -22,6 +22,7 @@ const READS = {
   getActive: (repo) => repo.getActive(),
   getById: (repo, session) => repo.getById(session.id),
   listByDate: (repo, session) => repo.listByDate(session.date),
+  listByDateRange: (repo, session) => repo.listByDateRange(session.date, session.date),
   listByTodo: (repo, session) => repo.listByTodo(session.todoId ?? ''),
   listAll: (repo) => repo.listAll(),
 } satisfies Record<ReadName, ReadCall>;
@@ -148,6 +149,20 @@ export function runFocusSessionRepositoryContract(target: ContractTarget): void 
 
       expect(idsOf(await repo.listByDate(mine.date))).toEqual([mine.id]);
       expect(idsOf(await repo.listByTodo(TODO_ID))).toEqual([mine.id]);
+    });
+
+    it('listByDateRange 는 양끝을 포함한다 (stats.md R7)', async () => {
+      const deps = contractDeps();
+      const before = contractFocusSession(deps, { date: '2026-01-14' });
+      const from = contractFocusSession(deps, { date: '2026-01-15' });
+      const to = contractFocusSession(deps, { date: '2026-01-16' });
+      const after = contractFocusSession(deps, { date: '2026-01-17' });
+      for (const session of [before, from, to, after]) {
+        await repo.upsert(session);
+      }
+
+      const rows = await repo.listByDateRange('2026-01-15', '2026-01-16');
+      expect(idsOf(rows).sort()).toEqual([from.id, to.id].sort());
     });
   });
 }

@@ -37,6 +37,7 @@ import type { ThemeMode } from '@/domain/theme/settings';
 import type { Command } from '@/features/command/store/command-registry';
 import { useCommandStore } from '@/features/command/store/command-store';
 import { useDateStripStore } from '@/features/date-strip';
+import { useReportsStore } from '@/features/reports';
 import { useThemeStore } from '@/features/theme';
 
 /** 모드 전환 명령 셋(R7). 지금 모드와 같은 것은 `when` 이 감춘다 — 눌러도 아무 일이 없으니까. */
@@ -92,6 +93,16 @@ export const PALETTE_COMMANDS: readonly Command[] = [
   themeCommand('light', '라이트 모드로 전환', ['light', '밝게', '테마']),
   themeCommand('dark', '다크 모드로 전환', ['dark', '어둡게', '테마']),
   themeCommand('system', '시스템 설정 따르기', ['system', '자동', '테마']),
+  {
+    // `reports` 는 위 표의 다섯과 달리 `todo`(따라서 `command`)에 닿지 않는다 — domain·repositories
+    // 만 보고 다른 feature 를 import 하지 않는다(date-strip 은 리프라 예외). 그래서 여기서 바로
+    // 등록할 수 있다. 화면을 실제로 그리는 자리(`AppShell.tsx`)도 이 등록과 함께 배선돼 있다 —
+    // `open` 을 켜면 `ReportsScreen` 이 그 자리에 그려진다.
+    id: 'reports.open',
+    label: '통계 보기',
+    keywords: ['stats', 'report', '통계', '리포트'],
+    run: () => useReportsStore.getState().openReports(),
+  },
   {
     id: 'help.open',
     label: '단축키 도움말',
