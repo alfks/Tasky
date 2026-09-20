@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+
 import type { DateKey } from '@/domain/date/date-key';
 
 import { formatHeatmapDate } from '@/features/reports/lib/format';
@@ -32,16 +34,29 @@ const LEVEL_VAR: Record<HeatmapCell['level'], string> = {
 const FORCED_COLORS_CELL_BORDER =
   'forced-colors:[border-style:solid] forced-colors:[border-width:1px]';
 
-const LEVEL_TEXT: Record<HeatmapCell['level'], string> = {
-  0: '기록 없음',
-  1: '완료 0%',
-  2: '완료 1~49%',
-  3: '완료 50~99%',
-  4: '완료 100%',
-};
+/** 칸 하나의 완료 정도 문구(review m6) — 버킷 이름 대신 실제 수치. `CategoryRatioCard.
+ * aria-valuetext`("N개 중 M개 완료")와 같은 패턴이다. */
+function cellStatText(cell: HeatmapCell): string {
+  if (cell.total === 0) return '기록 없음';
+  return `${cell.total}개 중 ${cell.doneCount}개 완료`;
+}
 
 function cellLabel(cell: HeatmapCell): string {
-  return `${formatHeatmapDate(cell.date)}, ${LEVEL_TEXT[cell.level]}`;
+  return `${formatHeatmapDate(cell.date)}, ${cellStatText(cell)}`;
+}
+
+/** 격자 전체의 `role=img` 요약(review m5) — "최근 12주 활동 히트맵" 뿐이던 라벨에 평균 달성률을 더한다. */
+function averageRatio(cells: readonly HeatmapCell[]): number | null {
+  const withRecord = cells.filter((cell) => cell.total > 0);
+  if (withRecord.length === 0) return null;
+  const sum = withRecord.reduce((acc, cell) => acc + cell.doneCount / cell.total, 0);
+  return sum / withRecord.length;
+}
+
+function gridSummaryLabel(cells: readonly HeatmapCell[]): string {
+  const average = averageRatio(cells);
+  if (average === null) return '최근 12주 활동 히트맵, 기록 없음';
+  return `최근 12주 활동 히트맵, 평균 달성률 ${Math.round(average * 100)}퍼센트`;
 }
 
 type HeatmapCardProps = {
@@ -52,15 +67,29 @@ type HeatmapCardProps = {
 
 /**
  * 활동 히트맵(stats.md R6, 최근 12주). 오늘 이후 칸은 렌더하지 않는다. `role="img"` + 대체 표(§5).
+ *
+ * 이 카드는 선택한 기간과 무관하게 **항상 최근 12주**를 보여준다(R6) — 그래서 빈 상태 문구도
+ * "이 기간에"가 아니라 "최근 12주 동안"이다(review n6, StreakCard 의 M1 수정과 같은 이유).
  */
 export function HeatmapCard({ weeks, today }: HeatmapCardProps) {
   const flatCells = weeks.flat().filter((cell) => cell.date <= today);
+  const [activeCell, setActiveCell] = useState<HeatmapCell | null>(null);
+
   if (flatCells.every((cell) => cell.total === 0)) {
-    return <p className="text-sm text-muted">이 기간에 기록이 없어요</p>;
+    return <p className="text-sm text-muted">최근 12주 동안 기록이 없어요</p>;
   }
 
   return (
     <div>
+      {/*
+        카드 상단 수치 읽기(review m6·m16) — 마우스로 1초 가까이 가만히 대야 나오는 네이티브
+        `title` 말풍선 하나에만 기대지 않는다. 칸이 버튼이라 포커스만으로도(키보드·터치·확대
+        사용자 전부) 여기 문구가 바뀐다. 화면판독기는 이미 아래 sr-only 표로 같은 정보를 읽으므로
+        여기는 시각 전용 채널이라 `aria-hidden`이다(중복 낭독 방지).
+      */}
+      <p aria-hidden="true" className="mb-[var(--space-1)] text-xs text-muted">
+        {activeCell ? cellLabel(activeCell) : gridSummaryLabel(flatCells)}
+      </p>
       {/*
         theme.md §3-H R25 의 대비 실측은 세 면(bg·surface·surface-2) 마다 값이 다르고, 검증
         리뷰 실측: 다크 0단계(기록 없음)가 surface 기준 1.16(보임)인데 surface-2 기준 1.03(사실상
@@ -71,7 +100,7 @@ export function HeatmapCard({ weeks, today }: HeatmapCardProps) {
       */}
       <div
         role="img"
-        aria-label="최근 12주 활동 히트맵"
+        aria-label={gridSummaryLabel(flatCells)}
         className="grid grid-flow-col gap-[var(--space-1)] rounded-[var(--radius-md)] bg-surface p-[var(--space-1)]"
       >
         {weeks.map((week) => (
@@ -80,17 +109,44 @@ export function HeatmapCard({ weeks, today }: HeatmapCardProps) {
               cell.date > today ? (
                 <div key={cell.date} aria-hidden="true" className="h-[10px] w-[10px]" />
               ) : (
-                <div
+                // 화면판독기의 1차 채널은 아래 sr-only 표다(role=img 안의 인터랙티브 자손은 AT
+                // 가상 커서에서 일관되게 읽히지 않는다) — 이 버튼의 aria-label 은 Tab 으로 실제
+                // 도달했을 때를 위한 보조 채널이다(중복이지 무의미하지 않다). 목적은 포커스만으로
+                // 위 카드 상단 수치가 바뀌는 것(review m6·m16, 마우스 hover 전용이던 것을 대체).
+                <button
                   key={cell.date}
-                  aria-hidden="true"
-                  title={cellLabel(cell)}
-                  className={cn('h-[10px] w-[10px] rounded-[2px]', FORCED_COLORS_CELL_BORDER)}
+                  type="button"
+                  aria-label={cellLabel(cell)}
+                  onMouseEnter={() => setActiveCell(cell)}
+                  onMouseLeave={() => setActiveCell(null)}
+                  onFocus={() => setActiveCell(cell)}
+                  onBlur={() => setActiveCell(null)}
+                  className={cn(
+                    'h-[10px] w-[10px] rounded-[2px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
+                    FORCED_COLORS_CELL_BORDER,
+                  )}
                   style={{ backgroundColor: LEVEL_VAR[cell.level] }}
                 />
               ),
             )}
           </div>
         ))}
+      </div>
+      {/* 범례(review m15) — 훑어보는 사람이 진한 칸이 몇 %인지 짐작이라도 하게. 새 토큰을 만들지
+          않고 `--color-heatmap-*` 5단계를 그대로 스와치로 쓴다. 장식이라 aria-hidden. */}
+      <div
+        aria-hidden="true"
+        className="mt-[var(--space-1)] flex items-center gap-[var(--space-1)] text-[10px] text-muted"
+      >
+        <span>적음</span>
+        {([0, 1, 2, 3, 4] as const).map((level) => (
+          <span
+            key={level}
+            className="h-[8px] w-[8px] rounded-[2px]"
+            style={{ backgroundColor: LEVEL_VAR[level] }}
+          />
+        ))}
+        <span>많음</span>
       </div>
       <table className="sr-only">
         <caption>날짜별 활동</caption>
@@ -104,7 +160,7 @@ export function HeatmapCard({ weeks, today }: HeatmapCardProps) {
           {flatCells.map((cell) => (
             <tr key={cell.date}>
               <th scope="row">{formatHeatmapDate(cell.date)}</th>
-              <td>{LEVEL_TEXT[cell.level]}</td>
+              <td>{cellStatText(cell)}</td>
             </tr>
           ))}
         </tbody>
