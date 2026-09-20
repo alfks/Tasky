@@ -6,30 +6,35 @@
 
 **사용법**: 새 세션에서 이 작업을 이어받으면, 아래 각 티켓 블록을 그대로 `.worktrees/tickets/T-<n>.md`로 복사하고 BOARD 표를 `.worktrees/BOARD.md`에 붙여넣은 뒤(`bash scripts/wt.sh init`으로 헤더가 없으면 먼저 만든다) 평소대로 오케스트레이터 역할을 계속한다. 구현이 시작되면 이 스냅샷은 낡아진다 — 그때부터는 `.worktrees/BOARD.md`가 다시 단일 소스다.
 
+**진행 현황(2026-09-20 갱신)**: 아래 보드 표는 최초 스냅샷이 아니라 이 시점까지의 실측이다 — 티켓 원문(체크리스트)은 그대로 두고 status 열과 의존 그래프만 고쳤다. 상세는 각 행 status 열 참고.
+
 **전제**: 관련 스펙 5개(`docs/specs/calendar.md`·`stats.md`·`routine.md`·`diary.md`·`sync.md`)는 전부 `상태: approved`. `docs/decisions/ADR-0016-schema-v3-dday-diary-routine.md`도 `accepted`. `sync.md` 구현만 별도로 구글 OAuth·Cloudflare D1 자격증명 발급이 선행돼야 한다(sync.md §6) — 그래서 아래 티켓에는 sync.md 구현 티켓이 없다.
 
 ## 작업 보드 스냅샷
 
-| id   | title                    | branch                     | owner(model) | status                                 | owns                                                                                                                                                     | pr  | round |
-| ---- | ------------------------ | -------------------------- | ------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | ----- |
-| T-78 | IndexedDB 스키마 v3 ADR  | docs/adr-schema-v3         | opus         | todo(ADR 작성·승인 완료, db.ts 미적용) | docs/decisions/\*\*, docs/DECISIONS.md, src/infra/indexeddb/db.ts, migration.test.ts                                                                     | -   | 0     |
-| T-79 | D-day 카드(캘린더)       | feature/calendar-dday      | sonnet       | todo                                   | src/features/calendar/\*\*, src/domain/dday/\*\*, dday-repository.\*, memory/repositories.ts, container.ts, indexeddb/repositories.ts, ShellInsights.tsx | -   | 0     |
-| T-80 | 다이어리                 | feature/diary              | sonnet       | todo                                   | src/features/diary/\*\*, src/domain/diary/\*\*, diary-repository.\*, memory/repositories.ts, container.ts, indexeddb/repositories.ts, ShellMain.tsx      | -   | 0     |
-| T-81 | 루틴 도메인+저장소       | feature/routine-domain     | sonnet       | todo                                   | routine.rules.ts, routine-repository.\*, memory/repositories.ts, container.ts, indexeddb/repositories.ts, todo.ts                                        | -   | 0     |
-| T-82 | 루틴 다이얼로그+지연생성 | feature/routine-indefinite | sonnet       | todo                                   | RoutineDialog.tsx, useRoutineForm.ts, todo-actions.ts, TodoItem.tsx, useWeekSummaries.ts                                                                 | -   | 0     |
-| T-83 | 루틴 관리 화면           | feature/routine-manager    | sonnet       | todo                                   | RoutineManager.tsx(신규), ShellSidebar.tsx                                                                                                               | -   | 0     |
-| T-84 | chore: 히트맵 토큰       | chore/theme-heatmap-tokens | sonnet       | todo                                   | theme.md, tokens.css                                                                                                                                     | -   | 0     |
-| T-85 | 통계 화면                | feature/reports            | sonnet       | todo                                   | src/features/reports/\*\*, streak.ts, focus-summary.ts, focus-session-repository.\*, CommandPaletteCommands.tsx                                          | -   | 0     |
+| id   | title                       | branch                     | owner(model) | status                                                                                                                  | owns                                                                                                                                                     | pr  | round |
+| ---- | --------------------------- | -------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | ----- |
+| T-78 | IndexedDB 스키마 v3 ADR     | docs/adr-schema-v3         | opus         | **완료**(ADR-0016 accepted, 리뷰로 `routines: 'id, active'` → `'id'` 정정 — 불리언 색인 불가. db.ts 적용은 T-79 가 함)  | docs/decisions/\*\*, docs/DECISIONS.md, src/infra/indexeddb/db.ts, migration.test.ts                                                                     | #95 | 1     |
+| T-79 | D-day 카드(캘린더)          | feature/calendar-dday      | sonnet       | **완료**(db.ts 적용 포함, 라운드1 완료 — 라운드2 반영 중)                                                               | src/features/calendar/\*\*, src/domain/dday/\*\*, dday-repository.\*, memory/repositories.ts, container.ts, indexeddb/repositories.ts, ShellInsights.tsx | #99 | 2     |
+| T-80 | 다이어리                    | feature/diary              | sonnet       | todo(착수 전)                                                                                                           | src/features/diary/\*\*, src/domain/diary/\*\*, diary-repository.\*, memory/repositories.ts, container.ts, indexeddb/repositories.ts, ShellMain.tsx      | -   | 0     |
+| T-81 | 루틴 도메인+저장소          | feature/routine-domain     | sonnet       | **진행 중**(범위 확장: 관리 액션 pause/resume/remove 를 T-83 에서 이관, ADR-0017 지연 생성 워터마크 추가)               | routine.rules.ts, routine-repository.\*, memory/repositories.ts, container.ts, indexeddb/repositories.ts, todo.ts                                        | -   | 0     |
+| T-82 | 루틴 다이얼로그+지연생성    | feature/routine-indefinite | sonnet       | todo(착수 전)                                                                                                           | RoutineDialog.tsx, useRoutineForm.ts, todo-actions.ts, TodoItem.tsx, useWeekSummaries.ts                                                                 | -   | 0     |
+| T-83 | 루틴 관리 화면              | feature/routine-manager    | sonnet       | todo(착수 전, 관리 액션이 T-81 로 옮겨가 **이제 순수 UI**)                                                              | RoutineManager.tsx(신규), ShellSidebar.tsx                                                                                                               | -   | 0     |
+| T-84 | chore: 히트맵 토큰          | chore/theme-heatmap-tokens | sonnet       | **완료**(라운드1 완료 — 히트맵을 파란 램프에서 무채색 잉크 램프로 교체, 카테고리 `sky` 와 충돌 회피)                    | theme.md, tokens.css                                                                                                                                     | #97 | 1     |
+| T-85 | 통계 화면                   | feature/reports            | sonnet       | **완료**(`feature/reports` 푸시됨, PR 대기)                                                                             | src/features/reports/\*\*, streak.ts, focus-summary.ts, focus-session-repository.\*, CommandPaletteCommands.tsx                                          | -   | 0     |
+| T-86 | chore: 백업 v3 payload 확장 | chore/backup-v3-payload    | sonnet       | **신규**(미착수, 티켓 미작성) — Dday·DiaryEntry·Routine 세 테이블을 백업에 직렬화. 지금은 D-day 가 백업에 담기지 않는다 | src/domain/backup/\*\*, src/features/backup/\*\*                                                                                                         | -   | -     |
 
 **의존 관계**:
 
 ```
-T-78(ADR — 이미 accepted, db.ts 적용만 남음)
+T-78(ADR — accepted, db.ts 적용은 T-79 커밋에서 완료)
  └→ T-79(D-day) → T-80(다이어리) → T-81(루틴 도메인+저장소)
                                        ├→ T-82(루틴 다이얼로그) ─┐ 서로 다른 파일, 병렬 가능
                                        └→ T-83(루틴 관리 화면) ─┘
 T-84(chore: 히트맵 토큰, 독립) → T-85(통계 화면)
 ```
+
+**갱신(2026-09-20)**: 이후 의존 관계 권고가 스키마 → **T-81 먼저** → (T-82 ∥ T-83 ∥ T-79) → T-80 으로 바뀌었다(임계 경로 5→3). T-86(백업 v3 payload 확장, 신규·독립)은 세 테이블이 모두 존재해야 하므로 T-79·T-80·T-81 이후 아무 때나.
 
 T-79·T-80·T-81이 `src/repositories/container.ts`·`src/repositories/memory/repositories.ts`·`src/infra/indexeddb/repositories.ts`(공용 파일)를 같이 건드려서 순서대로 직렬화했다(agent-collaboration.md §1.1 owns 교집합 검사). T-82·T-83은 서로 다른 파일만 건드려 T-81 이후 병렬 가능.
 
