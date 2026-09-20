@@ -11,6 +11,7 @@ import {
   failAt,
   isBackupShapeError,
   META_KEYS,
+  optionalBoolean,
   optionalInstant,
   optionalNumber,
   optionalString,
@@ -30,7 +31,34 @@ import { SETTINGS_ID, type Settings } from '@/domain/theme/settings';
 import type { Todo } from '@/domain/todo/todo';
 import { validateTodoMemo, validateTodoTitle } from '@/domain/todo/todo.rules';
 
-const CATEGORY_KEYS = [
+/**
+ * 화이트리스트 전수 대조 헬퍼. `focus-session-repository.contract.ts` 의
+ * `satisfies Record<ReadName, ReadCall>` 과 같은 목적이다 — 배열이 `T` 의 키를 전부 담았는지 컴파일
+ * 타임에 확인해서, 엔티티 타입에 필드를 더하고 여기 안 더하면(반대로 화이트리스트에서 지워도) 호출부가
+ * **컴파일 에러**로 빨개진다. `Exclude<keyof T, K[number]>` 가 비어 있지 않으면(뭔가 빠졌으면)
+ * 파라미터 타입이 `never` 가 되어 실제 배열과 맞지 않는다. category R22 회귀(`historyHidden` 누락)의
+ * 근인이 배열이 이 검사 없이 그냥 "값" 이었던 것이다.
+ *
+ * **`Record<keyof T, true>` 객체로 만들지 않는다.** `Meta` 의 `id`·`createdAt`·`updatedAt`·`rev`·
+ * `deletedAt` 을 객체 리터럴의 *프로퍼티 키*로 쓰는 순간 ADR-0007 `NO_META_WRITE` 린트에 걸린다 —
+ * 여기서는 실제 갱신이 아니라 필드 *이름* 나열인데도 그 규칙은 구문만 본다(리뷰 라운드 2 실측: 객체
+ * 버전은 `pnpm lint` 4건 실패). 배열 *원소*는 그 규칙 밖이다 — `shape.ts` 의 `META_KEYS` 자체도 같은
+ * 이유로 배열이고, 여기서도 그 배열을 그대로 spread 해 쓴다(단일 소스).
+ *
+ * **제외는 명시적으로만.** 백업에 실으면 안 되는 파생·내부 상태(캐시 값, Phase 2 의 동기화 워터마크
+ * 등)가 생기면 `T` 대신 `Omit<T, '그필드'>` 를 타입 인자로 써서 **의도적으로** 뺀다. 아무 표시도 없이
+ * 필드가 빠지면, 다음 사람이 "빠뜨린 줄" 알고 반사적으로 채워 넣어 그 필드가 백업에 실려서는 안 되는
+ * 이유(왜 값으로 판정하는 상태를 복원 시점에 되살리면 위험한지)가 함께 사라진다.
+ */
+function whitelist<T>() {
+  return function <const K extends readonly (keyof T)[]>(
+    keys: Exclude<keyof T, K[number]> extends never ? K : never,
+  ): K {
+    return keys as K;
+  };
+}
+
+const CATEGORY_KEYS = whitelist<Category>()([
   ...META_KEYS,
   'name',
   'color',
@@ -38,8 +66,9 @@ const CATEGORY_KEYS = [
   'order',
   'status',
   'closedAt',
-] as const;
-const TODO_KEYS = [
+  'historyHidden',
+]);
+const TODO_KEYS = whitelist<Todo>()([
   ...META_KEYS,
   'categoryId',
   'date',
@@ -50,8 +79,8 @@ const TODO_KEYS = [
   'order',
   'focusSeconds',
   'routineId',
-] as const;
-const SESSION_KEYS = [
+]);
+const SESSION_KEYS = whitelist<FocusSession>()([
   ...META_KEYS,
   'todoId',
   'categoryId',
@@ -63,8 +92,14 @@ const SESSION_KEYS = [
   'endedAt',
   'elapsedSeconds',
   'status',
-] as const;
-const SETTINGS_KEYS = [...META_KEYS, 'theme', 'accentColor', 'seededAt', 'lastBackupAt'] as const;
+]);
+const SETTINGS_KEYS = whitelist<Settings>()([
+  ...META_KEYS,
+  'theme',
+  'accentColor',
+  'seededAt',
+  'lastBackupAt',
+]);
 
 /**
  * 도메인 규칙 함수를 검증기로 빌려 쓴다. 규칙 함수는 `DomainError` 를 던지므로 이 경로로 바꿔 준다.
@@ -98,6 +133,7 @@ export function readCategory(value: unknown, path: string): Category {
   requireNumber(row, 'order', path);
   requireEnum(row, 'status', path, ['active', 'completed', 'paused'] as const);
   optionalInstant(row, 'closedAt', path);
+  optionalBoolean(row, 'historyHidden', path);
   return entity;
 }
 
