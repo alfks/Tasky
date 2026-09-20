@@ -7,7 +7,27 @@
 //
 // 목적격 조사(을/를)는 `@/lib/korean#objectParticle` 이다 — category 의 삭제 확인·되돌리기 문구도
 // 같은 규칙을 쓴다(T-87, `features/AGENTS.md` 규칙 5).
+import type { RoutineRecurrence } from '@/domain/todo/routine.rules';
+
 import { objectParticle } from '@/lib/korean';
+
+const WEEKDAY_SHORT_LABELS = ['일', '월', '화', '수', '목', '금', '토'] as const;
+
+/**
+ * 반복 패턴을 사람이 읽는 문구로 ("매주 금·토", "매달 1·15일", routine.md §5). 투두 행의 🔁 배지
+ * (`TodoItem`)와 관리 화면(T-83)이 함께 읽는다 — 단일 소스가 여기인 이유는 두 화면이 같은 문구를
+ * 말해야 하기 때문이다(그 말고는 순수 표기라 `domain/routine/` 이 아니라 여기 둔다, AGENTS.md).
+ */
+export function describeRoutineRecurrence(recurrence: RoutineRecurrence): string {
+  if (recurrence.type === 'weekly') {
+    const days = [...recurrence.daysOfWeek]
+      .sort((a, b) => a - b)
+      .map((day) => WEEKDAY_SHORT_LABELS[day]);
+    return `매주 ${days.join('·')}`;
+  }
+  const days = [...recurrence.daysOfMonth].sort((a, b) => a - b);
+  return `매달 ${days.join('·')}일`;
+}
 
 export const TODO_MESSAGES = {
   /** 입력 행을 여는 버튼 (§2-A). */
@@ -70,4 +90,18 @@ export const TODO_MESSAGES = {
   routineDateOutOfRange: '1970-01-01~2099-12-31 사이 날짜만 골라 주세요',
   /** 반복 조건에 맞는 날짜가 있었지만 전부 이미 등록돼 있던 경우(중복 방지). */
   routineAllDuplicates: '이미 전부 등록돼 있어요',
+  /** "계속 반복" 체크박스 (routine.md §2·R2) — 체크하면 종료일이 비활성 + 빈값이 된다. */
+  routineIndefiniteLabel: '계속 반복',
+  /** 체크됐을 때 종료일 입력의 `aria-describedby` 설명 (routine.md §5). */
+  routineIndefiniteHint: '종료일 없이 계속 반복돼요',
+  /**
+   * 무기한 등록의 즉시 채우기 결과가 0건일 때(routine.md R4·R5) — 오류가 아니라 성공 토스트다.
+   * 되돌릴 인스턴스가 없어 `routineCreated` 와 달리 되돌리기 액션은 붙지 않는다.
+   */
+  routinePendingStart: '곧 반복이 시작돼요',
+  /**
+   * 🔁 배지의 접근 이름 (routine.md §5) — 아이콘만으로는 스크린리더에 의미가 전달되지 않아
+   * `describeRoutineRecurrence` 의 결과를 그대로 문장에 담는다.
+   */
+  routineBadgeLabel: (description: string): string => `루틴: ${description} 반복`,
 } as const;
