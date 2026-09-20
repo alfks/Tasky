@@ -58,4 +58,43 @@ describe('PeriodToggle (stats.md R1·§5 radiogroup)', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('366일');
     expect(useReportsStore.getState().customRange).toEqual(before);
   });
+
+  it('선택된 프리셋은 채움 + 잉크 링으로 표시된다(theme.md R17, DateCell.tsx 와 같은 처방 — review B1)', () => {
+    render(<PeriodToggle today={TODAY} />);
+
+    const selected = screen.getByRole('radio', { name: '지난 7일' }).closest('label');
+    const unselected = screen.getByRole('radio', { name: '지난 30일' }).closest('label');
+
+    expect(selected?.className).toContain('ring-selected-ring');
+    expect(selected?.className).toContain(
+      'forced-colors:[border-width:var(--control-selected-ring)]',
+    );
+    expect(unselected?.className ?? '').not.toContain('ring-selected-ring');
+  });
+
+  it('시작일을 비우면 366일 초과와 다른 문구("모두 입력")를 보여준다(review m14)', async () => {
+    const user = userEvent.setup();
+    render(<PeriodToggle today={TODAY} />);
+    await user.click(screen.getByRole('radio', { name: '기간 지정' }));
+
+    const start = screen.getByLabelText('시작일');
+    await user.clear(start);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('모두 입력');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('366일');
+  });
+
+  it('무효한 입력은 aria-invalid·aria-describedby 로 알림 문구에 묶인다(review m10)', async () => {
+    const user = userEvent.setup();
+    render(<PeriodToggle today={TODAY} />);
+    await user.click(screen.getByRole('radio', { name: '기간 지정' }));
+
+    const start = screen.getByLabelText('시작일');
+    await user.clear(start);
+    await user.type(start, '2020-01-01');
+
+    const alert = screen.getByRole('alert');
+    expect(start).toHaveAttribute('aria-invalid', 'true');
+    expect(start).toHaveAttribute('aria-describedby', alert.id);
+  });
 });
