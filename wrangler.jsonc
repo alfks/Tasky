@@ -10,6 +10,11 @@
 // 도 같이 넣는다 — wrangler 4.132.0 스키마는 이 키를 문자열 배열로 받지만(확인됨),
 // "main" 없이 넣으면 `Cannot set run_worker_first without a Worker script.` 로 dry-run 이 실패한다
 // (직접 확인: 이 커밋에서는 넣지 않는다).
+//
+// d1_databases·vars 는 `--dry-run`(오프라인, 로컬 해석만)까지만 확인됐다 — 이 계정의 실제
+// Cloudflare API 에 이 바인딩들을 태워 본 적은 아직 없다(Worker 가 없어 실제 배포 자체가
+// 안 됐다). CLOUDFLARE_API_TOKEN 에 D1 권한이 빠져 있는 등의 문제는 첫 실배포(T-93 이후)에서
+// 처음 드러날 수 있다 — .env.example 의 CLOUDFLARE_API_TOKEN 주석(D1:Edit 권한) 참고.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "tasky",
