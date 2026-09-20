@@ -20,7 +20,7 @@ import type { RoutineRecurrence } from '@/domain/todo/routine.rules';
 import type { Todo } from '@/domain/todo/todo';
 import { deleteTodo } from '@/domain/todo/todo.rules';
 
-import { getRepositories } from '@/repositories/container';
+import { getRepositories, type Repositories } from '@/repositories/container';
 
 import {
   withoutRoutine,
@@ -58,8 +58,20 @@ export type RoutineFillActions = {
    * 지연 생성 배선 (R6): 날짜 스트립이 새 범위를 열 때마다 부른다(`DateStrip.onVisibleRange` →
    * `ShellHeader`). 무기한 루틴 중 워터마크가 `to` 에 못 미친 것만 그 구간을 채운다. 채울 것이
    * 없으면(보통의 경우) 저장소에 쓰지 않고 조회만으로 끝난다.
+   *
+   * `revision` 은 낭비 방지 캐시(아래 `createRoutineFillActions`)의 무효화 근거다. **셸이 이미
+   * 합산해 둔 값**(`writeRevision + dataRevision`, `ShellHeader#useSummaryRevision`)을 넘긴다 —
+   * `todo` 스토어 혼자서는 `dataRevision`(백업 가져오기)을 모르고, `@/features/backup` 을 직접
+   * 구독하면 순환이 된다(리뷰 m2: 캐시가 `writeRevision` 만 보면 가져오기 뒤 재확인이 늦어져
+   * `src/features/backup/index.ts` 의 "자기 데이터를 캐시해 둔 화면은 `dataRevision` 을 구독한다"
+   * 규약과 어긋난다). 생략하면(스토어 단위 테스트 등) `writeRevision` 단독으로 대신한다.
    */
-  materializeRoutines: (input: { from: DateKey; to: DateKey; today: DateKey }) => Promise<boolean>;
+  materializeRoutines: (input: {
+    from: DateKey;
+    to: DateKey;
+    today: DateKey;
+    revision?: number;
+  }) => Promise<boolean>;
 };
 
 /** 종료일 있는 등록도 포함해 **항상** `Routine` 레코드를 만들고, 그 구간을 즉시 채운다(R3~R5). */
@@ -213,13 +225,17 @@ async function planMaterializeRoutines(
 }
 
 export function createRoutineFillActions(ctx: TodoContext, writer: TodoWriter): RoutineFillActions {
-  // 낭비 방지 캐시(리뷰 Major 2): 이미 확인을 마친 `to`(와 그 시점의 `writeRevision`)를 기억해 뒀다가,
-  // 그 뒤로 아무 쓰기도 없었는데 같은 범위(또는 더 좁은 범위)를 다시 열면 저장소를 아예 안 읽는다.
-  // `writeRevision` 은 투두 쓰기에도 오르므로(루틴이 아닌 쓰기에도) "과도하게 무효화"될 수 있지만
-  // — 그때는 그냥 한 번 더 읽을 뿐 안전하다 — 그 반대(캐시가 실제로 밀린 일을 놓치는 것)는 없다:
-  // 루틴 쓰기(등록·중지·재개·삭제)는 전부 `commitWrites` 를 거쳐 이 값을 올린다(공통 배선, 이 파일이
-  // 따로 구독할 필요가 없다).
-  let lastHandled: { to: DateKey; writeRevisionAtCheck: number } | null = null;
+  // 낭비 방지 캐시(리뷰 Major 2): 이미 확인을 마친 `to`(와 그 시점의 `revision`)를 기억해 뒀다가,
+  // 그 뒤로 아무 일도 없었는데 같은 범위(또는 더 좁은 범위)를 다시 열면 저장소를 아예 안 읽는다.
+  // `revision` 이 과도하게 자주 오르는 값이어도(루틴이 아닌 투두 쓰기에도 오른다) 안전하다 — 그때는
+  // 그냥 한 번 더 읽을 뿐이다. 위험한 방향은 그 반대(무효화를 놓치는 것)뿐인데, 루틴 쓰기(등록·
+  // 중지·재개·삭제)는 전부 `commitWrites` 를 거쳐 `writeRevision` 을 올리고, 백업 가져오기는 호출부
+  // (`ShellHeader`)가 넘기는 `revision` 인자에 `dataRevision` 을 함께 합산해 둔다(리뷰 m2).
+  //
+  // **저장소 참조도 함께 기억한다.** 이 캐시는 스토어 인스턴스(클로저)와 함께 사는데, `setRepositories`
+  // 로 저장소가 통째로 바뀌면(테스트의 매 `beforeEach`, 실서비스라면 메모리 폴백 전환 등) 예전
+  // 저장소를 보고 세운 워터마크 판정이 새 저장소에는 안 맞는다 — 참조가 같을 때만 캐시를 믿는다.
+  let lastHandled: { to: DateKey; revisionAtCheck: number; repos: Repositories } | null = null;
 
   return {
     createRoutine: async (input) => {
@@ -234,25 +250,32 @@ export function createRoutineFillActions(ctx: TodoContext, writer: TodoWriter): 
 
     undoRoutine: (ids) => writer.commitWrites(() => planUndoRoutine(ctx, ids)),
 
-    materializeRoutines: ({ from, to, today }) => {
+    materializeRoutines: ({ from, to, today, revision }) => {
       // 다음 등록(`createRoutine`)의 R3 "보이는 범위 끝" 이 이 값을 읽는다 — 쓰기 큐 밖에서 즉시
       // 반영해야, 이 호출이 아직 큐를 기다리는 중이어도 그 사이의 등록이 최신 범위를 본다.
       ctx.set({ visibleRange: { from, to } });
 
+      const currentRevision = revision ?? ctx.get().writeRevision;
+      const currentRepos = getRepositories();
       const cached = lastHandled;
       if (
         cached !== null &&
+        cached.repos === currentRepos &&
         to <= cached.to &&
-        ctx.get().writeRevision === cached.writeRevisionAtCheck
+        currentRevision === cached.revisionAtCheck
       ) {
-        return Promise.resolve(true); // 이미 이 구간까지 확인했고 그 뒤로 아무 쓰기도 없었다.
+        return Promise.resolve(true); // 이미 이 구간까지 확인했고 그 뒤로 아무 일도 없었다.
       }
 
       return writer
         .commitWrites(() => planMaterializeRoutines(ctx, { to, today }))
         .then((ok) => {
           if (ok) {
-            lastHandled = { to, writeRevisionAtCheck: ctx.get().writeRevision };
+            lastHandled = {
+              to,
+              revisionAtCheck: revision ?? ctx.get().writeRevision,
+              repos: currentRepos,
+            };
           } else {
             // 지연 생성은 조용해야 한다(routine.md R6 "토스트 없음") — 사용자가 한 일은 "날짜 이동"
             // 이지 "루틴 만들기"가 아니므로, 이 배경 작업의 실패가 방금 사용자가 한 다른 쓰기의 성공

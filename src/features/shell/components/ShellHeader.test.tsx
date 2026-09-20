@@ -288,4 +288,28 @@ describe('ShellHeader — 무기한 루틴 지연 생성 배선 (routine.md R6)'
 
     expect(cellName()).toBe('9월 16일 수요일, 오늘');
   });
+
+  it('백업 가져오기(dataRevision 만 오름) 뒤 같은 범위를 다시 열면 새로 생긴 루틴을 채운다(리뷰 m2)', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await act(async () => {
+      await useTodoStore.getState().loadDate(TODAY);
+    });
+    // 아직 루틴이 없다 — 이 방문에서 캐시가 세팅된다.
+    await waitFor(() => expect(cellName()).toBe('9월 16일 수요일, 오늘'), { timeout: 2000 });
+
+    // 가져오기가 저장소에 직접 쓴다(todo 스토어의 쓰기 큐를 거치지 않아 writeRevision 은 그대로다)
+    // + `runImport` 이 하는 것 그대로 `dataRevision` 만 올린다.
+    await getRepositories().routines.upsert(adopt(makeRoutine()));
+    act(() => {
+      useBackupStore.setState({ dataRevision: useBackupStore.getState().dataRevision + 1 });
+    });
+
+    // 같은 범위를 다시 연다(갔다 돌아온다) — writeRevision 은 안 올랐지만 셸이 넘기는 revision
+    // (summaryRevision = writeRevision + dataRevision)이 바뀌어 캐시가 깨진다.
+    await user.click(screen.getByRole('button', { name: '다음 주' }));
+    await user.click(screen.getByRole('button', { name: '이전 주' }));
+
+    await waitFor(() => expect(cellName()).toContain('할 일 1개 중 0개 완료'), { timeout: 2000 });
+  });
 });

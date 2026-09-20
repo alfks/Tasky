@@ -133,7 +133,9 @@ export function ShellHeader({
   // 지연 생성 배선(routine.md R6): 스트립이 새 범위를 열 때마다 그 범위 안의 무기한 루틴을
   // 조용히 채운다. `date-strip` 은 `todo` 를 import 할 수 없어(리프, 위 `useSummaryRevision` 주석과
   // 같은 이유) 셸이 콜백으로 받아 스토어 액션에 잇는다. `today` 는 도메인·스토어가 시계를 스스로
-  // 읽지 않게 하려고 호출부(날짜 스트립 스토어)가 준다.
+  // 읽지 않게 하려고 호출부(날짜 스트립 스토어)가 준다. `revision` 으로 `summaryRevision` 을 그대로
+  // 넘긴다 — 낭비 방지 캐시(`todo-routine-fill.ts`)가 `writeRevision` 만 보면 백업 가져오기
+  // (`dataRevision` 만 오른다)뒤 재확인이 늦어진다(리뷰 m2).
   const materializeRoutines = useTodoStore((state) => state.materializeRoutines);
   const today = useDateStripStore((state) => state.today);
   return (
@@ -188,7 +190,9 @@ export function ShellHeader({
         summaryRevision={summaryRevision}
         onDropTodo={onDropTodo}
         onSummaryError={onSummaryError}
-        onVisibleRange={(from, to) => void materializeRoutines({ from, to, today })}
+        onVisibleRange={(from, to) =>
+          void materializeRoutines({ from, to, today, revision: summaryRevision })
+        }
       />
     </div>
   );

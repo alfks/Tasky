@@ -290,4 +290,21 @@ describe('materializeRoutines — 낭비 방지 캐시(리뷰 Major 2)', () => {
     });
     expect(listCalls()).toBe(2);
   });
+
+  it('revision 인자가 바뀌면(writeRevision 은 그대로여도) 다시 읽는다(리뷰 m2)', async () => {
+    // `revision` 은 셸이 writeRevision + dataRevision 을 합쳐 넘긴다(ShellHeader#useSummaryRevision).
+    // 백업 가져오기는 writeRevision 을 안 올리고 dataRevision 만 올리므로, 이 스토어 혼자 보는
+    // writeRevision 만으로는 가져오기 뒤 재확인이 늦는다 — revision 인자로 그 신호까지 받는다.
+    const listCalls = countRoutineListCalls();
+    const range = { from: FIXTURE_DATE, to: '2026-02-28' as DateKey, today: FIXTURE_DATE };
+
+    await state().materializeRoutines({ ...range, revision: 1 });
+    expect(listCalls()).toBe(1);
+
+    await state().materializeRoutines({ ...range, revision: 1 }); // 같은 revision — 스킵
+    expect(listCalls()).toBe(1);
+
+    await state().materializeRoutines({ ...range, revision: 2 }); // writeRevision 은 안 올랐어도
+    expect(listCalls()).toBe(2); // revision 이 바뀌었으니 다시 읽는다
+  });
 });
