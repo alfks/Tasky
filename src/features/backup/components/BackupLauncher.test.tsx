@@ -39,6 +39,9 @@ async function seedTodos(count: number): Promise<void> {
     todos: makeTodos(count, () => ({ categoryId: category.id })).map(persist),
     focusSessions: [],
     settings: persist(makeSettings()),
+    ddays: [],
+    diaryEntries: [],
+    routines: [],
   });
 }
 

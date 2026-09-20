@@ -23,6 +23,9 @@ const selection: BackupSelection = {
     categories: [],
     todos: [],
     focusSessions: [],
+    ddays: [],
+    diaryEntries: [],
+    routines: [],
   },
   counts: { categories: 4, todos: 312 },
 };
