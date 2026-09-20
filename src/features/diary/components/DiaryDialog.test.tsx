@@ -1,9 +1,9 @@
 // 작성/수정 다이얼로그 (diary.md §2·§5).
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { DIARY_CONTENT_MAX_LENGTH } from '@/domain/diary/diary.rules';
+import { DIARY_CONTENT_MAX_LENGTH, diaryContentLength } from '@/domain/diary/diary.rules';
 import { MOOD_EMOJIS } from '@/domain/diary/mood-emoji';
 
 import { setRepositories } from '@/repositories/container';
@@ -42,18 +42,34 @@ describe('기분 이모지 (R3, category R4-a와 같은 조작)', () => {
   });
 });
 
-describe('글자 수 (§5, 500자 경계)', () => {
-  it('500자는 저장할 수 있고, 입력 상한 자체가 500자다(경계)', async () => {
+describe('글자 수 (§5, 500자 경계, 리뷰 Minor 1 — grapheme 기준)', () => {
+  it('500자는 저장할 수 있고, 입력 상한(maxlength)은 카테고리와 같은 2배 여유를 둔다', async () => {
     const user = userEvent.setup();
     render(<DiaryDialog open entry={undefined} onClose={() => {}} onSaved={() => {}} />);
 
     const textarea = screen.getByRole('textbox', { name: '오늘 하루' });
-    expect(textarea).toHaveAttribute('maxlength', String(DIARY_CONTENT_MAX_LENGTH));
+    expect(textarea).toHaveAttribute('maxlength', String(DIARY_CONTENT_MAX_LENGTH * 2));
 
     await user.click(textarea);
     await user.paste('가'.repeat(DIARY_CONTENT_MAX_LENGTH));
 
     expect(textarea).toHaveValue('가'.repeat(DIARY_CONTENT_MAX_LENGTH));
+    expect(screen.getByText('500 / 500')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '저장' })).not.toBeDisabled();
+  });
+
+  it('이모지처럼 코드 유닛이 2개인 글자도 카운터는 글자 수(grapheme)로 보여준다', async () => {
+    const user = userEvent.setup();
+    render(<DiaryDialog open entry={undefined} onClose={() => {}} onSaved={() => {}} />);
+
+    const textarea = screen.getByRole('textbox', { name: '오늘 하루' }) as HTMLTextAreaElement;
+    await user.click(textarea);
+    // 😄 300개 = 코드 유닛 600(.length) · 그래핌 300 — 코드 유닛으로 셌다면 "600 / 500" 이 보였을 것.
+    await user.paste('😄'.repeat(300));
+
+    expect(textarea.value.length).toBe(600); // .length(코드 유닛)는 여전히 600
+    expect(diaryContentLength(textarea.value)).toBe(300); // 카운터·검증은 300(그래핌)을 쓴다
+    expect(screen.getByText('300 / 500')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '저장' })).not.toBeDisabled();
   });
 
@@ -78,6 +94,20 @@ describe('글자 수 (§5, 500자 경계)', () => {
     const live = document.querySelector('[aria-live="polite"].sr-only');
     expect(live).toHaveTextContent('10자 남음');
   });
+
+  it('490~500자 사이에서는 10자 단위로만 안내한다(리뷰 Nit — 매 글자 아님)', async () => {
+    const user = userEvent.setup();
+    render(<DiaryDialog open entry={undefined} onClose={() => {}} onSaved={() => {}} />);
+    const textarea = screen.getByRole('textbox', { name: '오늘 하루' });
+    const live = document.querySelector('[aria-live="polite"].sr-only') as HTMLElement;
+    await user.click(textarea);
+
+    await user.paste('가'.repeat(491)); // 10 의 배수가 아니다 → 조용
+    expect(live).toHaveTextContent('');
+
+    await user.type(textarea, '가'.repeat(9)); // 500 → 0자 남음(경계, 배수가 아니어도 항상 안내)
+    expect(live).toHaveTextContent('0자 남음');
+  });
 });
 
 describe('빈 값 (R3)', () => {
@@ -97,12 +127,27 @@ describe('빈 값 (R3)', () => {
   });
 });
 
-describe('초기 포커스 (§5)', () => {
+describe('초기 포커스 (§5, 리뷰 Minor 2 — Dialog 의 initialFocusRef 를 쓴다)', () => {
   it('새로 쓸 때는 이모지 선택이다', () => {
     render(<DiaryDialog open entry={undefined} onClose={() => {}} onSaved={() => {}} />);
 
     expect(screen.getByRole('radio', { name: '없음' })).toHaveFocus();
   });
+
+  it(
+    '닫기(✕) 버튼을 거치지 않고 한 번에 목표로 포커스가 간다(중간 상태 없음). ' +
+      'Dialog 의 기본 폴백(첫 포커스 가능 요소 = ✕)이 아니라 initialFocusRef 를 실제로 ' +
+      '쓰고 있다는 뜻이다 — 안 쓰면 .focus() 가 두 번(✕ → 목표) 불린다.',
+    () => {
+      const focusSpy = vi.spyOn(HTMLElement.prototype, 'focus');
+
+      render(<DiaryDialog open entry={undefined} onClose={() => {}} onSaved={() => {}} />);
+
+      expect(focusSpy).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('radio', { name: '없음' })).toHaveFocus();
+      focusSpy.mockRestore();
+    },
+  );
 
   it('기존 값이 있으면 텍스트 영역이다', () => {
     render(

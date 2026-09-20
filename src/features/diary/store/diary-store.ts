@@ -95,6 +95,24 @@ export function createDiaryStore(deps: MetaDeps = defaultDeps) {
       }
     },
 
+    /**
+     * **알고 접은 경쟁**(리뷰 Minor 3): `getByDate` 와 `upsert` 사이가 열려 있다 — 같은 날짜에
+     * `save()` 두 번이 겹치면(탭 둘, 또는 느린 IndexedDB) 둘 다 `existing===undefined` 를 읽어
+     * `createDiaryEntry` 를 두 번 타고 살아 있는 기록이 두 건 남을 수 있다.
+     *
+     * 막지 않은 이유: (1) UI 쪽 `saving` 가드(`DiaryDialog.tsx`)가 실제 경로에서는 두 번째 클릭
+     * 자체를 막는다. (2) 그래도 두 건이 생기면 `getByDate` 가 `compareDiaryEntries`
+     * (createdAt asc → id asc)로 **결정적으로 하나**를 고르므로 화면이 흔들리지 않는다(계약
+     * 테스트 `같은 날짜에 살아 있는 두 건이 있으면 … createdAt 이 빠른 쪽을 돌려준다`). (3) 저장소
+     * 트랜잭션으로 막으려면 `(date)` 원장을 유일 인덱스로 만들거나 조회+쓰기를 한 트랜잭션으로
+     * 묶어야 하는데, 그러면 `DiaryRepository` 가 지금의 `upsert` 하나 계약(ADR-0007)을 벗어난다 —
+     * 다이어리는 하루 한 번 쓰는 개인 기록이라 그 비용을 들일 만큼 동시 편집이 흔하지 않다고 판단했다.
+     *
+     * **루틴의 `(routineId, date)` 워터마크(ADR-0017)와 다른 선택인 이유**: 루틴 지연 생성은
+     * 같은 슬롯을 **여러 날짜 스트립 조회가 반복해서** 겹쳐 채울 수 있는 배경 작업이라 조회 없이도
+     * 원장(`materializedThrough`)으로 멱등을 보장해야 했다. 다이어리는 **사람이 버튼을 눌러야만**
+     * 일어나는 전면 조작이라 발생 빈도·파급이 다르고, `saving` 가드가 실질적으로 이미 닫는다.
+     */
     save: async (input) => {
       const { date } = get();
       if (date === null) {

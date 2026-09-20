@@ -5,19 +5,46 @@ import { MOOD_EMOJIS } from '@/domain/diary/mood-emoji';
 import { DomainError } from '@/domain/errors';
 import { createMeta, markDeleted, touch, type MetaDeps, type Persistable } from '@/domain/meta';
 
-/** 본문 최대 길이 (diary R2). */
+/**
+ * 본문 최대 길이 — **grapheme**(사람이 세는 "한 글자") 기준 (diary R2). `.length`(UTF-16 코드
+ * 유닛)가 아니다: 이모지 같은 서러게이트 쌍은 그래핌 1개가 코드 유닛 2개라, `.length` 로 재면
+ * "😄를 250개 써서 code unit 500" 인 기록이 실제로는 250자인데도 상한에 걸린 것처럼 보이고,
+ * 반대로 "코드 유닛 500" 을 채웠다는 표시가 실제 글자 수와 어긋난다(리뷰 Minor 1 — category 이름
+ * 검증이 이미 같은 이유로 grapheme 을 쓴다, `category.rules.ts#graphemeCount`).
+ */
 export const DIARY_CONTENT_MAX_LENGTH = 500;
+
+let segmenter: Intl.Segmenter | undefined;
+
+/** 사람이 세는 "한 글자"(grapheme) 수 — `category.rules.ts`·`dday.rules.ts` 의 같은 이름 함수와 같은 계산. */
+function graphemeCount(value: string): number {
+  if (typeof Intl === 'undefined' || !('Segmenter' in Intl)) {
+    return [...value].length;
+  }
+  segmenter ??= new Intl.Segmenter('ko', { granularity: 'grapheme' });
+  return [...segmenter.segment(value)].length;
+}
+
+/**
+ * 다이어리 본문의 "글자 수"(grapheme). `validateDiaryContent` 와 화면의 글자 수 카운터
+ * (`DiaryDialog.tsx`)가 **같은 값**을 쓴다 — 검증과 표시가 서로 다른 기준으로 세면 카운터가
+ * "500/500" 인데 저장은 막히는(또는 그 반대) 모순이 생긴다.
+ */
+export function diaryContentLength(value: string): number {
+  return graphemeCount(value);
+}
 
 /** 앞뒤 공백을 제거한다. 공백만 있던 값은 빈 문자열이 되어 "기록 없음"으로 취급된다 (diary R2). */
 export function normalizeDiaryContent(raw: string): string {
   return raw.trim();
 }
 
-/** 정규화한 본문을 돌려주고 500자를 넘으면 던진다 (diary R2). */
+/** 정규화한 본문을 돌려주고 500자(그래핌)를 넘으면 던진다 (diary R2). */
 export function validateDiaryContent(raw: string): string {
   const content = normalizeDiaryContent(raw);
-  if (content.length > DIARY_CONTENT_MAX_LENGTH) {
-    throw new DomainError('DIARY_CONTENT_TOO_LONG', String(content.length));
+  const length = diaryContentLength(content);
+  if (length > DIARY_CONTENT_MAX_LENGTH) {
+    throw new DomainError('DIARY_CONTENT_TOO_LONG', String(length));
   }
   return content;
 }

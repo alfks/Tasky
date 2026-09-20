@@ -7,6 +7,7 @@ import {
   createDiaryEntry,
   DIARY_CONTENT_MAX_LENGTH,
   deleteDiaryEntry,
+  diaryContentLength,
   editDiaryEntry,
   normalizeDiaryContent,
   restoreDiaryEntry,
@@ -51,6 +52,24 @@ describe('본문 검증 (R2)', () => {
       expect.objectContaining({ code: 'DIARY_CONTENT_TOO_LONG' }),
     );
   });
+
+  it(
+    '상한은 코드 유닛(.length)이 아니라 그래핌이다(리뷰 Minor 1) — 서러게이트 쌍(이모지)처럼 ' +
+      '그래핌 1개가 코드 유닛 2개인 글자에서 둘이 갈린다',
+    () => {
+      const twoUnitEmoji = '😄'; // U+1F604 — .length 는 2, 그래핌은 1
+      const content250 = twoUnitEmoji.repeat(250); // .length 500(코드 유닛), 그래핌 250
+      expect(content250).toHaveLength(500);
+      expect(diaryContentLength(content250)).toBe(250);
+      expect(() => validateDiaryContent(content250)).not.toThrow();
+
+      const content501 = twoUnitEmoji.repeat(501); // 그래핌 501 — 여기서만 거부돼야 한다
+      expect(diaryContentLength(content501)).toBe(501);
+      expect(() => validateDiaryContent(content501)).toThrow(
+        expect.objectContaining({ code: 'DIARY_CONTENT_TOO_LONG' }),
+      );
+    },
+  );
 });
 
 describe('기분 이모지 검증 (R3)', () => {

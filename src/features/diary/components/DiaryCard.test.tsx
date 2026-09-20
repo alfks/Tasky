@@ -135,3 +135,34 @@ describe('작성 → 수정 → 삭제 → 되돌리기 (키보드만, §5)', ()
     expect(addButton).toHaveFocus();
   });
 });
+
+describe('이모지만 있어도 감정이 낭독된다 (리뷰 Major — 접근성)', () => {
+  it('이모지만 저장한 기록은 sr-only 텍스트로 감정 이름이 낭독된다', async () => {
+    const user = userEvent.setup();
+    render(<DiaryCard date={DATE} />);
+
+    await user.click(await screen.findByRole('button', { name: '+ 기록하기' }));
+    await user.click(screen.getByRole('radio', { name: '기쁨' }));
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    await screen.findByRole('button', { name: '수정' });
+
+    // 이모지 그 자체(aria-hidden)를 뺀 텍스트에 "기쁨" 이 남아야 실브라우저 실측(오늘의
+    // 기록수정" 뿐)이 재현되지 않는다 — sr-only 로만 존재해도 접근성 트리에는 있다.
+    expect(screen.getByText('기쁨', { selector: '.sr-only' })).toBeInTheDocument();
+  });
+
+  it('이모지 + 본문이면 감정 이름과 본문이 함께 낭독된다', async () => {
+    const user = userEvent.setup();
+    render(<DiaryCard date={DATE} />);
+
+    await user.click(await screen.findByRole('button', { name: '+ 기록하기' }));
+    await user.click(screen.getByRole('radio', { name: '슬픔' }));
+    await user.tab();
+    await user.keyboard('비가 왔다');
+    await user.keyboard('{Control>}{Enter}{/Control}');
+    await screen.findByRole('button', { name: '수정' });
+
+    expect(screen.getByText('슬픔', { selector: '.sr-only' })).toBeInTheDocument();
+    expect(screen.getByText('비가 왔다')).toBeInTheDocument();
+  });
+});

@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { DateKey } from '@/domain/date/date-key';
+import { findMoodEmoji } from '@/domain/diary/mood-emoji';
 
 import { DiaryDialog } from '@/features/diary/components/DiaryDialog';
 import { focusAfterDiaryRemoval } from '@/features/diary/lib/diary-focus';
@@ -136,9 +137,18 @@ export function DiaryCard({ date }: DiaryCardProps) {
           </div>
           <p className="flex items-start gap-[var(--space-2)] text-base text-text">
             {entry.emoji === undefined ? null : (
-              <span aria-hidden="true" className="text-lg leading-none">
-                {entry.emoji}
-              </span>
+              <>
+                {/*
+                  이모지 자체는 `aria-hidden`(그림 문자를 낭독기마다 다르게 읽는다, `EmojiPicker`
+                  와 같은 처리) — 대신 `mood-emoji.ts` 의 `name` 을 sr-only 텍스트로 붙인다. 이게
+                  없으면 **이모지만 있는 기록**은 낭독할 것이 아무것도 안 남는다(리뷰 Major, 실측:
+                  "오늘의 기록수정" 뿐). routine.md §5 의 "텍스트 대체" 원칙과 같다.
+                */}
+                <span aria-hidden="true" className="text-lg leading-none">
+                  {entry.emoji}
+                </span>
+                <span className="sr-only">{findMoodEmoji(entry.emoji)?.name ?? entry.emoji}</span>
+              </>
             )}
             {entry.content === '' ? null : (
               <span className="whitespace-pre-wrap">{entry.content}</span>
