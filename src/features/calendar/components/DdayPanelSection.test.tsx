@@ -12,7 +12,7 @@ import { DdayPanelSection } from '@/features/calendar/components/DdayPanelSectio
 import { useDdayStore } from '@/features/calendar/store/dday-store';
 import { useDateStripStore } from '@/features/date-strip';
 
-import { dismissToast, ToastViewport, useToasts } from '@/components/ui/Toast';
+import { clearToasts, dismissToast, ToastViewport, useToasts } from '@/components/ui/Toast';
 
 const TODAY = '2026-01-15' as DateKey;
 
@@ -20,6 +20,7 @@ beforeEach(() => {
   setRepositories(createMemoryRepositories());
   useDdayStore.setState({ ddays: [], status: 'idle', error: null, pendingRemoval: null });
   useDateStripStore.setState({ today: TODAY, selectedDate: TODAY, view: 'week' });
+  clearToasts(); // `Toast.tsx` 의 허브는 모듈 전역이라 이전 테스트가 남긴 토스트를 걷어낸다.
 });
 
 /** ShellToasts 와 같은 배선(구독) — [되돌리기]를 실제로 누르는 테스트가 쓴다. */
@@ -176,6 +177,35 @@ describe('삭제 + 되돌리기 (R5)', () => {
     await user.keyboard('{Enter}');
 
     expect(await screen.findByText('생일')).toBeInTheDocument();
+  });
+
+  /**
+   * **검증 라운드 2 Minor 대응.** 돌연변이 테스트(`focusAfterRowRemoval` → 항상 `null`)를 돌려도
+   * 기존 9건이 전부 통과했다 — 위 시나리오들은 유일한 행을 지워 `<ul>` 이 통째로 사라지고
+   * (`isConnected:false`), 그래서 R14 hop 이 실제로는 한 번도 `null` 이 아닌 값을 반환하지 않은
+   * 채 **되돌리기 토스트 브리지만으로** 최종 포커스가 맞아떨어졌다 — 이식한 R14 로직
+   * (`removal-focus.ts`) 이 검증되지 않았다는 뜻이다.
+   *
+   * 여기서는 그 브리지를 **의도적으로 무력화**한다 — `<Toasts/>` 를 마운트하지 않으면 토스트
+   * 자체는 여전히 허브(store)에 올라가지만(`pushToast` 는 뷰포트 유무를 모른다) 화면에
+   * `[되돌리기]` 버튼이 없으므로 브리지의 `document.querySelector('[data-overlay-always-live]
+   * button')` 는 항상 `null` 이다. 그래서 최종 포커스는 **오직 R14 hop** 의 결과다. 행이 둘
+   * 남은 상태에서 첫 행을 지우면 다음 행(`rows[index]`, 자리가 당겨진 두 번째 항목)의 첫
+   * 조작 지점으로 가야 한다 — `focusAfterRowRemoval` 을 `null` 로 바꿔치기하면 이 단언이
+   * 깨진다(수동 돌연변이 테스트로 확인).
+   */
+  it('행이 둘 이상이면 토스트 없이도 다음 행으로 넘어간다 (R14 hop, 돌연변이 테스트 대상)', async () => {
+    const user = userEvent.setup();
+    await useDdayStore.getState().add({ title: '생일', date: '2026-01-20' });
+    await useDdayStore.getState().add({ title: '기념일', date: '2026-01-27' });
+    render(<DdayPanelSection />); // <Toasts/> 없음 — 브리지가 아무 버튼도 찾지 못하게 한다.
+
+    await user.click(screen.getByRole('button', { name: '생일 삭제' }));
+
+    expect(screen.queryByText('생일')).not.toBeInTheDocument();
+    // 자리를 당겨받은 다음 행("기념일")의 select 버튼으로 — 토스트 버튼이 없으니 이 hop 이 유일한 답이다.
+    expect(screen.getByRole('button', { name: /기념일까지/ })).toHaveFocus();
+    expect(document.activeElement).not.toBe(document.body);
   });
 });
 
