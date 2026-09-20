@@ -58,14 +58,14 @@
 - R8. 루틴 규칙(반복 패턴·카테고리 등) 수정은 **그 시점 이후 생성분에만** 적용된다. 이미 만든 인스턴스는 독립 투두라 바뀌지 않는다(수정 즉시 재실행 없음).
 - R9. 인스턴스는 실제 `Todo`이고, 만들어진 뒤에는 **완전히 독립적**이다(R21 원칙 그대로 확장) — 그 날짜 것만 고쳐도(제목·메모·카테고리) 다른 날짜·미래 생성분에 영향 없음, 지워도 이후 생성에 영향 없음.
 - R10. 루틴 **삭제**(관리 화면, 중지와 별개 메뉴 항목): 과거 인스턴스의 `routineId` 연결은 유지(기록 보존, 🔁 아이콘만 사라짐 — 원본 없음), 이후 생성은 중단.
-- R11. 루틴이 가리키는 카테고리가 삭제되면 `categoryId`를 비운다(카테고리 없이 계속 생성). 인스턴스는 category.md R17처럼 "(삭제됨)" 그룹.
+- R11. 루틴이 가리키는 카테고리가 삭제되면 루틴 레코드는 바뀌지 않는다(`categoryId`를 비우지 않는다 — `Todo.categoryId`가 필수라 "카테고리 없이 생성"은 애초에 성립하지 않는다, §4 정정). 대신 **그 카테고리가 살아 있는 동안만** 지연 생성이 계속된다 — 삭제된 뒤로는 R6가 그 루틴을 건너뛴다(관리 화면은 "카테고리 없음" 텍스트를 병기해 왜 멈췄는지 보여준다). 이미 만든 인스턴스는 category.md R17처럼 "(삭제됨)" 그룹.
 - R12. **진입점은 둘**이다: (a) 항목 메뉴 "루틴으로 등록"(R21 그대로, 이번엔 종료일을 비울 수 있을 뿐), (b) 관리 화면의 "+ 루틴 추가"(신규, 항목 없이 카테고리부터 골라 새로 만든다).
 
 ## 4. 데이터
 
 - domain: 기존 `RoutineRecurrence`(`{type:'weekly', daysOfWeek}` | `{type:'monthly', daysOfMonth}`, `src/domain/todo/routine.rules.ts`)는 **타입 변경 없음**(daily 유형을 추가하지 않는다, R1). 즉시 채우기(R3·R4)는 기존 `expandRoutineDates`를 그대로 쓰되, 호출부가 R3의 구간 규칙(끝이 시작보다 앞서지 않도록 `max`로 보정한 구간)을 넘긴다. 지연 생성(R6) 판정은 신규 순수 함수 `shouldMaterialize(routine, date) → boolean`(날짜만 입력받는다, 시각 의존 없음).
-- 신규 저장 엔티티 `Routine = Meta & { title, memo?, categoryId?: CategoryId, recurrence: RoutineRecurrence, startDate: DateKey, endDate?: DateKey, active: boolean }`. `Todo.routineId?: RoutineId` — 기존 `createRoutine` 스토어 액션(R21 구현)이 만드는 투두에도 이제 이 필드를 채운다. **입력 시그니처가 바뀐다**: 지금은 `endDate: DateKey`가 필수인데 이제 선택이 된다(무기한, R2). `createRoutine`의 반환(`TodoId[] | false`)은 바뀌지 않는다 — 결과 0건도 이제 `false`가 아니라 `[]`로 성공 취급한다(R4).
-- 레포지토리 `RoutineRepository.list({ includeInactive })`·`upsert(Persistable<Routine>)`. 지연 생성은 date-strip이 이미 하는 `TodoRepository.listByDateRange` 결과에 없는 (routine, date) 쌍만 `TodoRepository.upsert`로 채운다(중복 생성 방지는 `(routineId, date)` 유일 제약 — 계약 테스트).
+- 신규 저장 엔티티 `Routine = Meta & { title, memo?, categoryId: CategoryId, recurrence: RoutineRecurrence, startDate: DateKey, endDate?: DateKey, active: boolean, materializedThrough: DateKey }`. `categoryId`는 **필수**다(`Todo.categoryId`가 필수라 "카테고리 없이 등록"은 애초에 성립하지 않는다 — R11 정정 참고). `materializedThrough`는 "이 날짜까지의 슬롯은 전부 생성이 끝났다"를 기록하는 워터마크다(등록 시 `startDate` 전날로 시작). `Todo.routineId?: RoutineId` — 기존 `createRoutine` 스토어 액션(R21 구현)이 만드는 투두에도 이제 이 필드를 채운다. **입력 시그니처가 바뀐다**: 지금은 `endDate: DateKey`가 필수인데 이제 선택이 된다(무기한, R2). `createRoutine`의 반환(`TodoId[] | false`)은 바뀌지 않는다 — 결과 0건도 이제 `false`가 아니라 `[]`로 성공 취급한다(R4).
+- 레포지토리 `RoutineRepository.list({ includeInactive })`·`upsert(Persistable<Routine>)`. **중복 생성 방지는 조회가 아니라 워터마크로 한다**(ADR-0017) — "`listByDateRange` 결과에 없는 (routine, date) 쌍만 채운다"는 이전 서술은 소프트 삭제 툼스톤이 조회에서 빠지는 것(ADR-0007)과 부딪혀 지운 인스턴스를 부활시키므로 쓰지 않는다. 실제로는 `planRoutineFill`(`src/domain/routine/routine-fill.ts`)이 `(routine.materializedThrough, through]` 구간만 계획하고, 만든 투두들과 워터마크가 이동한 루틴을 **한 트랜잭션**(`DatasetRepository.write`)으로 함께 커밋한다 — 그래서 `(routineId, date)` 슬롯은 조회 없이도 평생 한 번만 만들어진다(계약 테스트: `routine-fill.contract.ts`, memory·indexeddb).
 
 ## 5. 접근성
 
