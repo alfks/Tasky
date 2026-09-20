@@ -29,6 +29,7 @@
 import { type EntityTable, type IDType, type IndexableType } from 'dexie';
 
 import type { Category } from '@/domain/category/category';
+import type { Dday } from '@/domain/dday/dday';
 import type { FocusSession } from '@/domain/focus/focus-session';
 import { isTombstone, type Meta, type Persistable } from '@/domain/meta';
 import type { Settings } from '@/domain/theme/settings';
@@ -84,6 +85,11 @@ export type Store = {
   readonly categories: LiveTable<Category, IndexOf<typeof STORES.categories>>;
   readonly settings: LiveTable<Settings, IndexOf<typeof STORES.settings>>;
   readonly focusSessions: LiveTable<FocusSession, IndexOf<typeof STORES.focusSessions>>;
+  /**
+   * D-day (ADR-0016, calendar.md). `DatasetRepository`(백업/복원, 아래 `transaction`)에는 아직 들어가지
+   * 않는다 — `dday-repository.ts` 머리주석 참고.
+   */
+  readonly ddays: LiveTable<Dday, IndexOf<typeof STORES.ddays>>;
   /**
    * **`DatasetRepository.write`·`restore` 전용** — 이 묶음의 네 테이블을 묶는 rw 트랜잭션. 중간에 던지면
    * Dexie 가 전부 롤백한다(ADR-0009 결정 2 가 이 둘에만 허용한 예외).
@@ -150,6 +156,7 @@ export function storeOn(database: TaskyDb): Store {
     categories: brand(database.categories, STORES.categories),
     settings: brand(database.settings, STORES.settings),
     focusSessions: brand(database.focusSessions, STORES.focusSessions),
+    ddays: brand(database.ddays, STORES.ddays),
     transaction: (run) =>
       database.transaction(
         'rw',

@@ -12,7 +12,7 @@ import type { Todo } from '@/domain/todo/todo';
 
 import { isRepositoryError, type RepositoryError } from '@/repositories/repository-error';
 
-import { db, DB_VERSION, STORES, STORES_V1, type TaskyDb } from '@/infra/indexeddb/db';
+import { db, DB_VERSION, STORES, STORES_V1, STORES_V2, type TaskyDb } from '@/infra/indexeddb/db';
 import { storeOn } from '@/infra/indexeddb/query';
 
 let seq = 0;
@@ -38,6 +38,23 @@ async function seedV1(): Promise<{ todo: Todo; category: Category }> {
   legacy.version(1).stores(STORES_V1);
   await legacy.open();
   expect(legacy.verno, 'v1 DB 로 시작하지 않았다 — 이 테스트는 업그레이드를 밟지 않는다').toBe(1);
+  const todo = V1_TODO();
+  const category = V1_CATEGORY();
+  await legacy.table('todos').put(todo);
+  await legacy.table('categories').put(category);
+  legacy.close();
+  return { todo, category };
+}
+
+/** v2 스키마로만 아는 별도 Dexie 인스턴스(ADR-0016 §결정 4 — v1 블록도 함께 선언해 실제 업그레이드 경로를 밟는다). */
+async function seedV2(): Promise<{ todo: Todo; category: Category }> {
+  const legacy = new Dexie('tasky');
+  legacy.version(1).stores(STORES_V1);
+  legacy.version(2).stores(STORES_V2);
+  await legacy.open();
+  expect(legacy.verno, 'v2 DB 로 시작하지 않았다 — 이 테스트는 v3 업그레이드를 밟지 않는다').toBe(
+    2,
+  );
   const todo = V1_TODO();
   const category = V1_CATEGORY();
   await legacy.table('todos').put(todo);
@@ -87,23 +104,67 @@ describe('스키마 v1 → v2 업그레이드 (ADR-0011)', () => {
     expect(db.focusSessions.schema.primKey.name).toBe('id');
   });
 
-  it('열린 스키마의 인덱스가 STORES 선언과 정확히 일치한다 (네 테이블 전부)', async () => {
+  it('열린 스키마의 인덱스가 STORES 선언과 정확히 일치한다 (선언된 모든 테이블)', async () => {
     await seedV1();
 
     await db.open();
 
-    for (const [name, declaration] of Object.entries(STORES)) {
-      const declared = declaration
-        .split(',')
-        .map((part) => part.trim())
-        .slice(1)
-        .sort();
-      const actual = db
-        .table(name)
-        .schema.indexes.map((index) => index.name)
-        .sort();
-      expect(actual, `${name} 의 인덱스가 STORES 선언과 다르다`).toEqual(declared);
+    assertIndexesMatchStores();
+  });
+});
+
+/** `STORES`(현재 버전) 선언과 실제로 열린 스키마의 인덱스가 테이블마다 정확히 같은지 — 두 v2→v3 describe 블록이 공유한다. */
+function assertIndexesMatchStores(): void {
+  for (const [name, declaration] of Object.entries(STORES)) {
+    const declared = declaration
+      .split(',')
+      .map((part) => part.trim())
+      .slice(1)
+      .sort();
+    const actual = db
+      .table(name)
+      .schema.indexes.map((index) => index.name)
+      .sort();
+    expect(actual, `${name} 의 인덱스가 STORES 선언과 다르다`).toEqual(declared);
+  }
+}
+
+describe('스키마 v2 → v3 업그레이드 (ADR-0016)', () => {
+  // v1→v2 블록과 같은 함정: DB 를 지우지 않으면 첫 테스트가 올려놓은 v3 DB 위에서 seedV2() 가 돌아
+  // 업그레이드를 밟지 않은 채 통과한다.
+  beforeEach(async () => {
+    db.close();
+    await Dexie.delete('tasky');
+    seq = 0;
+  });
+
+  it('v2 로 만들어진 DB 를 열면 v3 로 올라가고 기존 로우가 값 그대로 남는다', async () => {
+    const { todo, category } = await seedV2();
+
+    await db.open();
+
+    expect(db.verno).toBe(DB_VERSION);
+    expect(await db.todos.get(todo.id)).toEqual({ ...todo });
+    expect(await db.categories.get(category.id)).toEqual({ ...category });
+  });
+
+  it('v3 에서 신설된 ddays·diaryEntries·routines 테이블은 비어 있고 곧바로 쓸 수 있다', async () => {
+    await seedV2();
+
+    await db.open();
+
+    for (const name of ['ddays', 'diaryEntries', 'routines']) {
+      expect(await db.table(name).count(), `${name} 은 비어 있어야 한다`).toBe(0);
+      expect(db.table(name).schema.primKey.name, `${name} 의 기본 키는 id 다`).toBe('id');
     }
+  });
+
+  it('열린 스키마의 인덱스가 STORES 선언과 정확히 일치한다 (선언된 모든 테이블)', async () => {
+    await seedV2();
+
+    await db.open();
+
+    assertIndexesMatchStores();
   });
 });
 
@@ -125,6 +186,7 @@ describe('스키마 업그레이드 실패 (TECH_PLAN §5 규칙 4)', () => {
 
   const declare = (database: TaskyDb): TaskyDb => {
     database.version(1).stores(STORES_V1);
+    database.version(2).stores(STORES_V2);
     database.version(DB_VERSION).stores(STORES);
     opened.push(database);
     return database;

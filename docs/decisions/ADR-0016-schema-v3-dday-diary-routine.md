@@ -47,6 +47,15 @@ Phase 2 스펙 3개(calendar.md·diary.md·routine.md, 전부 `approved`)가 각
 4. `diaryEntries.date`에 유일 인덱스(`&date`)를 걸지 않는다(§결정 1).
 5. `todos` 테이블 스토어 문자열은 이 버전업에서 바뀌지 않는다(§결정 2).
 
+## 정정 (T-79, `version(3)` 블록이 불변이 되기 전에 바로잡음)
+
+`routines`의 인덱스 선언을 §결정 1의 원문 `'id, active'`에서 **`'id'`** 로 정정한다. IndexedDB는
+boolean 값을 색인 키로 쓸 수 없다(`Routine.active: boolean`) — 그 상태로 열면 죽은 인덱스가 되고
+`where('active')` 조회는 런타임 `DataError`로 죽는다. `version(3)` 블록은 머지되는 순간 v1·v2처럼
+불변이 되므로(§결정 4의 근거와 같다) 실제로 열리기 전인 지금 고친다. `list({ includeInactive })`는
+전량을 읽고 메모리에서 `active`로 거른다 — 루틴은 수십 건 규모라 예산 안이며, §결정 1이 이미 같은
+논리로 `ddays`·`routines`에 조회 없는 인덱스를 넣지 않기로 한 것의 연장이다.
+
 ## 재검토 트리거
 
 - **sync.md(ADR-0015) 구현 착수 시 `(routineId, date)` 중복 생성 경합을 반드시 재검토한다**(§결정 2) — 두 기기가 같은 미생성 구간에 동시에 들어가면 애플리케이션 레벨 dedup만으로는 같은 인스턴스가 두 번 생길 수 있다. 그때 `[routineId+date]` 복합 유일 인덱스(조회용이 아니라 DB 레벨 제약용)를 v4에서 추가할지, 서버(D1) 쪽 유일 제약으로 해결할지 sync 구현 티켓에서 정한다.
