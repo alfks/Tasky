@@ -15,9 +15,13 @@ export type Routine = Meta & {
   memo?: string;
   /**
    * **필수**(routine.md §4 정정 — 원문은 선택형이었다). `Todo.categoryId` 가 필수라 "카테고리 없이
-   * 등록"은 애초에 성립하지 않는다 — 카테고리가 지워지면 `categoryId` 를 비우는 대신(원문 R11) 그
-   * 카테고리가 살아 있는 동안만 지연 생성을 계속한다(살아 있는 카테고리가 아니면 생성을 멈춘다.
-   * `routine-fill.ts` 호출부가 판정한다 — 루틴 레코드 자체는 바뀌지 않는다).
+   * 등록"은 애초에 성립하지 않는다 — 카테고리가 지워지면 `categoryId` 를 비우는 대신(원문 R11) 이
+   * 루틴 레코드 자체는 바뀌지 않는다.
+   *
+   * **카테고리가 살아 있지 않을 때 생성을 멈추는 검사는 아직 없다** — `planRoutineFill`
+   * (`routine-fill.ts`)은 이 필드의 생존 여부를 보지 않고, 그 판정을 할 호출부(지연 생성 배선)
+   * 자체가 T-82 전까지 존재하지 않는다(ADR-0017 §결정 4). 그래서 지금은 툼스톤 카테고리를 가리키는
+   * 루틴도 계속 투두를 만든다 — T-82 가 `materializeRoutines` 에서 이 검사를 추가해야 한다.
    */
   categoryId: CategoryId;
   recurrence: RoutineRecurrence;
