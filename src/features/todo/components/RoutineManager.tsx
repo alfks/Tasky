@@ -108,6 +108,10 @@ export function RoutineManager({
    * `nav` 는 이 DOM 서브트리 밖이다. 마지막 루틴을 지워 목록이 완전히 비면 그 규칙은 `null` 을
    * 주므로, 이 다이얼로그 안의 "+ 루틴 추가" 로 떨어진다(그래도 `<body>` 는 아니다).
    */
+  // 깃발이 boolean 하나라 **삭제 두 건이 한 커밋에 겹치면**(예: 두 행을 프로그램적으로 동시에
+  // 지우는 등) 두 번째 포커스 이동이 소실된다(리뷰 #104 라운드2 Nit-3) — 큐가 아니라 단일
+  // 플래그다. `⋯` 메뉴는 항목을 고르면 즉시 닫히고 한 번에 한 삭제만 청할 수 있어 실사용으로는
+  // 겹칠 길이 없다(도달 어려움, 한계로만 적어 둔다).
   const focusAfterRemovalRef = useRef(false);
   const routineCountRef = useRef(routines.length);
 
