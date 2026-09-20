@@ -78,16 +78,25 @@ function ShellBody() {
   const reportsOpen = useReportsStore((s) => s.open);
   const reportsOpener = useReportsStore((s) => s.opener);
   const wasReportsOpen = useRef(false);
+  // `closeReports` 가 `opener` 를 스토어에서 함께 비운다(review m8, 스토어 누수 감사) — 그래서
+  // "방금 닫혔다" 순간엔 `reportsOpener` 를 store 에서 다시 읽어도 이미 null 이다(같은 `set()` 로
+  // 한 번에 바뀌었으므로). 닫히기 **직전** 값을 여기 로컬 ref 에 스냅샷해 둔다 — 셸 컴포넌트 하나가
+  // 앱 생애주기 내내 사는 지역 변수라 스토어처럼 전역에 남거나 `getState()` 로 다시 노출되지 않는다.
+  const reportsOpenerRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (reportsOpen) reportsOpenerRef.current = reportsOpener;
+  }, [reportsOpen, reportsOpener]);
   useEffect(() => {
     // 방금 닫혔다 — 열었던 요소로, 사라졌으면 본문 랜드마크로(`Dialog` 의 `restoreFocus` 와 같은
     // 규약: 열 때 잡아 둔 요소가 살아 있으면 그리로, 없으면 대체 랜드마크로. `ShellMain` 은 통째로
     // 새로 마운트되므로 그 안의 옛 opener 는 거의 항상 끊겨 있고, 그때는 `#shell-main` 으로 간다).
     if (wasReportsOpen.current && !reportsOpen) {
-      if (reportsOpener !== null && reportsOpener.isConnected) reportsOpener.focus();
+      const opener = reportsOpenerRef.current;
+      if (opener !== null && opener.isConnected) opener.focus();
       else document.getElementById(SHELL_MAIN_ID)?.focus();
     }
     wasReportsOpen.current = reportsOpen;
-  }, [reportsOpen, reportsOpener]);
+  }, [reportsOpen]);
 
   useShellDocumentTitle(date, summary);
   useShellShortcuts({ toggleSidebar: panels.toggleSidebar });

@@ -43,6 +43,20 @@ describe('useReportsStore', () => {
     expect(useReportsStore.getState().opener).toBeNull();
   });
 
+  it('closeReports 는 opener 도 함께 비운다(review m8 — 스토어가 끊긴 DOM 노드를 계속 붙들지 않는다)', () => {
+    const button = document.createElement('button');
+    document.body.append(button);
+    button.focus();
+
+    useReportsStore.getState().openReports();
+    expect(useReportsStore.getState().opener).toBe(button);
+
+    useReportsStore.getState().closeReports();
+
+    expect(useReportsStore.getState().opener).toBeNull();
+    button.remove();
+  });
+
   it('setPreset 은 preset 만 바꾼다', () => {
     useReportsStore.getState().setPreset('thisYear');
     expect(useReportsStore.getState().preset).toBe('thisYear');

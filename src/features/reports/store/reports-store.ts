@@ -39,7 +39,9 @@ export const useReportsStore = create<ReportsState>((set) => ({
     const opener = active instanceof HTMLElement && active !== document.body ? active : null;
     set({ open: true, opener });
   },
-  closeReports: () => set({ open: false }),
+  // `opener` 도 함께 비운다(review m8) — 안 비우면 화면을 닫은 뒤에도 스토어가 이미 DOM 에서 사라진
+  // 요소를 계속 붙들고 있다(CLAUDE.md 의 스토어 누수 감사 항목과 같은 문제).
+  closeReports: () => set({ open: false, opener: null }),
   setPreset: (preset) => set({ preset }),
   setCustomRange: (from, to) => set({ preset: 'custom', customRange: { from, to } }),
 }));
