@@ -53,4 +53,17 @@ describe('HeatmapCard (stats.md R6·§5)', () => {
 
     expect(screen.getByText('이 기간에 기록이 없어요')).toBeInTheDocument();
   });
+
+  it('고대비(forced-colors) 모드에서는 배경색이 아니라 테두리 굵기로 단계가 구분된다', () => {
+    const weeks: HeatmapCell[][] = [[cell('2026-09-18', 0, 0, 0), cell('2026-09-17', 4, 4, 4)]];
+
+    render(<HeatmapCard weeks={weeks} today={TODAY} />);
+
+    // "기록 없음"(0단계)은 테두리가 없다 — forced-colors 에서도 배경만으로 뭉개지는 값이 없다.
+    const empty = screen.getByTitle(/기록 없음/);
+    expect(empty.className).not.toContain('forced-colors:[border-width');
+    // "완료 100%"(4단계)는 가장 굵은 테두리를 갖는다.
+    const full = screen.getByTitle(/완료 100%/);
+    expect(full.className).toContain('forced-colors:[border-width:4px]');
+  });
 });
