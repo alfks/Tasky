@@ -123,6 +123,13 @@ export function requireBoolean(row: Record<string, unknown>, key: string, path: 
   return value;
 }
 
+/** 있으면 불리언, 없으면 `undefined`. */
+export function optionalBoolean(row: Record<string, unknown>, key: string, path: string): void {
+  if (row[key] !== undefined) {
+    requireBoolean(row, key, path);
+  }
+}
+
 /** 필수 유한 수. `integer`·`min` 으로 범위를 좁힌다. */
 export function requireNumber(
   row: Record<string, unknown>,
