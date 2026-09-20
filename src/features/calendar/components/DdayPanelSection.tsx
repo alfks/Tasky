@@ -47,11 +47,26 @@ type DdayRowProps = {
   onRemove: (dday: Dday) => void;
 };
 
-/** 오늘이 D-day 인 항목만 강조색 — 그 밖엔 `formatDday` 와 같은 자리를 쓰는 다른 행과 동일하다. */
+/**
+ * 오늘이 D-day 인 항목만 강조 — 그 밖엔 `formatDday` 와 같은 자리를 쓰는 다른 행과 동일하다(`text-muted`).
+ *
+ * **라운드 2 Major 회귀 수정.** 처음엔 `text-accent`(강조색 글자)를 썼는데 `--color-accent` on
+ * `--color-surface` 가 **라이트 1.85:1** 로 WCAG AA 본문 기준(4.5:1)에 크게 못 미쳤다(다크는 7.09:1
+ * 로 통과 — 라이트에서만 깨졌다). `theme.md` R9 는 3.59:1 인 `--color-danger` 조차 글자색 금지고
+ * "카테고리 색(=accent 프리셋)은 배경·점·막대에만, 글자색으로 쓰지 않는다" 를 명시한다 — 정확히
+ * 이 규칙을 어긴 것이었다.
+ *
+ * → **알약(배경+on-accent 글자)으로 바꾼다** — `TodoItem.tsx` 의 포커스 칩(`rounded-full bg-surface-2
+ * px-space-2`)과 같은 모양, 색만 강조색이다. `date-strip` 의 선택된 날짜 셀도 같은 `bg-accent
+ * text-on-accent` 조합을 이미 쓰고 있어(`DateCell.tsx`) "이 날이 특별하다" 는 시각 언어가 이미
+ * 있었다 — 새 언어를 만들지 않는다. 실측 대비(WCAG 공식, `#767676`/흰 배경 = 4.54:1 로 계산식 검증
+ * 완료): **라이트 8.87:1, 다크 6.84:1** — 이웃 행의 `text-muted`(라이트 4.96:1, 다크 6.54:1)보다도
+ * 둘 다 높다. 새 토큰은 쓰지 않는다(`--color-accent`·`--color-on-accent`, theme.md R1).
+ */
 function offsetClassName(offset: number): string {
   return cn(
-    'shrink-0 text-sm font-semibold tabular-nums',
-    offset === 0 ? 'text-accent' : 'text-muted',
+    'shrink-0 rounded-[var(--radius-full)] text-sm font-semibold tabular-nums',
+    offset === 0 ? 'bg-accent px-[var(--space-2)] text-on-accent' : 'text-muted',
   );
 }
 
@@ -104,7 +119,8 @@ export function DdayPanelSection({ className }: DdayPanelSectionProps) {
   const [pastOpen, setPastOpen] = useState(false);
   // R14·R8(리뷰 라운드 1 Major-1): ✕ 삭제 직전 행 자리표를 뜨고, 행이 사라진 뒤 되돌리기 토스트로
   // 포커스를 옮긴다. R14 순서(`rowAnchorOf`·`focusAfterRowRemoval`)는 카테고리 삭제가 쓰는 것과
-  // 한 글자도 다르지 않다 — 이식 사유는 `@/features/calendar/lib/removal-focus.ts` 머리주석.
+  // 몸통이 같다 — **다만 `region`(목록이 통째로 사라졌을 때의 `<nav>` 폴백) 은 없다**, 정확히 무엇이
+  // 왜 빠졌는지는 이식 사유와 함께 `@/features/calendar/lib/removal-focus.ts` 머리주석에 적혀 있다.
   const removalAnchor = useRef<RowAnchor | null>(null);
   // 되돌리기 토스트가 **실제로 DOM 에 뜬 뒤에만** 그 버튼으로 넘긴다 — `CategoryRemoveDialog.tsx`
   // 의 `useRemovalToastBridge` 와 같은 이유다: `pushToast` 는 별도 전역 토스트 스토어를 건드리므로

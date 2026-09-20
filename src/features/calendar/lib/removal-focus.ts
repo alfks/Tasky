@@ -5,13 +5,18 @@
 // (calendar) 을 그리므로 `shell → calendar` 의존이 이미 있고, 거꾸로 `calendar → shell`(어느 배럴
 // export 든) 을 더하면 `import/no-cycle` 이 잡는 순환이 생긴다(실측: `@/features/shell` 배럴 경유로
 // 바꿔 봤더니 `AppShell → ShellInsights → calendar → DdayPanelSection → shell` 순환 6건). 그래서
-// R14 순서(다음 형제 → 이전 형제 → 목록 컨테이너)만 그대로 옮긴다 — 원본과 한 글자도 다르지 않다.
-// `calendar/AGENTS.md` 의 관할 선언이 두 파일이 갈라지지 않게 표시해 둔다.
+// R14 순서(다음 형제 → 이전 형제 → 목록 컨테이너)만 옮긴다.
 //
-// D-day 행은 `<nav>` 안에 있지 않으므로 원본의 "목록마저 사라지면 그 영역의 첫 조작 지점" 단계
-// (`region`)는 옮기지 않는다 — D-day 삭제는 항상 되돌리기 토스트가 뒤따르므로(`DdayPanelSection` 의
-// 되돌리기 브리지, `useRemovalToastBridge`(`CategoryRemoveDialog.tsx`)와 같은 이유) 그 토스트 버튼이
-// 실질적인 마지막 후보다.
+// **원본과 동일하지 않다 — 정확히 무엇이 다른지 여기 적는다(검증 라운드 2 Minor):**
+// `rowAnchorOf`·`focusAfterRowRemoval` 의 몸통(다음 형제 → 이전 형제 → 목록에 tabindex=-1)은 그대로다.
+// 하지만 원본의 `RowAnchor` 는 `region: HTMLElement | null`(목록을 담은 `<nav>`) 을 들고 있어서,
+// 목록 자체가 사라지면 `firstFocusableIn(region)` 으로 한 단계 더 떨어진다 — 이 파일의 `RowAnchor`
+// 에는 그 필드가 **없고**(타입이 다르다), `focusAfterRowRemoval` 은 목록이 끊기면 그대로 `null` 을
+// 돌려준다. 뺀 이유: D-day 행은 `<nav>` 안에 있지 않으므로 원본을 그대로 옮겨도 `region` 이 항상
+// `null` 이라 죽은 코드가 되고, D-day 삭제는 항상 되돌리기 토스트가 뒤따르므로(`DdayPanelSection`
+// 의 되돌리기 브리지, `useRemovalToastBridge`(`CategoryRemoveDialog.tsx`)와 같은 이유) 그 토스트
+// 버튼이 실질적인 마지막 후보다. `calendar/AGENTS.md` 의 관할 선언이 몸통이 갈라지면 표시해 둔다 —
+// 원본이 `region` 없이도 동작하도록 바뀌면 이 문단도 같이 지운다.
 
 /** 브라우저 기본 탭 순서와 같은 집합. `focus-fallback.ts` 의 것과 같다. */
 const FOCUSABLE =
