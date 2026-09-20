@@ -386,3 +386,27 @@ describe('§5. 헤더 버튼이 자기 클릭으로 비활성돼도 포커스가
     expect(useDateStripStore.getState().selectedDate).toBe('2026-10-01');
   });
 });
+
+describe('onVisibleRange — 보이는 범위를 알린다(routine.md R6 배선 지점)', () => {
+  it('마운트하면 보이는 주의 양끝으로 한 번 부른다', async () => {
+    const onVisibleRange = vi.fn();
+    await renderStrip({ onVisibleRange });
+
+    expect(onVisibleRange).toHaveBeenCalledWith('2026-09-14', '2026-09-20');
+  });
+
+  it('보이는 주가 바뀌면(다음 주로 이동) 새 범위로 다시 부른다', async () => {
+    const user = userEvent.setup();
+    const onVisibleRange = vi.fn();
+    await renderStrip({ onVisibleRange });
+    onVisibleRange.mockClear();
+
+    await user.click(screen.getByRole('button', { name: '다음 주' }));
+
+    await waitFor(() => expect(onVisibleRange).toHaveBeenCalledWith('2026-09-21', '2026-09-27'));
+  });
+
+  it('콜백을 주지 않아도 렌더는 그대로 된다(옵셔널)', async () => {
+    await expect(renderStrip()).resolves.not.toThrow();
+  });
+});

@@ -15,8 +15,10 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { addCivilDays, dayOfWeekOf } from '@/domain/date/civil';
 import type { DateKey } from '@/domain/date/date-key';
 import { adopt } from '@/domain/meta';
+import type { Routine } from '@/domain/routine/routine';
 
 import { getRepositories, setRepositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
@@ -29,6 +31,7 @@ import type { CompletionSummary } from '@/features/stats';
 import { useTimerStore } from '@/features/timer';
 import { useTodoStore } from '@/features/todo';
 import { makeCategory } from '@/test/fixtures/category';
+import { fixtureId, FIXTURE_INSTANT } from '@/test/fixtures/deps';
 import { FIXTURE_CATEGORY_ID, makeTodo } from '@/test/fixtures/todo';
 
 const TODAY = '2026-09-16' as DateKey;
@@ -67,7 +70,16 @@ beforeEach(async () => {
     commandError: null,
   });
   useDateStripStore.setState({ selectedDate: TODAY, today: TODAY });
-  useTodoStore.setState({ byId: {}, date: null, status: 'ready', error: null, writeRevision: 0 });
+  useTodoStore.setState({
+    byId: {},
+    date: null,
+    status: 'ready',
+    error: null,
+    writeRevision: 0,
+    routines: {},
+    routineStatus: 'idle',
+    visibleRange: null,
+  });
   useBackupStore.setState({ dataRevision: 0 });
   useTimerStore.setState({ session: null });
 });
@@ -226,5 +238,54 @@ describe('ShellHeader — 쓰기 뒤에 주 요약이 다시 읽힌다 (T-56)', 
 
     await waitFor(() => expect(cellName()).toContain('할 일 1개 중 0개 완료'));
     expect(cellName()).not.toBe(before);
+  });
+});
+
+describe('ShellHeader — 무기한 루틴 지연 생성 배선 (routine.md R6)', () => {
+  const cellName = (): string | null =>
+    screen.getByRole('radio', { name: /^9월 16일/ }).getAttribute('aria-label');
+
+  function makeRoutine(overrides: Partial<Routine> = {}): Routine {
+    return {
+      id: fixtureId('generated', 900),
+      createdAt: FIXTURE_INSTANT,
+      updatedAt: FIXTURE_INSTANT,
+      rev: 1,
+      title: '아침 운동',
+      categoryId: FIXTURE_CATEGORY_ID,
+      recurrence: { type: 'weekly', daysOfWeek: [dayOfWeekOf(TODAY)] },
+      startDate: TODAY,
+      active: true,
+      materializedThrough: addCivilDays(TODAY, -1),
+      ...overrides,
+    };
+  }
+
+  it('날짜 스트립이 보이는 범위를 열면(마운트) 그 안의 무기한 루틴을 조용히 채운다', async () => {
+    await getRepositories().routines.upsert(adopt(makeRoutine()));
+
+    render(<Harness />);
+    await act(async () => {
+      await useTodoStore.getState().loadDate(TODAY);
+    });
+
+    // 토스트 없이(routine.md R6) 그 날짜 셀에 인스턴스가 뜬다 — DateStrip 이 `todo` 를 스스로
+    // 구독할 수 없어 셸이 콜백으로 이었다는 배선 자체를 이 결과로 확인한다.
+    await waitFor(() => expect(cellName()).toContain('할 일 1개 중 0개 완료'));
+  });
+
+  it('중지된 루틴은 채우지 않는다(R7) — 이 배선을 타도 성립한다', async () => {
+    const routine = makeRoutine({ active: false });
+    await getRepositories().routines.upsert(adopt(routine));
+
+    render(<Harness />);
+    await act(async () => {
+      await useTodoStore.getState().loadDate(TODAY);
+    });
+    // 지연 생성 배선(마운트 효과)이 저장소를 다녀올 시간을 확보한 **뒤**에 "안 바뀌었다"를 본다 —
+    // 그냥 바로 단언하면 아직 안 끝났을 뿐인데 통과하는 거짓 초록불이 난다.
+    await waitFor(() => expect(useTodoStore.getState().routines[routine.id]).toBeDefined());
+
+    expect(cellName()).toBe('9월 16일 수요일, 오늘');
   });
 });

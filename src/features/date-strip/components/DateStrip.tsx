@@ -38,6 +38,12 @@ type DateStripProps = {
   onDropTodo?: (todoId: string, date: DateKey) => void;
   /** 요약 조회 실패 문구. 토스트로 띄우는 것은 앱 셸 소관이다 (§2-C). */
   onSummaryError?: (message: string) => void;
+  /**
+   * 보이는 날짜 범위(양끝 포함)가 바뀔 때마다 알린다 (routine.md R6 무기한 루틴 지연 생성의 배선
+   * 지점). 스트립 자신은 `todo` 를 import 할 수 없어(feature 그래프의 리프) 셸이 이 콜백으로 받아
+   * 잇는다(`ShellHeader`) — `summaryRevision` 과 같은 이유(위 주석).
+   */
+  onVisibleRange?: (from: DateKey, to: DateKey) => void;
 };
 
 /** 모션 축소 선호 여부. `matchMedia` 가 없는 런타임(구형·테스트)에서는 "선호하지 않음"으로 본다. */
@@ -46,7 +52,12 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-export function DateStrip({ summaryRevision, onDropTodo, onSummaryError }: DateStripProps) {
+export function DateStrip({
+  summaryRevision,
+  onDropTodo,
+  onSummaryError,
+  onVisibleRange,
+}: DateStripProps) {
   const selectedDate = useDateStripStore((state) => state.selectedDate);
   const today = useDateStripStore((state) => state.today);
   const select = useDateStripStore((state) => state.select);
@@ -63,12 +74,15 @@ export function DateStrip({ summaryRevision, onDropTodo, onSummaryError }: DateS
   // 보이는 날짜. 주 보기는 7칸, 월 보기는 그 달의 격자 전부(28~42칸) — 둘 다 **연속 범위**다 (R15).
   const days = isMonth ? monthGridDays(activeDate) : weekDays(activeDate);
   // 그래서 요약은 칸 수와 무관하게 **양끝만 넘겨 한 번**에 읽는다 (R17).
-  const summaries = useRangeSummaries(
-    days[0],
-    days[days.length - 1],
-    summaryRevision,
-    onSummaryError,
-  );
+  const rangeStart = days[0];
+  const rangeEnd = days[days.length - 1];
+  const summaries = useRangeSummaries(rangeStart, rangeEnd, summaryRevision, onSummaryError);
+  // 콜백 정체성이 바뀌어도 재실행하지 않게 ref 로 받는다(`useRangeSummaries` 의 `onError` 와 같은 이유).
+  const onVisibleRangeRef = useRef(onVisibleRange);
+  onVisibleRangeRef.current = onVisibleRange;
+  useEffect(() => {
+    onVisibleRangeRef.current?.(rangeStart, rangeEnd);
+  }, [rangeStart, rangeEnd]);
   // ↑/↓ · Home/End 는 보기와 무관하게 **활성 날짜가 속한 주**를 기준으로 움직인다 (R18).
   const activeWeek = weekDays(activeDate);
 
