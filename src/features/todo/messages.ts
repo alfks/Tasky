@@ -4,21 +4,10 @@
 // 저장 실패·검증 실패 문구는 여기 없다. 그쪽 단일 소스는 `domain/errors.ts` 와
 // `store/todo-state.ts#SAVE_FAILED` 이고, 화면은 스토어의 `error` 를 그대로 보여 준다 — 복제하면
 // 도메인 규칙을 고쳤을 때 화면만 옛 문구를 계속 말한다.
-
-/**
- * 받침 유무에 따른 목적격 조사. `'장보기'를 삭제할까요?` 처럼 제목이 그대로 문장에 들어가는 자리는
- * `을(를)` 로 도망치지 않고 실제 글자를 고른다 — 이 앱의 문장은 사용자가 쓴 제목을 품는 일이 잦다.
- *
- * 한글 음절(U+AC00~U+D7A3)만 받침을 계산한다. 영문·숫자·기호로 끝나면 읽는 방식이 갈리므로
- * 기본값 `를` 을 쓴다(한국어 표기 관행에서 더 흔한 쪽).
- */
-export function objectParticle(word: string): '을' | '를' {
-  const last = word.at(-1);
-  if (last === undefined) return '를';
-  const code = last.codePointAt(0) ?? 0;
-  if (code < 0xac00 || code > 0xd7a3) return '를';
-  return (code - 0xac00) % 28 === 0 ? '를' : '을';
-}
+//
+// 목적격 조사(을/를)는 `@/lib/korean#objectParticle` 이다 — category 의 삭제 확인·되돌리기 문구도
+// 같은 규칙을 쓴다(T-87, `features/AGENTS.md` 규칙 5).
+import { objectParticle } from '@/lib/korean';
 
 export const TODO_MESSAGES = {
   /** 입력 행을 여는 버튼 (§2-A). */
