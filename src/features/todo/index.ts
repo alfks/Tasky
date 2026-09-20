@@ -34,5 +34,8 @@ export { useTodoGroup, useTodoGroups } from '@/features/todo/hooks/useTodoGroups
 // 화면 (T-15). `TodoList` 는 선택 날짜를 스스로 메모리에 올리므로 **한 번만** 마운트한다(R17).
 export { TodoList } from '@/features/todo/components/TodoList';
 export { TodoGroupSection } from '@/features/todo/components/TodoGroupSection';
+// 루틴 관리 화면(T-83, routine.md §2). 셸이 사이드바 진입점으로 붙인다 — `categories` 는
+// `category` feature 를 직접 import 하지 않도록(순환 방지) props 로 받는다.
+export { RoutineManager } from '@/features/todo/components/RoutineManager';
 export { COMPLETION_WAIT_MS } from '@/features/todo/components/todo-motion';
 export { TODO_MESSAGES } from '@/features/todo/messages';
