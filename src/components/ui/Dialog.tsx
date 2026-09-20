@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 
 import { createPortal } from 'react-dom';
@@ -11,12 +11,16 @@ import {
   isInsideLayerAbove,
   isTopOverlayLayer,
   overlayLayersAbove,
+  overlayZIndex,
   pushOverlayLayer,
 } from '@/components/ui/overlay-stack';
 import type { OverlayLayer } from '@/components/ui/overlay-stack';
 
 import { cn } from '@/lib/cn';
 import { isImeKey } from '@/lib/ime';
+
+/** `--z-modal`(tokens.css) 의 JS 거울 — `overlayZIndex` 가 스택 깊이에 맞춰 이 값 이상을 계산한다. */
+const BASE_Z_MODAL = 30;
 
 /** 브라우저 기본 탭 순서와 같은 집합 — 포커스 트랩이 이 목록을 순환한다. */
 const FOCUSABLE_SELECTOR = [
@@ -213,6 +217,18 @@ export function Dialog({
     element: () => panelRef.current,
   });
 
+  /**
+   * z-index 는 **열리는 순간**(렌더 중, `open` 이 false→true 로 바뀌는 그 렌더) 한 번만 계산해
+   * 고정한다 — `useEffect` 안에서 계산하면 이미 자기 레이어가 스택에 올라간 **다음** 렌더부터
+   * `overlayZIndex` 가 자기 자신을 "이미 열려 있는 레이어"로 세어 매번 값이 올라간다(자기 자신을
+   * 넘어서려는 계산이 되어 버린다). 렌더 중 파생 상태 갱신(React 공식 패턴)이라 플래시도 없다 —
+   * `pushOverlayLayer` 가 도는 효과보다 먼저 커밋에 반영된다.
+   */
+  const [z, setZ] = useState(BASE_Z_MODAL);
+  const wasOpenRef = useRef(open);
+  if (open && !wasOpenRef.current) setZ(overlayZIndex(BASE_Z_MODAL));
+  wasOpenRef.current = open;
+
   // 콜백·ref prop 은 렌더마다 새 값일 수 있다. 아래 효과의 의존성에 넣으면 열려 있는 동안 트랩이
   // 매 렌더 재설치되고 openerRef 가 덮어써지므로, 최신 값만 여기 담아 두고 효과는 open 에만 반응한다.
   const latestRef = useRef({ initialFocusRef, returnFocus, onClose });
@@ -229,7 +245,7 @@ export function Dialog({
     const initial = latestRef.current.initialFocusRef?.current ?? focusablesIn(panel)[0] ?? panel;
     initial?.focus();
 
-    const popLayer = pushOverlayLayer(layer);
+    const popLayer = pushOverlayLayer(layer, BASE_Z_MODAL);
     const restoreInert = makeBackgroundInert(containerRef.current);
     const bodyOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -267,7 +283,10 @@ export function Dialog({
   return createPortal(
     <div
       ref={containerRef}
-      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-[var(--space-4)]"
+      // 고정 토큰(z-[var(--z-modal)]) 대신 인라인으로 준다 — 대화상자 안에서 또 대화상자를 열거나
+      // (중첩) 팝오버를 열 때 `overlayZIndex` 가 계산한, 이미 열린 레이어들보다 항상 높은 값이다.
+      style={{ zIndex: z }}
+      className="fixed inset-0 flex items-center justify-center p-[var(--space-4)]"
     >
       <div
         aria-hidden="true"

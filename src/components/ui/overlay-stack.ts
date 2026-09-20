@@ -24,13 +24,37 @@ export type OverlayLayer = {
 };
 
 const stack: OverlayLayer[] = [];
+/** `pushOverlayLayer` 가 `baseZ` 를 받았을 때 배정한 z-index. 안 받은 호출부는 여기 없다. */
+const zByLayer = new WeakMap<OverlayLayer, number>();
 
-/** 레이어를 맨 위에 올리고, 내리는 함수를 돌려준다. */
-export function pushOverlayLayer(layer: OverlayLayer): () => void {
+/**
+ * `baseZ`(모달=`--z-modal`, 팝오버=`--z-popover`) 위에서, 지금 스택에 이미 있는 레이어들보다
+ * 항상 높은 z-index 를 계산한다 — **부작용 없음**, 렌더 중에도 안전하게 부를 수 있다.
+ *
+ * 고정 토큰만 쓰면 `--z-popover`(20) < `--z-modal`(30) 이라 **대화상자 안에 연 팝오버가 대화상자
+ * 밑에 깔린다**(리뷰 #104 Blocker 실측: 대화상자 안 `⋯` 메뉴가 `elementFromPoint` 에 안 잡힘).
+ * 근본 수정은 타입("팝오버는 항상 20")이 아니라 **그 순간의 스택 깊이**를 본다 — 스택이 비어
+ * 있으면(가장 바깥에서 여는 보통의 경우) 자기 토큰 그대로라 기존 화면은 전혀 안 바뀐다.
+ */
+export function overlayZIndex(baseZ: number): number {
+  if (stack.length === 0) return baseZ;
+  const highest = stack.reduce((max, layer) => Math.max(max, zByLayer.get(layer) ?? 0), 0);
+  return Math.max(baseZ, highest + 1);
+}
+
+/**
+ * 레이어를 맨 위에 올리고, 내리는 함수를 돌려준다. `baseZ` 를 주면 `overlayZIndex` 와 같은 규칙으로
+ * 이 레이어의 z 를 기억해 둔다 — **그 안에서 또 여는** 레이어가 이 레이어를 넘어서게 계산할 수
+ * 있도록(예: 대화상자 안의 대화상자). 생략하면(z 관리가 필요 없는 호출부) 아무것도 기억하지 않는다
+ * — 기존 동작 그대로다.
+ */
+export function pushOverlayLayer(layer: OverlayLayer, baseZ?: number): () => void {
+  if (baseZ !== undefined) zByLayer.set(layer, overlayZIndex(baseZ));
   stack.push(layer);
   return () => {
     const index = stack.indexOf(layer);
     if (index !== -1) stack.splice(index, 1);
+    zByLayer.delete(layer);
   };
 }
 
