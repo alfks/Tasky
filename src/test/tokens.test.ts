@@ -5,6 +5,9 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { BASE_Z_MODAL } from '@/components/ui/Dialog';
+import { BASE_Z_POPOVER } from '@/components/ui/Popover';
+
 const tokensPath = join(process.cwd(), 'src/styles/tokens.css');
 const CSS = readFileSync(tokensPath, 'utf-8');
 const GLOBALS = readFileSync(join(process.cwd(), 'src/styles/globals.css'), 'utf-8');
@@ -244,6 +247,15 @@ describe('디자인 토큰: 형태·간격·타이포·모션·z-index(§3-D)', 
     expect(base.get('z-popover')).toBe('20');
     expect(base.get('z-modal')).toBe('30');
     expect(base.get('z-toast')).toBe('40');
+  });
+
+  // `Dialog`·`Popover` 는 대화상자 안에 연 팝오버가 실제로 클릭되게(리뷰 #104 Blocker) `overlayZIndex`
+  // 로 z 를 동적 계산해야 해서 고정 토큰 클래스를 못 쓰고, `BASE_Z_MODAL`/`BASE_Z_POPOVER` 로 이 값을
+  // 손복사한다 — `src/lib/AGENTS.md` "동형 재선언은 테스트로 묶을 것" 규칙(`toastActionButton` 선례).
+  // 두 상수가 이 토큰과 갈리면 여기가 먼저 빨간불이 된다.
+  it('BASE_Z_MODAL·BASE_Z_POPOVER 가 z-modal·z-popover 토큰과 같다(손복사 묶기)', () => {
+    expect(String(BASE_Z_MODAL)).toBe(base.get('z-modal'));
+    expect(String(BASE_Z_POPOVER)).toBe(base.get('z-popover'));
   });
 });
 

@@ -10,6 +10,8 @@
  * 한계: 두 레이어가 **같은 커밋에서 동시에** 열리면 React 가 자식 효과를 먼저 실행하므로 push
  * 순서가 화면상의 위아래와 뒤집힌다. 사용자가 클릭으로 하나씩 여는 일반 경로에서는 생기지 않는다.
  */
+import { isDevelopment } from '@/lib/a11y';
+
 export type OverlayLayer = {
   /** 이 레이어가 그린 DOM 이 이 노드를 품고 있는지(포털된 패널 포함). */
   contains: (node: Node) => boolean;
@@ -27,19 +29,33 @@ const stack: OverlayLayer[] = [];
 /** `pushOverlayLayer` 가 `baseZ` 를 받았을 때 배정한 z-index. 안 받은 호출부는 여기 없다. */
 const zByLayer = new WeakMap<OverlayLayer, number>();
 
+/** `--z-toast`(tokens.css)의 손복사 — 넘으면 토스트가 오버레이에 덮인다(아래 경고 기준일 뿐). */
+const Z_TOAST_MIRROR = 40;
+
 /**
  * `baseZ`(모달=`--z-modal`, 팝오버=`--z-popover`) 위에서, 지금 스택에 이미 있는 레이어들보다
- * 항상 높은 z-index 를 계산한다 — **부작용 없음**, 렌더 중에도 안전하게 부를 수 있다.
+ * 항상 높은 z-index 를 계산한다 — 반환값 계산 자체는 순수하다(개발 모드 콘솔 경고만 예외, 아래).
+ * 렌더 중에도 안전하게 부를 수 있다.
  *
  * 고정 토큰만 쓰면 `--z-popover`(20) < `--z-modal`(30) 이라 **대화상자 안에 연 팝오버가 대화상자
  * 밑에 깔린다**(리뷰 #104 Blocker 실측: 대화상자 안 `⋯` 메뉴가 `elementFromPoint` 에 안 잡힘).
  * 근본 수정은 타입("팝오버는 항상 20")이 아니라 **그 순간의 스택 깊이**를 본다 — 스택이 비어
  * 있으면(가장 바깥에서 여는 보통의 경우) 자기 토큰 그대로라 기존 화면은 전혀 안 바뀐다.
+ *
+ * **상한은 없다** — 중첩이 10단계를 넘으면(현실에서 도달하기 어렵다) `--z-toast`(40)를 넘어서
+ * 토스트까지 덮을 수 있다. 클램프 대신 개발 모드 콘솔 경고만 한 줄 둔다(리뷰 #104 라운드2 Nit-1)
+ * — 값을 몰래 잘라 버리면 "왜 안 눌리지" 가 사라지는 대신 "왜 여기서 멈추지" 가 생긴다.
  */
 export function overlayZIndex(baseZ: number): number {
   if (stack.length === 0) return baseZ;
   const highest = stack.reduce((max, layer) => Math.max(max, zByLayer.get(layer) ?? 0), 0);
-  return Math.max(baseZ, highest + 1);
+  const z = Math.max(baseZ, highest + 1);
+  if (z >= Z_TOAST_MIRROR && isDevelopment()) {
+    console.warn(
+      `overlay z-index(${z})가 --z-toast(${Z_TOAST_MIRROR})에 닿거나 넘었다 — 중첩이 비정상적으로 깊다.`,
+    );
+  }
+  return z;
 }
 
 /**

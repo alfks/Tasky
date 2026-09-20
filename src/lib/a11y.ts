@@ -38,7 +38,7 @@ export type NonBlank<S extends string> = Trim<S> extends '' ? never : S;
  * 번들러가 `process.env.NODE_ENV` 를 문자열로 치환하지 않은 런타임(순수 브라우저 ESM 등)에서는
  * `process` 참조가 ReferenceError 를 던진다. 그 경우 가드를 끄고 렌더는 계속한다.
  */
-function isDevelopment(): boolean {
+export function isDevelopment(): boolean {
   try {
     return process.env.NODE_ENV !== 'production';
   } catch {

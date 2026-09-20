@@ -15,7 +15,7 @@ import { isImeKey } from '@/lib/ime';
 /** 앵커와 패널 사이 간격(px). --space-2 와 같은 값이지만 위치 계산은 숫자가 필요하다. */
 const GAP = 8;
 /** `--z-popover`(tokens.css) 의 JS 거울 — `overlayZIndex` 가 스택 깊이에 맞춰 이 값 이상을 계산한다. */
-const BASE_Z_POPOVER = 20;
+export const BASE_Z_POPOVER = 20;
 
 const FOCUSABLE_SELECTOR =
   'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -112,8 +112,11 @@ export function Popover({
 
   // `Dialog` 와 같은 이유(그 파일 주석 참고) — 열리는 렌더에서 한 번만 계산해 고정한다. 대화상자
   // 안에서 여는 팝오버(리뷰 #104 Blocker)가 고정 토큰(20 < 모달 30)에 깔리던 문제의 근본 수정.
+  // `Popover` 는 관례상 항상 닫힌 채 마운트되지만(이 파일 머리 주석), `useRef(open)` 이 아니라
+  // `useRef(false)` 로 시작해 "열린 채 마운트" 되는 예외적인 사용에도 방어한다(Dialog 와 같은 이유,
+  // 리뷰 #104 라운드2 Minor-1).
   const [z, setZ] = useState(BASE_Z_POPOVER);
-  const wasOpenRef = useRef(open);
+  const wasOpenRef = useRef(false);
   if (open && !wasOpenRef.current) setZ(overlayZIndex(BASE_Z_POPOVER));
   wasOpenRef.current = open;
 

@@ -20,7 +20,7 @@ import { cn } from '@/lib/cn';
 import { isImeKey } from '@/lib/ime';
 
 /** `--z-modal`(tokens.css) 의 JS 거울 — `overlayZIndex` 가 스택 깊이에 맞춰 이 값 이상을 계산한다. */
-const BASE_Z_MODAL = 30;
+export const BASE_Z_MODAL = 30;
 
 /** 브라우저 기본 탭 순서와 같은 집합 — 포커스 트랩이 이 목록을 순환한다. */
 const FOCUSABLE_SELECTOR = [
@@ -225,7 +225,11 @@ export function Dialog({
    * `pushOverlayLayer` 가 도는 효과보다 먼저 커밋에 반영된다.
    */
   const [z, setZ] = useState(BASE_Z_MODAL);
-  const wasOpenRef = useRef(open);
+  // `useRef(open)` 이면 **열린 채로 마운트되는** 대화상자(예: 대화상자 안에서 여는 또 다른
+  // 대화상자)는 초깃값이 이미 `true` 라 아래 조건이 첫 렌더부터 거짓이 되어 계산이 한 번도 안
+  // 돈다(리뷰 #104 라운드2 Minor-1 실측: 30/30). 항상 `false` 로 시작해야 "닫혀 있다가 열리는"
+  // 것과 "열린 채 마운트되는" 것 양쪽 모두 첫 렌더에서 한 번 계산한다.
+  const wasOpenRef = useRef(false);
   if (open && !wasOpenRef.current) setZ(overlayZIndex(BASE_Z_MODAL));
   wasOpenRef.current = open;
 
