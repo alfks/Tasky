@@ -40,6 +40,20 @@ done
 # CI 에는 .env 가 없고 시크릿이 환경변수로 들어온다. 이미 있는 값은 덮지 않는다.
 # "값처럼 보이지만 값이 아닌 것"(CRLF 의 \r · 공백만 · 인라인 주석)은 여기서 걸러 낸다 —
 # 그대로 통과시키면 wrangler 까지 가서 "왜 인증이 안 되지" 로만 보인다.
+#
+# 동기화(sync.md) 키는 아래 목록에 없다 — 일부러다. GOOGLE_CLIENT_ID·D1_DATABASE_ID 는
+# wrangler.jsonc 에 값이 이미 커밋돼 있어 이 스크립트가 넘겨줄 필요가 없고,
+# GOOGLE_CLIENT_SECRET·SESSION_SECRET 은 `wrangler secret put` 으로 한 번 올리면
+# Cloudflare 가 보관하는 값이라 배포마다 이 스크립트가 읽어 넘길 대상이 아니다
+# (.env.example 의 같은 키 주석 참고). Worker 배포가 실제로 그 두 시크릿을 요구하게
+# 되면(worker/index.ts 가 생기는 시점, T-93) 이 자리에 "시크릿 존재 확인 없으면 rc=1"
+# 검사를 추가한다 — 지금은 검사할 Worker 자체가 없어 추가하지 않았다.
+#
+# D1 마이그레이션도 이 스크립트가 아직 적용하지 않는다 — `wrangler deploy` 는 D1 스키마를
+# 건드리지 않는다. 지금은 D1 에 테이블이 없어도 Worker 가 없으니 해가 없지만, Worker 코드가
+# 붙는 순간(T-93) 마이그레이션 없이 배포하면 첫 요청에서 `no such table` 로 죽는다. T-93 은
+# 이 자리에 `wrangler d1 migrations apply tasky --remote` 를 실제 배포 직전 스텝으로 넣어야
+# 한다(마이그레이션 파일 `worker/db/migrations/0001_init.sql` 이 그때 생긴다 — 지금은 없다).
 if [ -f .env ]; then
   while IFS= read -r line || [ -n "$line" ]; do
     line=${line%$'\r'} # CRLF 파일의 줄 끝 \r

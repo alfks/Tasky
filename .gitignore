@@ -19,7 +19,8 @@ blob-report/
 .[eE][nN][vV]
 .[eE][nN][vV].*
 !.env.example
-.dev.vars
+.dev.vars*
+!.dev.vars.example
 
 # --- PWA (serwist build 가 dist/client/sw.js 로 생성 — dist/ 가 이미 무시된다) ---
 
