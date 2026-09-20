@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -9,7 +9,7 @@ import type { Todo } from '@/domain/todo/todo';
 import { setRepositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
-import { DateStrip } from '@/features/date-strip/components/DateStrip';
+import { DateStrip, VISIBLE_RANGE_DEBOUNCE_MS } from '@/features/date-strip/components/DateStrip';
 import { TODAY_TICK_MS } from '@/features/date-strip/hooks/useTodayTick';
 import { MAX_DATE_KEY, MIN_DATE_KEY } from '@/features/date-strip/lib/week';
 import {
@@ -387,26 +387,64 @@ describe('§5. 헤더 버튼이 자기 클릭으로 비활성돼도 포커스가
   });
 });
 
-describe('onVisibleRange — 보이는 범위를 알린다(routine.md R6 배선 지점)', () => {
-  it('마운트하면 보이는 주의 양끝으로 한 번 부른다', async () => {
-    const onVisibleRange = vi.fn();
-    await renderStrip({ onVisibleRange });
+describe('onVisibleRange — 보이는 범위를 디바운스 후 알린다(routine.md R6 배선 지점, 리뷰 Major 2)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
 
+  it('디바운스 폭이 지나기 전에는 부르지 않고, 지나면 보이는 주의 양끝으로 한 번 부른다', async () => {
+    const onVisibleRange = vi.fn();
+    render(<DateStrip summaryRevision={0} onVisibleRange={onVisibleRange} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(onVisibleRange).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(VISIBLE_RANGE_DEBOUNCE_MS);
+    });
+    expect(onVisibleRange).toHaveBeenCalledTimes(1);
     expect(onVisibleRange).toHaveBeenCalledWith('2026-09-14', '2026-09-20');
   });
 
-  it('보이는 주가 바뀌면(다음 주로 이동) 새 범위로 다시 부른다', async () => {
-    const user = userEvent.setup();
+  it('연속 이동(연타)은 멈춘 뒤 한 번으로 묶인다 — 걸음마다 부르지 않는다', async () => {
     const onVisibleRange = vi.fn();
-    await renderStrip({ onVisibleRange });
+    render(<DateStrip summaryRevision={0} onVisibleRange={onVisibleRange} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      vi.advanceTimersByTime(VISIBLE_RANGE_DEBOUNCE_MS); // 마운트 호출을 먼저 소진해 둔다.
+    });
     onVisibleRange.mockClear();
 
-    await user.click(screen.getByRole('button', { name: '다음 주' }));
+    const button = screen.getByRole('button', { name: '다음 주' });
+    // 디바운스 폭(250ms)보다 짧은 간격(50ms)으로 5번 "연타" 이동한다.
+    for (let i = 0; i < 5; i += 1) {
+      fireEvent.click(button);
+      act(() => {
+        vi.advanceTimersByTime(50);
+      });
+    }
+    expect(onVisibleRange).not.toHaveBeenCalled(); // 연타가 끝나기 전에는 아직 안 부른다.
 
-    await waitFor(() => expect(onVisibleRange).toHaveBeenCalledWith('2026-09-21', '2026-09-27'));
+    act(() => {
+      vi.advanceTimersByTime(VISIBLE_RANGE_DEBOUNCE_MS);
+    });
+    expect(onVisibleRange).toHaveBeenCalledTimes(1); // 다섯 걸음이 한 번으로 묶였다.
+    expect(onVisibleRange).toHaveBeenCalledWith('2026-10-19', '2026-10-25'); // 5주 뒤(최종 범위)
+    await act(async () => {
+      await Promise.resolve(); // 요약 재조회(useRangeSummaries)까지 흘려보내 act 경고를 없앤다.
+    });
   });
 
   it('콜백을 주지 않아도 렌더는 그대로 된다(옵셔널)', async () => {
-    await expect(renderStrip()).resolves.not.toThrow();
+    render(<DateStrip summaryRevision={0} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      vi.advanceTimersByTime(VISIBLE_RANGE_DEBOUNCE_MS);
+    });
   });
 });

@@ -41,10 +41,18 @@ type DateStripProps = {
   /**
    * 보이는 날짜 범위(양끝 포함)가 바뀔 때마다 알린다 (routine.md R6 무기한 루틴 지연 생성의 배선
    * 지점). 스트립 자신은 `todo` 를 import 할 수 없어(feature 그래프의 리프) 셸이 이 콜백으로 받아
-   * 잇는다(`ShellHeader`) — `summaryRevision` 과 같은 이유(위 주석).
+   * 잇는다(`ShellHeader`) — `summaryRevision` 과 같은 이유(위 주석). **디바운스된 뒤 호출된다**
+   * (아래 `VISIBLE_RANGE_DEBOUNCE_MS`) — 연속 탐색(연타 이동)마다 저장소를 때리지 않기 위해서다
+   * (리뷰 Major 2 실측: 100연타 → put 426·tx 938·7.4초).
    */
   onVisibleRange?: (from: DateKey, to: DateKey) => void;
 };
+
+/**
+ * `onVisibleRange` 디바운스 폭(리뷰 Major 2). 한 번의 클릭·키 입력은 보통 이보다 훨씬 느려(수백ms
+ * 이상) 체감상 "즉시"로 남고, 연속 클릭·연타는 멈춘 뒤 한 번만 저장소를 두드리게 묶인다.
+ */
+export const VISIBLE_RANGE_DEBOUNCE_MS = 250;
 
 /** 모션 축소 선호 여부. `matchMedia` 가 없는 런타임(구형·테스트)에서는 "선호하지 않음"으로 본다. */
 function prefersReducedMotion(): boolean {
@@ -81,7 +89,12 @@ export function DateStrip({
   const onVisibleRangeRef = useRef(onVisibleRange);
   onVisibleRangeRef.current = onVisibleRange;
   useEffect(() => {
-    onVisibleRangeRef.current?.(rangeStart, rangeEnd);
+    // 디바운스: 범위가 다시 바뀌면(연속 이동) 대기 중이던 타이머를 지우고 새로 잡는다 — 멈춘 뒤
+    // `VISIBLE_RANGE_DEBOUNCE_MS` 가 지나야 실제로 한 번 부른다(리뷰 Major 2).
+    const timer = window.setTimeout(() => {
+      onVisibleRangeRef.current?.(rangeStart, rangeEnd);
+    }, VISIBLE_RANGE_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
   }, [rangeStart, rangeEnd]);
   // ↑/↓ · Home/End 는 보기와 무관하게 **활성 날짜가 속한 주**를 기준으로 움직인다 (R18).
   const activeWeek = weekDays(activeDate);
