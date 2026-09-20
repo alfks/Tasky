@@ -89,6 +89,28 @@ export function heatmapDataRange(heatmap: readonly DateKey[][]): PeriodRange {
   );
 }
 
+/** 두 범위를 함께 덮는 가장 작은 범위. */
+export function mergeRanges(a: PeriodRange, b: PeriodRange): PeriodRange {
+  return {
+    from: a.from < b.from ? a.from : b.from,
+    to: a.to > b.to ? a.to : b.to,
+  };
+}
+
+/**
+ * 스트릭 계산 창의 고정 길이(review 라운드2 m19). 히트맵과 같은 84일(`HEATMAP_WEEKS`×7)이지만
+ * `heatmapWeeks` 처럼 월요일에 맞추지 않는다 — 맞추면 실제 날 수가 `today` 가 무슨 요일이냐에
+ * 따라 78~84일로 흔들린다(오늘이 월요일이면 이번 주는 1일치만 포함되므로). 84일 넘는 스트릭은
+ * 그러면 **이력이 안 변했는데도** 월요일마다 숫자가 줄었다 늘었다 한다 — 요일과 무관하게 항상
+ * 같은 길이여야 한다.
+ */
+export const STREAK_WINDOW_DAYS = HEATMAP_WEEKS * 7;
+
+/** `today` 로 끝나는 고정 `STREAK_WINDOW_DAYS`일 범위(양끝 포함). 히트맵 격자(요일 정렬)와 별개다. */
+export function streakWindowRange(today: DateKey): PeriodRange {
+  return { from: addDays(today, -(STREAK_WINDOW_DAYS - 1)), to: today };
+}
+
 /**
  * 기간과 히트맵 범위를 **나눠서** 읽어야 하는가(review M2).
  *

@@ -16,9 +16,10 @@ import {
   datesInRange,
   heatmapDataRange,
   heatmapWeeks,
+  mergeRanges,
   presetRange,
   shouldSplitTodoFetch,
-  unionFetchRange,
+  streakWindowRange,
   type PeriodPreset,
   type PeriodRange,
 } from '@/features/reports/lib/period';
@@ -28,10 +29,17 @@ import {
 } from '@/features/reports/lib/period-summary';
 import { useReportsStore } from '@/features/reports/store/reports-store';
 
-export type ReportsLoadState =
+/**
+ * `isFetching` 은 **모든** 상태에 함께 실린다(review 라운드2 n7) — SWR(review m17) 중엔
+ * `status` 가 바뀌지 않아(이전 ready/error 를 그대로 보여준다) 느린 저장소에서 프리셋을 바꿔도
+ * 화면에 "지금 다시 읽는 중"이라는 신호가 전혀 없었다. `ReportsScreen` 이 이 값으로
+ * `aria-busy` 를 켠다.
+ */
+export type ReportsLoadState = (
   | { status: 'loading' }
   | { status: 'error'; reload: () => void }
-  | { status: 'ready'; data: ReportsPeriodData; categories: Category[]; reload: () => void };
+  | { status: 'ready'; data: ReportsPeriodData; categories: Category[]; reload: () => void }
+) & { isFetching: boolean };
 
 /** 선택된 프리셋/커스텀 범위를 실제 `[from, to]` 로. 아직 고르지 않은 custom 은 last7 로 대체한다. */
 function resolvePeriod(
@@ -60,12 +68,17 @@ export function useReportsData(): ReportsLoadState {
   const period = resolvePeriod(preset, customRange, today);
   const periodDays = datesInRange(period.from, period.to);
   const heatmapDays = heatmapWeeks(today);
-  const heatmapRange = heatmapDataRange(heatmapDays);
+  // 히트맵 격자(요일 정렬) ∪ 스트릭 고정 창(review 라운드2 m19) — 스트릭이 항상 84일을 온전히
+  // 채워 셀 수 있도록, 히트맵만으로는 부족할 수 있는 날짜(오늘이 월요일에 가까울수록 그렇다)까지
+  // 미리 읽어 온다. 프리셋 경로에서는 두 범위가 사실상 같아 추가 비용이 없다.
+  const streakRange = streakWindowRange(today);
+  const streakDays = datesInRange(streakRange.from, streakRange.to);
+  const heatmapRange = mergeRanges(heatmapDataRange(heatmapDays), streakRange);
   // 겹치거나 맞닿아 있으면 union 1회, 멀리 떨어져 있으면(review M2) 두 범위를 따로 읽는다.
   const splitFetch = shouldSplitTodoFetch(period, heatmapRange);
-  const fetchRange = splitFetch ? null : unionFetchRange(period, heatmapDays);
+  const fetchRange = splitFetch ? null : mergeRanges(period, heatmapRange);
 
-  const [state, setState] = useState<ReportsLoadState>({ status: 'loading' });
+  const [state, setState] = useState<ReportsLoadState>({ status: 'loading', isFetching: true });
   // 프리셋 왕복 캐시(review m1) — 화면이 열려 있는 동안만 산다(언마운트되면 사라진다). 이 화면은
   // 메인 컬럼 전체를 대체해 열려 있는 동안 투두 편집 UI가 동시에 보이지 않으므로, 그 사이 캐시가
   // 낡을 위험은 이 화면을 다시 여는 정도로 제한된다.
@@ -75,6 +88,9 @@ export function useReportsData(): ReportsLoadState {
 
   useEffect(() => {
     let alive = true;
+    // review 라운드2 n7 — SWR(m17) 은 status 를 안 바꾸므로, 조회가 다시 도는 동안임을 따로
+    // 알린다. 이전 데이터는 setState 로 건드리지 않는다(그대로 보여준다).
+    setState((prev) => (prev.isFetching ? prev : { ...prev, isFetching: true }));
     const { todos, focusSessions, categories } = getRepositories();
 
     const cacheKey = splitFetch
@@ -109,15 +125,17 @@ export function useReportsData(): ReportsLoadState {
             periodDays,
             heatmapDays,
             today,
+            streakDays,
             todos: rows.todos,
             categories: categoryList,
             focusSessions: rows.focusSessions,
           }),
           reload,
+          isFetching: false,
         });
       })
       .catch(() => {
-        if (alive) setState({ status: 'error', reload });
+        if (alive) setState({ status: 'error', reload, isFetching: false });
       });
     // 이전 상태를 그대로 둔다(review m17, stale-while-revalidate) — 준비된 카드나 에러 카드가
     // 이미 있으면 그걸 유지한 채 뒤에서 다시 읽고, 끝나면 통째로 갈아 끼운다. 그래야 프리셋 탭을

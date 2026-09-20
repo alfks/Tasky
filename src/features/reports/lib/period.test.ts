@@ -5,13 +5,16 @@ import type { DateKey } from '@/domain/date/date-key';
 import {
   CUSTOM_RANGE_MAX_DAYS,
   HEATMAP_WEEKS,
+  STREAK_WINDOW_DAYS,
   daysBetween,
   datesInRange,
   heatmapDataRange,
   heatmapWeeks,
   isValidCustomRange,
+  mergeRanges,
   presetRange,
   shouldSplitTodoFetch,
+  streakWindowRange,
   unionFetchRange,
 } from '@/features/reports/lib/period';
 
@@ -87,6 +90,48 @@ describe('heatmapWeeks (R6, "최근 12주")', () => {
     const lastWeek = weeks.at(-1);
     expect(lastWeek).toContain(TODAY);
     expect(weeks[0]?.[0]).toBe('2026-06-29');
+  });
+
+  it('(문서화) 월요일 시작 주 단위라 today<=필터 후 실제 날 수가 요일마다 78~84일로 흔들린다', () => {
+    // 이 진동 자체가 review 라운드2 m19 의 원인이다 — 스트릭은 이 함수가 아니라
+    // `streakWindowRange`(아래)로 계산한다.
+    const sunday: DateKey = '2026-09-20';
+    const monday: DateKey = '2026-09-21';
+    const sundayCount = heatmapWeeks(sunday)
+      .flat()
+      .filter((d) => d <= sunday).length;
+    const mondayCount = heatmapWeeks(monday)
+      .flat()
+      .filter((d) => d <= monday).length;
+    expect(sundayCount).toBe(84);
+    expect(mondayCount).toBe(78);
+  });
+});
+
+describe('streakWindowRange (review 라운드2 m19)', () => {
+  it('요일과 무관하게 항상 고정 길이(84일)다', () => {
+    const sunday: DateKey = '2026-09-20';
+    const monday: DateKey = '2026-09-21';
+    const sundayRange = streakWindowRange(sunday);
+    const mondayRange = streakWindowRange(monday);
+    expect(datesInRange(sundayRange.from, sundayRange.to)).toHaveLength(STREAK_WINDOW_DAYS);
+    expect(datesInRange(mondayRange.from, mondayRange.to)).toHaveLength(STREAK_WINDOW_DAYS);
+  });
+
+  it('today 로 끝난다(양끝 포함)', () => {
+    const range = streakWindowRange(TODAY);
+    expect(range.to).toBe(TODAY);
+  });
+});
+
+describe('mergeRanges', () => {
+  it('두 범위를 함께 덮는 가장 작은 범위를 낸다', () => {
+    expect(
+      mergeRanges(
+        { from: '2026-01-01' as DateKey, to: '2026-01-10' as DateKey },
+        { from: '2026-01-05' as DateKey, to: '2026-01-20' as DateKey },
+      ),
+    ).toEqual({ from: '2026-01-01', to: '2026-01-20' });
   });
 });
 

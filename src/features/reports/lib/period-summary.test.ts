@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { DateKey } from '@/domain/date/date-key';
 
+import { datesInRange, heatmapWeeks, streakWindowRange } from '@/features/reports/lib/period';
 import {
   FOCUS_OTHER_KEY,
   buildReportsPeriodData,
@@ -11,9 +12,14 @@ import { makeCategories, makeCategory } from '@/test/fixtures/category';
 import { makeFocusSession } from '@/test/fixtures/focus-session';
 import { makeTodo } from '@/test/fixtures/todo';
 
+import { addDays } from '@/lib/date';
+
 const PERIOD_DAYS: DateKey[] = ['2026-09-18', '2026-09-19', '2026-09-20'];
 /** 기간 밖 날짜 하나를 포함해 히트맵이 union 범위에서 따로 읽는지도 확인한다. */
 const HEATMAP_DAYS: DateKey[][] = [['2026-09-11', ...PERIOD_DAYS]];
+/** review 라운드2 m19 — 실제 구현은 `streakWindowRange`(고정 길이)를 쓰지만, 이 픽스처들은 전부
+ * `heatmapDays.flat()` 이 이미 스트릭에 필요한 날짜를 덮으므로 그대로 스트릭 창으로 재사용한다. */
+const STREAK_DAYS: DateKey[] = HEATMAP_DAYS.flat();
 
 describe('buildReportsPeriodData — 재사용 확인 (R2·R3·R6)', () => {
   it('추이는 summarizeDays 결과를 그대로 쓴다: 투두 0개 날은 null(빈 칸), 있는 날은 비율', () => {
@@ -28,6 +34,7 @@ describe('buildReportsPeriodData — 재사용 확인 (R2·R3·R6)', () => {
       periodDays: PERIOD_DAYS,
       heatmapDays: HEATMAP_DAYS,
       today: PERIOD_DAYS[2],
+      streakDays: STREAK_DAYS,
       todos,
       categories: [category],
       focusSessions: [],
@@ -53,6 +60,7 @@ describe('buildReportsPeriodData — 재사용 확인 (R2·R3·R6)', () => {
       periodDays: PERIOD_DAYS,
       heatmapDays: HEATMAP_DAYS,
       today: PERIOD_DAYS[2],
+      streakDays: STREAK_DAYS,
       todos,
       categories: [catA, catB],
       focusSessions: [],
@@ -76,6 +84,7 @@ describe('buildReportsPeriodData — 재사용 확인 (R2·R3·R6)', () => {
       periodDays: PERIOD_DAYS,
       heatmapDays: HEATMAP_DAYS,
       today: PERIOD_DAYS[2],
+      streakDays: STREAK_DAYS,
       todos,
       categories: [category],
       focusSessions: [],
@@ -111,6 +120,7 @@ describe('buildReportsPeriodData — 스트릭 (R4)', () => {
       periodDays: PERIOD_DAYS,
       heatmapDays: HEATMAP_DAYS,
       today: PERIOD_DAYS[2],
+      streakDays: STREAK_DAYS,
       todos,
       categories: [category],
       focusSessions: [],
@@ -132,6 +142,7 @@ describe('buildReportsPeriodData — 스트릭 (R4)', () => {
       periodDays: PERIOD_DAYS,
       heatmapDays: HEATMAP_DAYS,
       today: PERIOD_DAYS[2],
+      streakDays: STREAK_DAYS,
       todos,
       categories: [category],
       focusSessions: [],
@@ -156,16 +167,18 @@ describe('buildReportsPeriodData — 스트릭 (R4)', () => {
       periodDays: [today],
       heatmapDays,
       today,
+      streakDays: STREAK_DAYS,
       todos,
       categories: [category],
       focusSessions: [],
     });
-    // ...기간을 3일로 넓혀도 스트릭 숫자는 같다 — 기간이 아니라 항상 today 기준 히트맵 창에서만 센다.
+    // ...기간을 3일로 넓혀도 스트릭 숫자는 같다 — 기간이 아니라 항상 고정 스트릭 창에서만 센다.
     const long = buildReportsPeriodData({
       period: { from: PERIOD_DAYS[0], to: PERIOD_DAYS[2] },
       periodDays: PERIOD_DAYS,
       heatmapDays,
       today,
+      streakDays: STREAK_DAYS,
       todos,
       categories: [category],
       focusSessions: [],
@@ -188,6 +201,7 @@ describe('buildReportsPeriodData — 스트릭 (R4)', () => {
       periodDays: PERIOD_DAYS,
       heatmapDays: HEATMAP_DAYS,
       today,
+      streakDays: STREAK_DAYS,
       todos,
       categories: [category],
       focusSessions: [],
@@ -196,6 +210,39 @@ describe('buildReportsPeriodData — 스트릭 (R4)', () => {
     expect(data.streak).toBe(0); // 오늘 미완료라 스트릭은 0(정상)
     expect(data.todayTotal).toBe(2); // 그런데 오늘 투두는 2개 있다 — "기록 없음"이 아니다
     expect(data.todayIsAllDone).toBe(false);
+  });
+
+  it('84일 넘는 연속 완료가 today 의 요일과 무관하게 같은 숫자로 나온다(review 라운드2 m19)', () => {
+    // 재현: heatmapDays(월요일 시작 12주)를 그대로 스트릭 창으로 썼다면, today 가 월요일일 때
+    // 실제 날 수가 78일뿐이라 80일째 연속 완료가 78로 잘렸다 — 이력은 안 변했는데 숫자만 요일 따라
+    // 바뀌는 버그. 이제는 `streakWindowRange`(고정 84일)를 쓰므로 어느 요일이든 80으로 같다.
+    const STREAK_LEN = 80;
+    const sunday: DateKey = '2026-09-20'; // 일요일
+    const monday: DateKey = '2026-09-21'; // 월요일 — heatmapWeeks 필터 후 78일뿐인 날
+    const category = makeCategory();
+
+    function build(today: DateKey) {
+      const window = streakWindowRange(today);
+      const streakDays = datesInRange(window.from, window.to);
+      const heatmapDays = heatmapWeeks(today);
+      // today 로 끝나는 80일 연속 완료 이력.
+      const todos = Array.from({ length: STREAK_LEN }, (_, i) =>
+        makeTodo({ seq: i + 1, date: addDays(today, -i), categoryId: category.id, done: true }),
+      );
+      return buildReportsPeriodData({
+        period: { from: today, to: today },
+        periodDays: [today],
+        heatmapDays,
+        today,
+        streakDays,
+        todos,
+        categories: [category],
+        focusSessions: [],
+      });
+    }
+
+    expect(build(sunday).streak).toBe(STREAK_LEN);
+    expect(build(monday).streak).toBe(STREAK_LEN);
   });
 });
 
@@ -219,6 +266,7 @@ describe('buildReportsPeriodData — 집중 시간 (R5)', () => {
       periodDays: PERIOD_DAYS,
       heatmapDays: HEATMAP_DAYS,
       today: PERIOD_DAYS[2],
+      streakDays: STREAK_DAYS,
       todos: [],
       categories: [],
       focusSessions: sessions,
@@ -238,6 +286,7 @@ describe('buildReportsPeriodData — 집중 시간 (R5)', () => {
       periodDays: PERIOD_DAYS,
       heatmapDays: HEATMAP_DAYS,
       today: PERIOD_DAYS[2],
+      streakDays: STREAK_DAYS,
       todos: [todo],
       categories: [],
       focusSessions: [],

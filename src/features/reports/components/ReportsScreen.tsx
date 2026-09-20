@@ -103,7 +103,11 @@ export function ReportsScreen() {
       ) : null}
 
       {state.status === 'ready' ? (
-        <ReportsCards data={state.data} categories={state.categories} today={today} />
+        // review 라운드2 n7 — SWR(m17) 중엔 status 가 안 바뀌므로 isFetching 으로 "다시 읽는 중"을
+        // 알린다. 카드를 갈아 끼우지는 않는다(이전 값을 유지한 채 뒤에서 갱신, m17 그대로).
+        <div aria-busy={state.isFetching}>
+          <ReportsCards data={state.data} categories={state.categories} today={today} />
+        </div>
       ) : null}
     </main>
   );

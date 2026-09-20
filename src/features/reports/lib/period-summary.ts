@@ -46,7 +46,14 @@ type BuildInput = {
   heatmapDays: readonly DateKey[][];
   /** 오늘(달력상 오늘 — 선택한 기간과 무관, review M1). 스트릭 창의 기준일이다. */
   today: DateKey;
-  /** 기간 ∪ 히트맵 범위를 한 번(또는 review M2 의 분리 조회 두 번) 읽은 결과 — 여기서 다시 조회하지 않는다. */
+  /**
+   * 스트릭 전용 고정 창(review 라운드2 m19, `period.ts` `streakWindowRange`) — `today` 로 끝나는
+   * 요일과 무관한 고정 길이(`STREAK_WINDOW_DAYS`)다. `heatmapDays` 를 그대로 쓰지 않는 이유:
+   * 그건 월요일 시작 주 단위라 `today` 가 무슨 요일이냐에 따라 실제 날 수가 78~84일로 흔들려,
+   * 84일 넘는 스트릭이 **이력이 안 변했는데도** 월요일마다 숫자가 바뀐다.
+   */
+  streakDays: readonly DateKey[];
+  /** 기간 ∪ 히트맵 ∪ 스트릭 창 범위를 한 번(또는 review M2 의 분리 조회 두 번) 읽은 결과 — 여기서 다시 조회하지 않는다. */
   todos: readonly Todo[];
   categories: readonly Category[];
   /** 기간 범위만 읽은 결과(R7) — 히트맵은 세션을 쓰지 않는다. */
@@ -108,21 +115,20 @@ function topFocusBuckets(totals: ReadonlyMap<string, number>): FocusBucket[] {
  * `categories`·`focusSessions` 는 훅이 이미 읽어 온 것을 그대로 받는다.
  */
 export function buildReportsPeriodData(input: BuildInput): ReportsPeriodData {
-  const { period, periodDays, heatmapDays, today, todos, categories, focusSessions } = input;
+  const { period, periodDays, heatmapDays, today, streakDays, todos, categories, focusSessions } =
+    input;
 
   // 추이·스트릭·히트맵이 같은 summarizeDays 결과를 나눠 쓴다 — 날짜별 요약을 두 번 만들지 않는다.
-  const summaryDays = [...new Set([...periodDays, ...heatmapDays.flat()])];
+  const summaryDays = [...new Set([...periodDays, ...heatmapDays.flat(), ...streakDays])];
   const summaries = summarizeDays(summaryDays, todos, categories);
 
   const periodTodos = todos.filter((todo) => todo.date >= period.from && todo.date <= period.to);
   const focusTotals = summarizeFocusSeconds(focusSessions, 'todo');
 
   // 스트릭은 기간의 속성이 아니라 이력의 속성이다(review M1) — 프리셋을 바꿔도 같은 화면의
-  // "연속 달성" 숫자가 바뀌면 안 된다. 그래서 `periodDays`(선택 기간)가 아니라 항상 `today` 로
-  // 끝나는 고정 창에서만 센다. 새로 읽지 않는다 — 이미 union 으로 읽어 온 `heatmapDays`(12주)
-  // 범위면 충분하고(코디네이터 지시), `today` 이후 칸(히트맵이 "다음 주" 칸을 포함할 수 있다,
-  // period.ts `heatmapWeeks` 주석)은 걷어내 `HeatmapCard`와 같은 필터를 쓴다.
-  const streakDays = heatmapDays.flat().filter((date) => date <= today);
+  // "연속 달성" 숫자가 바뀌면 안 된다. 그래서 `periodDays`(선택 기간)가 아니라 항상 `streakDays`
+  // (`today` 로 끝나는 고정 창, review 라운드2 m19 — `heatmapDays` 를 그대로 쓰면 요일에 따라
+  // 78~84일로 흔들린다)에서만 센다.
   const todaySummary = summaries.get(today);
 
   return {
