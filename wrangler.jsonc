@@ -19,7 +19,11 @@
     "not_found_handling": "single-page-application",
   },
   "d1_databases": [
-    { "binding": "DB", "database_name": "tasky", "database_id": "b5bcb45e-347a-4dcd-a0e1-12f5146f8b3c" },
+    {
+      "binding": "DB",
+      "database_name": "tasky",
+      "database_id": "b5bcb45e-347a-4dcd-a0e1-12f5146f8b3c",
+    },
   ],
   "vars": {
     "GOOGLE_CLIENT_ID": "430669646782-29td1hskagbod68cr8k082hur51ph9gt.apps.googleusercontent.com",
