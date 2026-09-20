@@ -23,7 +23,6 @@ import {
 } from '@/features/reports/lib/period-summary';
 import { useReportsStore } from '@/features/reports/store/reports-store';
 
-
 export type ReportsLoadState =
   | { status: 'loading' }
   | { status: 'error' }

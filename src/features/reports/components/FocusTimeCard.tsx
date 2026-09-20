@@ -32,10 +32,7 @@ export function FocusTimeCard({ totalSeconds, byTodo, todoTitles }: FocusTimeCar
       <p className="text-lg text-text">총 {formatFocusDuration(totalSeconds)}</p>
       <ul className="flex flex-col gap-[var(--space-1)]">
         {byTodo.map((bucket) => (
-          <li
-            key={bucket.key}
-            className="flex items-center justify-between text-sm text-text"
-          >
+          <li key={bucket.key} className="flex items-center justify-between text-sm text-text">
             <span className="truncate">{labelOf(bucket, todoTitles)}</span>
             <span className="text-muted tabular-nums">{formatFocusDuration(bucket.seconds)}</span>
           </li>

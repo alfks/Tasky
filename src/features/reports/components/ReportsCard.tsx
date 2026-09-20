@@ -30,11 +30,7 @@ export function ReportsCard({ title, emptyMessage, children, className }: Report
       <h2 id={headingId} className="text-base font-[var(--font-weight-semibold)] text-text">
         {title}
       </h2>
-      {emptyMessage !== undefined ? (
-        <p className="text-sm text-muted">{emptyMessage}</p>
-      ) : (
-        children
-      )}
+      {emptyMessage !== undefined ? <p className="text-sm text-muted">{emptyMessage}</p> : children}
     </section>
   );
 }

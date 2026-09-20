@@ -11,7 +11,15 @@ describe('toCategoryBarView', () => {
     const views = toCategoryBarView([{ categoryId: category.id, done: 2, total: 4 }], [category]);
 
     expect(views).toEqual([
-      { categoryId: category.id, done: 2, total: 4, label: '공부', emoji: '📚', color: category.color, ratio: 0.5 },
+      {
+        categoryId: category.id,
+        done: 2,
+        total: 4,
+        label: '공부',
+        emoji: '📚',
+        color: category.color,
+        ratio: 0.5,
+      },
     ]);
   });
 

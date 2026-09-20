@@ -18,7 +18,10 @@ import { makeFocusSession } from '@/test/fixtures/focus-session';
 import { makeTodo } from '@/test/fixtures/todo';
 
 /** 메서드별 호출 횟수를 세는 얇은 프록시. 값은 실제 memory 구현이 낸다 — 계산은 그대로 검증된다. */
-function countingRepositories(base: Repositories): { repo: Repositories; counts: Map<string, number> } {
+function countingRepositories(base: Repositories): {
+  repo: Repositories;
+  counts: Map<string, number>;
+} {
   const counts = new Map<string, number>();
   const wrap = <T extends object>(target: T): T =>
     new Proxy(target, {

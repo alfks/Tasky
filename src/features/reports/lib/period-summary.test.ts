@@ -185,23 +185,35 @@ describe('buildReportsPeriodData — 집중 시간 (R5)', () => {
 describe('heatmapLevel (완료 조건: 5단계 매핑)', () => {
   it('기록 없음(undefined 또는 total 0) → 0', () => {
     expect(heatmapLevel(undefined)).toBe(0);
-    expect(heatmapLevel({ total: 0, doneCount: 0, isAllDone: false, dots: [], overflowCount: 0 })).toBe(0);
+    expect(
+      heatmapLevel({ total: 0, doneCount: 0, isAllDone: false, dots: [], overflowCount: 0 }),
+    ).toBe(0);
   });
 
   it('0% 완료 → 1', () => {
-    expect(heatmapLevel({ total: 4, doneCount: 0, isAllDone: false, dots: [], overflowCount: 0 })).toBe(1);
+    expect(
+      heatmapLevel({ total: 4, doneCount: 0, isAllDone: false, dots: [], overflowCount: 0 }),
+    ).toBe(1);
   });
 
   it('1~49% 완료 → 2', () => {
-    expect(heatmapLevel({ total: 4, doneCount: 1, isAllDone: false, dots: [], overflowCount: 0 })).toBe(2);
+    expect(
+      heatmapLevel({ total: 4, doneCount: 1, isAllDone: false, dots: [], overflowCount: 0 }),
+    ).toBe(2);
   });
 
   it('50~99% 완료 → 3', () => {
-    expect(heatmapLevel({ total: 4, doneCount: 2, isAllDone: false, dots: [], overflowCount: 0 })).toBe(3);
-    expect(heatmapLevel({ total: 4, doneCount: 3, isAllDone: false, dots: [], overflowCount: 0 })).toBe(3);
+    expect(
+      heatmapLevel({ total: 4, doneCount: 2, isAllDone: false, dots: [], overflowCount: 0 }),
+    ).toBe(3);
+    expect(
+      heatmapLevel({ total: 4, doneCount: 3, isAllDone: false, dots: [], overflowCount: 0 }),
+    ).toBe(3);
   });
 
   it('100% 완료 → 4', () => {
-    expect(heatmapLevel({ total: 4, doneCount: 4, isAllDone: true, dots: [], overflowCount: 0 })).toBe(4);
+    expect(
+      heatmapLevel({ total: 4, doneCount: 4, isAllDone: true, dots: [], overflowCount: 0 }),
+    ).toBe(4);
   });
 });

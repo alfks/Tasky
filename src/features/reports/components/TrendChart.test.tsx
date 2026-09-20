@@ -14,9 +14,7 @@ describe('TrendChart (stats.md R2·§5)', () => {
       />,
     );
 
-    expect(
-      screen.getByRole('img', { name: '최근 2일 평균 달성률 75퍼센트' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: '최근 2일 평균 달성률 75퍼센트' })).toBeInTheDocument();
   });
 
   it('칸 단위 상세는 시각적으로 숨긴 대체 표로 낸다', () => {

@@ -32,11 +32,7 @@ export function PeriodToggle({ today }: PeriodToggleProps) {
 
   return (
     <div className="flex flex-col gap-[var(--space-2)]">
-      <div
-        role="radiogroup"
-        aria-label="통계 기간"
-        className="flex flex-wrap gap-[var(--space-1)]"
-      >
+      <div role="radiogroup" aria-label="통계 기간" className="flex flex-wrap gap-[var(--space-1)]">
         {PRESET_OPTIONS.map((option) => (
           <PeriodOption
             key={option.value}
@@ -80,13 +76,7 @@ function PeriodOption({ name, label, checked, onSelect }: PeriodOptionProps) {
         checked ? 'bg-accent text-on-accent' : 'bg-surface-2 text-text hover:opacity-90',
       )}
     >
-      <input
-        type="radio"
-        name={name}
-        checked={checked}
-        onChange={onSelect}
-        className="sr-only"
-      />
+      <input type="radio" name={name} checked={checked} onChange={onSelect} className="sr-only" />
       {label}
     </label>
   );
