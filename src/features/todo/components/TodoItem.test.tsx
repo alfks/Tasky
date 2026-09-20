@@ -1,6 +1,7 @@
 // 🔁 배지 (routine.md §2·§5·R9·R10). 완료 조건: "배지가 스크린리더에 어떻게 읽히는지" — 아이콘만
-// 이면 의미가 전달되지 않으므로 `role="img"` + `aria-label` 로 문장 전체를 읽게 하는지, 그리고
-// hover 뿐 아니라 키보드 focus 로도 닿는지를 고정한다.
+// 이면 의미가 전달되지 않으므로 `role="img"` + `aria-label` 로 문장 전체를 읽게 하는지 고정한다.
+// **탭 스톱은 만들지 않는다**(리뷰 Major 4) — 형제 배지(🗒·⏱)와 같은 규약이고, 만들면 배지에
+// 포커스가 있는 동안 행 단축키(Space 등)가 `e.target !== e.currentTarget` 가드에 걸려 죽는다.
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -75,19 +76,26 @@ describe('🔁 배지', () => {
     expect(screen.getAllByRole('img', { name: /^루틴:/ })).toHaveLength(1);
   });
 
-  it('마우스 hover 와 키보드 focus 양쪽에서 같은 문장을 읽을 수 있다', async () => {
+  it('마우스 hover 는 title 로 같은 문장을 보여준다', async () => {
+    await 화면();
+    const badge = screen.getByRole('img', { name: '루틴: 매주 목 반복' });
+
+    expect(badge).toHaveAttribute('title', '루틴: 매주 목 반복');
+  });
+
+  it('배지는 탭 스톱이 아니다 — 행 단축키(Space 로 완료 토글)를 그대로 살려 둔다(리뷰 Major 4)', async () => {
     const user = userEvent.setup();
     await 화면();
     const badge = screen.getByRole('img', { name: '루틴: 매주 목 반복' });
 
-    expect(badge).toHaveAttribute('title', '루틴: 매주 목 반복'); // hover(브라우저 네이티브 툴팁)
+    expect(badge).not.toHaveAttribute('tabindex');
 
-    await user.tab(); // 손잡이(수학엔 없음) → 체크박스 → 제목 … 순서로 오다가 배지도 멈춘다
-    // 포커스가 배지에 닿을 때까지 Tab (행 안 다른 컨트롤을 거친다 — 순서는 자유, 도달만 본다).
-    for (let i = 0; i < 10 && document.activeElement !== badge; i += 1) {
-      await user.tab();
-    }
-    expect(badge).toHaveFocus();
+    const row = screen.getByRole('checkbox', { name: '아침 스트레칭' }).closest('li')!;
+    row.focus();
+    expect(row).toHaveFocus();
+    await user.keyboard(' ');
+
+    expect(screen.getByRole('checkbox', { name: '아침 스트레칭' })).toBeChecked();
   });
 
   it('routines 맵에 그 루틴이 없으면(삭제됨, R10) 배지가 사라진다 — 원본 없이 아이콘만 남지 않는다', async () => {
