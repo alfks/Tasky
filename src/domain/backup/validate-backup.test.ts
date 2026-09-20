@@ -10,8 +10,11 @@ import {
 import { parseBackup, validateBackup } from '@/domain/backup/validate-backup';
 
 import { makeCategory } from '@/test/fixtures/category';
+import { makeDday } from '@/test/fixtures/dday';
 import { FIXTURE_INSTANT, fixtureId } from '@/test/fixtures/deps';
+import { makeDiaryEntry } from '@/test/fixtures/diary';
 import { makeFocusSession } from '@/test/fixtures/focus-session';
+import { makeRoutine } from '@/test/fixtures/routine';
 import { makeSettings } from '@/test/fixtures/settings';
 import { makeTodo } from '@/test/fixtures/todo';
 
@@ -219,6 +222,56 @@ describe('validateBackup — 행 단위 검사 (R4)', () => {
       code: 'SHAPE_INVALID',
       path: 'todos[0].title',
     });
+  });
+});
+
+describe('validateBackup — ddays·diaryEntries·routines (T-86)', () => {
+  it('세 배열이 모두 있는 정상 문서를 통과시킨다', () => {
+    const result = validateBackup(
+      rawDocument({
+        ddays: [makeDday()],
+        diaryEntries: [makeDiaryEntry()],
+        routines: [makeRoutine()],
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.document.ddays).toHaveLength(1);
+      expect(result.document.diaryEntries).toHaveLength(1);
+      expect(result.document.routines).toHaveLength(1);
+    }
+  });
+
+  it('세 배열이 아예 없으면 빈 배열로 채운다 (옛 v3 파일 호환, ADR-0016 정정 2)', () => {
+    const result = validateBackup(rawDocument());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.document.ddays).toEqual([]);
+      expect(result.document.diaryEntries).toEqual([]);
+      expect(result.document.routines).toEqual([]);
+    }
+  });
+
+  it.each([
+    ['ddays 가 배열이 아님', { ddays: {} }, 'ddays'],
+    ['diaryEntries 가 배열이 아님', { diaryEntries: 'x' }, 'diaryEntries'],
+    ['routines 가 배열이 아님', { routines: null }, 'routines'],
+  ])('%s → %s', (_label, over, path) => {
+    expect(issueOf(validateBackup(rawDocument(over)))).toEqual({ code: 'SHAPE_INVALID', path });
+  });
+
+  it('행 단위 오류는 배열 인덱스가 붙은 경로로 나온다 (R8)', () => {
+    const dday = { ...makeDday(), title: '' };
+    expect(issueOf(validateBackup(rawDocument({ ddays: [dday] })))).toEqual({
+      code: 'SHAPE_INVALID',
+      path: 'ddays[0].title',
+    });
+  });
+
+  it('같은 id 의 루틴이 두 번 나오면 거부한다 (조용한 로우 소실 방지)', () => {
+    expect(
+      issueOf(validateBackup(rawDocument({ routines: [makeRoutine(), makeRoutine()] }))),
+    ).toEqual({ code: 'SHAPE_INVALID', path: 'routines[1].id' });
   });
 });
 

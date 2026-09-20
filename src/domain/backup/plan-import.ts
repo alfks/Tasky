@@ -14,6 +14,7 @@ import type { BackupDocument } from '@/domain/backup/backup-document';
 import type { DatasetSnapshot, PersistableSnapshot } from '@/domain/dataset';
 import type { FocusSession } from '@/domain/focus/focus-session';
 import { adopt, isTombstone, type Meta, type Persistable } from '@/domain/meta';
+import type { Routine } from '@/domain/routine/routine';
 
 /** 병합 = 더 최근 것을 남긴다 / 교체 = 파일로 통째로 바꾼다 (R6·R7). */
 export type ImportMode = 'merge' | 'replace';
@@ -114,6 +115,43 @@ export function planMerge<T extends Meta>(
 }
 
 /**
+ * 루틴 병합(R6 + ADR-0017 §재검토 트리거 "T-86 착수 시 결정"). 다른 필드는 `planMerge` 와 같은
+ * newer-wins 규칙을 그대로 쓰되, **`materializedThrough`(워터마크) 만은 그 규칙에서 빼내 두 값 중
+ * 더 늦은 날짜를 남긴다.**
+ *
+ * 이유: 병합은 로우를 지우지 않고 `id` 합집합을 만든다(`merged` 의 구성 — 위 `planMerge` 를 본다).
+ * 그래서 두 쪽 중 어느 워터마크를 쓰든, 그 워터마크가 이미 훑은 구간의 인스턴스는 결과 `todos` 에
+ * 그대로 남아 있다 — **더 늦은 값**을 써도 "그 구간에 아직 없는 걸 있다고 착각" 하지 않는다(있다).
+ * 반대로 **더 이른 값**을 쓰면 이미 다른 쪽이 훑은 구간을 지연 생성이 다시 방문해 **중복 인스턴스**를
+ * 만든다(ADR-0017 이 `write()`/미래 sync 를 두고 경고한 위험 그대로 — 병합이 그 경로를 지금 연다).
+ * 그래서 "다른 필드는 newer-wins, 워터마크만 max" 가 유일하게 안전한 조합이다 — `updatedAt` 은
+ * "언제 손을 댔는지" 를 뜻하고 워터마크는 "어디까지 만들었는지" 를 뜻하는 별도 축이라(routine.ts
+ * 필드 주석), 같은 축으로 같이 판정하면 안 된다.
+ *
+ * 교체(R7)는 이 함수를 쓰지 않는다 — 파일 하나가 전량을 통째로 대체하므로 그 안의 루틴·투두는 항상
+ * 같은 스냅샷에서 나와 이미 서로 맞는다(위 위험이 성립하지 않는다).
+ */
+function planMergeRoutines(
+  local: readonly Persistable<Routine>[],
+  incoming: readonly Persistable<Routine>[],
+): MergeResult<Persistable<Routine>> {
+  const localThrough = new Map(local.map((routine) => [routine.id, routine.materializedThrough]));
+  const incomingThrough = new Map(
+    incoming.map((routine) => [routine.id, routine.materializedThrough]),
+  );
+  const merged = planMerge(local, incoming);
+  const rows = merged.rows.map((routine) => {
+    const a = localThrough.get(routine.id);
+    const b = incomingThrough.get(routine.id);
+    const through = a === undefined ? b : b === undefined || a > b ? a : b;
+    return through === undefined || through === routine.materializedThrough
+      ? routine
+      : { ...routine, materializedThrough: through };
+  });
+  return { rows, counts: merged.counts };
+}
+
+/**
  * 교체 (R7). 결과는 파일의 전량 그대로이고, 개수만 현재 데이터와 대조해 알려준다 —
  * 로컬에만 있던 항목은 사라지므로 "유지" 가 아니다(그래서 `kept` 는 항상 0 이다).
  * 사라지는 양은 실행 **전에** 다이얼로그가 "지금 있는 카테고리 N개 · 할 일 M개가 사라져요" 로 보여준다.
@@ -187,6 +225,14 @@ export function planImport(input: {
   const categories = plan(adoptLocal(local.categories), adoptFile(document.categories));
   const todos = plan(adoptLocal(local.todos), adoptFile(document.todos));
   const focusSessions = plan(adoptLocal(local.focusSessions), adoptFile(sessions));
+  const ddays = plan(adoptLocal(local.ddays), adoptFile(document.ddays));
+  const diaryEntries = plan(adoptLocal(local.diaryEntries), adoptFile(document.diaryEntries));
+  const routineLocal = adoptLocal(local.routines);
+  const routineIncoming = adoptFile(document.routines);
+  const routines =
+    mode === 'merge'
+      ? planMergeRoutines(routineLocal, routineIncoming)
+      : planReplace(routineLocal, routineIncoming);
 
   return {
     snapshot: {
@@ -198,6 +244,9 @@ export function planImport(input: {
         adoptLocal([local.settings])[0],
         adoptFile([document.settings])[0],
       ),
+      ddays: ddays.rows,
+      diaryEntries: diaryEntries.rows,
+      routines: routines.rows,
     },
     counts: sum([categories.counts, todos.counts]),
   };

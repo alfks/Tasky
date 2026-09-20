@@ -15,7 +15,10 @@ import { migrateBackup } from '@/domain/backup/migrate-backup';
 import { asArray, asRecord, failAt, isBackupShapeError } from '@/domain/backup/shape';
 import {
   readCategory,
+  readDday,
+  readDiaryEntry,
   readFocusSession,
+  readRoutine,
   readSettings,
   readTodo,
 } from '@/domain/backup/validate-rows';
@@ -42,9 +45,18 @@ function readRows<T>(value: unknown, path: string, read: (row: unknown, at: stri
 }
 
 /**
- * 검증된 문서 조립. 여기까지 왔으면 버전 변환은 끝났고 모든 배열이 존재한다.
- * 투두의 `categoryId` 는 **tombstone 을 포함한** 파일 안 카테고리에서 찾는다 (R4) — 삭제된 카테고리를
- * 가리키는 완료 투두가 정상 상태이기 때문이다(category R14·R17).
+ * 검증된 문서 조립. 여기까지 왔으면 버전 변환은 끝났고 `categories`·`todos`·`focusSessions`·
+ * `settings` 는 모두 존재한다. 투두의 `categoryId` 는 **tombstone 을 포함한** 파일 안 카테고리에서
+ * 찾는다 (R4) — 삭제된 카테고리를 가리키는 완료 투두가 정상 상태이기 때문이다(category R14·R17).
+ *
+ * `ddays`·`diaryEntries`·`routines` 는 **없어도 된다** — 필드가 **아예 없을 때만**(`=== undefined`)
+ * 빈 배열로 읽는다(있다고 가정하고 `readRows(body['ddays'], …)` 로 바로 넘기지 않는다). `??` 가 아니라
+ * `=== undefined` 로 판정하는 이유는 `null` 처럼 명시적으로 잘못된 값까지 "없음" 으로 묻으면 안
+ * 되기 때문이다(형식 오류는 형식 오류로 거부해야 한다, R4). 이미 배포된 v3 파일(스키마 v3만 올리고
+ * 이 세 배열은 아직 담지 않던 시절, ADR-0016 정정 2)에는 이 배열이 아예 없고, 그 계약은
+ * `migrate-backup.ts` 의 3→3 변환 단계로는 표현할 수 없다(같은 버전 번호 안에서 모양이 갈리는
+ * 문제라서) — 그래서 마이그레이션이 아니라 여기, 읽는 시점에 기본값을 준다.
+ * `migrate-backup.test.ts` 의 회귀 테스트가 이 계약을 고정한다.
  */
 function readDocument(body: Record<string, unknown>): BackupDocument {
   if (!isInstant(body['exportedAt'])) {
@@ -53,9 +65,25 @@ function readDocument(body: Record<string, unknown>): BackupDocument {
   const categories = readRows(body['categories'], 'categories', readCategory);
   const todos = readRows(body['todos'], 'todos', readTodo);
   const focusSessions = readRows(body['focusSessions'], 'focusSessions', readFocusSession);
+  // `=== undefined` 로만 기본값을 준다 — `??` 를 쓰면 명시적으로 들어온 `null`(형식 오류여야 할 값)
+  // 까지 "없음" 으로 묻어 버린다(옛 파일 호환은 **필드가 아예 없을 때만**의 이야기다).
+  const ddays = readRows(body['ddays'] === undefined ? [] : body['ddays'], 'ddays', readDday);
+  const diaryEntries = readRows(
+    body['diaryEntries'] === undefined ? [] : body['diaryEntries'],
+    'diaryEntries',
+    readDiaryEntry,
+  );
+  const routines = readRows(
+    body['routines'] === undefined ? [] : body['routines'],
+    'routines',
+    readRoutine,
+  );
   assertUniqueIds(categories, 'categories');
   assertUniqueIds(todos, 'todos');
   assertUniqueIds(focusSessions, 'focusSessions');
+  assertUniqueIds(ddays, 'ddays');
+  assertUniqueIds(diaryEntries, 'diaryEntries');
+  assertUniqueIds(routines, 'routines');
 
   const categoryIds = new Set<string>(categories.map((category: Category) => category.id));
   todos.forEach((todo, index) => {
@@ -72,6 +100,9 @@ function readDocument(body: Record<string, unknown>): BackupDocument {
     categories,
     todos,
     focusSessions,
+    ddays,
+    diaryEntries,
+    routines,
   };
 }
 

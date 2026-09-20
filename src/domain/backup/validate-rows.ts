@@ -7,11 +7,13 @@
 // 색만 예외적으로 팔레트 소속을 보지 않고 HEX 형식만 본다 — 프리셋 밖 색이 들어온 파일을 **표시**하는
 // 것은 허용이고(theme R4) 사용자가 그 색을 **선택**할 수 없을 뿐이다(`setAccentColor` 가 막는다).
 import {
+  asArray,
   assertMeta,
   failAt,
   isBackupShapeError,
   META_KEYS,
   optionalBoolean,
+  optionalDateKey,
   optionalInstant,
   optionalNumber,
   optionalString,
@@ -25,9 +27,15 @@ import {
 } from '@/domain/backup/shape';
 import type { Category } from '@/domain/category/category';
 import { validateCategoryEmoji, validateCategoryName } from '@/domain/category/category.rules';
+import type { Dday } from '@/domain/dday/dday';
+import { validateDdayTitle } from '@/domain/dday/dday.rules';
+import type { DiaryEntry } from '@/domain/diary/diary-entry';
+import { validateDiaryContent, validateMoodEmoji } from '@/domain/diary/diary.rules';
 import type { FocusSession } from '@/domain/focus/focus-session';
+import type { Routine } from '@/domain/routine/routine';
 import { normalizeHexColor } from '@/domain/theme/palette';
 import { SETTINGS_ID, type Settings } from '@/domain/theme/settings';
+import { validateRecurrence, type RoutineRecurrence } from '@/domain/todo/routine.rules';
 import type { Todo } from '@/domain/todo/todo';
 import { validateTodoMemo, validateTodoTitle } from '@/domain/todo/todo.rules';
 
@@ -100,6 +108,74 @@ const SETTINGS_KEYS = whitelist<Settings>()([
   'seededAt',
   'lastBackupAt',
 ]);
+const DDAY_KEYS = whitelist<Dday>()([...META_KEYS, 'title', 'date']);
+const DIARY_KEYS = whitelist<DiaryEntry>()([...META_KEYS, 'date', 'emoji', 'content']);
+/**
+ * **`materializedThrough`(루틴 워터마크, ADR-0017)를 넣는다 — 뺀 게 아니라 고른 것이다.**
+ *
+ * 뺐을 때 복원 뒤 이 필드가 무엇이 될지부터 본다: `Routine` 타입이 이 필드를 필수로 요구하므로
+ * (routine.ts) 어떤 값이든 채워야 `restore()` 가 쓸 `Persistable<Routine>` 이 만들어진다. 후보는
+ * 둘뿐이다 — ① `startDate` 전날(생성 시 기본값, `createRoutine`)로 되돌리기, ② 파일의 `todos` 에서
+ * 그 `routineId` 를 가진 가장 늦은 날짜로 역산하기. **둘 다 위험을 만든다**: ①은 이미 만들어 둔
+ * 구간 전체를 지연 생성이 다시 훑어 **중복 인스턴스**를 낳는다(워터마크는 "값으로 판정"하지 "조회로
+ * 판정"하지 않는다 — ADR-0017 본문). ②는 `export-backup.ts` 가 **툼스톤 투두를 내보내지 않으므로**
+ * (R2, `todos` 는 항상 살아있는 것만) 삭제된 인스턴스가 있는 날짜만큼 워터마크가 실제보다 뒤로
+ * 밀리고, 그 구간은 지연 생성이 다시 방문해 **사용자가 지운 인스턴스를 부활**시킨다(routine.md R9
+ * "그 뒤는 완전히 독립" 을 깬다). 둘 다 "복원했더니 투두가 늘어난다" 는 사용자 관점의 데이터 손상이라
+ * 제외하는 쪽이 더 위험하다.
+ *
+ * **넣었을 때 위험(ADR-0017 "감수하는 점")이 없는 이유**: 그 문단이 경고하는 것은 "루틴 레코드와
+ * 투두가 **따로** 병합되면 워터마크가 앞선 채 투두가 유실될 수 있다"는 것이다 — 교체(R7)는 파일
+ * 하나로 전량을 갈아치우므로(같은 스냅샷 안의 루틴·투두라 항상 같이 간다) 이 위험이 아예 성립하지
+ * 않는다. 병합(R6)은 위험이 있을 **수 있었지만** `plan-import.ts#planMergeRoutines` 가 병합에서만
+ * `materializedThrough` 를 일반 규칙(그 행 전체가 newer-wins)에서 빼내 **두 워터마크 중 더 늦은
+ * 값**을 쓴다 — 병합은 로우를 절대 지우지 않고 id 합집합을 만들므로(`planMerge`), 그 합집합에는
+ * 두 워터마크가 이미 만든 인스턴스가 전부 들어 있다. 그래서 더 늦은 값을 써도 "만든 적 없는 구간을
+ * 만든 걸로 착각"하지 않고(그 구간 몫은 합집합에 이미 있다), 더 이른 값을 쓰면 그 구간을 지연 생성이
+ * 다시 방문해 중복을 낳는다 — 그래서 "더 늦은 값"이 유일하게 안전한 선택이다. 왕복 테스트는
+ * `plan-import.test.ts`(병합 시 max 선택) 와 `validate-rows.test.ts`(형식 왕복)에 고정돼 있다.
+ */
+const ROUTINE_KEYS = whitelist<Routine>()([
+  ...META_KEYS,
+  'title',
+  'memo',
+  'categoryId',
+  'recurrence',
+  'startDate',
+  'endDate',
+  'active',
+  'materializedThrough',
+]);
+
+/** `recurrence.daysOfWeek`/`daysOfMonth` — 숫자 배열인지만 본다(범위는 `validateRecurrence` 가 본다). */
+function asNumberArray(value: unknown, path: string): number[] {
+  const raw = asArray(value, path);
+  if (!raw.every((item): item is number => typeof item === 'number' && Number.isFinite(item))) {
+    failAt(path);
+  }
+  return raw;
+}
+
+/** `Routine.recurrence` (routine.md §4). `type` 이 무엇이냐에 따라 필요한 배열이 갈린다. */
+function readRecurrence(value: unknown, path: string): RoutineRecurrence {
+  const row = pickFields(value, ['type', 'daysOfWeek', 'daysOfMonth'], path);
+  let recurrence: RoutineRecurrence;
+  if (row['type'] === 'weekly') {
+    recurrence = {
+      type: 'weekly',
+      daysOfWeek: asNumberArray(row['daysOfWeek'], `${path}.daysOfWeek`),
+    };
+  } else if (row['type'] === 'monthly') {
+    recurrence = {
+      type: 'monthly',
+      daysOfMonth: asNumberArray(row['daysOfMonth'], `${path}.daysOfMonth`),
+    };
+  } else {
+    return failAt(`${path}.type`);
+  }
+  guard(path, () => void validateRecurrence(recurrence));
+  return recurrence;
+}
 
 /**
  * 도메인 규칙 함수를 검증기로 빌려 쓴다. 규칙 함수는 `DomainError` 를 던지므로 이 경로로 바꿔 준다.
@@ -200,5 +276,57 @@ export function readSettings(value: unknown, path: string): Settings {
   }
   optionalInstant(row, 'seededAt', path);
   optionalInstant(row, 'lastBackupAt', path);
+  return entity;
+}
+
+/** D-day 한 건 (calendar R1). */
+export function readDday(value: unknown, path: string): Dday {
+  const row = pickFields(value, DDAY_KEYS, path);
+  const entity = row as unknown as Dday;
+  assertMeta(entity, path);
+
+  const title = requireString(row, 'title', path);
+  guard(`${path}.title`, () => void validateDdayTitle(title));
+  requireDateKey(row, 'date', path);
+  return entity;
+}
+
+/**
+ * 다이어리 한 건 (diary R1~R3). `content` 는 **빈 문자열이 정상**이다(이모지만 있는 기록) —
+ * `requireString` 에 `allowEmpty: true` 를 준다(diary R3).
+ */
+export function readDiaryEntry(value: unknown, path: string): DiaryEntry {
+  const row = pickFields(value, DIARY_KEYS, path);
+  const entity = row as unknown as DiaryEntry;
+  assertMeta(entity, path);
+
+  requireDateKey(row, 'date', path);
+  const emoji = optionalString(row, 'emoji', path);
+  guard(`${path}.emoji`, () => void validateMoodEmoji(emoji));
+  const content = requireString(row, 'content', path, { allowEmpty: true });
+  guard(`${path}.content`, () => void validateDiaryContent(content));
+  return entity;
+}
+
+/**
+ * 무기한 루틴 한 건 (routine.md §4, ADR-0017). `categoryId` 는 **형식만** 본다 — 삭제된 카테고리를
+ * 계속 가리키는 것이 정상 상태다(routine.md, `routine.ts` 필드 주석). `materializedThrough` 를
+ * 싣는 이유는 `ROUTINE_KEYS` 주석을 본다.
+ */
+export function readRoutine(value: unknown, path: string): Routine {
+  const row = pickFields(value, ROUTINE_KEYS, path);
+  const entity = row as unknown as Routine;
+  assertMeta(entity, path);
+
+  const title = requireString(row, 'title', path);
+  guard(`${path}.title`, () => void validateTodoTitle(title));
+  const memo = optionalString(row, 'memo', path);
+  guard(`${path}.memo`, () => void validateTodoMemo(memo));
+  requireString(row, 'categoryId', path);
+  readRecurrence(row['recurrence'], `${path}.recurrence`);
+  requireDateKey(row, 'startDate', path);
+  optionalDateKey(row, 'endDate', path);
+  requireBoolean(row, 'active', path);
+  requireDateKey(row, 'materializedThrough', path);
   return entity;
 }

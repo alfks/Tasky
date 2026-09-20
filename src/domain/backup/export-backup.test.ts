@@ -9,8 +9,11 @@ import {
 import type { DatasetSnapshot } from '@/domain/dataset';
 
 import { makeCategories, makeCategory } from '@/test/fixtures/category';
+import { makeDday } from '@/test/fixtures/dday';
 import { FIXTURE_INSTANT } from '@/test/fixtures/deps';
+import { makeDiaryEntry } from '@/test/fixtures/diary';
 import { makeFocusSession } from '@/test/fixtures/focus-session';
+import { makeRoutine } from '@/test/fixtures/routine';
 import { makeSettings } from '@/test/fixtures/settings';
 import { makeTodo, makeTodos } from '@/test/fixtures/todo';
 
@@ -19,6 +22,9 @@ const snapshot = (over: Partial<DatasetSnapshot> = {}): DatasetSnapshot => ({
   categories: [],
   focusSessions: [],
   settings: makeSettings(),
+  ddays: [],
+  diaryEntries: [],
+  routines: [],
   ...over,
 });
 
@@ -87,6 +93,60 @@ describe('buildBackupDocument (R2)', () => {
     const settings = makeSettings({ lastBackupAt: FIXTURE_INSTANT });
     const document = buildBackupDocument(snapshot({ settings }), FIXTURE_INSTANT);
     expect(document.settings).toEqual(settings);
+  });
+
+  // T-86.
+  it('삭제된 D-day·다이어리는 내보내지 않는다 (아무도 그 id 를 가리키지 않는다)', () => {
+    const [aliveDday, deletedDday] = [makeDday({ seq: 1 }), makeDday({ seq: 2 })];
+    const [aliveDiary, deletedDiary] = [makeDiaryEntry({ seq: 1 }), makeDiaryEntry({ seq: 2 })];
+    const document = buildBackupDocument(
+      snapshot({
+        ddays: [aliveDday, { ...deletedDday, deletedAt: FIXTURE_INSTANT }],
+        diaryEntries: [aliveDiary, { ...deletedDiary, deletedAt: FIXTURE_INSTANT }],
+      }),
+      FIXTURE_INSTANT,
+    );
+    expect(document.ddays.map((dday) => dday.id)).toEqual([aliveDday.id]);
+    expect(document.diaryEntries.map((entry) => entry.id)).toEqual([aliveDiary.id]);
+  });
+
+  it('삭제된 루틴은 남은 투두가 routineId 로 가리킬 때만 내보낸다 (routine.md R10 "기록 보존")', () => {
+    const [used, unused] = [makeRoutine({ seq: 1 }), makeRoutine({ seq: 2 })].map((routine) => ({
+      ...routine,
+      deletedAt: FIXTURE_INSTANT,
+    }));
+    const document = buildBackupDocument(
+      snapshot({
+        categories: [makeCategory()],
+        routines: [used, unused],
+        todos: [makeTodo({ routineId: used.id })],
+      }),
+      FIXTURE_INSTANT,
+    );
+    expect(document.routines.map((routine) => routine.id)).toEqual([used.id]);
+  });
+
+  it('살아 있는 루틴은 투두가 없어도 내보낸다', () => {
+    const document = buildBackupDocument(snapshot({ routines: [makeRoutine()] }), FIXTURE_INSTANT);
+    expect(document.routines).toHaveLength(1);
+  });
+
+  it('루틴이 가리키는 삭제된 카테고리도 내보낸다 (다른 투두·세션이 없어도)', () => {
+    const category = makeCategory({ deletedAt: FIXTURE_INSTANT });
+    const document = buildBackupDocument(
+      snapshot({
+        categories: [category],
+        routines: [makeRoutine({ categoryId: category.id })],
+      }),
+      FIXTURE_INSTANT,
+    );
+    expect(document.categories.map((c) => c.id)).toEqual([category.id]);
+  });
+
+  it('루틴의 materializedThrough 를 그대로 싣는다 (ADR-0017)', () => {
+    const routine = makeRoutine({ materializedThrough: '2026-05-20' });
+    const document = buildBackupDocument(snapshot({ routines: [routine] }), FIXTURE_INSTANT);
+    expect(document.routines[0].materializedThrough).toBe('2026-05-20');
   });
 });
 

@@ -1,7 +1,10 @@
 // 백업 파일의 **형식**과 실패 코드 (backup.md R1·R2·R3·R8·R9). 값을 만들지 않고 모양만 정의한다 —
 // 만드는 쪽은 `export-backup.ts`, 읽는 쪽은 `validate-backup.ts` 다.
 import type { Category } from '@/domain/category/category';
+import type { Dday } from '@/domain/dday/dday';
+import type { DiaryEntry } from '@/domain/diary/diary-entry';
 import type { FocusSession } from '@/domain/focus/focus-session';
+import type { Routine } from '@/domain/routine/routine';
 import type { Settings } from '@/domain/theme/settings';
 import type { Todo } from '@/domain/todo/todo';
 
@@ -15,9 +18,21 @@ export const BACKUP_APP = 'tasky';
  * (ARCHITECTURE §1). 대신 `backup-document.test.ts` 가 두 값을 대조한다(테스트 계층은 경계가 없다).
  * 한쪽만 올리면 그 테스트가 실패하므로, 두 값이 갈라진 채로 머지되지 않는다.
  *
- * v3(ADR-0016): `ddays`·`diaryEntries`·`routines` 테이블 신설은 아직 **백업 payload 에 들어가지
- * 않는다**(그 테이블들을 담는 것은 후속 T-86) — 그래도 이 값은 `DB_VERSION` 을 따라 3으로 올린다.
- * 문서 모양 자체는 v2 와 같으므로 `migrate-backup.ts#migrateV2ToV3` 는 항등 함수다.
+ * **T-86 에서도 3에 그대로 둔다 — 올리지 않는다.** `ddays`·`diaryEntries`·`routines` 를 payload 에
+ * 싣는 지금 변경은 `DB_VERSION`(IndexedDB 스키마)을 전혀 건드리지 않는다 — 세 테이블은 이미
+ * ADR-0016(v3)에서 신설됐고, 이번 티켓은 그 테이블에 담긴 **값을 옮기는 통로**를 추가할 뿐 저장소
+ * 스키마 자체는 바뀌지 않는다. 이 상수를 `DB_VERSION` 과 별개로 4로 올리면 위 대조 테스트가 깨지고,
+ * `DB_VERSION` 까지 같이 올리는 것은 "새 스키마 버전을 만들지 않는다"(T-86 범위 밖)를 어긴다.
+ * 그리고 버전을 올려도 모호함은 풀리지 않는다 — 아래 문단이 그 이유다.
+ *
+ * **"같은 3인데 모양이 둘"인 문제는 버전 번호가 아니라 방어적 파싱으로 푼다.** 이 값이 3인 채로
+ * 이미 배포된 파일 중에는 세 배열이 아예 없는 것(T-86 이전 내보내기)과 있는 것(T-86 이후)이 둘 다
+ * 존재한다 — 지금 와서 4로 올려도 "이미 나가 있는 3짜리 파일들"의 모호함은 사라지지 않고, 그 파일을
+ * 새 버전 검사기가 읽을 수 있어야 한다는 요구만 그대로 남는다(정정 2, ADR-0016). 그래서
+ * `validate-backup.ts#readDocument` 가 세 배열을 **필드가 아예 없을 때만** 빈 배열로 읽는다(`null`
+ * 처럼 명시적으로 잘못된 값까지 묻지 않는다 — `=== undefined` 로만 판정한다) — 마이그레이션
+ * 단계(`migrate-backup.ts`)가 아니라 읽기 시점의 방어로 처리한다(3→3 변환 단계는 만들 수 없다, 같은
+ * ADR).
  */
 export const BACKUP_SCHEMA_VERSION = 3;
 
@@ -32,6 +47,12 @@ export const BACKUP_JSON_INDENT = 2;
  * 배열이 가리키는 tombstone 을 포함한다. `settings` 는 `Meta` 를 포함한 엔티티 전체다 —
  * R2 예시는 `theme`·`accentColor`·`updatedAt` 만 적었지만 그 셋만으로는 `adopt()` 의 `Meta` 검증
  * (ADR-0009 결정 3)을 통과할 수 없고 왕복 동일성(R2)도 성립하지 않는다. 예시가 생략형이다.
+ *
+ * `ddays`·`diaryEntries`·`routines`(T-86): 툼스톤 제외 원칙은 `todos`·`focusSessions` 와 같지만,
+ * `routines` 만 예외로 **다른 투두가 가리키는 tombstone 을 더** 싣는다 — `categories` 와 같은 이유다
+ * (`export-backup.ts#buildBackupDocument` 참고). `Routine.materializedThrough`(루틴 워터마크)도
+ * **그대로 싣는다** — 제외하면 복원 뒤 재계산할 안전한 방법이 없다(`validate-rows.ts` 의
+ * `ROUTINE_KEYS` 주석, ADR-0017 정정).
  */
 export type BackupDocument = {
   app: typeof BACKUP_APP;
@@ -41,6 +62,9 @@ export type BackupDocument = {
   categories: Category[];
   todos: Todo[];
   focusSessions: FocusSession[];
+  ddays: Dday[];
+  diaryEntries: DiaryEntry[];
+  routines: Routine[];
 };
 
 /** 가져오기 실패의 종류 (R8·R9·R3). UI 는 문구가 아니라 이 코드로 분기한다. */
