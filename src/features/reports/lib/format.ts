@@ -11,8 +11,11 @@ export function formatFocusDuration(totalSeconds: number): string {
   return `${hours}시간 ${restMinutes}분`;
 }
 
-/** 히트맵 칸의 `aria-label`용 날짜 문구. */
+/**
+ * 히트맵 칸·추이 표의 날짜 문구. 연도를 함께 쓴다(review n2) — 히트맵(항상 최근 12주)·기간 지정
+ * (최대 366일) 둘 다 해를 넘길 수 있는데 연도가 없으면 "1월 5일"이 어느 해인지 모호했다.
+ */
 export function formatHeatmapDate(dateKey: string): string {
-  const [, month, day] = dateKey.split('-');
-  return `${Number(month)}월 ${Number(day)}일`;
+  const [year, month, day] = dateKey.split('-');
+  return `${year}년 ${Number(month)}월 ${Number(day)}일`;
 }

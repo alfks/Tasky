@@ -24,8 +24,8 @@ describe('formatFocusDuration', () => {
   });
 });
 
-describe('formatHeatmapDate', () => {
-  it('0을 채운 월·일을 자연어로 바꾼다', () => {
-    expect(formatHeatmapDate('2026-09-05')).toBe('9월 5일');
+describe('formatHeatmapDate (review n2 — 연도 포함)', () => {
+  it('0을 채운 연·월·일을 자연어로 바꾼다', () => {
+    expect(formatHeatmapDate('2026-09-05')).toBe('2026년 9월 5일');
   });
 });
