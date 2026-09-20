@@ -29,6 +29,10 @@ import {
 
 import { getRepositories } from '@/repositories/container';
 
+import {
+  createRoutineManageActions,
+  type RoutineManageActions,
+} from '@/features/todo/store/todo-routine-manage';
 import { indexTodos, messageOf, withoutTodo, withTodos } from '@/features/todo/store/todo-state';
 import {
   createTodoWriter,
@@ -84,7 +88,7 @@ export type TodoActions = {
   undoRoutine: (ids: readonly TodoId[]) => Promise<boolean>;
   /** 토스트를 닫을 때 문구를 지운다. */
   clearError: () => void;
-};
+} & RoutineManageActions; // 루틴 관리(중지·재개·삭제, routine.md R7·R10) — todo-routine-manage.ts
 
 /** 적재 (R17). 요청 번호로 늦게 도착한 이전 날짜의 응답을 버린다 — 날짜 스트립 연타 경로다. */
 function createLoadAction(ctx: TodoContext): Pick<TodoActions, 'loadDate'> {
@@ -310,6 +314,7 @@ export function createTodoActions(ctx: TodoContext): TodoActions {
     ...createMoveActions(ctx, writer),
     ...createOrderActions(ctx, writer),
     ...createRoutineAction(ctx, writer),
+    ...createRoutineManageActions(ctx, writer),
     clearError: () => {
       ctx.set({ error: null });
     },

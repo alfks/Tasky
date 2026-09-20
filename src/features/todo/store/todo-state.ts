@@ -2,11 +2,15 @@
 // 액션(언제 저장하고 무엇을 되돌리는가)은 `todo-store.ts`, 화면용 파생 값은 `todo-selectors.ts`.
 import type { DateKey } from '@/domain/date/date-key';
 import { DomainError } from '@/domain/errors';
-import type { TodoId } from '@/domain/ids';
+import type { RoutineId, TodoId } from '@/domain/ids';
+import type { Routine } from '@/domain/routine/routine';
 import type { Todo } from '@/domain/todo/todo';
 
 /** id → 투두. 쓰기가 없으면 참조가 그대로라 이 조각만 구독한 훅은 다시 계산하지 않는다. */
 export type TodoMap = Readonly<Record<string, Todo>>;
+
+/** id → 루틴(routine.md §4). 관리 화면(T-83)·채우기(T-82)가 함께 구독한다. */
+export type RoutineMap = Readonly<Record<string, Routine>>;
 
 /** 선택자가 보는 최소 상태. 스토어 전체를 구독하지 않도록 `byId` 하나만 요구한다. */
 export type TodoSnapshot = { readonly byId: TodoMap };
@@ -32,6 +36,14 @@ export type TodoState = TodoSnapshot & {
    * 이 경로를 타지 않아 자동으로 빠진다.
    */
   writeRevision: number;
+  /**
+   * 루틴 관리(routine.md R7·R10, T-81 관리 액션 + T-83 화면)를 위한 메모리 상태. 투두처럼 "보고
+   * 있는 날짜만"(R17)이 아니라 **전량**이다 — 루틴은 수십 건 규모라 예산 안이고(ADR-0016 §결정 1과
+   * 같은 판단), 관리 화면이 필요할 때 `loadRoutines()` 로 채운다(자동 로드 없음 — 관리 화면을 안 열면
+   * 아무도 이 상태를 안 건드린다).
+   */
+  routines: RoutineMap;
+  routineStatus: TodoLoadStatus;
 };
 
 /** 쓰기 실패 공통 문구 (todo §2-C). 원인이 아니라 다음 행동을 안내한다. */
@@ -59,5 +71,25 @@ export function withTodos(byId: TodoMap, todos: readonly Todo[]): TodoMap {
 /** 한 건을 뺀 새 맵. 삭제·날짜 이동이 메모리에서 내릴 때 쓴다. */
 export function withoutTodo(byId: TodoMap, id: TodoId): TodoMap {
   const { [id]: _removed, ...rest } = byId;
+  return rest;
+}
+
+/** 조회 결과를 루틴 상태 맵으로. */
+export function indexRoutines(routines: readonly Routine[]): RoutineMap {
+  return Object.fromEntries(routines.map((routine) => [routine.id, routine]));
+}
+
+/** 주어진 루틴들을 덮어쓴 새 맵(관리 액션 — 중지·재개·삭제가 쓴다, routine.md R7·R10). */
+export function withRoutines(routines: RoutineMap, updated: readonly Routine[]): RoutineMap {
+  const next: Record<string, Routine> = { ...routines };
+  for (const routine of updated) {
+    next[routine.id] = routine;
+  }
+  return next;
+}
+
+/** 삭제된 루틴을 메모리에서도 뺀다(관리 화면 목록에서 즉시 사라지도록). */
+export function withoutRoutine(routines: RoutineMap, id: RoutineId): RoutineMap {
+  const { [id]: _removed, ...rest } = routines;
   return rest;
 }
