@@ -21,7 +21,9 @@
 //   - bulkPut(table, entities)       청크 쓰기                           restore
 //   - store.transaction(run)         네 테이블 rw 트랜잭션               write · restore
 //
-// 테이블 넷과 그 트랜잭션은 `Store` 하나로 묶여 있고 레포지토리 구현이 **주입받는다**(아래 `Store` 주석).
+// `Store` 는 다섯 테이블(D-day 신설로 넷에서 늘었다, ADR-0016)과 그 중 넷을 묶는 트랜잭션을 하나로
+// 들고 있고, 레포지토리 구현이 그 묶음을 **주입받는다**(아래 `Store` 주석). `ddays` 는 아직
+// `DatasetRepository`(백업/복원)에 들어가지 않으므로 트랜잭션에는 끼지 않는다 — 넷인 채로 남는다.
 //
 // `store.open()` 은 조회·쓰기가 아니라 **스키마를 여는** 통로다. Dexie 의 지연 오픈 때문에 업그레이드
 // 실패가 아무 호출에서나 raw Dexie 에러로 터지는 것을 막고 `RepositoryError('SCHEMA_UPGRADE_FAILED')`
@@ -72,8 +74,8 @@ const raw = <T extends Meta>(table: LiveTable<T, string>): EntityTable<T, 'id'> 
 const live = <T extends Meta>(rows: T[]): T[] => rows.filter((row) => !isTombstone(row));
 
 /**
- * **한 Dexie 인스턴스**에 묶인 테이블 넷과 그 인스턴스의 트랜잭션. 레포지토리 구현이 db.ts 를 직접
- * import 하지 않게 하는 통로이자, 구현이 어느 DB 위에서 도는지를 정하는 유일한 손잡이다.
+ * **한 Dexie 인스턴스**에 묶인 테이블 다섯과 그 중 넷을 묶는 트랜잭션. 레포지토리 구현이 db.ts 를
+ * 직접 import 하지 않게 하는 통로이자, 구현이 어느 DB 위에서 도는지를 정하는 유일한 손잡이다.
  *
  * 묶음을 인자로 주고받는 이유는 **테스트 격리**다. IndexedDB 는 브라우저당 이름 하나에 DB 하나라,
  * 예전 계약 테스트처럼 "네 테이블을 비우고 같은 인스턴스를 다시 내주는" 방식은 격리가 아니라 전역
