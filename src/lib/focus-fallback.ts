@@ -106,33 +106,9 @@ export function handoffFocus(container: HTMLElement | null, successorSelector: s
   return true;
 }
 
-/**
- * **"삭제 뒤 포커스를 다음 렌더로 미룰 때"의 표준 답(리뷰 #104 Minor).** 위 `handoffFocus` 가
- * `requestAnimationFrame` 을 쓰는 것을 보고 같은 문제(스토어 쓰기 완료 ≠ React 렌더 커밋)에
- * `requestAnimationFrame`/`queueMicrotask` 를 복제하고 싶어질 수 있다 — **그러지 마라.** 둘 다
- * "이만큼 기다리면 되겠지" 라는 **타이밍 추측**이다. React 는 "쓰기 후 한 프레임/한 틱 안에
- * 커밋한다" 를 계약으로 보장하지 않는다(형제 PR #105 가 `queueMicrotask` 로 고쳤을 때 실측으로는
- * 옳았지만, 그건 그 경로가 `useSyncExternalStore` 동기 플러시라는 **우연** 때문이었다).
- *
- * 옳은 모양은 **effect 의존성**이다 — 지우려는 목록의 길이(또는 지운 항목이 `byId` 에서 빠졌는지)
- * 를 의존성으로 하는 `useEffect` 에서, "그 목록이 실제로 줄어들었을 때만" 포커스를 옮긴다:
- *
- * ```ts
- * const pending = useRef(false);
- * const prevLength = useRef(items.length);
- * useEffect(() => {
- *   if (pending.current && items.length < prevLength.current) {
- *     pending.current = false;
- *     fallback()?.focus();
- *   }
- *   prevLength.current = items.length;
- * }, [items.length, fallback]);
- * // 삭제 핸들러는 쓰기가 끝나면 pending.current = true 만 세운다(직접 focus() 하지 않는다).
- * ```
- *
- * React 가 그 사이에 몇 번을 더 렌더하든, 실제로 **줄어든 렌더 다음 커밋**에서만 반응한다 —
- * 몇 프레임 뒤인지 추측하지 않는다(`RoutineManager.tsx` 의 실제 구현 참고).
- */
+// "삭제 뒤 포커스를 다음 렌더로 미룰 때" — 위 `handoffFocus` 의 `requestAnimationFrame` 을 보고
+// 복제하고 싶어질 수 있지만 그러지 마라(타이밍 추측). 표준 패턴·예제·근거는 `src/lib/AGENTS.md`
+// "삭제 뒤 포커스 이동 타이밍" — 에이전트가 이 디렉토리를 건드릴 때 실제로 읽는 자리다.
 
 /**
  * 요소를 보이게 한 뒤 포커스를 준다. `scrollIntoView` 는 jsdom 에 없고 구형 런타임에서도 빠질 수
