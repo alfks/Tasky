@@ -106,6 +106,10 @@ export function handoffFocus(container: HTMLElement | null, successorSelector: s
   return true;
 }
 
+// "삭제 뒤 포커스를 다음 렌더로 미룰 때" — 위 `handoffFocus` 의 `requestAnimationFrame` 을 보고
+// 복제하고 싶어질 수 있지만 그러지 마라(타이밍 추측). 표준 패턴·예제·근거는 `src/lib/AGENTS.md`
+// "삭제 뒤 포커스 이동 타이밍" — 에이전트가 이 디렉토리를 건드릴 때 실제로 읽는 자리다.
+
 /**
  * 요소를 보이게 한 뒤 포커스를 준다. `scrollIntoView` 는 jsdom 에 없고 구형 런타임에서도 빠질 수
  * 있어 있는지 확인하고 부른다(`DateStrip` 의 같은 규약). 모션 축소를 선호하면 즉시 이동한다(R13).

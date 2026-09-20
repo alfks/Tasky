@@ -488,3 +488,22 @@ lib 판은 뷰포트를`reverse()`해 **마지막**(가장 최근) 토스트의 
 둘은`querySelector`라 문서 순서 **첫** 뷰포트를 고른다 — 토스트가 겹치는 경로(연달아 삭제)에서
 결과가 갈릴 수 있다. 셋을`toastActionButton(document)` 호출로 교체하기 전에 그 차이가 실제
   버그인지(아니면 지금 동작이 의도된 것인지) 확인하고, 필요하면 테스트로 고정한 뒤 통일한다.
+
+- **T-89**(T-83 PR #104 리뷰 Nit 에서 나옴, 아직 티켓 원문 없음): `RoutineManager` 가 `categories` 를
+  `AppShell` → `ShellSidebar` → `RoutineManager` 로 두 단계 prop-drilling 받는다 — `todo` feature 가
+  `@/features/category` 배럴을 직접 import 하면 `category → todo`(이미 `useTodoGroup` 으로 존재)와
+  겹쳐 순환이 생기기 때문이다(`RoutineManager.tsx` 주석). 지금 규모(2단계)는 감당할 만해 이번
+  라운드는 옮기지 않았다. 더 나은 수는 `RoutineManager`(와 형제 컴포넌트들)를 **아무도 조립하지
+  않는** 새 feature(`features/routine/` 또는 `shell` 자신)로 옮기는 것 — 그러면 `@/features/category`
+  배럴을 직접 써도 순환이 안 난다(todo 가 아니라 셸 쪽에 두므로). 옮길 때 `todo/index.ts` 의
+  `RoutineManager` export·`ShellSidebar.tsx` 의 import 경로·`routine-schedule-label.ts` 동반 이동도
+  같이 정리한다.
+
+- **T-90**(T-83 PR #104 리뷰 라운드2에서 나옴, 아직 티켓 원문 없음): **삭제 후 포커스 이동 패턴
+  통일.** `src/lib/AGENTS.md`(§ "삭제 뒤 포커스 이동 타이밍")가 방금 표준(effect 의존성, 깃발은
+  쓰기 전에)을 명문화했지만, main 에는 그 규칙 확립 전에 짜인 타이밍 추측 코드가 그대로 남아
+  있다 — `DiaryCard.tsx` 의 `queueMicrotask`, `useTodoItemFocus`·`useFlipRows`·
+  `useFocusStartReset` 의 `requestAnimationFrame`. 문서만으로는 안 옮겨진다: `DiaryCard` 를
+  effect 패턴으로 옮기고, 나머지 rAF 셋은 "포커스 이동이 아니라 다른 문제(그려지는 순서를
+  기다리는 것)"인지 하나하나 판정해 규칙의 예외로 명시하거나 같이 옮긴다. 세 번째 사람이 또
+  `DiaryCard` 를 보고 rAF/microtask 를 고르지 않도록, 규칙이 남기는 것과 옮기는 것을 갈라 적는다.

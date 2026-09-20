@@ -17,6 +17,35 @@
 3. 시각·ID 생성 함수(`nowIso()`·`newId()`)는 여기서 구현하고 도메인에는 `deps = { now, id }`로 **주입**한다(ADR-0005 규칙 2). 도메인이 직접 import하면 린트 에러다.
 4. 출처: `docs/ARCHITECTURE.md` §1(허용 패키지 `clsx`, `tailwind-merge`).
 
+## 삭제 뒤 포커스 이동 타이밍 (리뷰 #104 라운드2)
+
+행 삭제처럼 **스토어 쓰기 → 화면에서 그 행이 실제로 사라짐** 사이에 포커스를 옮길 때, `requestAnimationFrame`/`queueMicrotask` 로 "이만큼 기다리면 되겠지" 를 복제하지 마라 — React 가 몇 프레임/몇 틱 안에 커밋한다는 계약은 없다(형제 PR #105 의 `queueMicrotask` 는 그 경로가 `useSyncExternalStore` 동기 플러시라는 **우연**으로만 맞았다). 옳은 모양은 **effect 의존성**이다: 지우려는 목록의 길이가 실제로 줄어든 것을 의존성으로 하는 `useEffect` 에서만 포커스를 옮긴다.
+
+```ts
+const pending = useRef(false);
+const prevLength = useRef(items.length);
+useEffect(() => {
+  if (pending.current && items.length < prevLength.current) {
+    pending.current = false;
+    fallback()?.focus();
+  }
+  prevLength.current = items.length;
+}, [items.length, fallback]);
+
+// 삭제 핸들러 — 깃발은 쓰기를 **시작하기 전에** 세운다. `set()`(zustand 등)은 `await` 가
+// 반환하기 전에 이미 구독자를 갱신하므로, 끝난 뒤 세우면 그 렌더를 이미 지나쳐 있을 수 있다
+// (반대 순서로 적었다가 `RoutineManager.test.tsx` 3건이 실제로 빨간불이었다 — 실측).
+async function handleRemove(id: string) {
+  pending.current = true;
+  const ok = await remove(id);
+  if (!ok) pending.current = false; // 실패하면 아무것도 안 줄었으니 내린다
+}
+```
+
+`handoffFocus`(`focus-fallback.ts`)의 `requestAnimationFrame` 은 **다른 문제**(DOM 에 아직 없는, 지금 막 그려지는 **후임** 요소를 찾는 것)라 이 규칙의 예외다 — effect 로 바꾸지 마라.
+
+**기존에 남아 있는 것(이 규칙 확립 전에 짜여 옮기지 않은 코드, 후속 정리는 `docs/PHASE2_TICKET_BACKLOG.md`)**: `DiaryCard.tsx` 의 `queueMicrotask`, `useTodoItemFocus`·`useFlipRows`·`useFocusStartReset` 의 `requestAnimationFrame` — 새로 짜는 코드가 이들을 보고 그대로 복제하지 말 것.
+
 ## 검증
 
 ```bash

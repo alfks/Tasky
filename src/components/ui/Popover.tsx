@@ -6,7 +6,7 @@ import type { ReactNode, RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
 import { applyOverlayEnterRule } from '@/components/ui/overlay-rules';
-import { isTopOverlayLayer, pushOverlayLayer } from '@/components/ui/overlay-stack';
+import { isTopOverlayLayer, overlayZIndex, pushOverlayLayer } from '@/components/ui/overlay-stack';
 import type { OverlayLayer } from '@/components/ui/overlay-stack';
 
 import { cn } from '@/lib/cn';
@@ -14,6 +14,8 @@ import { isImeKey } from '@/lib/ime';
 
 /** 앵커와 패널 사이 간격(px). --space-2 와 같은 값이지만 위치 계산은 숫자가 필요하다. */
 const GAP = 8;
+/** `--z-popover`(tokens.css) 의 JS 거울 — `overlayZIndex` 가 스택 깊이에 맞춰 이 값 이상을 계산한다. */
+export const BASE_Z_POPOVER = 20;
 
 const FOCUSABLE_SELECTOR =
   'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -108,6 +110,16 @@ export function Popover({
     element: () => panelRef.current,
   });
 
+  // `Dialog` 와 같은 이유(그 파일 주석 참고) — 열리는 렌더에서 한 번만 계산해 고정한다. 대화상자
+  // 안에서 여는 팝오버(리뷰 #104 Blocker)가 고정 토큰(20 < 모달 30)에 깔리던 문제의 근본 수정.
+  // `Popover` 는 관례상 항상 닫힌 채 마운트되지만(이 파일 머리 주석), `useRef(open)` 이 아니라
+  // `useRef(false)` 로 시작해 "열린 채 마운트" 되는 예외적인 사용에도 방어한다(Dialog 와 같은 이유,
+  // 리뷰 #104 라운드2 Minor-1).
+  const [z, setZ] = useState(BASE_Z_POPOVER);
+  const wasOpenRef = useRef(false);
+  if (open && !wasOpenRef.current) setZ(overlayZIndex(BASE_Z_POPOVER));
+  wasOpenRef.current = open;
+
   // 콜백은 렌더마다 새 값일 수 있어 효과 의존성에 넣지 않는다(넣으면 리스너가 매 렌더 재설치된다).
   const latestRef = useRef({ onClose, returnFocus });
   useEffect(() => {
@@ -148,7 +160,7 @@ export function Popover({
       (first ?? panel)?.focus();
     }
 
-    const popLayer = pushOverlayLayer(layer);
+    const popLayer = pushOverlayLayer(layer, BASE_Z_POPOVER);
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Enter 규칙(app-shell R14)은 팝오버 안의 <form> 에도 걸린다 — 날짜 선택 팝오버(date-strip.md)나
@@ -243,9 +255,11 @@ export function Popover({
       role={label === undefined ? undefined : 'group'}
       aria-label={label}
       tabIndex={-1}
-      style={{ top: position?.top ?? 0, left: position?.left ?? 0 }}
+      // 고정 토큰(z-[var(--z-popover)]) 대신 인라인으로 준다 — 대화상자 안에서 여는 팝오버가
+      // `overlayZIndex` 로 그 대화상자보다 항상 높게 계산된 값을 받는다(리뷰 #104 Blocker).
+      style={{ top: position?.top ?? 0, left: position?.left ?? 0, zIndex: z }}
       className={cn(
-        'fixed z-[var(--z-popover)] min-w-[200px] rounded-[var(--radius-lg)] border border-border bg-surface',
+        'fixed min-w-[200px] rounded-[var(--radius-lg)] border border-border bg-surface',
         'p-[var(--space-2)] shadow-md outline-none',
         'motion-safe:transition-opacity motion-safe:duration-[var(--motion-fast)]',
         position === null ? 'opacity-0' : 'opacity-100',

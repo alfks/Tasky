@@ -63,6 +63,7 @@ export function ShellOverlays({
       >
         <ShellSidebar
           showTitle={false}
+          categories={categories}
           onSelectCategory={(id) => {
             onDrawerClose();
             onSelectCategory(id);
