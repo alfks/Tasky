@@ -23,8 +23,9 @@ describe('TrendChart (stats.md R2·§5)', () => {
   it('칸 단위 상세는 시각적으로 숨긴 대체 표로 낸다', () => {
     render(<TrendChart points={[{ date: '2026-09-18', ratio: 0.5 }]} />);
 
+    // review 라운드2 M5 — sr-only 는 표를 감싼 div 에 있다(table 자신에 주면 접히지 않는다).
     const table = screen.getByRole('table', { name: '날짜별 달성률' });
-    expect(table).toHaveClass('sr-only');
+    expect(table.parentElement).toHaveClass('sr-only');
     expect(screen.getByRole('cell', { name: '50%' })).toBeInTheDocument();
   });
 
@@ -86,9 +87,12 @@ describe('TrendChart (stats.md R2·§5)', () => {
     }
     // 요일 글자 벽이 아니라 월이 바뀔 때만 찍는 성긴 눈금이다 — 매일이 아니라 달마다 한 번뿐.
     const expectedTicks = points.filter((p, i) => i === 0 || Number(p.date.slice(8, 10)) === 1);
-    const labels = [...img.querySelectorAll('span')].map((el) => el.textContent);
+    const labelSpans = [...img.querySelectorAll('span')];
+    const labels = labelSpans.map((el) => el.textContent);
     expect(labels.filter((t) => t !== '')).toHaveLength(expectedTicks.length);
     expect(labels.every((t) => !WEEKDAY_CHARS.some((c) => t === c))).toBe(true);
+    // review m18 — 6px 칸에 "10월" 같은 눈금이 한 줄로 강제돼 두 줄로 접혀 이웃을 침범하지 않는다.
+    for (const span of labelSpans) expect(span.className).toContain('whitespace-nowrap');
   });
 });
 

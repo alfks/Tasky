@@ -83,29 +83,44 @@ export function TrendChart({ points }: TrendChartProps) {
                 />
               ) : null}
             </div>
-            <span className="text-[10px] leading-none text-muted">
+            {/* review 라운드2 m18 — 밀집 모드의 6px 칸에 월 눈금("10월")을 그대로 두면 한 줄에
+                못 들어가 "1"/"월" 두 줄로 접혀 3px 씩 이웃을 침범했다. `whitespace-nowrap` 으로
+                한 줄을 강제하고 `overflow-visible` 로 칸 밖까지 그대로 새어 나가게 둔다 — 어차피
+                장식(aria-hidden)이고 눈금은 성기게(30~ 일에 한 번) 찍혀 이웃과 겹칠 일이 드물다. */}
+            <span className="overflow-visible text-[10px] leading-none whitespace-nowrap text-muted">
               {isDense ? monthTickOf(point.date, index) : weekdayOf(point.date)}
             </span>
           </div>
         ))}
       </div>
-      <table className="sr-only">
-        <caption>날짜별 달성률</caption>
-        <thead>
-          <tr>
-            <th scope="col">날짜</th>
-            <th scope="col">달성률</th>
-          </tr>
-        </thead>
-        <tbody>
-          {points.map((point) => (
-            <tr key={point.date}>
-              <th scope="row">{formatHeatmapDate(point.date)}</th>
-              <td>{point.ratio === null ? '기록 없음' : `${Math.round(point.ratio * 100)}%`}</td>
+      {/*
+        review 라운드2 M5(Blocker, 검증 리뷰어 재현) — `sr-only` 를 `<table>` 에 직접 주면
+        width/height:1px 가 `display:table` 박스엔 **최소값**으로만 적용돼(테이블 자동 레이아웃
+        알고리즘이 내용에 맞춰 다시 키운다) 표가 실제로 접히지 않는다. 366행짜리 표가 그대로
+        문서 흐름에 펼쳐져 실측 documentElement.scrollHeight 가 900(평소) → 8004(custom 366일)
+        까지 부풀었다 — 라운드2 의 `flex-1` 수정은 증상(글자 벽)만 없앴을 뿐 진짜 원인은
+        그대로였다. `sr-only` 는 감싸는 `<div>`(block 박스, 표와 달리 min-content 로 되키지
+        않는다)에 주고 `<table>` 자신은 장식을 받지 않는다.
+      */}
+      <div className="sr-only">
+        <table>
+          <caption>날짜별 달성률</caption>
+          <thead>
+            <tr>
+              <th scope="col">날짜</th>
+              <th scope="col">달성률</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {points.map((point) => (
+              <tr key={point.date}>
+                <th scope="row">{formatHeatmapDate(point.date)}</th>
+                <td>{point.ratio === null ? '기록 없음' : `${Math.round(point.ratio * 100)}%`}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
