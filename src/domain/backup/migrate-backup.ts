@@ -21,8 +21,19 @@ const migrateV1ToV2: MigrationStep = (body) => {
   return { ...body, focusSessions: [] };
 };
 
+/**
+ * v2 → v3 (ADR-0016): **항등 함수.** `ddays`·`diaryEntries`·`routines` 테이블 신설은 아직 백업
+ * payload 에 들어가지 않는다(T-86 범위) — v3 문서의 모양은 v2 와 같으므로 값을 더하거나 바꾸지 않는다.
+ * `BACKUP_SCHEMA_VERSION` 이 `DB_VERSION` 을 따라 오르기만 해도(§결정 2 범위 밖) 이 단계가 없으면
+ * v2 파일을 가져올 때 `migrateBackup` 이 "변환 단계가 없다" 며 거부한다.
+ */
+const migrateV2ToV3: MigrationStep = (body) => body;
+
 /** 시작 버전 → 그 버전을 하나 올리는 단계. 빠진 번호가 있으면 변환할 수 없다는 뜻이다. */
-const STEPS = new Map<number, MigrationStep>([[1, migrateV1ToV2]]);
+const STEPS = new Map<number, MigrationStep>([
+  [1, migrateV1ToV2],
+  [2, migrateV2ToV3],
+]);
 
 /**
  * `from` 버전 문서를 현재 버전(`BACKUP_SCHEMA_VERSION`)까지 **순차** 변환한다.

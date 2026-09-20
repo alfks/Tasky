@@ -14,8 +14,12 @@ export const BACKUP_APP = 'tasky';
  * 그 상수를 직접 import 하지 않는 이유는 레이어 경계다 — `domain` 은 `infra` 를 import 할 수 없다
  * (ARCHITECTURE §1). 대신 `backup-document.test.ts` 가 두 값을 대조한다(테스트 계층은 경계가 없다).
  * 한쪽만 올리면 그 테스트가 실패하므로, 두 값이 갈라진 채로 머지되지 않는다.
+ *
+ * v3(ADR-0016): `ddays`·`diaryEntries`·`routines` 테이블 신설은 아직 **백업 payload 에 들어가지
+ * 않는다**(그 테이블들을 담는 것은 후속 T-86) — 그래도 이 값은 `DB_VERSION` 을 따라 3으로 올린다.
+ * 문서 모양 자체는 v2 와 같으므로 `migrate-backup.ts#migrateV2ToV3` 는 항등 함수다.
  */
-export const BACKUP_SCHEMA_VERSION = 2;
+export const BACKUP_SCHEMA_VERSION = 3;
 
 /** 가져오기가 읽는 최대 파일 크기 (R9). 초과하면 **읽지 않고** 거부한다. */
 export const BACKUP_MAX_BYTES = 20 * 1024 * 1024;

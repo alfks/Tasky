@@ -26,7 +26,7 @@ describe('buildBackupDocument (R2)', () => {
   it('봉투 필드를 채운다', () => {
     const document = buildBackupDocument(snapshot(), FIXTURE_INSTANT);
     expect(document.app).toBe('tasky');
-    expect(document.schemaVersion).toBe(2);
+    expect(document.schemaVersion).toBe(3);
     expect(document.exportedAt).toBe(FIXTURE_INSTANT);
   });
 

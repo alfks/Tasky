@@ -16,6 +16,11 @@ describe('migrateBackup (R3)', () => {
     expect(migrated['todos']).toEqual([]);
   });
 
+  it('v2 → v3 는 항등이다 (ADR-0016 — 새 세 테이블은 아직 백업 payload 밖)', () => {
+    const body = { todos: [], categories: [], settings: [], focusSessions: [{ id: 'x' }] };
+    expect(migrateBackup(body, 2)).toBe(body);
+  });
+
   it('v1 파일에 이미 focusSessions 가 있으면 덮어쓰지 않는다', () => {
     const sessions = [{ id: 'keep' }];
     expect(migrateBackup({ focusSessions: sessions }, 1)['focusSessions']).toBe(sessions);
