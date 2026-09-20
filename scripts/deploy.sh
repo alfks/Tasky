@@ -48,6 +48,12 @@ done
 # (.env.example 의 같은 키 주석 참고). Worker 배포가 실제로 그 두 시크릿을 요구하게
 # 되면(worker/index.ts 가 생기는 시점, T-93) 이 자리에 "시크릿 존재 확인 없으면 rc=1"
 # 검사를 추가한다 — 지금은 검사할 Worker 자체가 없어 추가하지 않았다.
+#
+# D1 마이그레이션도 이 스크립트가 아직 적용하지 않는다 — `wrangler deploy` 는 D1 스키마를
+# 건드리지 않는다. 지금은 D1 에 테이블이 없어도 Worker 가 없으니 해가 없지만, Worker 코드가
+# 붙는 순간(T-93) 마이그레이션 없이 배포하면 첫 요청에서 `no such table` 로 죽는다. T-93 은
+# 이 자리에 `wrangler d1 migrations apply tasky --remote` 를 실제 배포 직전 스텝으로 넣어야
+# 한다(마이그레이션 파일 `worker/db/migrations/0001_init.sql` 이 그때 생긴다 — 지금은 없다).
 if [ -f .env ]; then
   while IFS= read -r line || [ -n "$line" ]; do
     line=${line%$'\r'} # CRLF 파일의 줄 끝 \r
