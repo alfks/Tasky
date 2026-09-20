@@ -170,5 +170,19 @@ describe('HeatmapCard (stats.md R6·§5)', () => {
 
       expect(firstCell).toHaveFocus();
     });
+
+    it('Home/End 는 그 주(행)의 첫/마지막 칸으로 옮긴다(review 라운드3 nit1, DateStrip.tsx 와 맞춤)', async () => {
+      const user = userEvent.setup();
+      render(<HeatmapCard weeks={twoWeeks()} today={GRID_TODAY} />);
+
+      const midWeek = screen.getByRole('button', { name: /2026년 9월 16일/ }); // 2주차 수요일
+      midWeek.focus();
+
+      await user.keyboard('{Home}');
+      expect(screen.getByRole('button', { name: /2026년 9월 14일/ })).toHaveFocus(); // 2주차 월요일
+
+      await user.keyboard('{End}');
+      expect(screen.getByRole('button', { name: /2026년 9월 20일/ })).toHaveFocus(); // 2주차 일요일
+    });
   });
 });

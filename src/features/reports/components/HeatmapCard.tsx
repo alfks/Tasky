@@ -89,6 +89,18 @@ export function HeatmapCard({ weeks, today }: HeatmapCardProps) {
   };
 
   const handleCellKeyDown = (weekIndex: number, dayIndex: number) => (e: KeyboardEvent) => {
+    // Home/End(review 라운드3 nit1) — 이식 원본 `DateStrip.tsx` 의 같은 키와 맞춘다: 그 주(행)의
+    // 첫/마지막 칸으로. `moveFocus` 가 이미 `date > today`(아직 안 그려진 칸)를 막아 준다.
+    if (e.key === 'Home') {
+      e.preventDefault();
+      moveFocus(weeks[weekIndex]?.[0]?.date);
+      return;
+    }
+    if (e.key === 'End') {
+      e.preventDefault();
+      moveFocus(weeks[weekIndex]?.[6]?.date);
+      return;
+    }
     const deltas: Record<string, [number, number]> = {
       ArrowLeft: [-1, 0],
       ArrowRight: [1, 0],
