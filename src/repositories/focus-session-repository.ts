@@ -19,6 +19,8 @@ export interface FocusSessionRepository {
   getById(id: FocusSessionId): Promise<FocusSession | undefined>;
   /** 그 날짜에 시작한 세션 전부(정렬 고정). */
   listByDate(date: DateKey): Promise<FocusSession[]>;
+  /** `from`~`to` **양끝 포함** 범위에 시작한 세션 전부(정렬 고정). 통계용(stats.md R7). */
+  listByDateRange(from: DateKey, to: DateKey): Promise<FocusSession[]>;
   /** 그 투두에 연결된 세션 전부(정렬 고정). `focusSeconds` 캐시를 재계산하는 원천이다 (timer R8). */
   listByTodo(todoId: TodoId): Promise<FocusSession[]>;
   /** 전량(정렬 고정). 통계용. */
