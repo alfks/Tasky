@@ -1,6 +1,6 @@
 'use client';
 
-import { FOCUS_SUMMARY_NONE_KEY } from '@/domain/todo/focus-summary';
+import { FOCUS_SUMMARY_NONE_KEY } from '@/domain/focus/focus-summary';
 
 import { formatFocusDuration } from '@/features/reports/lib/format';
 import { FOCUS_OTHER_KEY, type FocusBucket } from '@/features/reports/lib/period-summary';
@@ -24,7 +24,8 @@ type FocusTimeCardProps = {
 /** 집중 시간 카드(stats.md R5). `summarizeFocusSeconds` 결과를 그대로 보여준다. */
 export function FocusTimeCard({ totalSeconds, byTodo, todoTitles }: FocusTimeCardProps) {
   if (totalSeconds === 0) {
-    return <p className="text-sm text-muted">이 기간에 기록이 없어요</p>;
+    // review n6 — 카드마다 다른 빈 문구.
+    return <p className="text-sm text-muted">이 기간엔 집중한 시간이 없어요</p>;
   }
 
   return (

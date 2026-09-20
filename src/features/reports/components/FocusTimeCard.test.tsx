@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { FOCUS_SUMMARY_NONE_KEY } from '@/domain/todo/focus-summary';
+import { FOCUS_SUMMARY_NONE_KEY } from '@/domain/focus/focus-summary';
 
 import { FocusTimeCard } from '@/features/reports/components/FocusTimeCard';
 import { FOCUS_OTHER_KEY } from '@/features/reports/lib/period-summary';
@@ -44,9 +44,9 @@ describe('FocusTimeCard (stats.md R5)', () => {
     expect(screen.getByText('기타')).toBeInTheDocument();
   });
 
-  it('총 시간이 0이면 빈 상태 문구다', () => {
+  it('총 시간이 0이면 빈 상태 문구다(review n6 — 카드마다 다른 문구)', () => {
     render(<FocusTimeCard totalSeconds={0} byTodo={[]} todoTitles={new Map()} />);
 
-    expect(screen.getByText('이 기간에 기록이 없어요')).toBeInTheDocument();
+    expect(screen.getByText('이 기간엔 집중한 시간이 없어요')).toBeInTheDocument();
   });
 });
