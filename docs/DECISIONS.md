@@ -21,6 +21,7 @@
 | [ADR-0013](./decisions/ADR-0013-plain-vite-react-and-lazy-dexie.md)            | 빌드 스택을 순수 Vite + React SPA 로 되돌리고 Dexie 를 지연 로드(ADR-0010 supersede · 배포 Cloudflare Workers 는 유지)           | accepted                   | 2026-09-16 | `index.html`, `package.json`, `vite.config.ts`, `wrangler.jsonc`, `serwist.config.js`, `src/app/**`, `.github/workflows`        |
 | [ADR-0014](./decisions/ADR-0014-tombstone-read-for-deleted-category-colors.md) | 삭제된 카테고리의 색은 전용 조회 메서드 `listDeletedByIds` 로 읽는다(ADR-0007 결정 4 개정 — supersede 아님)                      | accepted                   | 2026-09-16 | `src/repositories/category-repository.ts`, `src/repositories/memory`, `src/infra/indexeddb/query.ts`, `src/features/date-strip` |
 | [ADR-0015](./decisions/ADR-0015-google-auth-and-realtime-sync.md)              | 구글 로그인을 **필수**로 두고 Cloudflare D1 로 준실시간 동기화(ADR-0013 의 "Worker 스크립트 없음" 개정 — 로컬 전용 → 계정 기반)  | accepted                   | 2026-09-18 | `wrangler.jsonc`, `src/worker/**`, `src/repositories/**`, `src/features/auth/**`, `src/features/sync/**`                        |
+| [ADR-0016](./decisions/ADR-0016-schema-v3-dday-diary-routine.md)               | 스키마 v3 — `ddays`·`diaryEntries`·`routines` 테이블 신설(ADR-0011 과 같은 모양, 세 테이블을 한 버전에 묶음)                     | accepted                   | 2026-09-20 | `src/infra/indexeddb/db.ts`, 마이그레이션 테스트, `src/repositories/{dday,diary,routine}-repository.*`                          |
 
 ## 예정(초안 필요 시 번호 예약 없이 작성)
 
