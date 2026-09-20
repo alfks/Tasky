@@ -22,7 +22,7 @@
 | `pwa.md`              | 설치·오프라인·업데이트·저장소 지속성                                       | 기능 스펙                 |
 | `timer.md`            | 포커스 타이머(카운트다운·투두 연결·세션 기록·영속화)                       | 기능 스펙                 |
 
-Phase 2(작성됨, 상태 draft — 구현 티켓 발행 전 리뷰·승인 필요): `calendar.md` `stats.md` `routine.md` `diary.md` `sync.md`(동기화 ADR은 이미 있다 — ADR-0015 accepted). Phase 3: `social.md`(아직 만들지 않음, 라벨 `phase:2`).
+Phase 2(작성·리뷰·승인 완료 — 구현 티켓 발행 가능): `calendar.md`(D-day), `stats.md`(기간 통계), `routine.md`(todo.md R21 확장, 무기한 반복), `diary.md`, `sync.md`(구글 로그인+동기화, ADR-0015 accepted — R2·§4 티켓은 사용자가 OAuth·D1 자격증명을 발급하기 전까지 착수 불가, sync.md §6). Phase 3: `social.md`(아직 만들지 않음, 라벨 `phase:2`).
 기술 계획(마일스톤·티켓 분해·스키마·테스트·성능 예산)은 [../TECH_PLAN.md](../TECH_PLAN.md) — 스펙에 중복 기재 금지.
 
 ## 스펙 포맷 (150줄 이하)
