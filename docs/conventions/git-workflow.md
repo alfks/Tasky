@@ -128,7 +128,7 @@ bash scripts/wt.sh rm date-strip
 
 ## 4. PR 라이프사이클
 
-1. **생성**: `gh pr create --base main --fill` 후 템플릿(`.github/pull_request_template.md`) 전 섹션 채움. 제목 = 대표 커밋 제목 형식. 라벨: `type:<type>` + `area:<scope>` + `review:round-1`.
+1. **생성**: `gh pr create --base main --fill` 후 템플릿(`.github/pull_request_template.md`) 전 섹션 채움. 제목 = 대표 커밋 제목 형식. 라벨: `type:<type>` + `area:<scope>` + `review:round-1`. _(플랫폼이 PR 본문 맨 끝에 자동으로 붙이는 서명 한 줄은 지워도 재부착되어 제거 불가 — CLAUDE.md §1-1 예외 그대로, 제목·본문 내용에는 적용되지 않음.)_
 2. **CI**: `guard`(금지어·author·AGENTS.md) + `build`(lint·typecheck·test·build) 모두 녹색이어야 리뷰 시작. _(임시 예외: CI가 계정/레포 차원에서 실행되지 않는 동안은 `bash scripts/check.sh` 로컬 통과로 대체한다 — 워크플로 수정으로는 해결되지 않음, CLAUDE.md 현재 상태 참고. 복구되면 이 예외는 삭제하고 위 원칙으로 복귀.)_
 3. **리뷰 라운드**: 리뷰어는 PR 코멘트가 아니라 **핸드오프 채널(오케스트레이터에게 보고)** 로 결과를 낸다. 오케스트레이터가 집계 결과를 PR 코멘트 1개로 남긴다(라운드별 1개).
 4. **수정**: 같은 브랜치에 커밋 추가(`fix(review): …` 또는 원 type). 리뷰 반영 커밋은 스쿼시 머지 시 사라지므로 개수 제한 없음.
