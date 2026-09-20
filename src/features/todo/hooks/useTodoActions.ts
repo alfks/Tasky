@@ -16,6 +16,7 @@ const selectActions = (state: TodoStore): TodoActions => ({
   moveBy: state.moveBy,
   createRoutine: state.createRoutine,
   undoRoutine: state.undoRoutine,
+  materializeRoutines: state.materializeRoutines,
   loadRoutines: state.loadRoutines,
   pauseRoutine: state.pauseRoutine,
   resumeRoutine: state.resumeRoutine,

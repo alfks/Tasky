@@ -44,6 +44,13 @@ export type TodoState = TodoSnapshot & {
    */
   routines: RoutineMap;
   routineStatus: TodoLoadStatus;
+  /**
+   * 지금 날짜 스트립이 보여주는 범위(routine.md R3·R6, T-82). `materializeRoutines` 가 방문할 때마다
+   * 갱신하고, `createRoutine` 이 무기한 등록의 즉시 채우기 상한(R3 "보이는 범위 끝")으로 읽는다.
+   * 아직 스트립을 한 번도 못 읽었으면(초기 마운트 전 극히 짧은 순간) `null` — 그때는 시작일 하루만
+   * 채운다(`resolveImmediateFillThrough` 의 폴백).
+   */
+  visibleRange: { from: DateKey; to: DateKey } | null;
 };
 
 /** 쓰기 실패 공통 문구 (todo §2-C). 원인이 아니라 다음 행동을 안내한다. */
