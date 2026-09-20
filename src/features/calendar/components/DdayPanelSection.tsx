@@ -5,19 +5,30 @@
 //
 // 항목 클릭 시 날짜 이동은 **date-strip 이 이미 가진 선택 메커니즘을 그대로 부른다**(calendar R6) —
 // `useDateStripStore` 의 `select` 액션. 새 이동 로직을 만들지 않는다.
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import type { DateKey } from '@/domain/date/date-key';
 import type { Dday } from '@/domain/dday/dday';
 import { ddayOffset, formatDday, sortDdays } from '@/domain/dday/dday.rules';
 
 import { DdayAddForm } from '@/features/calendar/components/DdayAddForm';
+import {
+  focusAfterRowRemoval,
+  rowAnchorOf,
+  type RowAnchor,
+} from '@/features/calendar/lib/removal-focus';
 import { useDdayStore } from '@/features/calendar/store/dday-store';
+// 삭제 되돌리기 문구는 카테고리 삭제와 같은 조사 규칙을 쓴다(category §2-C) — 직접 이어붙이면
+// 받침 유무에 따라 "'생일'를 삭제했어요" 같은 문장이 남는다(리뷰 라운드 1 Minor-8). `category` 는
+// `calendar` 를 조립하지 않으므로 배럴 경유 import 가 순환을 만들지 않는다(위 `removal-focus.ts`
+// 머리주석과 달리 이 하나는 실제로 배럴을 연다).
+import { removalToastMessage } from '@/features/category';
 import { useDateStripStore } from '@/features/date-strip';
 
 import { Button } from '@/components/ui/Button';
 import { IconButton } from '@/components/ui/IconButton';
-import { pushToast } from '@/components/ui/Toast';
+import { OVERLAY_ALWAYS_LIVE_ATTR } from '@/components/ui/overlay-rules';
+import { pushToast, useToasts } from '@/components/ui/Toast';
 
 import { cn } from '@/lib/cn';
 
@@ -36,6 +47,14 @@ type DdayRowProps = {
   onRemove: (dday: Dday) => void;
 };
 
+/** 오늘이 D-day 인 항목만 강조색 — 그 밖엔 `formatDday` 와 같은 자리를 쓰는 다른 행과 동일하다. */
+function offsetClassName(offset: number): string {
+  return cn(
+    'shrink-0 text-sm font-semibold tabular-nums',
+    offset === 0 ? 'text-accent' : 'text-muted',
+  );
+}
+
 /** 한 D-day 행. `✕` 는 hover·포커스 시 보인다(포커스 시엔 항상 — calendar §5). */
 function DdayRow({ dday, today, onSelect, onRemove }: DdayRowProps) {
   const offset = ddayOffset(dday.date, today);
@@ -51,7 +70,7 @@ function DdayRow({ dday, today, onSelect, onRemove }: DdayRowProps) {
         <span aria-hidden="true" className="min-w-0 flex-1 truncate text-base text-text">
           {dday.title}
         </span>
-        <span aria-hidden="true" className="shrink-0 text-sm font-semibold text-muted tabular-nums">
+        <span aria-hidden="true" className={offsetClassName(offset)}>
           {formatDday(offset)}
         </span>
       </button>
@@ -70,6 +89,7 @@ function DdayRow({ dday, today, onSelect, onRemove }: DdayRowProps) {
 export function DdayPanelSection({ className }: DdayPanelSectionProps) {
   const headingId = useId();
   const ddays = useDdayStore((s) => s.ddays);
+  const status = useDdayStore((s) => s.status);
   const error = useDdayStore((s) => s.error);
   const load = useDdayStore((s) => s.load);
   const add = useDdayStore((s) => s.add);
@@ -82,6 +102,27 @@ export function DdayPanelSection({ className }: DdayPanelSectionProps) {
 
   const [adding, setAdding] = useState(false);
   const [pastOpen, setPastOpen] = useState(false);
+  // R14·R8(리뷰 라운드 1 Major-1): ✕ 삭제 직전 행 자리표를 뜨고, 행이 사라진 뒤 되돌리기 토스트로
+  // 포커스를 옮긴다. R14 순서(`rowAnchorOf`·`focusAfterRowRemoval`)는 카테고리 삭제가 쓰는 것과
+  // 한 글자도 다르지 않다 — 이식 사유는 `@/features/calendar/lib/removal-focus.ts` 머리주석.
+  const removalAnchor = useRef<RowAnchor | null>(null);
+  // 되돌리기 토스트가 **실제로 DOM 에 뜬 뒤에만** 그 버튼으로 넘긴다 — `CategoryRemoveDialog.tsx`
+  // 의 `useRemovalToastBridge` 와 같은 이유다: `pushToast` 는 별도 전역 토스트 스토어를 건드리므로
+  // 그 커밋은 행 삭제 커밋과 **같은 틱에 묶이지 않는다**(실측: 묶인다고 가정하고 곧바로 토스트
+  // 버튼을 찾으면 아직 없는 버튼을 찾다 실패하고, 그사이 행이 실제로 사라지며 포커스가 `<body>`
+  // 로 떨어진다). 그래서 R14 순서로 **먼저** 보내 body 착지를 막고(`handoffFrom` 에 그 자리를
+  // 적어 둔다), 토스트 목록이 실제로 그 토스트를 담은 다음 렌더에서(아래 effect, `useToasts()`
+  // 의존성 — 패시브 이펙트라 그 커밋 뒤에만 돈다) 아직 아무도 포커스를 옮기지 않았을 때만
+  // (`document.activeElement` 가 그 발판이거나 `<body>` 일 때만) `[되돌리기]` 로 다시 옮긴다.
+  const toasts = useToasts();
+  const pendingUndoToastId = useRef<string | null>(null);
+  const handoffFrom = useRef<HTMLElement | null>(null);
+  // "+ D-day 추가" 를 여는 버튼. 폼을 Esc·저장 어느 쪽으로 닫아도 여기로 돌아온다(리뷰 라운드 1
+  // Major-2) — `TodoAddRow.tsx` 의 `openerRef`+`returning` 패턴과 같다. 다만 그 컴포넌트는 열림 상태에
+  // 따라 버튼 자신과 폼을 **한 파일**이 갈아 끼우는 데 반해, 여기는 `DdayPanelSection` 이 그 갈아
+  // 끼우기를 하므로(§136 부근 삼항) 같은 ref·플래그를 여기서 든다.
+  const addOpenerRef = useRef<HTMLButtonElement>(null);
+  const returningToAdder = useRef(false);
 
   useEffect(() => {
     void load();
@@ -89,13 +130,51 @@ export function DdayPanelSection({ className }: DdayPanelSectionProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (adding) return;
+    // 닫는 순간에는 "+ D-day 추가" 가 아직 렌더되지 않았다 — TodoAddRow.tsx 의 같은 주석과 같은 이유로
+    // 다시 그려진 뒤(`adding` 이 false 로 커밋된 뒤)에 옮긴다.
+    if (returningToAdder.current) {
+      returningToAdder.current = false;
+      addOpenerRef.current?.focus();
+    }
+  }, [adding]);
+
+  useEffect(() => {
+    const id = pendingUndoToastId.current;
+    if (id === null) return;
+    if (!toasts.some((toast) => toast.id === id)) return; // 아직 안 떴다(또는 이미 닫혔다).
+    pendingUndoToastId.current = null;
+    const from = handoffFrom.current;
+    handoffFrom.current = null;
+    const active = document.activeElement;
+    // 그사이 사용자가 직접 다른 곳으로 포커스를 옮겼으면 손대지 않는다.
+    if (from !== null && active !== from && active !== document.body) return;
+    document.querySelector<HTMLButtonElement>(`[${OVERLAY_ALWAYS_LIVE_ATTR}] button`)?.focus();
+  }, [toasts]);
+
   const { upcoming, past } = sortDdays(ddays, today);
 
+  const closeAdd = (): void => {
+    returningToAdder.current = true;
+    setAdding(false);
+  };
+
   const handleRemove = (dday: Dday): void => {
+    removalAnchor.current = rowAnchorOf(document.activeElement);
     void remove(dday.id).then((ok) => {
       if (!ok) return;
-      pushToast({
-        message: `${dday.title} 삭제했어요`,
+      // 토스트가 뜨기 **전에** 먼저 R14 순서로 보낸다 — <body> 로 떨어지는 일이 없게 한다. 이미 뜬
+      // 토스트(연달아 지울 때)가 있으면 그 버튼이 먼저다 — 없으면(보통은 없다, 아래 effect 가 채운다)
+      // R14 순서로 떨어진다.
+      const existingToastButton = document.querySelector<HTMLButtonElement>(
+        `[${OVERLAY_ALWAYS_LIVE_ATTR}] button`,
+      );
+      const fallback = existingToastButton ?? focusAfterRowRemoval(removalAnchor.current);
+      fallback?.focus();
+      handoffFrom.current = fallback;
+      pendingUndoToastId.current = pushToast({
+        message: removalToastMessage(dday.title),
         action: { label: '되돌리기', onAction: () => void undoRemove() },
         onDismiss: clearPendingRemoval,
       });
@@ -116,7 +195,11 @@ export function DdayPanelSection({ className }: DdayPanelSectionProps) {
         D-day
       </h2>
 
-      {upcoming.length === 0 && !adding ? (
+      {status === 'error' ? (
+        <p role="alert" className="text-sm text-muted">
+          {error}
+        </p>
+      ) : upcoming.length === 0 && !adding ? (
         <p className="text-sm text-muted">다가오는 날을 기록해 보세요</p>
       ) : (
         <ul className="flex flex-col gap-[var(--space-1)]">
@@ -133,24 +216,32 @@ export function DdayPanelSection({ className }: DdayPanelSectionProps) {
       )}
 
       {adding ? (
-        <DdayAddForm onSubmit={handleAdd} onCancel={() => setAdding(false)} error={error} />
+        <DdayAddForm onSubmit={handleAdd} onCancel={closeAdd} error={error} />
       ) : (
-        <Button variant="ghost" size="sm" onClick={() => setAdding(true)} className="self-start">
+        <Button
+          ref={addOpenerRef}
+          variant="ghost"
+          size="sm"
+          onClick={() => setAdding(true)}
+          className="self-start"
+        >
           + D-day 추가
         </Button>
       )}
 
       {past.length > 0 && (
         <div className="flex flex-col gap-[var(--space-1)]">
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-expanded={pastOpen}
-            onClick={() => setPastOpen((open) => !open)}
-            className="self-start"
-          >
-            {pastOpen ? '▾' : '▸'} 지난 날 ({past.length})
-          </Button>
+          <h3>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-expanded={pastOpen}
+              onClick={() => setPastOpen((open) => !open)}
+              className="self-start"
+            >
+              <span aria-hidden="true">{pastOpen ? '▾' : '▸'}</span> 지난 날 ({past.length})
+            </Button>
+          </h3>
           {pastOpen && (
             <ul className="flex flex-col gap-[var(--space-1)]">
               {past.map((dday) => (

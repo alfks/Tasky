@@ -45,3 +45,8 @@ export { CategoryFormDialog } from '@/features/category/components/CategoryFormD
 export { CategoryList } from '@/features/category/components/CategoryList';
 export { CategoryListItem } from '@/features/category/components/CategoryListItem';
 export { CategoryRemoveDialog } from '@/features/category/components/CategoryRemoveDialog';
+
+// 삭제 되돌리기 토스트 문구(받침에 따른 을/를, R15): 다른 feature 의 되돌리기 토스트도 같은 조사
+// 규칙을 쓰게 연다(D-day 삭제, calendar T-79 리뷰 라운드 1 Minor-8 — 직접 이어붙이면 "'운동'를
+// 삭제했어요" 처럼 받침 없이 갈린다).
+export { removalToastMessage } from '@/features/category/components/CategoryRemoveDialogText';
