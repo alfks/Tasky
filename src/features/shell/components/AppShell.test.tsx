@@ -790,7 +790,8 @@ describe('통계 화면 배선 (T-85, stats.md "메인 컬럼 전체 대체")', 
 
     // 통계 화면이 메인 컬럼을 대체했다 — ShellMain 의 표식(투두 영역)은 사라지고 통계 카드가 보인다.
     expect(await screen.findByRole('heading', { level: 2, name: '통계' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 2, name: '달성률 추이' })).toBeInTheDocument();
+    // 카드 제목은 h3 다(review m9) — "통계"(h2) 아래 항목이라 h2 를 또 쓰면 중복이다.
+    expect(screen.getByRole('heading', { level: 3, name: '달성률 추이' })).toBeInTheDocument();
     expect(screen.getAllByRole('main')).toHaveLength(1);
 
     // 키보드만으로 닫는다 — 화면이 뜨면 포커스가 main 랜드마크로 가고(§5), 거기서 Tab 한 번이면
