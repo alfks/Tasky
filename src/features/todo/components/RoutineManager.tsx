@@ -7,7 +7,7 @@
 // removeRoutine)이 이미 만들어 둔 것을 부르기만 한다 — 여기서 새로 계산하는 것은 화면에 필요한
 // 정렬·빈 상태 판정뿐이다. 목록 구조(카드 안 행 + `⋯` 메뉴, 빈 상태 + 추가 버튼)는 category.md
 // §2-A(`CategoryList`)를 그대로 본떴다.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { Category } from '@/domain/category/category';
 import type { DateKey } from '@/domain/date/date-key';
@@ -32,7 +32,9 @@ type RoutineManagerProps = {
   /**
    * `TodoItem` 이 받는 것과 같은 목록(활성 + 종료, 삭제된 것 제외) — `todo` feature 가 `category`
    * feature 를 직접 import 하면 두 배럴이 서로를 참조해 순환이 생기므로(category → todo 는 이미
-   * `useTodoGroup` 으로 존재한다) props 로 받는다. 출처는 `AppShell` 의 `categories`.
+   * `useTodoGroup` 으로 존재한다) props 로 받는다. `AppShell` → `ShellSidebar` → 여기, 두 단계
+   * prop-drilling — 감당할 만한 규모라 이번 라운드는 그대로 둔다(리뷰 #104 Nit, 더 나은 수·백로그는
+   * `docs/PHASE2_TICKET_BACKLOG.md` T-89).
    */
   categories: readonly Category[];
   /** `⋯ → 삭제` 를 누른 순간, 아직 살아 있는 행에서 자리표를 뜬다(app-shell R14). */
@@ -88,30 +90,52 @@ export function RoutineManager({
   const categoryOf = (id: string): Category | undefined =>
     categories.find((category) => category.id === id);
   const defaultCategoryId = categories[0]?.id;
+  // 렌더마다 새로 만들면(리뷰 #104 Nit) 쓰이지도 않을 `id()`/`now()` 를 매번 버린다 — JSX 에서 직접
+  // 부르는 대신 실제 입력이 바뀔 때만 다시 만든다("+ 루틴 추가" 를 여는 동안엔 둘 다 그대로다).
+  const newRoutineTodo = useMemo(
+    () => (defaultCategoryId === undefined ? null : blankTodo(defaultCategoryId, today)),
+    [defaultCategoryId, today],
+  );
 
   /**
-   * 자리표는 **메뉴가 열릴 때**(`RoutineManagerRow` 의 `onOpenMenu`) 이미 떠 있다 — 여기서 다시
-   * 뜨면 안 된다. 이 시점의 `document.activeElement` 는 방금 누른 "삭제" 메뉴 항목(팝오버 패널
-   * 안, `document.body` 로 포털된 별도 서브트리)이라 `closest('li')` 가 실패해 자리표가 `null`
-   * 로 덮인다 — 실측으로 잡은 회귀다.
+   * 자리표는 **메뉴가 열릴 때**(`RoutineManagerRow` 의 `onOpenMenu`) 이미 떠 있다 — `handleRemove`
+   * 안에서 다시 뜨면 안 된다. 그 시점의 `document.activeElement` 는 방금 누른 "삭제" 메뉴 항목
+   * (팝오버 패널 안, `document.body` 로 포털된 별도 서브트리)이라 `closest('li')` 가 실패해
+   * 자리표가 `null` 로 덮인다 — 실측으로 잡은 회귀다.
    *
    * `removalReturnFocus` 의 "목록마저 사라지면 `nav` 영역으로" 규칙(`focus-fallback.ts`)은 이
    * 목록이 **모달 안**(포털로 `document.body` 에 나간다, `Dialog`)이라 닿지 않는다 — 사이드바의
    * `nav` 는 이 DOM 서브트리 밖이다. 마지막 루틴을 지워 목록이 완전히 비면 그 규칙은 `null` 을
    * 주므로, 이 다이얼로그 안의 "+ 루틴 추가" 로 떨어진다(그래도 `<body>` 는 아니다).
+   */
+  const focusAfterRemovalRef = useRef(false);
+  const routineCountRef = useRef(routines.length);
+
+  /**
+   * 리뷰 #104 Minor: `await removeRoutine(id)` 가 끝나도 **아직 지운 행이 화면에서 안 지워졌을
+   * 수 있다** — 스토어 쓰기와 React 렌더 커밋은 별개다. 타이밍을 추측하는 `requestAnimationFrame`
+   * /`queueMicrotask` 대신, **목록이 실제로 줄어든 것**을 의존성으로 하는 효과에서 포커스를
+   * 옮긴다(아래 효과) — React 가 몇 번이나 다시 렌더하든, 실제로 줄어든 **그** 렌더 다음에만
+   * 반응한다는 뜻이라 계약 없는 타이밍에 기대지 않는다.
    *
-   * `await removeRoutine(id)` 가 끝나도 **아직 지운 행이 화면에서 안 지워졌을 수 있다** —
-   * 스토어 쓰기와 React 렌더 커밋은 별개다. `focus-fallback.ts#handoffFocus` 와 같은 이유로 한
-   * 프레임 미뤄 DOM 이 실제로 반영된 뒤에 자리를 찾는다(그러지 않으면 사라질 행 안의 요소를
-   * 짚었다가, 그 행이 지워지는 순간 포커스를 다시 잃는다).
+   * **깃발은 쓰기 전에 세운다.** `commitWrites` 는 저장소 쓰기가 끝나면 `await` 가 돌려주기
+   * **전에** 이미 `ctx.set()` 으로 스토어를 바꾼다(`todo-writes.ts`) — 그래서 `removeRoutine` 의
+   * 반환을 기다린 **뒤** 깃발을 세우면 이미 그 렌더가 지나가 있을 수 있다(실측: 매번 그랬다).
+   * 쓰기가 실패하면(`ok === false`) 깃발을 내린다 — 아무것도 안 줄었으니 효과가 반응할 일도 없다.
    */
   const handleRemove = async (id: Parameters<typeof removeRoutine>[0]): Promise<void> => {
+    focusAfterRemovalRef.current = true;
     const ok = await removeRoutine(id);
-    if (!ok) return;
-    const focusNow = (): void => (removalReturnFocus?.() ?? addButtonRef.current)?.focus();
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(focusNow);
-    else focusNow();
+    if (!ok) focusAfterRemovalRef.current = false;
   };
+
+  useEffect(() => {
+    if (focusAfterRemovalRef.current && routines.length < routineCountRef.current) {
+      focusAfterRemovalRef.current = false;
+      (removalReturnFocus?.() ?? addButtonRef.current)?.focus();
+    }
+    routineCountRef.current = routines.length;
+  }, [routines.length, removalReturnFocus]);
 
   return (
     <>
@@ -185,9 +209,9 @@ export function RoutineManager({
         </Dialog>
       ) : null}
 
-      {creating && defaultCategoryId !== undefined ? (
+      {creating && newRoutineTodo !== null ? (
         <RoutineDialog
-          todo={blankTodo(defaultCategoryId, today)}
+          todo={newRoutineTodo}
           categories={categories}
           onClose={() => setCreating(false)}
         />
