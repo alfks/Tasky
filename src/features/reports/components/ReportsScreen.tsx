@@ -21,6 +21,8 @@ import { Button } from '@/components/ui/Button';
 import { IconButton } from '@/components/ui/IconButton';
 import { Skeleton } from '@/components/ui/Skeleton';
 
+import { isImeKey } from '@/lib/ime';
+
 /** 카드 5장의 뼈대(로딩 §2). */
 function ReportsSkeleton() {
   return (
@@ -60,6 +62,19 @@ export function ReportsScreen() {
     mainRef.current?.focus();
   }, []);
 
+  // Esc 로 닫는다(review m11) — 앱의 다른 모든 겹침(Dialog·팔레트·팝오버)이 Esc 로 닫히는 것과
+  // 일관되게. `document` 리스너로 붙인다(`Dialog.tsx` 와 같은 방식) — `<main>` 은 비인터랙티브
+  // 랜드마크라 JSX `onKeyDown` 을 달면 `jsx-a11y/no-noninteractive-element-interactions` 에 걸린다.
+  // 화면 교체(오버레이가 아니다)라 레이어 스택은 없어, IME 조합 중만 걸러 낸다.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || isImeKey(e)) return;
+      closeReports();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [closeReports]);
+
   return (
     <main
       ref={mainRef}
@@ -81,7 +96,7 @@ export function ReportsScreen() {
       {state.status === 'error' ? (
         <ReportsCard title="통계">
           <p className="text-sm text-muted">불러오지 못했어요</p>
-          <Button variant="outline" size="sm" onClick={closeReports}>
+          <Button variant="outline" size="sm" onClick={state.reload}>
             다시 시도
           </Button>
         </ReportsCard>
@@ -111,7 +126,11 @@ function ReportsCards({ data, categories, today }: ReportsCardsProps) {
         <CategoryRatioCard counts={data.categoryBars} categories={categories} />
       </ReportsCard>
       <ReportsCard title="연속 달성">
-        <StreakCard streak={data.streak} />
+        <StreakCard
+          streak={data.streak}
+          todayTotal={data.todayTotal}
+          todayIsAllDone={data.todayIsAllDone}
+        />
       </ReportsCard>
       <ReportsCard title="집중 시간">
         <FocusTimeCard
