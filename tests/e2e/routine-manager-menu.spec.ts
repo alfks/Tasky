@@ -6,6 +6,13 @@
 // jsdom 은 페인트 순서가 없어 단위 테스트로는 이 종류의 결함을 못 잡는다(tests/AGENTS.md).
 //
 // 루틴 관리 화면(routine.md §2)이 그 조합(대화상자 안의 행 `⋯` 메뉴)이 main 에 처음 생긴 자리다.
+//
+// **음성 대조 기록(정확한 재현 방법, 리뷰 #104 라운드2 Minor-4)**: 이 파일 아래 `deleteItem` 의
+// 패널 `style.zIndex` 를 **리터럴 상수**(예: 5)로 덮어써야 빨간불이 된다 — `overlayZIndex` 가
+// 계산하는 `z` 변수 자체를 안 거치게 만드는 경로다. `Popover.tsx`/`Dialog.tsx` 의 `BASE_Z_POPOVER`/
+// `BASE_Z_MODAL` **상수만** 낮추는 것은 재현되지 않는다(`overlayZIndex` 가 스택 깊이로 그 값을
+// 보정하므로 — 가드가 상수 값 자체엔 둔감한 것은 의도된 성질이다). 확인 없이 상수를 낮춰 "재현
+// 안 됨" 으로 결론짓지 마라.
 import { expect, test } from '@playwright/test';
 
 import type { Page } from '@playwright/test';
