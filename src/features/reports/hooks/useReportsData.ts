@@ -1,7 +1,8 @@
-// 선택된 기간의 통계 데이터를 읽어 온다(stats.md R7). 저장소는 기간 ∪ 히트맵 범위를 **한 번씩만**
-// 읽고(또는 review M2 처럼 두 범위가 멀리 떨어져 있으면 각각 한 번씩 나눠), 나머지 계산(추이·스트릭·
-// 카테고리·히트맵)은 전부 그 결과에서 메모리로 만든다(`buildReportsPeriodData`) — 날짜마다 개별
-// 조회하지 않는다(date-strip R17 과 같은 원칙).
+// 선택된 기간의 통계 데이터를 읽어 온다(stats.md R7). 저장소는 기간 ∪ 히트맵 ∪ 스트릭 고정 창
+// (review 라운드2 m19 — 셋째 범위, today 의 요일에 따라 히트맵 격자보다 더 과거까지 뻗을 수 있다)
+// 범위를 **한 번씩만** 읽고(또는 review M2 처럼 선택 기간이 나머지 둘과 멀리 떨어져 있으면 두 범위로
+// 나눠), 나머지 계산(추이·스트릭·카테고리·히트맵)은 전부 그 결과에서 메모리로 만든다
+// (`buildReportsPeriodData`) — 날짜마다 개별 조회하지 않는다(date-strip R17 과 같은 원칙).
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { Category } from '@/domain/category/category';
