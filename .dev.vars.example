@@ -12,8 +12,11 @@
 
 # 1) GOOGLE_CLIENT_ID
 #    Google Cloud Console → Google Auth Platform → 클라이언트 → tasky-web (SYNC_CREDENTIALS_GUIDE.md §2-5).
-#    비밀 아님 — wrangler.jsonc 의 vars.GOOGLE_CLIENT_ID 와 같은 값. 로컬 wrangler dev 는 .dev.vars 쪽을
-#    우선 읽으므로(wrangler 관례) 비워 두면 wrangler.jsonc 의 값이 그대로 쓰인다 — 보통 채울 필요 없다.
+#    비밀 아님 — wrangler.jsonc 의 vars.GOOGLE_CLIENT_ID 와 같은 값이다. **주의**: wrangler dev 는
+#    `.dev.vars` 에 키가 "존재"하기만 해도 그 값을 쓴다 — 빈 값(`GOOGLE_CLIENT_ID=`)도 존재로 쳐서
+#    wrangler.jsonc 의 값을 빈 문자열로 **덮어써 로그인이 원인 불명으로 깨진다**(직접 재현 확인).
+#    wrangler.jsonc 의 값을 그대로 쓰고 싶으면 이 줄 자체를 지운다(값만 비우지 않는다). 다른 값을
+#    쓰려면 여기 채운다.
 GOOGLE_CLIENT_ID=
 
 # 2) GOOGLE_CLIENT_SECRET
@@ -29,5 +32,6 @@ SESSION_SECRET=
 # 4) AUTH_STUB
 #    로컬에서 구글 왕복 없이 로그인 플로우를 확인하기 위한 스텁 제공자 스위치.
 #    "1" 이고 요청 호스트가 localhost/127.0.0.1 일 때만 선택된다(그 밖에는 항상 구글 제공자) —
-#    SYNC_DESIGN.md §②-4. 배포된 Worker 의 vars 에는 이 키 자체가 없어야 한다(scripts/check-dist.mjs 가 검사).
+#    SYNC_DESIGN.md §②-4. 배포된 Worker 의 vars 에는 이 키 자체가 없어야 한다 — 그 가드
+#    (scripts/check-dist.mjs 의 검사)는 아직 없고 T-93 에서 넣는다(이 시점엔 검사할 Worker 자체가 없다).
 AUTH_STUB=1
