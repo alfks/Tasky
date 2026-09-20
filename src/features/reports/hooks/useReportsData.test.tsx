@@ -1,5 +1,6 @@
-// R7 회귀 고정: 저장소 조회가 기간 ∪ 히트맵 범위를 한 번씩만 읽는지 호출 횟수로 단언한다
-// (T-85 코디네이터 정정 2 — "각 1회씩"은 호출 횟수를 세는 프록시 테스트로 고정한다).
+// R7 회귀 고정: 저장소 조회가 기간 ∪ 히트맵 범위를 한 번씩만 읽는지(또는 review M2 처럼 멀리
+// 떨어져 있으면 나눠 읽는지) 호출 횟수·인자로 단언한다(T-85 코디네이터 정정 2 — "각 1회씩"은
+// 호출 횟수를 세는 프록시 테스트로 고정한다).
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -17,26 +18,37 @@ import { makeCategory } from '@/test/fixtures/category';
 import { makeFocusSession } from '@/test/fixtures/focus-session';
 import { makeTodo } from '@/test/fixtures/todo';
 
-/** 메서드별 호출 횟수를 세는 얇은 프록시. 값은 실제 memory 구현이 낸다 — 계산은 그대로 검증된다. */
+/** 메서드별 호출 횟수·인자를 세는 얇은 프록시. 값은 실제 memory 구현이 낸다 — 계산은 그대로 검증된다. */
 function countingRepositories(base: Repositories): {
   repo: Repositories;
   counts: Map<string, number>;
+  todoCalls: unknown[][];
+  focusCalls: unknown[][];
 } {
   const counts = new Map<string, number>();
-  const wrap = <T extends object>(target: T): T =>
+  const todoCalls: unknown[][] = [];
+  const focusCalls: unknown[][] = [];
+  const wrap = <T extends object>(target: T, calls: unknown[][] | null): T =>
     new Proxy(target, {
       get(t, prop: string) {
         const value = Reflect.get(t, prop);
         if (typeof value !== 'function') return value;
         return (...args: unknown[]) => {
           counts.set(prop, (counts.get(prop) ?? 0) + 1);
+          if (calls !== null && prop === 'listByDateRange') calls.push(args);
           return (value as (...a: unknown[]) => unknown).apply(t, args);
         };
       },
     });
   return {
-    repo: { ...base, todos: wrap(base.todos), focusSessions: wrap(base.focusSessions) },
+    repo: {
+      ...base,
+      todos: wrap(base.todos, todoCalls),
+      focusSessions: wrap(base.focusSessions, focusCalls),
+    },
     counts,
+    todoCalls,
+    focusCalls,
   };
 }
 
@@ -86,7 +98,60 @@ describe('useReportsData — 저장소 조회 횟수 (stats.md R7)', () => {
 
     counts.clear();
     act(() => useReportsStore.getState().setPreset('thisYear'));
-    await waitFor(() => expect(counts.get('listByDateRange')).toBe(2));
+    // review m2(minor 회귀): 카운트 자체를 waitFor 조건으로 쓰면 "2에 도달한 순간" 통과해 버려
+    // 그 뒤 3·4번째 호출을 못 잡는다. 카운트와 무관한 신호(새 기간의 trend 길이)로 정착을 기다린
+    // 뒤, 그 시점의 카운트를 따로 단언한다.
+    await waitFor(() => {
+      expect(result.current.status).toBe('ready');
+      expect(result.current.status === 'ready' && result.current.data.trend.length).toBe(
+        daysInThisYearUpTo(TODAY),
+      );
+    });
+    expect(counts.get('listByDateRange')).toBe(2);
+  });
+
+  it('이전에 읽은 기간으로 되돌아가면 저장소를 다시 읽지 않는다(review m1 캐시)', async () => {
+    setRepositories(createMemoryRepositories());
+    const { repo, counts } = countingRepositories(getRepositories());
+    setRepositories(repo);
+
+    const { result } = renderHook(() => useReportsData());
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    act(() => useReportsStore.getState().setPreset('thisYear'));
+    await waitFor(() => {
+      expect(result.current.status === 'ready' && result.current.data.trend.length).toBe(
+        daysInThisYearUpTo(TODAY),
+      );
+    });
+
+    counts.clear();
+    act(() => useReportsStore.getState().setPreset('last7'));
+    await waitFor(() => {
+      expect(result.current.status === 'ready' && result.current.data.trend.length).toBe(7);
+    });
+
+    expect(counts.get('listByDateRange')).toBeUndefined();
+  });
+
+  it('custom 범위가 히트맵 창(최근 12주)과 멀리 떨어져 있으면 todos 를 그 두 범위로만 나눠 읽는다(review M2 — 사이 빈 구간은 읽지 않는다)', async () => {
+    setRepositories(createMemoryRepositories());
+    const { repo, todoCalls } = countingRepositories(getRepositories());
+    setRepositories(repo);
+
+    act(() =>
+      useReportsStore.setState({
+        preset: 'custom',
+        customRange: { from: '2015-01-01', to: '2015-12-31' },
+      }),
+    );
+    const { result } = renderHook(() => useReportsData());
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    expect(todoCalls).toHaveLength(2);
+    const ranges = todoCalls.map(([from, to]) => `${String(from)}~${String(to)}`).sort();
+    // 실제 필요한 두 범위(2015년 전체, 최근 12주)로만 나뉜다 — 그 사이 2016~2026-06 은 읽지 않는다.
+    expect(ranges).toEqual(['2015-01-01~2015-12-31', '2026-06-29~2026-09-20']);
   });
 });
 
@@ -95,4 +160,12 @@ function dayOffset(dateKey: DateKey, days: number): DateKey {
   date.setDate(date.getDate() + days);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` as DateKey;
+}
+
+/** "올해"(1/1~오늘) 일수 — thisYear 프리셋 전환이 실제로 반영됐는지 판별하는 신호로 쓴다. */
+function daysInThisYearUpTo(dateKey: DateKey): number {
+  const [year] = dateKey.split('-');
+  const from = new Date(`${year}-01-01T00:00:00`);
+  const to = new Date(`${dateKey}T00:00:00`);
+  return Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1;
 }

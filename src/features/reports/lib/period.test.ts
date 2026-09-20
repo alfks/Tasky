@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
+import type { DateKey } from '@/domain/date/date-key';
+
 import {
   CUSTOM_RANGE_MAX_DAYS,
   HEATMAP_WEEKS,
   daysBetween,
   datesInRange,
+  heatmapDataRange,
   heatmapWeeks,
   isValidCustomRange,
   presetRange,
+  shouldSplitTodoFetch,
+  unionFetchRange,
 } from '@/features/reports/lib/period';
 
 const TODAY = '2026-09-20'; // 일요일
@@ -82,5 +87,37 @@ describe('heatmapWeeks (R6, "최근 12주")', () => {
     const lastWeek = weeks.at(-1);
     expect(lastWeek).toContain(TODAY);
     expect(weeks[0]?.[0]).toBe('2026-06-29');
+  });
+});
+
+describe('heatmapDataRange·shouldSplitTodoFetch (review M2)', () => {
+  const heatmapRange = heatmapDataRange(heatmapWeeks(TODAY)); // 2026-06-29 ~ 2026-09-20
+
+  it('heatmapDataRange 는 히트맵 격자 전체의 최소~최대다', () => {
+    expect(heatmapRange).toEqual({ from: '2026-06-29', to: TODAY });
+  });
+
+  it('프리셋 경로(기간이 today 로 끝남)는 항상 히트맵과 겹쳐 나누지 않는다', () => {
+    expect(shouldSplitTodoFetch(presetRange('last7', TODAY), heatmapRange)).toBe(false);
+    expect(shouldSplitTodoFetch(presetRange('thisYear', TODAY), heatmapRange)).toBe(false);
+  });
+
+  it('맞닿아 있으면(하루도 안 비면) 나누지 않는다', () => {
+    // heatmapRange.from 바로 전날까지
+    const touching = { from: '2026-06-01' as DateKey, to: '2026-06-28' as DateKey };
+    expect(shouldSplitTodoFetch(touching, heatmapRange)).toBe(false);
+  });
+
+  it('멀리 떨어진 custom 범위는 나눈다(실측 재현: 2015년 선택)', () => {
+    const farPast = { from: '2015-01-01' as DateKey, to: '2015-12-31' as DateKey };
+    expect(shouldSplitTodoFetch(farPast, heatmapRange)).toBe(true);
+  });
+
+  it('union 은 여전히 겹치는 경우의 실제 필요 범위와 같다(회귀: 나누지 않는 경로는 그대로)', () => {
+    const period = presetRange('last7', TODAY);
+    expect(unionFetchRange(period, heatmapWeeks(TODAY))).toEqual({
+      from: heatmapRange.from,
+      to: TODAY,
+    });
   });
 });

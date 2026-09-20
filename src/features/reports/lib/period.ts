@@ -61,7 +61,8 @@ export function heatmapWeeks(today: DateKey): DateKey[][] {
 
 /**
  * 선택 기간과 히트맵(항상 최근 12주)을 함께 덮는 가장 작은 범위 — R7 "각각 한 번씩 읽는다"의 근거다.
- * 저장소 조회는 이 범위로 **한 번만** 하고, 추이·카테고리·스트릭·히트맵 전부 그 결과에서 걸러 쓴다.
+ * 두 범위가 붙어 있거나 겹칠 때만 쓴다(review M2, `shouldSplitTodoFetch` 참고) — 멀리 떨어져 있으면
+ * 이 범위가 그 사이 빈 구간까지 통째로 읽어 버린다.
  */
 export function unionFetchRange(period: PeriodRange, heatmap: readonly DateKey[][]): PeriodRange {
   const dates = [period.from, period.to, ...heatmap.flat()];
@@ -72,4 +73,36 @@ export function unionFetchRange(period: PeriodRange, heatmap: readonly DateKey[]
     }),
     { from: period.from, to: period.to },
   );
+}
+
+/** `heatmapDays` 격자 전체가 걸치는 최소~최대 범위(review M2). */
+export function heatmapDataRange(heatmap: readonly DateKey[][]): PeriodRange {
+  const flat = heatmap.flat();
+  const first = flat[0];
+  if (first === undefined) return { from: '' as DateKey, to: '' as DateKey }; // heatmap 은 항상 84일이라 이론상 없음
+  return flat.reduce(
+    (range, date) => ({
+      from: date < range.from ? date : range.from,
+      to: date > range.to ? date : range.to,
+    }),
+    { from: first, to: first },
+  );
+}
+
+/**
+ * 기간과 히트맵 범위를 **나눠서** 읽어야 하는가(review M2).
+ *
+ * `isValidCustomRange` 는 길이(366일)만 보고 위치는 안 본다 — `custom` 으로 먼 과거(예: 2015년)를
+ * 고르면 `unionFetchRange` 가 그 구간과 "항상 최근 12주"인 히트맵 사이 수천 일의 빈 구간까지
+ * 한 범위로 묶어 통째로 읽는다(실측: 2015년 선택 시 union ≈ 4,280일, 실제 필요한 건 450일뿐).
+ *
+ * 두 범위가 겹치거나 하루도 비지 않고 맞닿아 있으면(프리셋 경로는 항상 이 경우다 — `period.to`
+ * 가 `today`이고 히트맵은 항상 `today`를 포함한다) union 이 실제로 읽는 날 전부를 필요로 하므로
+ * 그대로 1회가 더 싸다. 최소 하루라도 비면 그 구간만큼 union 이 손해라 두 범위를 따로 읽는 편이
+ * 낫다(투두 조회 2회, R7 의 "날짜마다 조회하지 않는다"는 취지는 지킨다 — 여전히 범위 조회다).
+ */
+export function shouldSplitTodoFetch(period: PeriodRange, heatmapRange: PeriodRange): boolean {
+  if (period.to < heatmapRange.from) return addDays(period.to, 1) < heatmapRange.from;
+  if (heatmapRange.to < period.from) return addDays(heatmapRange.to, 1) < period.from;
+  return false;
 }
