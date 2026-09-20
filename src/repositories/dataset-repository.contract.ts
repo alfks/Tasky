@@ -162,6 +162,9 @@ export function runDatasetRepositoryContract(target: ContractTarget): void {
         categories: [category],
         focusSessions: [],
         settings,
+        ddays: [],
+        diaryEntries: [],
+        routines: [],
       });
 
       const snapshot = await repos.dataset.readAll();
@@ -188,6 +191,9 @@ export function runDatasetRepositoryContract(target: ContractTarget): void {
         categories: [tombstone],
         focusSessions: [],
         settings: contractSettings(contractDeps()),
+        ddays: [],
+        diaryEntries: [],
+        routines: [],
       });
 
       const snapshot = await repos.dataset.readAll();

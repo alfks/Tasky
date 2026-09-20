@@ -5,6 +5,8 @@
 // 인덱스가 없는 저장소이므로 `liveBy`·`liveBetween`·`liveOrderBy` 는 배열 연산이지만, 시그니처와
 // 필터 위치를 맞춰 두면 계약 테스트가 두 구현에서 같은 결과를 요구할 수 있다.
 import type { Category } from '@/domain/category/category';
+import type { Dday } from '@/domain/dday/dday';
+import type { DiaryEntry } from '@/domain/diary/diary-entry';
 import type { FocusSession } from '@/domain/focus/focus-session';
 import { isTombstone, type Meta, type Persistable } from '@/domain/meta';
 import type { Routine } from '@/domain/routine/routine';
@@ -21,11 +23,17 @@ import type { Todo } from '@/domain/todo/todo';
 export type MemoryTable<T extends Meta> = { readonly rows: Map<string, T> };
 
 /**
- * 다섯 테이블 묶음. 한 memory 인스턴스의 전체 상태다.
+ * 일곱 테이블 묶음. 한 memory 인스턴스의 전체 상태다.
  *
- * `routines` 가 D-day(`memory/dday-repository.ts`)와 달리 여기 끼는 이유: 루틴 지연 생성의 워터마크
- * (`Routine.materializedThrough`)는 그 구간에서 만든 투두들과 **한 트랜잭션**(`DatasetRepository.write`)
- * 으로 커밋해야 한다(ADR-0017) — dataset 저장소가 이 묶음을 공유해야만 그 원자성이 성립한다.
+ * `routines` 가 끼는 이유: 루틴 지연 생성의 워터마크(`Routine.materializedThrough`)는 그 구간에서
+ * 만든 투두들과 **한 트랜잭션**(`DatasetRepository.write`)으로 커밋해야 한다(ADR-0017) — dataset
+ * 저장소가 이 묶음을 공유해야만 그 원자성이 성립한다.
+ *
+ * `ddays`·`diaryEntries` 는 그런 원자성 요구가 없어(단독 `put()`으로 충분) 한동안 이 묶음 밖의
+ * 독립 테이블이었다(`memory/dday-repository.ts`·`memory/diary-repository.ts` 옛 머리주석) — 하지만
+ * `DatasetRepository.readAll`/`restore`(백업/복원)는 **이 묶음만** 본다. 백업이 두 테이블을 실으려면
+ * (T-86) 엔티티 저장소와 dataset 저장소가 **같은** 테이블 인스턴스를 봐야 하므로, 여기 합류시킨다
+ * (routines 와 같은 이유 — "원자적 쓰기" 가 아니라 "같은 상태를 보이게" 가 합류 조건이 됐다).
  */
 export type MemoryTables = {
   todos: MemoryTable<Todo>;
@@ -33,6 +41,8 @@ export type MemoryTables = {
   settings: MemoryTable<Settings>;
   focusSessions: MemoryTable<FocusSession>;
   routines: MemoryTable<Routine>;
+  ddays: MemoryTable<Dday>;
+  diaryEntries: MemoryTable<DiaryEntry>;
 };
 
 /** 빈 테이블 묶음. 테스트는 이것을 새로 만들어 격리한다. */
@@ -43,6 +53,8 @@ export function createMemoryTables(): MemoryTables {
     settings: { rows: new Map<string, Settings>() },
     focusSessions: { rows: new Map<string, FocusSession>() },
     routines: { rows: new Map<string, Routine>() },
+    ddays: { rows: new Map<string, Dday>() },
+    diaryEntries: { rows: new Map<string, DiaryEntry>() },
   };
 }
 
