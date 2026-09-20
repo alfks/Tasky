@@ -1,6 +1,6 @@
 // 투두 엔티티 타입 (docs/ARCHITECTURE.md §4, TECH_PLAN §5). 생성·변경 함수는 todo.rules.ts.
 import type { DateKey } from '@/domain/date/date-key';
-import type { CategoryId } from '@/domain/ids';
+import type { CategoryId, RoutineId } from '@/domain/ids';
 import type { Meta } from '@/domain/meta';
 
 /** 특정 날짜·카테고리에 속한 할 일 한 건. */
@@ -24,4 +24,10 @@ export type Todo = Meta & {
   order: number;
   /** 이 투두에 누적된 집중 시간(초). 원천은 `FocusSession` 이고 이 값은 표시용 캐시다 (timer R8). */
   focusSeconds?: number;
+  /**
+   * 이 투두를 만든 루틴(routine.md §4). 무기한 루틴의 지연 생성(R6)이 채울 때만 찍히고, 그 뒤로는
+   * 완전히 독립된 투두다(R9) — 루틴을 지워도(R10) 이 필드는 남아 "기록"으로 유지된다(원본이 없으면
+   * 🔁 배지만 안 그린다). `Todo.routineId` 로 `todos` 를 다시 조회하는 경로는 없다(ADR-0016 §결정 2).
+   */
+  routineId?: RoutineId;
 };

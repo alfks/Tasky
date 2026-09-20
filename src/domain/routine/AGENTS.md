@@ -1,0 +1,53 @@
+<!-- 읽기 조건: 무기한 루틴 엔티티 타입·검증·워터마크 지연 생성 규칙을 추가·수정할 때. -->
+
+# src/domain/routine/ — AGENTS
+
+## 목적
+
+무기한 루틴(routine.md) 엔티티와 그 규칙 — R21(`@/domain/todo/routine.rules`)의 확장. 부모
+`src/domain/AGENTS.md`가 이 디렉토리를 관할 선언하지 않으므로 별도로 둔다(D-day·`src/domain/dday/`와
+같은 이유).
+
+## 여기 있는 것 / 없는 것
+
+- 있음: `routine.ts`(엔티티 타입), `routine.rules.ts`(검증·생성·중지·재개·삭제·정렬·지연 생성 판정
+  `shouldMaterialize`), `routine-fill.ts`(즉시 채우기·지연 생성이 공유하는 워터마크 채우기 계획
+  `planRoutineFill`, R3 구간 보정 `resolveImmediateFillThrough`).
+- 없음(다른 곳): `RoutineRecurrence` 타입과 즉시 채우기 날짜 계산(`expandRoutineDates`)은
+  `@/domain/todo/routine.rules`가 단일 소스다(R21, 옮기지 않는다 — 그 경로를 이미 쓰는 다른 티켓
+  파일들이 깨진다). 저장소 인터페이스·구현은 `src/repositories/routine-repository*`·
+  `src/infra/indexeddb/routine-indexeddb-repository.ts`. 화면·스토어는 `src/features/todo/`.
+
+## 규칙 (이 디렉토리에만 적용)
+
+1. `src/domain/AGENTS.md`의 도메인 공통 규칙(외부 패키지 0, 시각·ID는 `deps` 주입, `Persistable`은
+   `meta.ts`만 만듦)을 그대로 따른다.
+2. `(routineId, date)` 중복 생성 방지는 **조회가 아니라 워터마크**(`Routine.materializedThrough`)로
+   한다(ADR-0017). `planRoutineFill`은 `TodoRepository.listByDateRange` 같은 조회 결과의 "없음"을
+   근거로 판정하지 않는다 — 소프트 삭제 툼스톤이 조회에서 빠지므로 그 판정은 삭제한 인스턴스를
+   부활시킨다.
+3. `shouldMaterialize`는 시각 의존이 없는 순수 함수다 — `today`를 스스로 읽지 않고 호출부가 판단할
+   날짜를 인자로 준다.
+4. 정렬(`compareRoutines`)은 이 파일이 단일 소스다 — memory·indexeddb 저장소 구현이 각자 정렬하지
+   않는다(dday와 같은 패턴).
+
+## 의존 방향
+
+- import 가능: `@/domain/date/*`, `@/domain/errors`, `@/domain/ids`, `@/domain/meta`,
+  `@/domain/todo/routine.rules`(타입·`expandRoutineDates`·`matchesRoutineRecurrence` 만),
+  `@/domain/todo/todo.rules`(`createTodo`·`normalizeTodoTitle`·`validateTodoTitle`·`validateTodoMemo`).
+- import 금지: react·zustand·dexie·`@/repositories/**`·`@/features/**`.
+
+## 검증
+
+```bash
+pnpm test src/domain/routine --reporter=dot
+```
+
+## 자주 하는 실수
+
+- `deletedAt`을 객체 리터럴로 직접 쓰기 — `markDeleted`/`touch`(meta.ts)만 쓴다(NO_META_WRITE 린트).
+- `planRoutineFill`을 부르기 전에 `existing`(그 구간의 살아 있는 투두)을 넘기지 않고 호출 — dedup이
+  안 먹혀 같은 제목이 두 번 생긴다.
+- 재개(`resumeRoutine`)에서 `materializedThrough`를 `today`가 아니라 무조건 앞으로만 옮기기 — 이미
+  `today` 전날보다 나중이면(드문 경우) 뒤로 물러나면 안 된다(`max` 여야 한다, R7 "소급 없음").

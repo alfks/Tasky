@@ -12,7 +12,13 @@ export type RoutineRecurrence =
   | { type: 'weekly'; daysOfWeek: readonly number[] }
   | { type: 'monthly'; daysOfMonth: readonly number[] };
 
-function validateRecurrence(recurrence: RoutineRecurrence): void {
+/**
+ * 반복 패턴 검증(요일·일 목록이 비지 않고 범위 안인지). `export` 인 이유는 무기한 루틴 도메인
+ * (`@/domain/routine/routine.rules`)의 `createRoutine` 이 같은 검증을 재사용하기 때문이다 — 복제하면
+ * 두 곳의 "무효" 판정이 갈릴 수 있다. `expandRoutineDates` 의 동작·이 함수의 판정 로직 자체는 바뀌지
+ * 않았다(routine.md 완료 조건 "R21 은 한 글자도 안 바뀐다").
+ */
+export function validateRecurrence(recurrence: RoutineRecurrence): void {
   const values = recurrence.type === 'weekly' ? recurrence.daysOfWeek : recurrence.daysOfMonth;
   const [min, max] = recurrence.type === 'weekly' ? [0, 6] : [1, 31];
   if (
@@ -53,4 +59,13 @@ export function expandRoutineDates(input: {
     cursor = addCivilDays(cursor, 1);
   }
   return dates;
+}
+
+/**
+ * `date` 가 반복 패턴에 맞는 날짜인지(요일·일 목록만 본다 — 시작·종료일·활성 여부는 호출부가 잰다).
+ * 무기한 루틴의 지연 생성 판정(routine.md R6 `shouldMaterialize`)이 `expandRoutineDates` 내부의
+ * `matches` 와 같은 로직을 쓰기 위해 공개한다 — 새 판정 로직을 만들지 않는다.
+ */
+export function matchesRoutineRecurrence(date: DateKey, recurrence: RoutineRecurrence): boolean {
+  return matches(date, recurrence);
 }

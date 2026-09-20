@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { DateKey } from '@/domain/date/date-key';
 import { DomainError } from '@/domain/errors';
-import { expandRoutineDates } from '@/domain/todo/routine.rules';
+import {
+  expandRoutineDates,
+  matchesRoutineRecurrence,
+  validateRecurrence,
+} from '@/domain/todo/routine.rules';
 
 describe('expandRoutineDates', () => {
   it('매주 반복: 시작~종료 안에서 그 요일에 해당하는 날짜만 오름차순으로 돌려준다', () => {
@@ -110,5 +114,40 @@ describe('expandRoutineDates', () => {
     expect(dates).toHaveLength(49);
     expect(dates[0]).toBe('2026-01-01');
     expect(dates.at(-1)).toBe('2030-01-01');
+  });
+});
+
+// 무기한 루틴(routine.md R6) 지연 생성 판정이 재사용하는 공개 헬퍼 — `expandRoutineDates` 와 같은
+// 로직인지를 여기서 함께 고정한다(복제 금지).
+describe('matchesRoutineRecurrence', () => {
+  it('매주 반복: 요일이 맞으면 true', () => {
+    // 2026-01-15 은 목요일(요일 4).
+    expect(
+      matchesRoutineRecurrence('2026-01-15' as DateKey, { type: 'weekly', daysOfWeek: [4] }),
+    ).toBe(true);
+    expect(
+      matchesRoutineRecurrence('2026-01-15' as DateKey, { type: 'weekly', daysOfWeek: [1] }),
+    ).toBe(false);
+  });
+
+  it('매달 반복: 일이 맞으면 true', () => {
+    expect(
+      matchesRoutineRecurrence('2026-01-31' as DateKey, { type: 'monthly', daysOfMonth: [31] }),
+    ).toBe(true);
+    expect(
+      matchesRoutineRecurrence('2026-02-28' as DateKey, { type: 'monthly', daysOfMonth: [31] }),
+    ).toBe(false);
+  });
+});
+
+describe('validateRecurrence', () => {
+  it('요일·날짜가 하나 이상이고 범위 안이면 통과한다', () => {
+    expect(() => validateRecurrence({ type: 'weekly', daysOfWeek: [0, 6] })).not.toThrow();
+    expect(() => validateRecurrence({ type: 'monthly', daysOfMonth: [1, 15] })).not.toThrow();
+  });
+
+  it('비었거나 범위를 벗어나면 ROUTINE_RECURRENCE_INVALID', () => {
+    expect(() => validateRecurrence({ type: 'weekly', daysOfWeek: [] })).toThrow(DomainError);
+    expect(() => validateRecurrence({ type: 'monthly', daysOfMonth: [32] })).toThrow(DomainError);
   });
 });
