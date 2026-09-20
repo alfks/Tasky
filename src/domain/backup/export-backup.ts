@@ -8,8 +8,16 @@ import {
 import type { DatasetSnapshot } from '@/domain/dataset';
 import { isTombstone } from '@/domain/meta';
 
-/** 화면이 보여주는 "카테고리 4개 · 할 일 312개" (§2). 툼스톤은 세지 않는다. */
-export type BackupCounts = { categories: number; todos: number };
+/**
+ * 화면이 보여주는 "카테고리 4개 · 할 일 312개" (§2) + 그 밖의 데이터(D-day·다이어리·루틴) 존재 여부.
+ * 툼스톤은 세지 않는다.
+ *
+ * `hasOtherData`(리뷰 #108 Major 3): 세 테이블이 백업 payload 에 들어간 뒤(T-86)로,
+ * 카테고리·할 일이 0개라도 파일이 빈 것은 아니다 — 이 필드가 없으면 D-day·다이어리만 있는 사용자의
+ * "내보내기" 버튼이 `isEmptyDataset` 판정에서 막혀, 백업을 고치는 이 티켓 자체가 그 데이터를
+ * 내보낼 수 없게 남긴다.
+ */
+export type BackupCounts = { categories: number; todos: number; hasOtherData: boolean };
 
 /**
  * 파일에 담을 문서를 만든다 (R2).
@@ -82,5 +90,9 @@ export function backupCounts(snapshot: DatasetSnapshot): BackupCounts {
   return {
     categories: snapshot.categories.filter((category) => !isTombstone(category)).length,
     todos: snapshot.todos.filter((todo) => !isTombstone(todo)).length,
+    hasOtherData:
+      snapshot.ddays.some((dday) => !isTombstone(dday)) ||
+      snapshot.diaryEntries.some((entry) => !isTombstone(entry)) ||
+      snapshot.routines.some((routine) => !isTombstone(routine)),
   };
 }

@@ -136,7 +136,7 @@ beforeEach(async () => {
 
 describe('refresh — 현재 상태 읽기 (§2·R10·R14)', () => {
   it('개수와 마지막 백업 시각을 읽는다', () => {
-    expect(store.getState().current).toEqual({ categories: 1, todos: 3 });
+    expect(store.getState().current).toEqual({ categories: 1, todos: 3, hasOtherData: false });
     expect(store.getState().lastBackupAt).toBeUndefined();
   });
 
@@ -310,7 +310,11 @@ describe('selectFile — 손상된 파일 주입 (R4·R8·R9)', () => {
 
   it('정상 파일은 담고 있는 개수를 미리 보여준다', async () => {
     await store.getState().selectFile(fakeFile('ok.json', fileTextOf(baseSnapshot())));
-    expect(store.getState().selection?.counts).toEqual({ categories: 1, todos: 3 });
+    expect(store.getState().selection?.counts).toEqual({
+      categories: 1,
+      todos: 3,
+      hasOtherData: false,
+    });
   });
 });
 

@@ -96,7 +96,7 @@ describe('뷰포트는 앱에 하나뿐이다 (R8)', () => {
       useBackupStore.setState({
         result: {
           counts: { added: 20, updated: 3, kept: 289 },
-          source: { categories: 4, todos: 312 },
+          source: { categories: 4, todos: 312, hasOtherData: false },
         },
       });
     });
@@ -138,7 +138,10 @@ describe('동시에 1개 (R8) — T-30 이 고친 것', () => {
     await screen.findByText('먼저 뜬 토스트');
     act(() => {
       useBackupStore.setState({
-        result: { counts: { added: 1, updated: 0, kept: 0 }, source: { categories: 1, todos: 1 } },
+        result: {
+          counts: { added: 1, updated: 0, kept: 0 },
+          source: { categories: 1, todos: 1, hasOtherData: false },
+        },
       });
     });
     await screen.findByText(/가져왔어요/);

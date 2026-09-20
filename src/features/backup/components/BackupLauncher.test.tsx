@@ -70,7 +70,7 @@ describe('BackupLauncher (§2·R14)', () => {
     await waitForWarningCheck();
 
     await user.click(screen.getByRole('button', { name: /백업\/복원/ }));
-    expect(await waitForCounts()).toEqual({ categories: 1, todos: 3 });
+    expect(await waitForCounts()).toEqual({ categories: 1, todos: 3, hasOtherData: false });
   });
 
   it('백업이 없고 투두가 20개 이상이면 경고 점이 보인다', async () => {
@@ -144,7 +144,7 @@ describe('BackupLauncher (§2·R14)', () => {
       useBackupStore.setState({
         result: {
           counts: { added: 20, updated: 3, kept: 289 },
-          source: { categories: 4, todos: 312 },
+          source: { categories: 4, todos: 312, hasOtherData: false },
         },
       });
     });

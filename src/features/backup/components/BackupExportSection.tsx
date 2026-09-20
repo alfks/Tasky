@@ -54,7 +54,15 @@ export function BackupExportSection({
   disabled,
   onExport,
 }: BackupExportSectionProps) {
-  const isEmpty = counts !== null && counts.categories === 0 && counts.todos === 0;
+  // 리뷰 #108 Major 3: 카테고리·할 일이 0개라도 hasOtherData(D-day·다이어리·루틴, T-86)가 있으면
+  // 빈 상태가 아니다 — backup-state.ts#isEmptyDataset 과 같은 판정이다(이 컴포넌트는 그 판정을
+  // 재사용하지 않고 `counts` 로 직접 구한다, props 가 이미 그렇게 설계돼 있다).
+  const isEmpty =
+    counts !== null && counts.categories === 0 && counts.todos === 0 && !counts.hasOtherData;
+  const summary =
+    counts !== null && counts.categories === 0 && counts.todos === 0 && counts.hasOtherData
+      ? '카테고리·할 일은 없지만 그 밖의 데이터가 있어요'
+      : `카테고리 ${counts?.categories ?? 0}개 · 할 일 ${counts?.todos ?? 0}개`;
 
   return (
     <section aria-labelledby="backup-export-heading" className="flex flex-col gap-[var(--space-2)]">
@@ -64,11 +72,7 @@ export function BackupExportSection({
       {isEmpty ? (
         <p className="text-sm text-muted">아직 내보낼 데이터가 없어요</p>
       ) : (
-        <p className="text-sm text-muted">
-          {counts === null
-            ? '불러오는 중이에요'
-            : `카테고리 ${counts.categories}개 · 할 일 ${counts.todos}개`}
-        </p>
+        <p className="text-sm text-muted">{counts === null ? '불러오는 중이에요' : summary}</p>
       )}
       <div className="flex items-center justify-between gap-[var(--space-3)]">
         <p className="text-sm text-muted">{lastBackupLabel(lastBackupAt, now, confirmation)}</p>

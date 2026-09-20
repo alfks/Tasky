@@ -175,10 +175,24 @@ describe('backupCounts', () => {
         todos: [...makeTodos(3), makeTodo({ seq: 4, deletedAt: FIXTURE_INSTANT })],
       }),
     );
-    expect(counts).toEqual({ categories: 1, todos: 3 });
+    expect(counts).toEqual({ categories: 1, todos: 3, hasOtherData: false });
   });
 
   it('데이터가 없으면 0 이다 (빈 상태 판정)', () => {
-    expect(backupCounts(snapshot())).toEqual({ categories: 0, todos: 0 });
+    expect(backupCounts(snapshot())).toEqual({ categories: 0, todos: 0, hasOtherData: false });
+  });
+
+  it('카테고리·할 일이 0개라도 그 밖의 데이터가 있으면 hasOtherData 다 (리뷰 #108 Major 3)', () => {
+    expect(backupCounts(snapshot({ ddays: [makeDday()] }))).toEqual({
+      categories: 0,
+      todos: 0,
+      hasOtherData: true,
+    });
+    expect(backupCounts(snapshot({ diaryEntries: [makeDiaryEntry()] })).hasOtherData).toBe(true);
+    expect(backupCounts(snapshot({ routines: [makeRoutine()] })).hasOtherData).toBe(true);
+    // 툼스톤만 있으면 여전히 빈 것으로 본다 — 사용자에게 보이는 데이터가 없다.
+    expect(
+      backupCounts(snapshot({ ddays: [makeDday({ deletedAt: FIXTURE_INSTANT })] })).hasOtherData,
+    ).toBe(false);
   });
 });
