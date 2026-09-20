@@ -170,6 +170,7 @@ items:
 - [ ] 핸드오프의 `not-done:`을 다시 지적하지 않았다
 - [ ] diff 밖 파일을 읽었다면 이유가 있었다
 - [ ] 실측 기반 지적이라면 그 관측을 **오염되지 않은 트리**에서 얻었다(`git status --porcelain` 확인, 아니면 독립 사본)
+- [ ] `src/features/**` 에 새로 추가된 함수 중 다른 feature 에 같은 이름·같은 몸통이 있는 것이 없다(`git grep -n "function <이름>"`). 머리주석에 "원본은 …", "그대로 옮겼다", "같은 이유로 사본" 이 있으면 **Blocker** — `src/lib/` 로 올린다(features/AGENTS.md 규칙 5).
 
 ## 7. 에스컬레이션 규칙
 
