@@ -15,6 +15,7 @@ import { createMemoryRepositories } from '@/repositories/memory/repositories';
 import { useCategoryStore } from '@/features/category';
 import { useCommandStore } from '@/features/command';
 import { useDateStripStore } from '@/features/date-strip';
+import { useReportsStore } from '@/features/reports';
 import { AppShell } from '@/features/shell/components/AppShell';
 import {
   EMPTY_CATEGORIES_TEXT,
@@ -77,6 +78,7 @@ beforeEach(async () => {
   // 앞 테스트가 열어 둔 도움말·팔레트가 남으면 다음 테스트는 **대화상자가 열린 채** 돈다
   // (전역 단축키가 막히는 것이 정상이다 — T-44). 이 스토어는 모듈 전역이라 언마운트로 안 돌아간다.
   useCommandStore.setState({ helpOpen: false, paletteOpen: false });
+  useReportsStore.setState({ open: false, opener: null });
   // 아래 `저장소 열기 실패` 테스트가 테마를 `error` 로 남긴다. 되돌리지 않으면 그 뒤의 모든
   // 테스트가 **테마 조회가 실패한 앱**을 그린다 — 지금은 그래도 통과하지만(T-49 실측), 그건
   // 조립이 그 조합에 둔감할 뿐이지 테스트가 의도한 상태가 아니다.
@@ -765,5 +767,71 @@ describe('삭제된 카테고리의 이름·색 복원 배선 (category R17·R22
     await screen.findByRole('region', { name: '요리 (삭제됨)' });
 
     expect(within(screen.getByRole('navigation')).queryByText('요리')).toBeNull();
+  });
+});
+
+describe('통계 화면 배선 (T-85, stats.md "메인 컬럼 전체 대체")', () => {
+  it('커맨드 팔레트 "통계 보기"를 키보드만으로 실행하면 통계 화면이 뜨고, 닫으면 원래 화면으로 돌아온다', async () => {
+    const user = userEvent.setup();
+    await mount();
+
+    // Ctrl+K 로 팔레트를 열고(CommandPalette.test.tsx 와 같은 단축키), 입력 없이 화살표로
+    // "통계 보기" 까지 정확히 내려가 Enter 로 실행한다(마우스를 전혀 쓰지 않는다).
+    await user.keyboard('{Control>}k{/Control}');
+    const palette = await screen.findByRole('dialog', { name: '명령 팔레트' });
+    const options = within(palette).getAllByRole('option');
+    const targetIndex = options.findIndex((el) => /통계 보기/.test(el.textContent ?? ''));
+    expect(targetIndex).toBeGreaterThanOrEqual(0);
+    // 첫 항목(index 0)은 이미 선택돼 있다(팔레트 기본 선택) — 그래서 targetIndex 번만큼만 내려간다.
+    for (let i = 0; i < targetIndex; i += 1) {
+      await user.keyboard('{ArrowDown}');
+    }
+    await user.keyboard('{Enter}');
+
+    // 통계 화면이 메인 컬럼을 대체했다 — ShellMain 의 표식(투두 영역)은 사라지고 통계 카드가 보인다.
+    expect(await screen.findByRole('heading', { level: 2, name: '통계' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: '달성률 추이' })).toBeInTheDocument();
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+
+    // 키보드만으로 닫는다 — 화면이 뜨면 포커스가 main 랜드마크로 가고(§5), 거기서 Tab 한 번이면
+    // 첫 조작 지점인 [통계 닫기] 다.
+    await user.keyboard('{Tab}');
+    expect(screen.getByRole('button', { name: '통계 닫기' })).toHaveFocus();
+    await user.keyboard('{Enter}');
+
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { level: 2, name: '통계' })).not.toBeInTheDocument(),
+    );
+    // 원래 화면(ShellMain)으로 돌아왔다 — main 랜드마크는 여전히 하나, id 도 그대로다.
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+    expect(document.getElementById('shell-main')).toBe(screen.getByRole('main'));
+  });
+
+  it('닫으면 포커스가 열었던 요소(팔레트를 연 지점)로 돌아온다', async () => {
+    await mount();
+    const skip = screen.getByRole('link', { name: '본문으로 건너뛰기' });
+    skip.focus();
+
+    act(() => useReportsStore.getState().openReports());
+    await screen.findByRole('heading', { level: 2, name: '통계' });
+
+    act(() => useReportsStore.getState().closeReports());
+
+    await waitFor(() => expect(document.activeElement).toBe(skip));
+  });
+
+  it('열었던 요소가 이미 사라졌으면 본문 랜드마크로 돌아온다(대체 대상 없음)', async () => {
+    await mount();
+    // ShellMain 자체가 통계로 갈리므로 그 안의 옛 opener 는 항상 이 경로를 탄다.
+    const openerInsideShellMain = screen.getByRole('main').querySelector('button');
+    expect(openerInsideShellMain).not.toBeNull();
+    openerInsideShellMain?.focus();
+
+    act(() => useReportsStore.getState().openReports());
+    await screen.findByRole('heading', { level: 2, name: '통계' });
+
+    act(() => useReportsStore.getState().closeReports());
+
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('main')));
   });
 });

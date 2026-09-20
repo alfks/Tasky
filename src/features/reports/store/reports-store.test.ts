@@ -24,6 +24,25 @@ describe('useReportsStore', () => {
     expect(useReportsStore.getState().open).toBe(false);
   });
 
+  it('openReports 는 호출 시점의 포커스 요소를 opener 로 잡아 둔다(Dialog.openerRef 와 같은 규약)', () => {
+    const button = document.createElement('button');
+    document.body.append(button);
+    button.focus();
+
+    useReportsStore.getState().openReports();
+
+    expect(useReportsStore.getState().opener).toBe(button);
+    button.remove();
+  });
+
+  it('포커스가 body 뿐이면 opener 는 null 이다', () => {
+    (document.activeElement as HTMLElement | null)?.blur();
+
+    useReportsStore.getState().openReports();
+
+    expect(useReportsStore.getState().opener).toBeNull();
+  });
+
   it('setPreset 은 preset 만 바꾼다', () => {
     useReportsStore.getState().setPreset('thisYear');
     expect(useReportsStore.getState().preset).toBe('thisYear');

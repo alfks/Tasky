@@ -16,12 +16,13 @@ import {
   useCategoryStore,
 } from '@/features/category';
 import { useDateStripStore } from '@/features/date-strip';
+import { ReportsScreen, useReportsStore } from '@/features/reports';
 import { MemoryModeBanner } from '@/features/shell/components/MemoryModeBanner';
 import { ShellErrorBoundary } from '@/features/shell/components/ShellErrorBoundary';
 import { ShellGlobals } from '@/features/shell/components/ShellGlobals';
 import { ShellHeader } from '@/features/shell/components/ShellHeader';
 import { INSIGHT_PANEL_ID, ShellInsights } from '@/features/shell/components/ShellInsights';
-import { ShellMain } from '@/features/shell/components/ShellMain';
+import { SHELL_MAIN_ID, ShellMain } from '@/features/shell/components/ShellMain';
 import { ShellOverlays } from '@/features/shell/components/ShellOverlays';
 import { ShellSidebar } from '@/features/shell/components/ShellSidebar';
 import { SkipLink } from '@/features/shell/components/SkipLink';
@@ -72,6 +73,21 @@ function ShellBody() {
   const reportFailure = useShellStorageStore((s) => s.reportFailure);
   const [categoryFormOpen, setCategoryFormOpen] = useState(false);
   const openBackupDialog = useBackupStore((s) => s.openDialog);
+
+  // 통계 화면(T-85, stats.md "메인 컬럼 전체 대체"). 커맨드 팔레트 "통계 보기"가 `open` 을 켠다.
+  const reportsOpen = useReportsStore((s) => s.open);
+  const reportsOpener = useReportsStore((s) => s.opener);
+  const wasReportsOpen = useRef(false);
+  useEffect(() => {
+    // 방금 닫혔다 — 열었던 요소로, 사라졌으면 본문 랜드마크로(`Dialog` 의 `restoreFocus` 와 같은
+    // 규약: 열 때 잡아 둔 요소가 살아 있으면 그리로, 없으면 대체 랜드마크로. `ShellMain` 은 통째로
+    // 새로 마운트되므로 그 안의 옛 opener 는 거의 항상 끊겨 있고, 그때는 `#shell-main` 으로 간다).
+    if (wasReportsOpen.current && !reportsOpen) {
+      if (reportsOpener !== null && reportsOpener.isConnected) reportsOpener.focus();
+      else document.getElementById(SHELL_MAIN_ID)?.focus();
+    }
+    wasReportsOpen.current = reportsOpen;
+  }, [reportsOpen, reportsOpener]);
 
   useShellDocumentTitle(date, summary);
   useShellShortcuts({ toggleSidebar: panels.toggleSidebar });
@@ -141,30 +157,34 @@ function ShellBody() {
           </div>
         ) : null}
 
-        <ShellMain
-          date={date}
-          categories={categoriesWithHistory}
-          categoriesPending={categoriesPending}
-          todosFirstLoading={todosFirstLoading}
-          todosEmpty={summary.total === 0}
-          showBottomAdd={hasBottomAddButton(panels.layout)}
-          failureCard={
-            failed ? <StorageFailureCard onContinue={() => void loadCategories()} /> : null
-          }
-          onCreateCategory={() => setCategoryFormOpen(true)}
-          header={
-            <ShellHeader
-              summary={summary}
-              sidebarIsColumn={sidebarIsColumn}
-              insightIsColumn={insightIsColumn}
-              insightOverlayOpen={insightOverlayOpen}
-              onOpenDrawer={panels.openDrawer}
-              onOpenInsight={panels.openInsight}
-              onSummaryError={(message) => pushToast({ message, variant: 'error' })}
-              onDropTodo={handleDropTodo}
-            />
-          }
-        />
+        {reportsOpen ? (
+          <ReportsScreen />
+        ) : (
+          <ShellMain
+            date={date}
+            categories={categoriesWithHistory}
+            categoriesPending={categoriesPending}
+            todosFirstLoading={todosFirstLoading}
+            todosEmpty={summary.total === 0}
+            showBottomAdd={hasBottomAddButton(panels.layout)}
+            failureCard={
+              failed ? <StorageFailureCard onContinue={() => void loadCategories()} /> : null
+            }
+            onCreateCategory={() => setCategoryFormOpen(true)}
+            header={
+              <ShellHeader
+                summary={summary}
+                sidebarIsColumn={sidebarIsColumn}
+                insightIsColumn={insightIsColumn}
+                insightOverlayOpen={insightOverlayOpen}
+                onOpenDrawer={panels.openDrawer}
+                onOpenInsight={panels.openInsight}
+                onSummaryError={(message) => pushToast({ message, variant: 'error' })}
+                onDropTodo={handleDropTodo}
+              />
+            }
+          />
+        )}
 
         {insightIsColumn ? (
           <aside

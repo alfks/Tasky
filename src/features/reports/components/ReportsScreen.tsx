@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
+
 import type { Category } from '@/domain/category/category';
 import type { DateKey } from '@/domain/date/date-key';
 
@@ -31,21 +33,42 @@ function ReportsSkeleton() {
 }
 
 /**
+ * `AppShell.tsx` 의 `ShellMain.SHELL_MAIN_ID` 와 **반드시 같은 문자열**이어야 한다(`SkipLink` 의
+ * `#shell-main` 대상, "main 랜드마크는 하나" 불변식). `reports` 는 `shell` 을 import 할 수 없어
+ * (shell → reports 는 이미 있으므로 반대 방향을 더하면 순환이다) 값만 복제한다 — 두 값이 갈리면
+ * `AppShell.test.tsx` 의 랜드마크 테스트가 죽는다.
+ */
+const SHELL_MAIN_ID = 'shell-main';
+
+/**
  * 통계 화면(stats.md §2). 커맨드 팔레트 "통계 보기"가 `useReportsStore.openReports()` 로 켠다.
+ * 실제 마운트(메인 컬럼 전체 대체)는 `AppShell.tsx` 가 `open` 을 보고 이 컴포넌트로 `ShellMain` 을
+ * 갈아 끼우는 방식으로 한다.
  *
- * **화면을 실제로 마운트하는 지점은 이 티켓의 owns 밖이다.** `AppShell.tsx`(셸)가 `open` 을 보고
- * 이 컴포넌트를 `ShellMain` 자리에 넣어야 "커맨드 팔레트로 화면 진입"이 완성되는데, 셸 파일은
- * T-85 owns 에 없다 — 이 컴포넌트는 그 배선을 기다리는 완제품이다(핸드오프 참고).
+ * 문서의 `h1` 은 앱 전체(`Tasky`) 하나뿐이라(`AppShell.tsx`) 여기 제목은 `h2` 다.
  */
 export function ReportsScreen() {
   const closeReports = useReportsStore((state) => state.closeReports);
   const today = useDateStripStore((state) => state.today);
   const state = useReportsData();
+  const mainRef = useRef<HTMLElement>(null);
+
+  // 화면에 들어오면 포커스를 받는다 — `ShellMain`이 사라진 자리를 대신하는 랜드마크라, 열었을 때
+  // 포커스가 그대로 `<body>`에 남거나 사라진 요소를 가리키지 않게 한다(§5, `ShellMain`의
+  // `tabIndex=-1` 랜드마크·`asideRef`가 `revealAndFocus`로 받는 포커스와 같은 규약).
+  useEffect(() => {
+    mainRef.current?.focus();
+  }, []);
 
   return (
-    <main className="flex min-h-0 min-w-0 flex-1 flex-col gap-[var(--space-4)] overflow-y-auto px-[var(--space-4)] py-[var(--space-3)]">
+    <main
+      ref={mainRef}
+      id={SHELL_MAIN_ID}
+      tabIndex={-1}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-[var(--space-4)] overflow-y-auto px-[var(--space-4)] py-[var(--space-3)] outline-none"
+    >
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-[var(--font-weight-semibold)] text-text">통계</h1>
+        <h2 className="text-xl font-[var(--font-weight-semibold)] text-text">통계</h2>
         <IconButton label="통계 닫기" onClick={closeReports}>
           ✕
         </IconButton>
