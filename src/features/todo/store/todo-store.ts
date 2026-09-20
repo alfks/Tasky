@@ -28,6 +28,7 @@ const initialState: TodoState = {
   writeRevision: 0,
   routines: {},
   routineStatus: 'idle',
+  visibleRange: null,
 };
 
 /** 실제 시계·UUID. 테스트는 `createTodoStore(fixedDeps())` 로 결정적인 주입기를 쓴다. */

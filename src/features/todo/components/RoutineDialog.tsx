@@ -1,5 +1,7 @@
 'use client';
 
+import { useId } from 'react';
+
 import type { Category } from '@/domain/category/category';
 import type { Todo } from '@/domain/todo/todo';
 import { TODO_MEMO_MAX_LENGTH, TODO_TITLE_MAX_LENGTH } from '@/domain/todo/todo.rules';
@@ -40,20 +42,28 @@ type RoutineDialogProps = {
 export function RoutineDialog({ todo, categories, onClose, returnFocus }: RoutineDialogProps) {
   const form = useRoutineForm(todo);
   const { undoRoutine } = useTodoActions();
+  const indefiniteHintId = useId();
 
   const save = async (): Promise<void> => {
     const result = await form.submit();
     if (result === null) {
-      // 검증 실패·전부 중복(만든 것 0개)은 위 인라인 alert 가 알린다. 저장(store) 실패는 전역
-      // 토스트가 알린다(useRoutineForm 머리 주석) — 여기서 다시 알리지 않는다. `submit` 이
-      // `null` 이 아닌 결과를 주면 `count`·`ids` 는 항상 1개 이상이다(0개는 위에서 이미 걸린다).
+      // 검증 실패는 위 인라인 alert 가 알린다(종료일이 있는데 전부 중복인 경우도 여기 포함 —
+      // routine.md R4). 저장(store) 실패는 전역 토스트가 알린다(useRoutineForm 머리 주석) — 여기서
+      // 다시 알리지 않는다.
       return;
     }
     const { count, ids } = result;
-    pushToast({
-      message: M.routineCreated(count),
-      action: { label: M.undo, onAction: () => void undoRoutine(ids) },
-    });
+    if (count === 0) {
+      // 무기한 등록만 여기 온다(종료일 있는 0건은 이미 위에서 오류로 걸렸다, routine.md R4). 되돌릴
+      // 인스턴스가 없으니 되돌리기 없이 "루틴이 저장됐다"만 알린다 — 이 배선이 없으면 사용자는
+      // 화면이 아무것도 안 바뀐 채 다이얼로그만 닫혀 등록됐는지 알 길이 없다.
+      pushToast({ message: M.routinePendingStart });
+    } else {
+      pushToast({
+        message: M.routineCreated(count),
+        action: { label: M.undo, onAction: () => void undoRoutine(ids) },
+      });
+    }
     onClose();
   };
 
@@ -132,10 +142,33 @@ export function RoutineDialog({ todo, categories, onClose, returnFocus }: Routin
               value={form.endDate}
               min={form.startDate}
               max={MAX_DATE_KEY}
+              disabled={form.indefinite}
               onChange={(e) => form.setEndDate(e.target.value)}
-              className={`${FIELD_CLASS} h-[var(--control-height)]`}
+              className={`${FIELD_CLASS} h-[var(--control-height)] disabled:opacity-50`}
             />
           </label>
+          <div className="flex flex-col gap-[var(--space-1)] self-end pb-[var(--space-2)]">
+            <label className="flex items-center gap-[var(--space-2)] text-sm text-muted">
+              <input
+                type="checkbox"
+                checked={form.indefinite}
+                // `disabled` 인 종료일 입력엔 걸지 않는다 — disabled 컨트롤은 포커스를 못 받아
+                // 설명이 닿지 않는다(리뷰 m2). 실제로 조작하는 이 체크박스에 건다.
+                aria-describedby={form.indefinite ? indefiniteHintId : undefined}
+                onChange={(e) => form.setIndefinite(e.target.checked)}
+                className="size-[var(--control-checkbox-size)]"
+              />
+              {M.routineIndefiniteLabel}
+            </label>
+            {form.indefinite ? (
+              // `CategoryRemoveDialogChoices#HistoryVisibilityOption` 과 같은 전례: 체크 상태를
+              // 설명하는 힌트는 `sr-only` 가 아니라 보이는 텍스트다 — 시각 사용자도 종료일이 왜
+              // 비활성인지 읽을 수 있어야 한다(리뷰 Nit 2).
+              <span id={indefiniteHintId} className="pl-[var(--space-6)] text-sm text-muted">
+                {M.routineIndefiniteHint}
+              </span>
+            ) : null}
+          </div>
         </div>
 
         <label className="flex flex-col gap-[var(--space-1)] text-sm text-muted">

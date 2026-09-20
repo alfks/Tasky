@@ -28,7 +28,16 @@ const todo = makeTodo({
 /** 저장소·스토어·토스트 허브를 매 테스트 초기화한다(컴포넌트는 싱글턴 스토어를 쓴다). */
 beforeEach(() => {
   setRepositories(createMemoryRepositories());
-  useTodoStore.setState({ byId: {}, date: null, status: 'idle', error: null, writeRevision: 0 });
+  useTodoStore.setState({
+    byId: {},
+    date: null,
+    status: 'idle',
+    error: null,
+    writeRevision: 0,
+    routines: {},
+    routineStatus: 'idle',
+    visibleRange: null,
+  });
   clearToasts();
 });
 
@@ -116,6 +125,9 @@ describe('매주 반복', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('이미 전부 등록돼 있어요');
     expect(onClose).not.toHaveBeenCalled();
     expect(getToasts()).toEqual([]);
+    // 리뷰 Major 1: 오류를 낸 뒤 유령 Routine 레코드가 남으면 안 된다 — 관리 화면이 아직 없어
+    // 지울 방법도 없다.
+    expect(await getRepositories().routines.list({ includeInactive: true })).toEqual([]);
   });
 
   it('시작일이 날짜 스트립 범위(1970~2099) 밖이면 거절한다(입력 min/max 를 우회해도)', async () => {
@@ -213,5 +225,75 @@ describe('매달 반복', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('반복할 요일이나 날짜');
     expect(await getRepositories().todos.listAll()).toEqual([]);
+  });
+});
+
+describe('무기한 등록 ("계속 반복", routine.md R2~R5)', () => {
+  it('체크하면 종료일 입력이 비활성화되고 값이 비워진다', async () => {
+    const user = userEvent.setup();
+    render(<RoutineDialog todo={todo} categories={[공부]} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('종료일'), { target: { value: '2026-01-29' } });
+
+    await user.click(screen.getByRole('checkbox', { name: '계속 반복' }));
+
+    const endDateInput = screen.getByLabelText('종료일');
+    expect(endDateInput).toBeDisabled();
+    expect(endDateInput).toHaveValue('');
+  });
+
+  it('키보드만으로 체크박스를 켤 수 있다(Tab + Space)', async () => {
+    const user = userEvent.setup();
+    render(<RoutineDialog todo={todo} categories={[공부]} onClose={vi.fn()} />);
+    const checkbox = screen.getByRole('checkbox', { name: '계속 반복' });
+
+    checkbox.focus();
+    expect(checkbox).toHaveFocus();
+    await user.keyboard(' ');
+
+    expect(checkbox).toBeChecked();
+    expect(screen.getByLabelText('종료일')).toBeDisabled();
+  });
+
+  it('즉시 채우기 결과가 0건이어도 오류가 아니라 성공 토스트를 내고 Routine 을 저장한다(R4·R5)', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<RoutineDialog todo={todo} categories={[공부]} onClose={onClose} />);
+
+    // 시작일은 todo.date(목요일) 그대로 두고 반복 요일은 "월"로 골라, 즉시 채우기 구간(방문 전이라
+    // 시작일 하루뿐, R3)에 맞는 날짜가 없게 만든다 — 패턴 자체는 유효하다.
+    await user.click(screen.getByRole('button', { name: '월' }));
+    await user.click(screen.getByRole('checkbox', { name: '계속 반복' }));
+    await user.click(screen.getByRole('button', { name: '루틴 등록' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    const toasts = getToasts();
+    expect(toasts.map((toast) => toast.message)).toContain('곧 반복이 시작돼요');
+    expect(toasts.find((toast) => toast.message === '곧 반복이 시작돼요')?.action).toBeUndefined();
+
+    const saved = await getRepositories().routines.list({ includeInactive: true });
+    expect(saved).toHaveLength(1);
+    expect(saved[0]?.active).toBe(true);
+    expect(await getRepositories().todos.listAll()).toEqual([]);
+  });
+
+  it('결과가 있으면 되돌리기가 만든 인스턴스와 Routine 레코드를 함께 지운다', async () => {
+    const user = userEvent.setup();
+    render(<RoutineDialog todo={todo} categories={[공부]} onClose={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: '목' })); // todo.date 와 같은 요일
+    await user.click(screen.getByRole('checkbox', { name: '계속 반복' }));
+    await user.click(screen.getByRole('button', { name: '루틴 등록' }));
+
+    await waitFor(() => expect(getToasts()).toHaveLength(1));
+    expect(await getRepositories().routines.list({ includeInactive: true })).toHaveLength(1);
+    const toast = getToasts()[0];
+    expect(toast?.message).toBe('1개의 할 일을 만들었어요');
+
+    toast?.action?.onAction();
+    await waitFor(async () => {
+      expect(await getRepositories().todos.listAll()).toEqual([]);
+    });
+    // 인스턴스만이 아니라 루틴 레코드도 지워야 다음 방문에 다시 생기지 않는다.
+    expect(await getRepositories().routines.list({ includeInactive: true })).toHaveLength(0);
   });
 });

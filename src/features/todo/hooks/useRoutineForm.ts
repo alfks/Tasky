@@ -14,7 +14,11 @@ import { isValidDateKey } from '@/domain/date/civil';
 import type { DateKey } from '@/domain/date/date-key';
 import { domainErrorMessage } from '@/domain/errors';
 import type { CategoryId, TodoId } from '@/domain/ids';
-import { expandRoutineDates, type RoutineRecurrence } from '@/domain/todo/routine.rules';
+import {
+  expandRoutineDates,
+  validateRecurrence,
+  type RoutineRecurrence,
+} from '@/domain/todo/routine.rules';
 import type { Todo } from '@/domain/todo/todo';
 import { validateTodoMemo, validateTodoTitle } from '@/domain/todo/todo.rules';
 
@@ -83,6 +87,24 @@ function useRecurrenceInput(): RecurrenceInput {
 /** 등록에 성공했을 때. `ids` 는 "되돌리기"가 지울 대상이다. 실패면 `null`. */
 export type RoutineSubmitResult = { count: number; ids: TodoId[] } | null;
 
+/**
+ * `endDate === ''`(빈 문자열)이 "아직 안 고름"과 "계속 반복"을 함께 표현하던 것을 갈라낸다. 체크
+ * 하면 종료일을 비우고 비활성화한다(routine.md §2 와이어프레임 — "☐ 계속 반복").
+ */
+type IndefiniteInput = {
+  indefinite: boolean;
+  setIndefinite: (value: boolean) => void;
+};
+
+function useIndefiniteInput(setEndDate: (value: string) => void): IndefiniteInput {
+  const [indefinite, setIndefiniteState] = useState(false);
+  const setIndefinite = (value: boolean): void => {
+    setIndefiniteState(value);
+    if (value) setEndDate('');
+  };
+  return { indefinite, setIndefinite };
+}
+
 /** 다이얼로그가 쓰는 폼 한 벌. */
 export type RoutineForm = {
   categoryId: CategoryId;
@@ -95,6 +117,9 @@ export type RoutineForm = {
   setStartDate: (value: string) => void;
   endDate: string;
   setEndDate: (value: string) => void;
+  /** "계속 반복" 체크 (routine.md R2). 체크되면 `endDate` 는 빈 값으로 고정되고 입력은 비활성이다. */
+  indefinite: boolean;
+  setIndefinite: (value: boolean) => void;
   recurrenceType: RoutineRecurrenceType;
   setRecurrenceType: (value: RoutineRecurrenceType) => void;
   weekdays: readonly number[];
@@ -117,6 +142,7 @@ export function useRoutineForm(todo: Todo): RoutineForm {
   const [memo, setMemo] = useState(todo.memo ?? '');
   const [startDate, setStartDate] = useState<string>(todo.date);
   const [endDate, setEndDate] = useState<string>(todo.date);
+  const { indefinite, setIndefinite } = useIndefiniteInput(setEndDate);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const {
@@ -140,40 +166,65 @@ export function useRoutineForm(todo: Todo): RoutineForm {
       setError(messageOf(thrown));
       return null;
     }
-    if (startDate === '' || endDate === '') {
+    if (startDate === '') {
       setError(TODO_MESSAGES.routineDatesRequired);
       return null;
     }
-    if (!isValidDateKey(startDate) || !isValidDateKey(endDate)) {
+    if (!isValidDateKey(startDate)) {
       setError(domainErrorMessage('ROUTINE_DATE_RANGE_INVALID'));
       return null;
     }
     // `<input type="date">` 의 `min`/`max` 는 표시 계층 힌트일 뿐 값을 막지 않는다(직접 타이핑·
     // 붙여넣기로 벗어날 수 있다) — date-strip 이 다루는 범위(date-strip.md R6) 밖의 날짜는 스트립
-    // 으로 다시 찾아갈 수 없으므로 여기서 실제로 거절한다. **종료일이 시작일보다 빠른 경우와는
-    // 다른 문구를 쓴다** — 둘 다 같은 "종료일은 시작일과 같거나 이후여야 해요"로 뭉치면, 시작·
-    // 종료 순서는 맞는데 범위만 벗어난 입력(예: 2099-12-31~2100-01-01)에서 사용자가 멀쩡한
-    // 종료일을 고치려 헤매게 된다(진짜 원인은 어디에도 안 보인다).
-    if (
-      startDate < MIN_DATE_KEY ||
-      startDate > MAX_DATE_KEY ||
-      endDate < MIN_DATE_KEY ||
-      endDate > MAX_DATE_KEY
-    ) {
+    // 으로 다시 찾아갈 수 없으므로 여기서 실제로 거절한다.
+    if (startDate < MIN_DATE_KEY || startDate > MAX_DATE_KEY) {
       setError(TODO_MESSAGES.routineDateOutOfRange);
       return null;
     }
 
-    let dates: DateKey[];
-    try {
-      dates = expandRoutineDates({ startDate, endDate, recurrence });
-    } catch (thrown) {
-      setError(messageOf(thrown));
-      return null;
-    }
-    if (dates.length === 0) {
-      setError(TODO_MESSAGES.routineEmptyResult);
-      return null;
+    // `endDate` 는 "계속 반복" 체크 시 비어 있는 것이 정상이다(routine.md R2) — 이때는 아래 검사를
+    // 통째로 건너뛰고 반복 패턴만 미리 검증한다(즉시 채우기 구간 자체는 아직 모른다, R3 — 그건
+    // store 의 `createRoutine` 이 "지금 보이는 날짜 범위"로 정한다). `endDateKey` 가 정의돼 있으면
+    // (=indefinite 가 아니면) 그 값이 곧 검증을 통과한 `DateKey` 다.
+    let endDateKey: DateKey | undefined;
+    if (indefinite) {
+      try {
+        validateRecurrence(recurrence);
+      } catch (thrown) {
+        setError(messageOf(thrown));
+        return null;
+      }
+    } else {
+      if (endDate === '') {
+        setError(TODO_MESSAGES.routineDatesRequired);
+        return null;
+      }
+      if (!isValidDateKey(endDate)) {
+        setError(domainErrorMessage('ROUTINE_DATE_RANGE_INVALID'));
+        return null;
+      }
+      // **종료일이 시작일보다 빠른 경우와는 다른 문구를 쓴다** — 둘 다 같은 "종료일은 시작일과
+      // 같거나 이후여야 해요"로 뭉치면, 시작·종료 순서는 맞는데 범위만 벗어난 입력(예:
+      // 2099-12-31~2100-01-01)에서 사용자가 멀쩡한 종료일을 고치려 헤매게 된다(진짜 원인은
+      // 어디에도 안 보인다).
+      if (endDate < MIN_DATE_KEY || endDate > MAX_DATE_KEY) {
+        setError(TODO_MESSAGES.routineDateOutOfRange);
+        return null;
+      }
+      // 종료일이 있으면 R21 그대로 그 구간의 날짜를 미리 펼쳐 "반복 조건에 맞는 날짜가 없다"를
+      // 여기서 잡는다(routine.md R4).
+      let dates: DateKey[];
+      try {
+        dates = expandRoutineDates({ startDate, endDate, recurrence });
+      } catch (thrown) {
+        setError(messageOf(thrown));
+        return null;
+      }
+      if (dates.length === 0) {
+        setError(TODO_MESSAGES.routineEmptyResult);
+        return null;
+      }
+      endDateKey = endDate;
     }
 
     setSaving(true);
@@ -182,16 +233,19 @@ export function useRoutineForm(todo: Todo): RoutineForm {
       title: validTitle,
       memo: validMemo,
       startDate,
-      endDate,
+      ...(endDateKey === undefined ? {} : { endDate: endDateKey }),
       recurrence,
     });
     setSaving(false);
     if (ids === false) {
       return null;
     }
-    if (ids.length === 0) {
-      // 반복 조건에 맞는 날짜는 있었지만 전부 이미 등록돼 있었다(중복 방지, todo-actions.ts) —
+    if (ids.length === 0 && !indefinite) {
+      // 반복 조건에 맞는 날짜는 있었지만 전부 이미 등록돼 있었다(중복 방지, todo-routine-fill.ts) —
       // "0개를 만들었다" 는 토스트를 띄우고 닫는 것보다, 여기서 멈추고 왜인지 알리는 편이 낫다.
+      // **무기한(indefinite)일 때는 0건이 오류가 아니다**(routine.md R4·R5) — 즉시 채우기 구간
+      // (지금 보이는 날짜 범위)이 좁아서 못 만든 것일 뿐 반복 패턴 자체는 유효하고, 루틴 레코드는
+      // 이미 저장됐다. `RoutineDialog` 가 "곧 반복이 시작돼요" 성공 토스트로 안내한다.
       setError(TODO_MESSAGES.routineAllDuplicates);
       return null;
     }
@@ -210,6 +264,8 @@ export function useRoutineForm(todo: Todo): RoutineForm {
     setStartDate,
     endDate,
     setEndDate,
+    indefinite,
+    setIndefinite,
     recurrenceType,
     setRecurrenceType,
     weekdays,

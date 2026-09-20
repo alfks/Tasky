@@ -38,7 +38,23 @@ type DateStripProps = {
   onDropTodo?: (todoId: string, date: DateKey) => void;
   /** 요약 조회 실패 문구. 토스트로 띄우는 것은 앱 셸 소관이다 (§2-C). */
   onSummaryError?: (message: string) => void;
+  /**
+   * 보이는 날짜 범위(양끝 포함)가 바뀔 때마다 알린다 (routine.md R6 무기한 루틴 지연 생성의 배선
+   * 지점). 스트립 자신은 `todo` 를 import 할 수 없어(feature 그래프의 리프) 셸이 이 콜백으로 받아
+   * 잇는다(`ShellHeader`) — `summaryRevision` 과 같은 이유(위 주석). **leading + trailing 으로
+   * 디바운스된다**(아래 `VISIBLE_RANGE_DEBOUNCE_MS`) — 한 걸음짜리 이동은 즉시(leading) 부르고,
+   * 연속 탐색(연타 이동)만 멈춘 뒤 마지막 범위로 한 번(trailing) 묶는다(리뷰 Major 2 실측: 100연타
+   * → put 426·tx 938·7.4초, 리뷰 Minor 1: trailing 전용이던 첫 버전은 한 걸음짜리 이동도
+   * 250ms 늦게 반영돼 빈 상태가 잠깐 보였다 사라지는 깜빡임이 있었다).
+   */
+  onVisibleRange?: (from: DateKey, to: DateKey) => void;
 };
+
+/**
+ * `onVisibleRange` 디바운스 폭(리뷰 Major 2·Minor 1). leading 호출은 이 값과 무관하게 즉시 나가고,
+ * 이 값은 "연타가 끝났다"고 판단해 trailing 을 쏘기까지 기다리는 조용한 시간이다.
+ */
+export const VISIBLE_RANGE_DEBOUNCE_MS = 250;
 
 /** 모션 축소 선호 여부. `matchMedia` 가 없는 런타임(구형·테스트)에서는 "선호하지 않음"으로 본다. */
 function prefersReducedMotion(): boolean {
@@ -46,7 +62,12 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-export function DateStrip({ summaryRevision, onDropTodo, onSummaryError }: DateStripProps) {
+export function DateStrip({
+  summaryRevision,
+  onDropTodo,
+  onSummaryError,
+  onVisibleRange,
+}: DateStripProps) {
   const selectedDate = useDateStripStore((state) => state.selectedDate);
   const today = useDateStripStore((state) => state.today);
   const select = useDateStripStore((state) => state.select);
@@ -63,12 +84,38 @@ export function DateStrip({ summaryRevision, onDropTodo, onSummaryError }: DateS
   // 보이는 날짜. 주 보기는 7칸, 월 보기는 그 달의 격자 전부(28~42칸) — 둘 다 **연속 범위**다 (R15).
   const days = isMonth ? monthGridDays(activeDate) : weekDays(activeDate);
   // 그래서 요약은 칸 수와 무관하게 **양끝만 넘겨 한 번**에 읽는다 (R17).
-  const summaries = useRangeSummaries(
-    days[0],
-    days[days.length - 1],
-    summaryRevision,
-    onSummaryError,
-  );
+  const rangeStart = days[0];
+  const rangeEnd = days[days.length - 1];
+  const summaries = useRangeSummaries(rangeStart, rangeEnd, summaryRevision, onSummaryError);
+  // 콜백 정체성이 바뀌어도 재실행하지 않게 ref 로 받는다(`useRangeSummaries` 의 `onError` 와 같은 이유).
+  const onVisibleRangeRef = useRef(onVisibleRange);
+  onVisibleRangeRef.current = onVisibleRange;
+  // leading + trailing 디바운스(리뷰 Minor 1): 버스트의 **첫** 범위 변화는 즉시 부른다(leading) —
+  // trailing 만 쓰면 한 걸음짜리 이동도 `VISIBLE_RANGE_DEBOUNCE_MS` 를 기다려, 그사이 "아직 비어
+  // 있어요" 빈 상태가 잠깐 떴다 사라지는 깜빡임이 실측됐다. 쿨다운 중에 이어지는 변화(연타)만
+  // trailing 으로 미뤄 마지막 범위로 한 번 부른다 — 낭비 방지 캐시(`materializeRoutines`)가 이미
+  // 중복 조회를 막아 주므로 leading 이 더해도 실질 비용은 거의 늘지 않는다(리뷰 Major 2).
+  const coolingDownRef = useRef(false);
+  const trailingPendingRef = useRef(false);
+  const debounceTimerRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!coolingDownRef.current) {
+      coolingDownRef.current = true;
+      trailingPendingRef.current = false;
+      onVisibleRangeRef.current?.(rangeStart, rangeEnd);
+    } else {
+      trailingPendingRef.current = true;
+    }
+    window.clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = window.setTimeout(() => {
+      coolingDownRef.current = false;
+      if (trailingPendingRef.current) {
+        trailingPendingRef.current = false;
+        onVisibleRangeRef.current?.(rangeStart, rangeEnd);
+      }
+    }, VISIBLE_RANGE_DEBOUNCE_MS);
+    return () => window.clearTimeout(debounceTimerRef.current);
+  }, [rangeStart, rangeEnd]);
   // ↑/↓ · Home/End 는 보기와 무관하게 **활성 날짜가 속한 주**를 기준으로 움직인다 (R18).
   const activeWeek = weekDays(activeDate);
 

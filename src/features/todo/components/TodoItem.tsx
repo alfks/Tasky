@@ -15,7 +15,8 @@ import { TodoEditPanel } from '@/features/todo/components/TodoEditPanel';
 import { DatePickRow, DragHandle } from '@/features/todo/components/TodoItemControls';
 import { TodoItemMenu } from '@/features/todo/components/TodoItemMenu';
 import { useTodoItemActions } from '@/features/todo/components/useTodoItemActions';
-import { TODO_MESSAGES as M } from '@/features/todo/messages';
+import { describeRoutineRecurrence, TODO_MESSAGES as M } from '@/features/todo/messages';
+import { useTodoStore } from '@/features/todo/store/todo-store';
 
 import { Checkbox } from '@/components/ui/Checkbox';
 
@@ -82,6 +83,10 @@ export function TodoItem({
   const [pickingDate, setPickingDate] = useState(false);
   const [registeringRoutine, setRegisteringRoutine] = useState(false);
   const canReorder = !readOnly && !todo.done;
+  // 루틴에서 나온 투두만 🔁 배지를 단다. 루틴이 삭제되면(R10) `routines` 에서 빠져 배지도 사라진다.
+  const routine = useTodoStore((state) =>
+    todo.routineId === undefined ? undefined : state.routines[todo.routineId],
+  );
 
   const { toggle, move, goToDate, toCategory, closeEdit, returnFocus, snapshotFocus } =
     useTodoItemActions({
@@ -214,6 +219,21 @@ export function TodoItem({
         {memo === null ? null : (
           <span aria-label={M.hasMemo} role="img" className="shrink-0 text-xs text-muted">
             🗒
+          </span>
+        )}
+        {routine === undefined ? null : (
+          // `role="img"` + `aria-label` 은 스크린리더가 아이콘이 아니라 문장을 읽게 한다(§5, 완료
+          // 조건 "배지가 스크린리더에 어떻게 읽히는지") — 형제 배지(🗒·⏱)와 같은 패턴이다. `title` 은
+          // 마우스 호버용. **탭 스톱은 만들지 않는다**(리뷰 Major 4) — 만들면 그 배지에 포커스가
+          // 있는 동안 `handleKeyDown` 의 `e.target !== e.currentTarget` 가드에 걸려 행 단축키
+          // (Space/Enter/Delete/Alt+↑↓)가 전부 죽고, 형제 배지들과도 다른 규약이 된다.
+          <span
+            role="img"
+            aria-label={M.routineBadgeLabel(describeRoutineRecurrence(routine.recurrence))}
+            title={M.routineBadgeLabel(describeRoutineRecurrence(routine.recurrence))}
+            className="shrink-0 text-xs text-muted"
+          >
+            🔁
           </span>
         )}
         {minutes > 0 ? (
