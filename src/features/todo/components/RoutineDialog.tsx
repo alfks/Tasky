@@ -147,23 +147,28 @@ export function RoutineDialog({ todo, categories, onClose, returnFocus }: Routin
               className={`${FIELD_CLASS} h-[var(--control-height)] disabled:opacity-50`}
             />
           </label>
-          <label className="flex items-center gap-[var(--space-2)] self-end pb-[var(--space-2)] text-sm text-muted">
-            <input
-              type="checkbox"
-              checked={form.indefinite}
-              // `disabled` 인 종료일 입력엔 걸지 않는다 — disabled 컨트롤은 포커스를 못 받아 설명이
-              // 닿지 않는다(리뷰 m2). 실제로 조작하는 이 체크박스에 건다.
-              aria-describedby={form.indefinite ? indefiniteHintId : undefined}
-              onChange={(e) => form.setIndefinite(e.target.checked)}
-              className="size-[var(--control-checkbox-size)]"
-            />
-            {M.routineIndefiniteLabel}
-          </label>
-          {form.indefinite ? (
-            <p id={indefiniteHintId} className="sr-only">
-              {M.routineIndefiniteHint}
-            </p>
-          ) : null}
+          <div className="flex flex-col gap-[var(--space-1)] self-end pb-[var(--space-2)]">
+            <label className="flex items-center gap-[var(--space-2)] text-sm text-muted">
+              <input
+                type="checkbox"
+                checked={form.indefinite}
+                // `disabled` 인 종료일 입력엔 걸지 않는다 — disabled 컨트롤은 포커스를 못 받아
+                // 설명이 닿지 않는다(리뷰 m2). 실제로 조작하는 이 체크박스에 건다.
+                aria-describedby={form.indefinite ? indefiniteHintId : undefined}
+                onChange={(e) => form.setIndefinite(e.target.checked)}
+                className="size-[var(--control-checkbox-size)]"
+              />
+              {M.routineIndefiniteLabel}
+            </label>
+            {form.indefinite ? (
+              // `CategoryRemoveDialogChoices#HistoryVisibilityOption` 과 같은 전례: 체크 상태를
+              // 설명하는 힌트는 `sr-only` 가 아니라 보이는 텍스트다 — 시각 사용자도 종료일이 왜
+              // 비활성인지 읽을 수 있어야 한다(리뷰 Nit 2).
+              <span id={indefiniteHintId} className="pl-[var(--space-6)] text-sm text-muted">
+                {M.routineIndefiniteHint}
+              </span>
+            ) : null}
+          </div>
         </div>
 
         <label className="flex flex-col gap-[var(--space-1)] text-sm text-muted">
