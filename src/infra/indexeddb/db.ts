@@ -8,6 +8,7 @@ import Dexie, { type EntityTable } from 'dexie';
 
 import type { Category } from '@/domain/category/category';
 import type { Dday } from '@/domain/dday/dday';
+import type { DiaryEntry } from '@/domain/diary/diary-entry';
 import type { FocusSession } from '@/domain/focus/focus-session';
 import type { Routine } from '@/domain/routine/routine';
 import type { Settings } from '@/domain/theme/settings';
@@ -16,10 +17,9 @@ import type { Todo } from '@/domain/todo/todo';
 /**
  * 앱 데이터베이스. 추가·인덱스 변경은 ADR + version(n+1).
  *
- * `diaryEntries` 는 v3(ADR-0016)에서 스토어 문자열(`STORES`)로는 이미 열려 있지만, 그 도메인 타입
- * (`DiaryEntry`)이 아직 없어(T-80) 이 타입에는 넣지 않았다 — 그 티켓이 도메인 타입을 만들며 여기
- * `EntityTable` 필드를 더한다. 그때까지는 `db.table('diaryEntries')` 처럼 이름으로만 접근할 수 있다
- * (마이그레이션 테스트가 그렇게 쓴다). `routines` 는 T-81 이 `Routine` 타입을 만들며 여기 더했다.
+ * `diaryEntries` 는 v3(ADR-0016)에서 스토어 문자열(`STORES`)로 이미 열려 있었고, T-80 이 도메인 타입
+ * (`DiaryEntry`)을 만들며 여기 `EntityTable` 필드를 더했다. `routines` 는 T-81 이 `Routine` 타입을
+ * 만들며 여기 더했다.
  */
 export type TaskyDb = Dexie & {
   todos: EntityTable<Todo, 'id'>;
@@ -27,6 +27,7 @@ export type TaskyDb = Dexie & {
   settings: EntityTable<Settings, 'id'>;
   focusSessions: EntityTable<FocusSession, 'id'>;
   ddays: EntityTable<Dday, 'id'>;
+  diaryEntries: EntityTable<DiaryEntry, 'id'>;
   routines: EntityTable<Routine, 'id'>;
 };
 

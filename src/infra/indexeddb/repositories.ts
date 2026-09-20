@@ -9,6 +9,7 @@ import type { Repositories } from '@/repositories/container';
 import { createIndexedDbCategoryRepository } from '@/infra/indexeddb/category-indexeddb-repository';
 import { createIndexedDbDatasetRepository } from '@/infra/indexeddb/dataset-indexeddb-repository';
 import { createIndexedDbDdayRepository } from '@/infra/indexeddb/dday-indexeddb-repository';
+import { createIndexedDbDiaryRepository } from '@/infra/indexeddb/diary-indexeddb-repository';
 import { createIndexedDbFocusSessionRepository } from '@/infra/indexeddb/focus-session-indexeddb-repository';
 import { tables, type Store } from '@/infra/indexeddb/query';
 import { createIndexedDbRoutineRepository } from '@/infra/indexeddb/routine-indexeddb-repository';
@@ -24,6 +25,7 @@ export function createIndexedDbRepositories(store: Store = tables): Repositories
     focusSessions: createIndexedDbFocusSessionRepository(store),
     dataset: createIndexedDbDatasetRepository(store),
     dday: createIndexedDbDdayRepository(store),
+    diaryEntries: createIndexedDbDiaryRepository(store),
     routines: createIndexedDbRoutineRepository(store),
   };
 }
