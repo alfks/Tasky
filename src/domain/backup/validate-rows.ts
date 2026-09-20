@@ -38,6 +38,7 @@ const CATEGORY_KEYS = [
   'order',
   'status',
   'closedAt',
+  'historyHidden',
 ] as const;
 const TODO_KEYS = [
   ...META_KEYS,

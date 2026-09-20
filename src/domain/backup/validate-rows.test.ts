@@ -31,3 +31,17 @@ describe('readTodo — routineId 왕복 (routine.md §4)', () => {
     expect('unknownField' in restored).toBe(false);
   });
 });
+
+describe('readCategory — historyHidden 왕복 (category R22)', () => {
+  it('historyHidden: true 인 카테고리 행이 왕복 후에도 유지된다', () => {
+    const row = makeCategory({ historyHidden: true, deletedAt: '2026-01-16T00:00:00.000Z' });
+    const result = readCategory(row, 'categories[0]');
+    expect(result.historyHidden).toBe(true);
+  });
+
+  it('historyHidden 이 없는 행은 undefined 로 유지된다', () => {
+    const row = makeCategory();
+    const result = readCategory(row, 'categories[0]');
+    expect(result.historyHidden).toBeUndefined();
+  });
+});
