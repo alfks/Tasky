@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { FOCUS_SUMMARY_NONE_KEY, summarizeFocusSeconds } from '@/domain/todo/focus-summary';
+import { FOCUS_SUMMARY_NONE_KEY, summarizeFocusSeconds } from '@/domain/focus/focus-summary';
 
 import { makeFocusSession } from '@/test/fixtures/focus-session';
 
