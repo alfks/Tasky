@@ -60,6 +60,8 @@ flowchart TB
 
 원칙: **UI → 상태 → 도메인 → 인터페이스 ← 인프라**. 인프라는 인터페이스를 구현할 뿐이다. 경로 표기는 항상 `@/…`(code-style.md §7 표).
 
+`lib` 는 feature 간 공유 순수 유틸의 **유일한** 자리다 — feature 배럴은 스토어 훅·컴포넌트용이고, 조립되는 feature 는 조립하는 feature 를 배럴로도 import 할 수 없다(`import/no-cycle`). 자격 기준은 `src/lib/AGENTS.md` "무엇이 여기 올라오는가".
+
 **보장되는 것과 보장되지 않는 것**(린트는 *import 간선*만 본다 — 값의 흐름은 보지 못한다. 실측 근거: ADR-0006):
 
 - 보장: 테스트 계층(`src/test/**`, `*.test.*` — 경계 규칙 면제)과 `infra` 자신을 빼면, `infra` 를 **import** 하는 파일은 `app/providers.tsx` 하나다. 그 파일을 import 할 수 있는 파일도 `main.tsx` 하나다(ADR-0013 이전에는 `layout.tsx` 였다) — 표기 변형과 ADR-0006 결정 10 이 열거한 모듈 경로 구문 전수(정적·`import type`·동적 `import()`·`typeof import()`·모킹·`require` 계열·`new URL('…', import.meta.url)`)에 대해 실측했고 `check-arch.sh` 픽스처가 고정한다(주석인 삼중슬래시 지시자는 §1 의 규칙 + grep 이 별도로 막는다). 이 판정은 `eslint-disable` 로 끌 수 없다 — 2차 패스가 지시자를 무시하고 다시 본다(ADR-0008). `providers.tsx` 의 재export(`export … from`)는 금지된다 — 재export 한 줄로 조립 지점을 경유지 삼는 2홉은 막힌다.

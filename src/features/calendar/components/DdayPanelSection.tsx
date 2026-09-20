@@ -12,11 +12,6 @@ import type { Dday } from '@/domain/dday/dday';
 import { ddayOffset, formatDday, sortDdays } from '@/domain/dday/dday.rules';
 
 import { DdayAddForm } from '@/features/calendar/components/DdayAddForm';
-import {
-  focusAfterRowRemoval,
-  rowAnchorOf,
-  type RowAnchor,
-} from '@/features/calendar/lib/removal-focus';
 import { useDdayStore } from '@/features/calendar/store/dday-store';
 // 삭제 되돌리기 문구는 카테고리 삭제와 같은 조사 규칙을 쓴다(category §2-C) — 직접 이어붙이면
 // 받침 유무에 따라 "'생일'를 삭제했어요" 같은 문장이 남는다(리뷰 라운드 1 Minor-8). `category` 는
@@ -31,6 +26,7 @@ import { OVERLAY_ALWAYS_LIVE_ATTR } from '@/components/ui/overlay-rules';
 import { pushToast, useToasts } from '@/components/ui/Toast';
 
 import { cn } from '@/lib/cn';
+import { focusAfterRowRemoval, rowAnchorOf, type RowAnchor } from '@/lib/focus-fallback';
 
 type DdayPanelSectionProps = { className?: string };
 
@@ -119,8 +115,8 @@ export function DdayPanelSection({ className }: DdayPanelSectionProps) {
   const [pastOpen, setPastOpen] = useState(false);
   // R14·R8(리뷰 라운드 1 Major-1): ✕ 삭제 직전 행 자리표를 뜨고, 행이 사라진 뒤 되돌리기 토스트로
   // 포커스를 옮긴다. R14 순서(`rowAnchorOf`·`focusAfterRowRemoval`)는 카테고리 삭제가 쓰는 것과
-  // 몸통이 같다 — **다만 `region`(목록이 통째로 사라졌을 때의 `<nav>` 폴백) 은 없다**, 정확히 무엇이
-  // 왜 빠졌는지는 이식 사유와 함께 `@/features/calendar/lib/removal-focus.ts` 머리주석에 적혀 있다.
+  // 같은 `@/lib/focus-fallback`(T-87) 이다 — D-day 행은 `<nav>` 밖이라 `region` 폴백은 항상
+  // `null` 로 떨어지고, 그 자리는 아래 되돌리기 토스트 버튼이 채운다.
   const removalAnchor = useRef<RowAnchor | null>(null);
   // 되돌리기 토스트가 **실제로 DOM 에 뜬 뒤에만** 그 버튼으로 넘긴다 — `CategoryRemoveDialog.tsx`
   // 의 `useRemovalToastBridge` 와 같은 이유다: `pushToast` 는 별도 전역 토스트 스토어를 건드리므로

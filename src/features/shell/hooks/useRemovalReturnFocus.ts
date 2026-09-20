@@ -10,7 +10,7 @@ import {
   rowAnchorOf,
   toastActionButton,
   type RowAnchor,
-} from '@/features/shell/lib/focus-fallback';
+} from '@/lib/focus-fallback';
 
 export type RemovalReturnFocus = {
   /** `⋯ → 삭제` 를 누른 순간 호출한다 — 아직 살아 있는 행에서 자리표를 뜬다. */

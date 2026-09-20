@@ -25,7 +25,7 @@
 
    IME·접근 이름처럼 **기능 코드도 쓰는** 판정은 `src/lib/`(`ime.ts`·`a11y.ts`)에 두고 가져다 쓴다.
 
-4. 세 번째 사용처가 생길 때 여기로 승격. 그 전엔 feature 안에 둔다.
+4. 세 번째 사용처가 생길 때 여기로 승격. 그 전엔 feature 안에 둔다. **이 문턱은 React 컴포넌트용이다 — feature 간에 공유할 순수 함수(React 를 모르는 것)는 이 문턱이 아니라 `features/AGENTS.md` 규칙 5(`src/lib/`, 두 feature 째부터)를 따른다.**
 5. 출처: `docs/ARCHITECTURE.md` §1, `docs/conventions/code-style.md` §3·§6·§10.
 
 ## 관할: ui/

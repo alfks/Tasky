@@ -56,12 +56,13 @@
 
 ## 빠른 질문표
 
-| 질문                     | 답                                                                                 |
-| ------------------------ | ---------------------------------------------------------------------------------- |
-| 새 UI 컴포넌트는 어디?   | 한 기능 전용 → `src/features/<f>/components/`, 두 기능 이상 → `src/components/ui/` |
-| 달성률 계산은 어디?      | `src/domain/todo/todo.rules.ts` (순수 함수)                                        |
-| IndexedDB 스키마는 어디? | `src/infra/indexeddb/db.ts` (변경 시 ADR)                                          |
-| 새 유틸은 어디?          | 먼저 `Grep` 으로 `src/lib/` 확인 → 없으면 `src/lib/<name>.ts`                      |
-| 티켓/핸드오프는 어디?    | `.worktrees/tickets/`, `.worktrees/handoffs/` (커밋하지 않음)                      |
-| 결정 근거는 어디?        | `docs/DECISIONS.md` → 해당 ADR                                                     |
-| 레퍼런스 앱 동작 확인은? | `docs/research/reference-app-research.md`의 `## N.` 섹션을 Grep으로 찾아 그 범위만 |
+| 질문                            | 답                                                                                                                                                                               |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 새 UI 컴포넌트는 어디?          | 한 기능 전용 → `src/features/<f>/components/`, 두 기능 이상 → `src/components/ui/`                                                                                               |
+| 달성률 계산은 어디?             | `src/domain/todo/todo.rules.ts` (순수 함수)                                                                                                                                      |
+| IndexedDB 스키마는 어디?        | `src/infra/indexeddb/db.ts` (변경 시 ADR)                                                                                                                                        |
+| 새 유틸은 어디?                 | 먼저 `Grep` 으로 `src/lib/` 확인 → 없으면 `src/lib/<name>.ts`                                                                                                                    |
+| 다른 feature 의 헬퍼가 필요하다 | 배럴(`index.ts`)에 있고 그 feature 가 나를 조립하지 않으면 배럴로. 아니면 **복제하지 말고** `src/lib/` 로 올린다(owns 밖이면 멈추고 확장 요청) — `src/features/AGENTS.md` 규칙 5 |
+| 티켓/핸드오프는 어디?           | `.worktrees/tickets/`, `.worktrees/handoffs/` (커밋하지 않음)                                                                                                                    |
+| 결정 근거는 어디?               | `docs/DECISIONS.md` → 해당 ADR                                                                                                                                                   |
+| 레퍼런스 앱 동작 확인은?        | `docs/research/reference-app-research.md`의 `## N.` 섹션을 Grep으로 찾아 그 범위만                                                                                               |

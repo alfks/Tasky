@@ -7,7 +7,7 @@ import { useCallback } from 'react';
 import type { Category } from '@/domain/category/category';
 import type { CategoryId } from '@/domain/ids';
 
-import { revealAndFocus } from '@/features/shell/lib/focus-fallback';
+import { revealAndFocus } from '@/lib/focus-fallback';
 
 export function useCategoryFocus(categories: readonly Category[]): (id: CategoryId) => void {
   return useCallback(

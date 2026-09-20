@@ -4,7 +4,11 @@
 
 ## 목적
 
-프레임워크·도메인 무관 순수 유틸. 현재 `cn.ts`(clsx + tailwind-merge), `a11y.ts`(접근 이름 가드 — 공백 리터럴 차단 타입 `NonBlank` + 개발 모드 `assertAccessibleName`), `ime.ts`(`isImeKey` — 조합 중 키 판정, 오버레이와 기능 전용 대화상자가 함께 쓴다). `date.ts`(DateKey ↔ Date, 주 계산, `nowIso()`)와 `id.ts`(`newId()` = `crypto.randomUUID()` 래퍼)는 T-02 가 추가한다.
+프레임워크·도메인 무관 순수 유틸. 현재 `cn.ts`(clsx + tailwind-merge), `a11y.ts`(접근 이름 가드 — 공백 리터럴 차단 타입 `NonBlank` + 개발 모드 `assertAccessibleName`), `ime.ts`(`isImeKey` — 조합 중 키 판정, 오버레이와 기능 전용 대화상자가 함께 쓴다), `focus-fallback.ts`(행 삭제 뒤 포커스 착지 R14 순서 — shell·calendar 가 함께 쓴다, T-87), `korean.ts`(`objectParticle` — 을/를 조사, category·todo 문구가 함께 쓴다, T-87), `date.ts`(DateKey ↔ Date, 주 계산, `nowIso()`), `id.ts`(`newId()` = `crypto.randomUUID()` 래퍼).
+
+## 무엇이 여기 올라오는가
+
+세 조건을 전부 만족하면 lib 다: (1) `src/` 안에서 `lib` 밖을 import 하지 않고 패키지도 `PACKAGES.lib` 밖을 쓰지 않는다 — DOM 전역(`document`·`window`·`requestAnimationFrame`)은 써도 된다(`no-restricted-globals` 는 domain 에만 걸린다). (2) feature 어휘를 모른다 — 인자는 DOM 요소·문자열·숫자이고 `Todo`·`Category` 같은 도메인 타입·화면 문구·스토어를 참조하지 않는다. (3) 두 feature 이상이 쓰거나, 조립 방향 때문에 배럴로 공유할 수 없다(`features/AGENTS.md` 규칙 5). React 훅·컴포넌트는 (2)를 만족해도 여기 올 수 없다 — lib 은 `react`를 import 할 수 없다(`features/AGENTS.md` 규칙 5-(4)). 예: `focus-fallback.ts`(행 삭제 뒤 포커스 착지 — shell·calendar 가 쓴다), `korean.ts`(을/를 조사 — category·todo 문구가 쓴다), `ime.ts`. 반례: `features/shell/lib/toast-stack.ts` 는 셸 스토어 타입을 알므로 feature 에 남는다. 예외: lib 이 import 할 수 없는 상수·타입의 **동형 재선언**은 복제로 보지 않는다(테스트로 묶을 것) — 규칙 2 의 `date.ts`/`DateKey`, `focus-fallback.ts#toastActionButton`/`OVERLAY_ALWAYS_LIVE_ATTR` 가 선례다.
 
 ## 규칙
 
