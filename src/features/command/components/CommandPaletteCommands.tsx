@@ -96,9 +96,8 @@ export const PALETTE_COMMANDS: readonly Command[] = [
   {
     // `reports` 는 위 표의 다섯과 달리 `todo`(따라서 `command`)에 닿지 않는다 — domain·repositories
     // 만 보고 다른 feature 를 import 하지 않는다(date-strip 은 리프라 예외). 그래서 여기서 바로
-    // 등록할 수 있다. 다만 화면을 실제로 그리는 자리(AppShell.tsx)는 이 등록과 별개로 아직
-    // 배선돼 있지 않다 — `open` 은 켜지지만 그것을 그려 줄 마운트가 셸에 없다(T-85 owns 밖,
-    // `ReportsScreen.tsx` 머리 주석 참고).
+    // 등록할 수 있다. 화면을 실제로 그리는 자리(`AppShell.tsx`)도 이 등록과 함께 배선돼 있다 —
+    // `open` 을 켜면 `ReportsScreen` 이 그 자리에 그려진다.
     id: 'reports.open',
     label: '통계 보기',
     keywords: ['stats', 'report', '통계', '리포트'],
