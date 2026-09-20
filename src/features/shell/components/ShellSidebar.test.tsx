@@ -16,7 +16,20 @@ import { useTodoStore } from '@/features/todo';
 import { makeCategory } from '@/test/fixtures/category';
 import { makeRoutine } from '@/test/fixtures/routine';
 
+import {
+  ToastViewport,
+  clearToasts,
+  dismissToast,
+  pushToast,
+  useToasts,
+} from '@/components/ui/Toast';
+
 const 운동 = makeCategory({ seq: 1, name: '운동', order: 0 });
+
+/** `ShellToasts`(app-shell R8 전역 허브)를 축약한 것 — 실제 토스트 DOM 을 만든다. */
+function ToastHost() {
+  return <ToastViewport toasts={useToasts()} onClose={dismissToast} />;
+}
 
 beforeEach(() => {
   setRepositories(createMemoryRepositories());
@@ -29,6 +42,7 @@ beforeEach(() => {
     routines: {},
     routineStatus: 'idle',
   });
+  clearToasts();
 });
 
 describe('"루틴" 진입점', () => {
@@ -65,4 +79,40 @@ describe('"루틴" 진입점', () => {
     // `RoutineManager` 까지 닿았다는 뜻이다("+ 루틴 추가" 도 비활성이 아니어야 한다).
     expect(screen.getByRole('button', { name: '+ 루틴 추가' })).toBeEnabled();
   });
+
+  it(
+    '무관한 토스트가 떠 있어도 루틴 삭제 포커스를 가로채지 않는다 ' +
+      '(리뷰 #104 Major — preferToast: false)',
+    async () => {
+      await getRepositories().routines.upsert(adopt(makeRoutine({ title: '운동하기' })));
+      const user = userEvent.setup();
+      render(<ToastHost />);
+      render(
+        <ShellSidebar
+          showTitle
+          categories={[운동]}
+          onSelectCategory={vi.fn()}
+          onRemoveCategory={vi.fn()}
+        />,
+      );
+
+      // 이 삭제와 **무관한** 되돌리기 토스트(예: 방금 만든 루틴의 등록 성공)가 떠 있다.
+      pushToast({
+        message: '3개의 할 일을 만들었어요',
+        action: { label: '되돌리기', onAction: vi.fn() },
+      });
+      const undoButton = await screen.findByRole('button', { name: '되돌리기' });
+
+      await user.click(screen.getByRole('button', { name: '루틴' }));
+      await waitFor(() => expect(screen.getByText('운동하기')).toBeInTheDocument());
+      await user.click(screen.getByRole('button', { name: '운동하기 루틴 메뉴' }));
+      await user.click(screen.getByRole('menuitem', { name: '삭제' }));
+
+      await waitFor(() => expect(screen.queryByText('운동하기')).not.toBeInTheDocument());
+      // 포커스가 무관한 토스트로 튀지 않는다 — 튀었다면 거기서 Enter 가 루틴 삭제가 아니라
+      // 그 등록을 되돌린다(파괴적, 리뷰 #104 Major 실측).
+      await waitFor(() => expect(undoButton).not.toHaveFocus());
+      expect(document.activeElement).not.toBe(document.body);
+    },
+  );
 });

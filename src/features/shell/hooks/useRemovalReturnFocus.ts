@@ -19,7 +19,23 @@ export type RemovalReturnFocus = {
   returnFocus: () => HTMLElement | null;
 };
 
-export function useRemovalReturnFocus(): RemovalReturnFocus {
+export type UseRemovalReturnFocusOptions = {
+  /**
+   * 삭제가 **자기 되돌리기 토스트를 띄우는 경로에서만** `true` 로 둔다. 기본값 `true`(카테고리·
+   * 투두처럼 삭제 직후 `[되돌리기]` 토스트가 뜨는 경로, 아래 본문 참고). 그런 삭제가 없는 호출부
+   * (예: 루틴 삭제, routine.md R10 — 되돌리기 토스트가 없다)는 `false` 를 줘야 한다: 안 주면
+   * **이 삭제와 무관한, 화면에 우연히 떠 있는 다른 토스트**(등록 성공 등)의 버튼을 첫 후보로
+   * 집어 버린다(리뷰 #104 Major 실측 — 등록 토스트 `[되돌리기]`가 떠 있는 동안 루틴을 지우면
+   * 포커스가 그 토스트로 가고, 거기서 `Enter` 를 누르면 루틴 삭제가 아니라 **엉뚱한 등록을
+   * 되돌린다** — 파괴적이다).
+   */
+  preferToast?: boolean;
+};
+
+export function useRemovalReturnFocus(
+  options: UseRemovalReturnFocusOptions = {},
+): RemovalReturnFocus {
+  const { preferToast = true } = options;
   const anchor = useRef<RowAnchor | null>(null);
 
   return {
@@ -28,7 +44,7 @@ export function useRemovalReturnFocus(): RemovalReturnFocus {
     },
     returnFocus: () => {
       /*
-       * **되돌리기 토스트가 있으면 그것이 첫 후보다.**
+       * **되돌리기 토스트가 있으면 그것이 첫 후보다 — 단, `preferToast` 가 참일 때만.**
        *
        * R14 의 문면은 "다음 형제 → 이전 형제 → 목록 컨테이너" 이고 아래 `focusAfterRowRemoval` 이
        * 그대로 한다. 그런데 카테고리 삭제는 닫히는 즉시 `[되돌리기]` 토스트가 뜨는 경로이고(R15),
@@ -39,7 +55,8 @@ export function useRemovalReturnFocus(): RemovalReturnFocus {
        * 닫힘 타이머를 멈추므로(R8) 6초 제한도 함께 풀린다. 되돌릴 것이 없으면(액션 없는 토스트)
        * 아래 R14 순서로 떨어진다.
        */
-      return toastActionButton(document) ?? focusAfterRowRemoval(anchor.current);
+      const toast = preferToast ? toastActionButton(document) : null;
+      return toast ?? focusAfterRowRemoval(anchor.current);
     },
   };
 }

@@ -52,7 +52,11 @@ export function ShellSidebar({
 }: ShellSidebarProps) {
   // 루틴 삭제로 그 행이 사라진 뒤 포커스가 `<body>` 로 떨어지지 않게(app-shell R14) — 카테고리
   // 삭제가 쓰는 것과 같은 헬퍼, 인스턴스만 이 사이드바 전용으로 새로 둔다.
-  const routineRemovalFocus = useRemovalReturnFocus();
+  // `preferToast: false` — 루틴 삭제는 자기 되돌리기 토스트를 띄우지 않는다(routine.md R10). 기본
+  // 값(true)을 그대로 쓰면 이 삭제와 무관하게 화면에 떠 있는 **다른** 토스트(예: 방금 만든 루틴의
+  // 등록 성공 `[되돌리기]`)의 버튼으로 포커스가 튀어, 거기서 Enter 를 누르면 루틴 삭제가 아니라
+  // 그 등록을 되돌린다(리뷰 #104 Major 실측 — 파괴적이라 반드시 꺼야 한다).
+  const routineRemovalFocus = useRemovalReturnFocus({ preferToast: false });
   return (
     <nav
       aria-label="카테고리"
