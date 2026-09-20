@@ -33,6 +33,15 @@ describe('HeatmapCard (stats.md R6·§5)', () => {
     expect(screen.getByRole('cell', { name: '기록 없음' })).toBeInTheDocument();
   });
 
+  it('격자 자체의 배경은 --color-surface 다(theme.md §3-H — 0단계 대비가 surface-2 에서는 무너진다)', () => {
+    const weeks: HeatmapCell[][] = [[cell('2026-09-18', 4, 1, 1)]];
+
+    render(<HeatmapCard weeks={weeks} today={TODAY} />);
+
+    // 우연히 부모(ReportsCard)가 같은 색이어서가 아니라, 이 컴포넌트가 직접 선언한다.
+    expect(screen.getByRole('img', { name: '최근 12주 활동 히트맵' })).toHaveClass('bg-surface');
+  });
+
   it('오늘 이후 날짜는 표에도 나오지 않는다', () => {
     const weeks: HeatmapCell[][] = [
       [cell('2026-09-18', 4, 1, 1), cell('2026-09-19', 4, 1, 1), cell('2026-09-20', 4, 1, 1)],

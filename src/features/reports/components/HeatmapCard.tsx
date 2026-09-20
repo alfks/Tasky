@@ -59,10 +59,18 @@ export function HeatmapCard({ weeks, today }: HeatmapCardProps) {
 
   return (
     <div>
+      {/*
+        theme.md §3-H R25 의 대비 실측은 세 면(bg·surface·surface-2) 마다 값이 다르고, 검증
+        리뷰 실측: 다크 0단계(기록 없음)가 surface 기준 1.16(보임)인데 surface-2 기준 1.03(사실상
+        사라짐)이다. R26 은 "카드에서 보여야" 만 보장할 뿐 히트맵이 어느 면 위에 놓이는지는 정하지
+        않는다(theme.md §3-H). 그래서 **여기서 직접** `--color-surface` 를 선언한다 — `ReportsCard`
+        가 지금 `bg-surface` 라 사실상 같은 면이지만, 그 우연에 기대지 않는다(다른 카드 안에
+        중첩되거나 `ReportsCard` 의 배경이 바뀌어도 히트맵은 항상 자기 배경을 스스로 정한다).
+      */}
       <div
         role="img"
         aria-label="최근 12주 활동 히트맵"
-        className="grid grid-flow-col gap-[var(--space-1)]"
+        className="grid grid-flow-col gap-[var(--space-1)] rounded-[var(--radius-md)] bg-surface p-[var(--space-1)]"
       >
         {weeks.map((week) => (
           <div key={week[0]?.date} className="flex flex-col gap-[var(--space-1)]">
