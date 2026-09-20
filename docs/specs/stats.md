@@ -39,13 +39,13 @@
 - R3. 카테고리 비율: `summarizeByCategory`(completion-rate.md §4)를 **그대로** 쓴다 — 기간 전체 투두 배열을 한 번에 넘기면 되므로 별도로 확장할 것이 없다. 삭제된 카테고리는 "(삭제됨)" 묶음.
 - R4. **연속 달성(스트릭)**: `summarizeDays` 결과의 날짜별 `isAllDone`을 오늘(또는 선택 날짜)에서 과거로 훑어, 끊기지 않고 이어진 일수를 센다(신규 순수 함수, `isAllDone` 배열만 입력받는다). `total === 0`인 날(투두 0개)은 스트릭을 끊지 않고 건너뛴다(기록할 게 없던 날은 실패가 아니다 — `isAllDone`이 이미 `total > 0`을 전제하므로 이 규칙과 자연히 맞아떨어진다, day-summary.ts 참고).
 - R5. 집중 시간: 기간 내 `FocusSession`(status ∈ completed·canceled) `elapsedSeconds` 합계(신규 순수 함수). 투두별 상위 5개 + 나머지 "기타"로 합산.
-- R6. 히트맵: 최근 12주 × 7일, 칸 진하기는 `summarizeDays`의 `total`·`doneCount`로 구한 완료율 4단계(0% / 1~~49% / 50~~99% / 100%, `total === 0`은 5번째 톤 "기록 없음"). 오늘 이후 칸은 렌더하지 않는다. 4단계 진하기 토큰은 아직 `theme.md`에 없다 — **구현 전에 `theme.md`가 먼저 값을 정한다**(스펙 포맷 규칙5, 수치는 theme.md 단일 소스이므로 이 스펙에서 HEX를 만들지 않는다).
+- R6. 히트맵: 최근 12주 × 7일, 칸 진하기는 `summarizeDays`의 `total`·`doneCount`로 구한 완료율 4단계(0% / 1~~49% / 50~~99% / 100%, `total === 0`은 **0번** 톤 "기록 없음"). 오늘 이후 칸은 렌더하지 않는다. 진하기 토큰은 `theme.md` §3-H(`--color-heatmap-{0..4}`, 잉크 명도 5단계)가 정한다 — 히트맵 칸은 그 토큰만 쓴다(theme.md R1).
 - R7. 모든 계산은 `TodoRepository.listByDateRange`·`FocusSessionRepository.listByDateRange`(§4, 신규) 각각 기간 전체를 **한 번씩** 읽어 메모리에서 합산한다 — 날짜마다 개별 조회하지 않는다(date-strip R17과 같은 원칙).
 - R8. 새 차트 라이브러리를 추가하지 않는다(CLAUDE.md §7-9, 사용자 확인 없는 의존성 추가 금지) — 막대·히트맵은 SVG/CSS로 직접 그린다.
 
 ## 4. 데이터
 
-- domain: 완료율 추이·히트맵은 **새 함수를 만들지 않는다** — `day-summary.ts`의 `summarizeDays(days, todos, categories) → Map<DateKey, DaySummary>`를 그대로 쓴다(`total`·`doneCount`·`isAllDone`을 읽는다, R2·R6). 카테고리 비율도 `completion-rate.ts`의 `summarizeByCategory`를 그대로 쓴다(R3). 기간 전용 신규 순수 함수는 둘뿐이다: 스트릭 `computeStreak(isAllDoneByDay: readonly boolean[], from) → number`(R4), 집중 시간 합계 `summarizeFocusSeconds(sessions, by: 'day'|'todo'|'category')`(R5). 타입 변경 없음(기존 `Todo`·`FocusSession`·`Category` 조합).
+- domain: 완료율 추이·히트맵은 **새 함수를 만들지 않는다** — `day-summary.ts`의 `summarizeDays(days, todos, categories) → Map<DateKey, DaySummary>`를 그대로 쓴다(`total`·`doneCount`·`isAllDone`을 읽는다, R2·R6). 카테고리 비율도 `completion-rate.ts`의 `summarizeByCategory`를 그대로 쓴다(R3). 기간 전용 신규 순수 함수는 둘뿐이다: 스트릭 `computeStreak(days: readonly Pick<DaySummary, 'total' | 'isAllDone'>[]) → number`(R4 — `total === 0`인 날은 건너뛰고 `!isAllDone`인 날에서 멈춘다. `boolean` 배열만으로는 "투두 0개인 날"과 "있었는데 다 못 한 날"을 구분할 수 없어 R4 자체를 구현할 수 없으므로 `total`까지 함께 받는다), 집중 시간 합계 `summarizeFocusSeconds(sessions, by: 'day'|'todo'|'category')`(R5). 타입 변경 없음(기존 `Todo`·`FocusSession`·`Category` 조합).
 - 레포지토리: 기존 `TodoRepository.listByDateRange` 재사용. `FocusSessionRepository`에 같은 모양의 `listByDateRange(from, to)`를 **새로 추가**한다 — 기존 메서드는 바뀌지 않는 순수 추가다. 저장소 인터페이스 확장이라 오케스트레이터가 티켓 발행 전 ADR 필요 여부를 판단한다(docs/decisions/AGENTS.md "ADR이 필요한 변경", ADR-0014가 유사 사례). 신규 저장 엔티티 없음 — 통계는 항상 **재구성**이다(timer.md §4 각주와 동일 원칙).
 
 ## 5. 접근성
