@@ -115,21 +115,39 @@ export function planMerge<T extends Meta>(
 }
 
 /**
- * 루틴 병합(R6 + ADR-0017 §재검토 트리거 "T-86 착수 시 결정"). 다른 필드는 `planMerge` 와 같은
- * newer-wins 규칙을 그대로 쓰되, **`materializedThrough`(워터마크) 만은 그 규칙에서 빼내 두 값 중
- * 더 늦은 날짜를 남긴다.**
+ * 루틴 병합(R6 + ADR-0017 §재검토 트리거 "T-86 착수 시 결정", 리뷰 #108 Major 1 로 근거를 고쳤다).
+ * 다른 필드는 `planMerge` 와 같은 newer-wins 규칙을 그대로 쓰되, **`materializedThrough`(워터마크)
+ * 만은 그 규칙에서 빼내 두 값 중 더 늦은 날짜를 남긴다.**
  *
- * 이유: 병합은 로우를 지우지 않고 `id` 합집합을 만든다(`merged` 의 구성 — 위 `planMerge` 를 본다).
- * 그래서 두 쪽 중 어느 워터마크를 쓰든, 그 워터마크가 이미 훑은 구간의 인스턴스는 결과 `todos` 에
- * 그대로 남아 있다 — **더 늦은 값**을 써도 "그 구간에 아직 없는 걸 있다고 착각" 하지 않는다(있다).
- * 반대로 **더 이른 값**을 쓰면 이미 다른 쪽이 훑은 구간을 지연 생성이 다시 방문해 **중복 인스턴스**를
- * 만든다(ADR-0017 이 `write()`/미래 sync 를 두고 경고한 위험 그대로 — 병합이 그 경로를 지금 연다).
- * 그래서 "다른 필드는 newer-wins, 워터마크만 max" 가 유일하게 안전한 조합이다 — `updatedAt` 은
- * "언제 손을 댔는지" 를 뜻하고 워터마크는 "어디까지 만들었는지" 를 뜻하는 별도 축이라(routine.ts
- * 필드 주석), 같은 축으로 같이 판정하면 안 된다.
+ * **이것은 "유일하게 안전한 조합" 이 아니라 두 실패 모드 사이의 트레이드오프다** — 둘 다 병합의
+ * newer-wins 가 워터마크에는 안 맞는 축이라서 생긴다(`updatedAt` 은 "언제 손을 댔는지", 워터마크는
+ * "어디까지 만들었는지" 를 뜻하는 별개 축, routine.ts 필드 주석):
+ *
+ * - **더 이른 값(min)을 쓰면**: 다른 쪽이 이미 지나간 구간을 지연 생성(`planRoutineFill`)이 다시
+ *   훑는다. 하지만 "구간 전체가 중복된다" 는 아니다 — `planRoutineFill` 은 그 구간의 **살아 있는**
+ *   기존 투두와 (날짜·카테고리·정규화 제목)으로 대조해 건너뛴다(`routine-fill.ts:53-59`). 그래서
+ *   실제로 새로 생기는 것은 그 사이 **제목을 고쳤거나 다른 날짜로 옮긴** 인스턴스뿐이고(대조 키가
+ *   안 맞아 "없다" 로 보인다), **지운** 인스턴스는 항상 되살아난다(export 가 툼스톤 투두를 안 싣는
+ *   한계, `export-backup.ts` "삭제된 투두는 내보내지 않는다"). 실패는 **국지적이고 눈에 보인다.**
+ * - **더 늦은 값(max)을 쓰면**: 그 구간을 "이미 다 만들었다" 로 접어 다시는 방문하지 않는다. 그런데
+ *   "워터마크가 그 구간을 지났다" 가 "그 구간의 인스턴스가 실제로 있다" 를 뜻하지 않는다 —
+ *   `resumeRoutine`(`routine.rules.ts:97-99`, R7 "소급 없음")이 정확히 그 반례다: 재개는 인스턴스를
+ *   **하나도 만들지 않고** 워터마크만 `today` 전날로 점프시킨다. 로컬이 중지된 채 남아 있는 동안
+ *   (워터마크가 뒤처진 채) 파일 쪽이 먼저 재개해 워터마크가 앞서면, 병합의 max 가 그 앞선 값을
+ *   택하는 순간 로컬이 원래 채웠어야 할 구간이 **영구히, 조용히** 사라진다 — 다시 방문해도 복구되지
+ *   않는다(워터마크가 이미 그 구간을 지났다고 기록됐으므로). 실패는 **전역적이고 안 보인다.**
+ *
+ * **그래도 max 를 고른다 — 이 트레이드오프에서 중복·부활 쪽을 피하는 선택이다.** min 을 쓰면
+ * 위 첫째 항목의 중복·부활이 병합 **때마다, 바로** 일어난다. max 를 쓰면 위 둘째 항목의 영구 공백은
+ * "병합 + 그 사이 한쪽이 인스턴스 없이 워터마크만 옮긴 적이 있다"(중지→재개가 그 전형이다) 는
+ * 조건이 겹쳐야만 생긴다 — 항상 나는 실패보다 조건부로 나는 실패를 택했다는 뜻이지, **위험이 없다는
+ * 뜻이 아니다.** S5 는 그 조건부 실패가 실제로 일어남을 보여준다(`plan-import.test.ts` "반례(S5)").
+ * **두 실패 모드 다 sync(ADR-0015) 구현 착수 시 다시 본다**(ADR-0017 재검토 트리거) — 특히 위 재개
+ * 반례는 "로우를 지우지 않는 한 안전하다" 는 식의 조건으로는 안 잡힌다(재개는 로우를 **하나도 안
+ * 지운다**).
  *
  * 교체(R7)는 이 함수를 쓰지 않는다 — 파일 하나가 전량을 통째로 대체하므로 그 안의 루틴·투두는 항상
- * 같은 스냅샷에서 나와 이미 서로 맞는다(위 위험이 성립하지 않는다).
+ * 같은 스냅샷에서 나와 이미 서로 맞는다(위 두 실패 모드 다 성립하지 않는다).
  */
 function planMergeRoutines(
   local: readonly Persistable<Routine>[],
@@ -140,6 +158,11 @@ function planMergeRoutines(
     incoming.map((routine) => [routine.id, routine.materializedThrough]),
   );
   const merged = planMerge(local, incoming);
+  // 리뷰 #108 Minor 2: 워터마크만 바꾸고 `updatedAt`·`rev` 는 그대로 둔다 — `touch()` 를 쓰면 이
+  // 행이 "방금 손을 댄 것" 처럼 보여 다음 병합의 newer-wins 판정(§위 문서)을 오염시킨다(파일 쪽이
+  // 실제로는 안 바뀐 필드까지 "더 최근" 으로 착각해 가져간다). 지금은 백업 왕복 안에서만 도니 무해
+  // 하지만, **LWW 로 동기화할 미래에는 이 변경 자체가 다른 기기에 영영 전파되지 않는다** — 워터마크
+  // 만 바뀐 로우는 `updatedAt` 이 그대로라 "바뀐 것 없음" 으로 보인다. sync 재검토 항목에 같이 남긴다.
   const rows = merged.rows.map((routine) => {
     const a = localThrough.get(routine.id);
     const b = incomingThrough.get(routine.id);
@@ -226,6 +249,16 @@ export function planImport(input: {
   const todos = plan(adoptLocal(local.todos), adoptFile(document.todos));
   const focusSessions = plan(adoptLocal(local.focusSessions), adoptFile(sessions));
   const ddays = plan(adoptLocal(local.ddays), adoptFile(document.ddays));
+  // 리뷰 #108 Minor 1 — 알려진 한계, 고치지 않고 **결정만** 남긴다: `diaryEntries` 는 일반 `planMerge`
+  // 를 그대로 쓴다(id 단위 newer-wins). 그런데 diary R1("하루 1개")은 `id` 가 아니라 `date` 단위
+  // 유일성이라, id 가 다른 두 행이 같은 날짜를 가리키는 경우를 이 병합이 못 막는다 — 재현 경로: A 가
+  // 어떤 날짜의 기록을 지우고 새로 쓴 뒤(새 id) 내보내면(export 는 todos 와 같이 diaryEntries 도
+  // 툼스톤을 안 싣는다, `export-backup.ts`), 그 옛 기록을 아직 갖고 있는 B 와 병합하면 **같은 날짜에
+  // 살아 있는 두 행**이 남는다. `getByDate`(`diary.rules.ts#compareDiaryEntries`, createdAt 이른
+  // 쪽)가 결정적으로 하나만 골라 화면에서는 조용히 숨지만, DB 에는 두 행이 영구히 남고 `list()`·향후
+  // 동기화에서 드러난다. 고치려면 라우틴처럼 date 단위로 묶어 패자를 **소프트 삭제**해야 하는데, 그
+  // 삭제에는 `touch()` 가 찍을 시각(`now`)이 필요하고 `planImport` 는 지금 순수 함수라 그 입력이
+  // 없다 — 시그니처를 늘리는 일이라 이번 라운드는 결정만 기록하고 후속으로 넘긴다.
   const diaryEntries = plan(adoptLocal(local.diaryEntries), adoptFile(document.diaryEntries));
   const routineLocal = adoptLocal(local.routines);
   const routineIncoming = adoptFile(document.routines);
