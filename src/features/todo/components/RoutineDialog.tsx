@@ -143,7 +143,6 @@ export function RoutineDialog({ todo, categories, onClose, returnFocus }: Routin
               min={form.startDate}
               max={MAX_DATE_KEY}
               disabled={form.indefinite}
-              aria-describedby={form.indefinite ? indefiniteHintId : undefined}
               onChange={(e) => form.setEndDate(e.target.value)}
               className={`${FIELD_CLASS} h-[var(--control-height)] disabled:opacity-50`}
             />
@@ -152,6 +151,9 @@ export function RoutineDialog({ todo, categories, onClose, returnFocus }: Routin
             <input
               type="checkbox"
               checked={form.indefinite}
+              // `disabled` 인 종료일 입력엔 걸지 않는다 — disabled 컨트롤은 포커스를 못 받아 설명이
+              // 닿지 않는다(리뷰 m2). 실제로 조작하는 이 체크박스에 건다.
+              aria-describedby={form.indefinite ? indefiniteHintId : undefined}
               onChange={(e) => form.setIndefinite(e.target.checked)}
               className="size-[var(--control-checkbox-size)]"
             />
