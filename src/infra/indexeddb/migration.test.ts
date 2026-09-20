@@ -12,7 +12,7 @@ import type { Todo } from '@/domain/todo/todo';
 
 import { isRepositoryError, type RepositoryError } from '@/repositories/repository-error';
 
-import { db, DB_VERSION, STORES, STORES_V1, type TaskyDb } from '@/infra/indexeddb/db';
+import { db, DB_VERSION, STORES, STORES_V1, STORES_V2, type TaskyDb } from '@/infra/indexeddb/db';
 import { storeOn } from '@/infra/indexeddb/query';
 
 let seq = 0;
@@ -46,8 +46,29 @@ async function seedV1(): Promise<{ todo: Todo; category: Category }> {
   return { todo, category };
 }
 
-describe('스키마 v1 → v2 업그레이드 (ADR-0011)', () => {
-  // **DB 를 매번 지운다.** 지우지 않으면 첫 테스트가 올려놓은 v2 DB 위에서 `seedV1()` 이 돌고
+/** v2 스키마로만 아는 별도 Dexie 인스턴스(ADR-0016 §결정 4 — v1 블록도 함께 선언해 실제 업그레이드 경로를 밟는다). */
+async function seedV2(): Promise<{ todo: Todo; category: Category }> {
+  const legacy = new Dexie('tasky');
+  legacy.version(1).stores(STORES_V1);
+  legacy.version(2).stores(STORES_V2);
+  await legacy.open();
+  expect(legacy.verno, 'v2 DB 로 시작하지 않았다 — 이 테스트는 v3 업그레이드를 밟지 않는다').toBe(
+    2,
+  );
+  const todo = V1_TODO();
+  const category = V1_CATEGORY();
+  await legacy.table('todos').put(todo);
+  await legacy.table('categories').put(category);
+  legacy.close();
+  return { todo, category };
+}
+
+// **이름이 "v1 → v2" 지만 실제로 밟는 경로는 v1 → v3 다**(Nit, 리뷰 라운드 1) — 이 블록이 여는 `db`
+// 는 앱이 쓰는 바로 그 인스턴스라 `DB_VERSION`(지금 3, ADR-0016)까지 올라간다. v1 시절 로우가 v2 에서
+// 새로 생긴 인덱스로도 조회되는지가 원래 의도였고 그건 여전히 맞다 — 다만 "v2 까지만" 이라는 이름의
+// 함의는 더 이상 맞지 않는다. 이름은 ADR-0011 당시 그대로 두고, v2→v3 전용 단언은 아래 별도 블록이 한다.
+describe('스키마 v1 → v2 업그레이드 (ADR-0011, 지금은 v1 → v3 를 탄다)', () => {
+  // **DB 를 매번 지운다.** 지우지 않으면 첫 테스트가 올려놓은 v3 DB 위에서 `seedV1()` 이 돌고
   // (Dexie 는 낮은 버전 선언으로 열어도 기존 버전을 그대로 쓴다) 이후 테스트는 업그레이드를
   // 한 번도 밟지 않은 채 통과한다 — 실측으로 확인한 함정이라 여기 적어 둔다.
   beforeEach(async () => {
@@ -87,23 +108,67 @@ describe('스키마 v1 → v2 업그레이드 (ADR-0011)', () => {
     expect(db.focusSessions.schema.primKey.name).toBe('id');
   });
 
-  it('열린 스키마의 인덱스가 STORES 선언과 정확히 일치한다 (네 테이블 전부)', async () => {
+  it('열린 스키마의 인덱스가 STORES 선언과 정확히 일치한다 (선언된 모든 테이블)', async () => {
     await seedV1();
 
     await db.open();
 
-    for (const [name, declaration] of Object.entries(STORES)) {
-      const declared = declaration
-        .split(',')
-        .map((part) => part.trim())
-        .slice(1)
-        .sort();
-      const actual = db
-        .table(name)
-        .schema.indexes.map((index) => index.name)
-        .sort();
-      expect(actual, `${name} 의 인덱스가 STORES 선언과 다르다`).toEqual(declared);
+    assertIndexesMatchStores();
+  });
+});
+
+/** `STORES`(현재 버전) 선언과 실제로 열린 스키마의 인덱스가 테이블마다 정확히 같은지 — 두 v2→v3 describe 블록이 공유한다. */
+function assertIndexesMatchStores(): void {
+  for (const [name, declaration] of Object.entries(STORES)) {
+    const declared = declaration
+      .split(',')
+      .map((part) => part.trim())
+      .slice(1)
+      .sort();
+    const actual = db
+      .table(name)
+      .schema.indexes.map((index) => index.name)
+      .sort();
+    expect(actual, `${name} 의 인덱스가 STORES 선언과 다르다`).toEqual(declared);
+  }
+}
+
+describe('스키마 v2 → v3 업그레이드 (ADR-0016)', () => {
+  // v1→v2 블록과 같은 함정: DB 를 지우지 않으면 첫 테스트가 올려놓은 v3 DB 위에서 seedV2() 가 돌아
+  // 업그레이드를 밟지 않은 채 통과한다.
+  beforeEach(async () => {
+    db.close();
+    await Dexie.delete('tasky');
+    seq = 0;
+  });
+
+  it('v2 로 만들어진 DB 를 열면 v3 로 올라가고 기존 로우가 값 그대로 남는다', async () => {
+    const { todo, category } = await seedV2();
+
+    await db.open();
+
+    expect(db.verno).toBe(DB_VERSION);
+    expect(await db.todos.get(todo.id)).toEqual({ ...todo });
+    expect(await db.categories.get(category.id)).toEqual({ ...category });
+  });
+
+  it('v3 에서 신설된 ddays·diaryEntries·routines 테이블은 비어 있고 곧바로 쓸 수 있다', async () => {
+    await seedV2();
+
+    await db.open();
+
+    for (const name of ['ddays', 'diaryEntries', 'routines']) {
+      expect(await db.table(name).count(), `${name} 은 비어 있어야 한다`).toBe(0);
+      expect(db.table(name).schema.primKey.name, `${name} 의 기본 키는 id 다`).toBe('id');
     }
+  });
+
+  it('열린 스키마의 인덱스가 STORES 선언과 정확히 일치한다 (선언된 모든 테이블)', async () => {
+    await seedV2();
+
+    await db.open();
+
+    assertIndexesMatchStores();
   });
 });
 
@@ -125,6 +190,7 @@ describe('스키마 업그레이드 실패 (TECH_PLAN §5 규칙 4)', () => {
 
   const declare = (database: TaskyDb): TaskyDb => {
     database.version(1).stores(STORES_V1);
+    database.version(2).stores(STORES_V2);
     database.version(DB_VERSION).stores(STORES);
     opened.push(database);
     return database;

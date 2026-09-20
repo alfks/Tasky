@@ -25,10 +25,11 @@ describe('container', () => {
     expect(getRepositories()).toBe(repositories);
   });
 
-  it('다섯 저장소를 모두 노출한다 (엔티티 4 + dataset)', () => {
+  it('여섯 저장소를 모두 노출한다 (엔티티 4 + dataset + dday)', () => {
     expect(Object.keys(getRepositories()).sort()).toEqual([
       'categories',
       'dataset',
+      'dday',
       'focusSessions',
       'settings',
       'todos',

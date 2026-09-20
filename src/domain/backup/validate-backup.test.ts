@@ -85,7 +85,7 @@ describe('validateBackup — 봉투 검사 (R2·R3)', () => {
     const result = validateBackup(v1);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.document.schemaVersion).toBe(2);
+      expect(result.document.schemaVersion).toBe(3);
       expect(result.document.focusSessions).toEqual([]);
     }
   });

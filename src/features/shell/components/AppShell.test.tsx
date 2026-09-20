@@ -250,7 +250,12 @@ describe('타이머 슬롯 (리뷰 필수항목 5 · R15)', () => {
   it('인사이트 패널 맨 위가 집중 섹션이다 (R6 순서)', async () => {
     await mount();
     const headings = within(screen.getByRole('complementary')).getAllByRole('heading');
-    expect(headings.map((h) => h.textContent)).toEqual(['집중', '오늘 달성률', '카테고리별']);
+    expect(headings.map((h) => h.textContent)).toEqual([
+      '집중',
+      '오늘 달성률',
+      '카테고리별',
+      'D-day',
+    ]);
   });
 
   it('세션이 없으면 헤더 칩은 렌더되지 않는다 (R15 "자리 차지 없음")', async () => {
