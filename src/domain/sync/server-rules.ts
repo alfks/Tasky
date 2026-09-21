@@ -61,7 +61,8 @@ export type ServerChange = {
  * 때만"(`isCreateAttempt = baseSeq === 0`) 가드는 `baseSeq` 가 정확히 숫자 `0` 일 때만 성립하므로,
  * 형식이 어긋나면 그 가드 자체가 무의미해진다. 값을 신뢰하지 않고 이 자리에서 바로 거절한다.
  */
-export type ServerRuleResult = 'insert' | 'update' | 'reject-exists' | 'reject-stale' | 'reject-invalid';
+export type ServerRuleResult =
+  'insert' | 'update' | 'reject-exists' | 'reject-stale' | 'reject-invalid';
 
 /**
  * 미래 시각 클램프 — `updatedAt` 이 서버 수신 시각보다 미래면 수신 시각으로 내려 앉힌다(ADR-0005
@@ -88,10 +89,7 @@ export function applyServerRules(
   existing: ExistingServerRow | undefined,
   change: ServerChange,
 ): ServerRuleResult {
-  if (
-    existing !== undefined &&
-    (existing.tbl !== change.tbl || existing.id !== change.id)
-  ) {
+  if (existing !== undefined && (existing.tbl !== change.tbl || existing.id !== change.id)) {
     throw new Error(
       `applyServerRules: existing (${existing.tbl},${existing.id}) 와 change (${change.tbl},${change.id}) 가 다른 로우를 가리킨다`,
     );
