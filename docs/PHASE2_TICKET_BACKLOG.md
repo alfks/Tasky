@@ -570,6 +570,8 @@ T-96~T-98 은 위 절에서 이미 쓰였으므로 **T-99 부터** 잇는다. �
 
 - **T-103 — `docs/specs/routine.md` §4 서술 정정.** §4 가 "2026-09-21 정정 … 지금은 배경 채우기(`planRoutineFill`)도 이 값(`fillFloor`)을 전진시킨다 — `SyncRepository.existingIds` 가 배선될 때까지의 임시 조치" 라고 적고 있는데, origin/main 의 코드는 그 반대다 — `src/domain/routine/routine-fill.ts` 머리 주석: "**`fillFloor` 는 이 함수가 옮기지 않는다**(ADR-0018 §결정 3, 최종 설계로 복귀)", `fillFloor` 를 바꾸는 곳은 `routine.rules.ts` 의 `createRoutine`·`resumeRoutine` 둘뿐이고 `existingIds` 는 이미 배선됐다(#123). 스펙의 그 문장을 코드에 맞춰 고치고(채우기는 `fillFloor` 를 바꾸지 않는다, 임시 조치는 끝났다), ADR-0018 "## 정정" 절과 어긋나지 않는지 같이 본다. `docs/specs/**` 는 T-95 owns 밖이라 여기 기록만 남긴다.
 
+- **T-104 — `wt.sh` mkdir 폴백 락의 stale 회수 경합(1/8 재현).** `scripts/check.sh` 전체 실행에서 `wt.sh 스모크 테스트` 15번(flock 없는 환경 흉내, `new` 8개 동시 실행)이 **BOARD 행 7/8** 로 한 번 실패했고, 같은 절을 그 뒤 7번(단독 1·전체 check.sh 1·연속 5) 돌려 전부 8/8 이었다 — 재현율 약 1/8, `wt.sh` 가 `ERROR`/`WARN` 을 찍지 않고 rc=0 으로 끝난 채 행만 사라진다(`new_with_retry` 가 재시도하지 않은 이유). **#79(T-62, `check-arch.sh` 픽스처 경합)의 재발이 아니라 별개 코드다** — `scripts/wt.sh#board_lock_acquire` 의 mkdir 폴백에서, 대기자 C 가 보유자 A 의 pid 를 읽은 **뒤** A 가 반납하고 B 가 새로 잡으면, C 는 죽은 A 의 pid 로 stale 판정을 내려 `rm -rf` 로 **B 의 락을 지우고** 자기도 잡는다(TOCTOU) — B 와 C 가 동시에 BOARD 를 써 한 행이 사라진다. `flock` 이 있는 환경(이 컨테이너 포함 — `/usr/bin/flock`)은 그 경로를 타지 않으므로 실사용 노출은 flock 없는 셸뿐이다. 고칠 방향: stale 회수를 `rm -rf` 가 아니라 **pid 파일 내용을 비교하며 `rename`** 으로 원자화하거나(다른 pid 가 적혀 있으면 회수 포기), 회수 뒤 `mkdir` 성공 후 자기 pid 를 쓰고 **다시 읽어 확인**한다. 실패 로그 원문은 T-95 세션 스크래치패드에만 있어 레포에 없다 — 재현은 `for i in $(seq 8); do bash scripts/test-wt.sh | grep no-flock; done`.
+
 ## T-94 머지 직후 고칠 문서 목록 (한 곳에 모음 — 2026-09-21 T-95)
 
 T-94(`origin/feature/sync-client`)가 머지되면 아래가 **한 PR 로** 같이 바뀌어야 한다. 흩어 두면 하나를 빠뜨리므로 여기서만 관리한다 — 값은 **전부 머지 직후 다시 재서** 적는다(T-94 브랜치의 값을 미리 옮겨 적지 않는다).
