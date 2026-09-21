@@ -6,7 +6,7 @@
 // 변경 / 다른 카테고리로 이동)가 **한 화면에서 갈리는지**는 브라우저에서만 드러난다.
 //
 // 이동이 저장까지 갔는지는 **새로고침 뒤**에 잰다 — 화면만 보면 낙관적 갱신이 저장 실패를 가린다.
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures/stub-login';
 
 import type { Locator, Page } from '@playwright/test';
 

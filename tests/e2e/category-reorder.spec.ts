@@ -6,7 +6,7 @@
 // 앞/뒤 판정이 실제 행 높이 위에서 갈리는지는 브라우저에서만 드러난다.
 //
 // 순서가 저장까지 갔는지는 **새로고침 뒤**에 잰다 — 화면만 보면 낙관적 갱신이 저장 실패를 가린다.
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures/stub-login';
 
 import type { Locator, Page } from '@playwright/test';
 

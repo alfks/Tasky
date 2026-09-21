@@ -15,7 +15,7 @@
 // 셀렉터는 `tests/AGENTS.md` 규칙대로 역할 + 접근 이름만 쓴다. 다만 링을 그리는 면이
 // `aria-hidden` 인 곳(색 스와치·타이머 프리셋)은 역할이 없어 주소를 매길 수 없다 —
 // 그때만 `evaluate` 안에서 한 칸 내려간다(그 한 칸을 주석으로 못 박는다).
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures/stub-login';
 
 import type { Locator, Page } from '@playwright/test';
 

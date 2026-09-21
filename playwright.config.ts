@@ -56,7 +56,14 @@ const config = defineConfig({
     },
   ],
   webServer: {
-    command: `pnpm build && pnpm start --port ${PORT}`,
+    // `AUTH_STUB:1` 는 `worker/auth/stub.ts` 의 `GET /auth/stub-login` 을 연다(localhost 호스트
+    // 조건과 함께 2중 가드) — e2e 는 이 경로로 구글 왕복 없이 로그인한다. `SESSION_SECRET` 은 세션
+    // 쿠키 서명 비밀(값 자체는 e2e 안에서만 쓰고 다른 의미가 없다). `--persist-to .wrangler/e2e`
+    // 를 마이그레이션과 dev 서버 양쪽에 **같은 값으로** 줘야 dev 서버가 방금 만든 스키마를 본다.
+    command:
+      `pnpm build && ` +
+      `pnpm exec wrangler d1 migrations apply tasky --local --persist-to .wrangler/e2e && ` +
+      `pnpm start --port ${PORT} --var AUTH_STUB:1 --var SESSION_SECRET:e2e --persist-to .wrangler/e2e`,
     url: `http://127.0.0.1:${PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,

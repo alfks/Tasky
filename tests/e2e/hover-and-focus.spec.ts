@@ -20,7 +20,7 @@
 // (`outline-style: auto`)으로 떨어진 상태도 통과한다 — 그것이 정확히 고치려던 결함이다.
 //
 // 셀렉터는 `tests/AGENTS.md` 규칙대로 역할 + 접근 이름만 쓴다.
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures/stub-login';
 
 import type { Locator, Page } from '@playwright/test';
 

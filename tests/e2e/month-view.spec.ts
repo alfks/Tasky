@@ -6,7 +6,7 @@
 //
 // 셀렉터는 전부 **역할(role) + 접근 이름**이다. 클래스·색·DOM 구조에 걸면 면·토큰·레이아웃을
 // 바꾸는 다른 티켓이 이 테스트를 부순다.
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures/stub-login';
 
 import type { Page } from '@playwright/test';
 

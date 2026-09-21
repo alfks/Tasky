@@ -13,7 +13,7 @@
 // `BASE_Z_MODAL` **상수만** 낮추는 것은 재현되지 않는다(`overlayZIndex` 가 스택 깊이로 그 값을
 // 보정하므로 — 가드가 상수 값 자체엔 둔감한 것은 의도된 성질이다). 확인 없이 상수를 낮춰 "재현
 // 안 됨" 으로 결론짓지 마라.
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures/stub-login';
 
 import type { Page } from '@playwright/test';
 
