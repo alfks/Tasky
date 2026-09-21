@@ -32,7 +32,7 @@ describe('buildBackupDocument (R2)', () => {
   it('봉투 필드를 채운다', () => {
     const document = buildBackupDocument(snapshot(), FIXTURE_INSTANT);
     expect(document.app).toBe('tasky');
-    expect(document.schemaVersion).toBe(3);
+    expect(document.schemaVersion).toBe(4);
     expect(document.exportedAt).toBe(FIXTURE_INSTANT);
   });
 
@@ -143,10 +143,10 @@ describe('buildBackupDocument (R2)', () => {
     expect(document.categories.map((c) => c.id)).toEqual([category.id]);
   });
 
-  it('루틴의 materializedThrough 를 그대로 싣는다 (ADR-0017)', () => {
-    const routine = makeRoutine({ materializedThrough: '2026-05-20' });
+  it('루틴의 fillFloor 를 그대로 싣는다 (ADR-0018)', () => {
+    const routine = makeRoutine({ fillFloor: '2026-05-20' });
     const document = buildBackupDocument(snapshot({ routines: [routine] }), FIXTURE_INSTANT);
-    expect(document.routines[0].materializedThrough).toBe('2026-05-20');
+    expect(document.routines[0].fillFloor).toBe('2026-05-20');
   });
 });
 

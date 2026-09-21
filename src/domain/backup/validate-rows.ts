@@ -111,35 +111,28 @@ const SETTINGS_KEYS = whitelist<Settings>()([
 const DDAY_KEYS = whitelist<Dday>()([...META_KEYS, 'title', 'date']);
 const DIARY_KEYS = whitelist<DiaryEntry>()([...META_KEYS, 'date', 'emoji', 'content']);
 /**
- * **`materializedThrough`(루틴 워터마크, ADR-0017)를 넣는다 — 뺀 게 아니라 고른 것이다.**
- * (리뷰 #108 Major 1, 이후 재판정으로 다시 고쳤다 — 원래 문장 중 "구간 전체를 다시 훑어 중복",
- * "유일하게 안전한 선택" 둘 다 실측과 달라 내렸고, 그 뒤 근거로 세운 "병합 시 영구 공백"(S5) 도
- * 재판정에서 오진으로 밝혀져 아래 마지막 문단을 다시 고쳤다.)
+ * **`fillFloor`(구 `materializedThrough`, 루틴 하한, ADR-0018)를 넣는다 — 뺀 게 아니라 고른 것이다.**
  *
  * 뺐을 때 복원 뒤 이 필드가 무엇이 될지부터 본다: `Routine` 타입이 이 필드를 필수로 요구하므로
  * (routine.ts) 어떤 값이든 채워야 `restore()` 가 쓸 `Persistable<Routine>` 이 만들어진다. 후보는
  * 둘뿐이다 — ① `startDate` 전날(생성 시 기본값, `createRoutine`)로 되돌리기, ② 파일의 `todos` 에서
  * 그 `routineId` 를 가진 가장 늦은 날짜로 역산하기. **둘 다 위험을 만든다**:
- * - ①은 그 구간을 지연 생성(`planRoutineFill`)이 다시 훑지만, **구간 전체가 중복되는 것은 아니다**
- *   — 그 함수는 (날짜·카테고리·정규화 제목)으로 **살아 있는 기존 투두와 대조해 건너뛴다**
- *   (`routine-fill.ts:53-59`, 실측: 손대지 않은 인스턴스는 재방문해도 생성 0건). 실제로 새로
- *   생기는 것은 그 사이 **제목을 고쳤거나 다른 날짜로 옮긴** 인스턴스(대조 키가 안 맞아 "없다"로
- *   보인다)와, **지운** 인스턴스의 부활(대조 대상 자체가 없다)뿐이다.
+ * - ①은 "이 날짜 이하는 만들지 않는다"는 사용자의 마지막 조작(생성 시 값)보다 값을 앞으로 되돌려
+ *   그 의미를 왜곡한다 — 채우기 자체는 이제 슬롯 id(`routineInstanceSlotId`)로 dedup 하므로
+ *   (`existingIds` 가 이미 있는 슬롯을 막는다) 중복·부활이 생기지는 않지만, 하한 값 자체가
+ *   사용자가 정한 것과 달라진다.
  * - ②는 `export-backup.ts` 가 **툼스톤 투두를 내보내지 않으므로**(R2, `todos` 는 항상 살아있는
- *   것만) 삭제된 인스턴스가 있는 날짜만큼 워터마크가 실제보다 뒤로 밀리고, 그 구간은 지연 생성이
- *   다시 방문해 **사용자가 지운 인스턴스를 부활**시킨다(routine.md R9 "그 뒤는 완전히 독립" 을
- *   깬다).
+ *   것만) 값이 실제보다 앞으로 밀리는 왜곡이 생긴다.
  *
- * 둘 다 "복원했더니 지운 인스턴스가 되살아난다" 는 사용자 관점의 데이터 손상이라 제외하는 쪽이
+ * 둘 다 "복원 뒤 하한이 사용자가 마지막으로 정한 값과 달라진다"는 데이터 손상이라 제외하는 쪽이
  * 더 위험하다고 판단했다.
  *
- * **넣었을 때 병합(R6)에서 실제로 생기는 위험은 "min 을 골랐을 때" 뿐이다 — max 에는 대칭되는
- * 손상이 없다**(재판정으로 정정: `plan-import.ts#planMergeRoutines`, ADR-0017 §병합). 같은
- * 필드가 병합에도 실리는 이상 그 병합은 위 ①(newer-wins 로 min 을 고르는 경우)과 똑같은 실패 모드를
- * 물려받을 수 있었다 — `planMergeRoutines` 가 병합에서만 워터마크를 일반 newer-wins 대신 "두 값 중
- * 더 늦은 값" 으로 고정하는 이유가 바로 그것이다: 더 이른 값(min)을 썼다면 위 ①과 같은 근거로 그
- * 사이 지운 인스턴스가 부활한다(지연 생성의 dedup 이 살아 있는 인스턴스만 대조 대상으로 삼기
- * 때문). max 를 고르면 그 부활이 생기지 않는다.
+ * **병합(R6)은 이제 일반 newer-wins(`planMerge`)를 그대로 쓴다(ADR-0018).** `fillFloor` 는 오직
+ * 사용자 조작(생성·재개, `routine.rules.ts`)으로만 바뀌는 필드라 다른 필드와 똑같이 "더 최근에
+ * 손댄 쪽이 이긴다"가 맞다. 예전에는 채우기 자체가 이 필드를 전진시켰기 때문에 "제목만 고친
+ * 기기의 옛 값이 newer-wins 로 이겨 구간이 후퇴"할 위험이 있어 전용 병합(`planMergeRoutines`, max
+ * 고정)을 뒀지만, 채우기가 이 필드를 더 이상 건드리지 않으므로 그 왜곡의 원인 자체가 없다(같은
+ * 이유로 `domain/sync/watermark-merge.ts` 도 삭제했다 — `risk-scenarios.test.ts` F3).
  */
 const ROUTINE_KEYS = whitelist<Routine>()([
   ...META_KEYS,
@@ -150,7 +143,7 @@ const ROUTINE_KEYS = whitelist<Routine>()([
   'startDate',
   'endDate',
   'active',
-  'materializedThrough',
+  'fillFloor',
 ]);
 
 /** `recurrence.daysOfWeek`/`daysOfMonth` — 숫자 배열인지만 본다(범위는 `validateRecurrence` 가 본다). */
@@ -315,8 +308,8 @@ export function readDiaryEntry(value: unknown, path: string): DiaryEntry {
 }
 
 /**
- * 무기한 루틴 한 건 (routine.md §4, ADR-0017). `categoryId` 는 **형식만** 본다 — 삭제된 카테고리를
- * 계속 가리키는 것이 정상 상태다(routine.md, `routine.ts` 필드 주석). `materializedThrough` 를
+ * 무기한 루틴 한 건 (routine.md §4, ADR-0018). `categoryId` 는 **형식만** 본다 — 삭제된 카테고리를
+ * 계속 가리키는 것이 정상 상태다(routine.md, `routine.ts` 필드 주석). `fillFloor` 를
  * 싣는 이유는 `ROUTINE_KEYS` 주석을 본다.
  */
 export function readRoutine(value: unknown, path: string): Routine {
@@ -333,6 +326,6 @@ export function readRoutine(value: unknown, path: string): Routine {
   requireDateKey(row, 'startDate', path);
   optionalDateKey(row, 'endDate', path);
   requireBoolean(row, 'active', path);
-  requireDateKey(row, 'materializedThrough', path);
+  requireDateKey(row, 'fillFloor', path);
   return entity;
 }

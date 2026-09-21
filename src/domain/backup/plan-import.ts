@@ -14,7 +14,6 @@ import type { BackupDocument } from '@/domain/backup/backup-document';
 import type { DatasetSnapshot, PersistableSnapshot } from '@/domain/dataset';
 import type { FocusSession } from '@/domain/focus/focus-session';
 import { adopt, isTombstone, type Meta, type Persistable } from '@/domain/meta';
-import type { Routine } from '@/domain/routine/routine';
 
 /** 병합 = 더 최근 것을 남긴다 / 교체 = 파일로 통째로 바꾼다 (R6·R7). */
 export type ImportMode = 'merge' | 'replace';
@@ -115,67 +114,6 @@ export function planMerge<T extends Meta>(
 }
 
 /**
- * 루틴 병합(R6 + ADR-0017 §재검토 트리거 "T-86 착수 시 결정", 리뷰 #108 Major 1, 이후 재판정으로
- * 다시 고쳤다 — 아래 마지막 문단).
- * 다른 필드는 `planMerge` 와 같은 newer-wins 규칙을 그대로 쓰되, **`materializedThrough`(워터마크)
- * 만은 그 규칙에서 빼내 두 값 중 더 늦은 날짜를 남긴다.**
- *
- * **min 은 실제 손상이고, max 에는 대칭되는 손상이 없다.** 둘 다 병합의 newer-wins 가 워터마크에는
- * 안 맞는 축이라서 생기는 얘기다(`updatedAt` 은 "언제 손을 댔는지", 워터마크는 "어디까지 만들었는지"
- * 를 뜻하는 별개 축, routine.ts 필드 주석):
- *
- * - **더 이른 값(min)을 쓰면**: 다른 쪽이 이미 지나간 구간을 지연 생성(`planRoutineFill`)이 다시
- *   훑는다. 하지만 "구간 전체가 중복된다" 는 아니다 — `planRoutineFill` 은 그 구간의 **살아 있는**
- *   기존 투두와 (날짜·카테고리·정규화 제목)으로 대조해 건너뛴다(`routine-fill.ts:53-59`). 그래서
- *   실제로 새로 생기는 것은 그 사이 **제목을 고쳤거나 다른 날짜로 옮긴** 인스턴스뿐이고(대조 키가
- *   안 맞아 "없다" 로 보인다), **지운** 인스턴스는 항상 되살아난다(export 가 툼스톤 투두를 안 싣는
- *   한계, `export-backup.ts` "삭제된 투두는 내보내지 않는다"). 실패는 **국지적이고 눈에 보인다** —
- *   이것이 min 의 실제 손상이다.
- * - **더 늦은 값(max)을 쓰면**: "채웠어야 할 구간을 건너뛴다" 는 주장(옛 리뷰 #108, S5)은
- *   재판정에서 실행으로 반증됐다 — `planRoutineFill` 은 `!routine.active` 면 계획 자체를 `null`
- *   로 낸다(`routine-fill.ts:39`), 즉 **중지 중엔 애초에 "채웠어야 할" 구간이 없다.**
- *   `resumeRoutine`(`routine.rules.ts:97-99`, R7 "소급 없음")이 인스턴스 없이 워터마크만 옮기는
- *   것은 병합이 있든 없든 로컬에서 그대로 재개했을 때와 결과가 글자 그대로 같다 — 그 구간은 어떤
- *   경로로도 생기지 않는 날짜다(`plan-import.test.ts` 가 병합-없음 대조군으로 고정한다). 두 기기가
- *   중지 없이 각자 계속 채운 경우도 실측하면 손실이 없다 — 파일 기기가 채운 인스턴스는 투두 병합
- *   (id 기준 합집합)으로 같이 들어오고, max 는 그 구간을 다시 훑지 않게 할 뿐이다.
- *
- * **그래서 max 를 고른다 — "덜 나쁜 쪽" 이 아니라 이 트레이드오프에서 안전한 쪽이다.** min 을 쓰면
- * 위 첫째 항목의 중복·부활이 병합 **때마다, 바로** 일어난다. max 에는 대칭되는 실패가 없다(위
- * 둘째 항목). sync(ADR-0015) 가 그대로 가져다 쓸 수 없는 것은 max 자체가 아니라 **병합이 아니라
- * sync 가 새로 만드는 위험들**이다(ADR-0017 §병합 정정·재검토 트리거 참고 — 독립 채우기의 id 불일치
- * 중복, 배경 채우기의 `touch()`가 사용자의 중지를 덮는 경로, 워터마크까지 전량 LWW 로 바뀔 때의
- * 부활·중복).
- *
- * 교체(R7)는 이 함수를 쓰지 않는다 — 파일 하나가 전량을 통째로 대체하므로 그 안의 루틴·투두는 항상
- * 같은 스냅샷에서 나와 이미 서로 맞는다.
- */
-function planMergeRoutines(
-  local: readonly Persistable<Routine>[],
-  incoming: readonly Persistable<Routine>[],
-): MergeResult<Persistable<Routine>> {
-  const localThrough = new Map(local.map((routine) => [routine.id, routine.materializedThrough]));
-  const incomingThrough = new Map(
-    incoming.map((routine) => [routine.id, routine.materializedThrough]),
-  );
-  const merged = planMerge(local, incoming);
-  // 리뷰 #108 Minor 2: 워터마크만 바꾸고 `updatedAt`·`rev` 는 그대로 둔다 — `touch()` 를 쓰면 이
-  // 행이 "방금 손을 댄 것" 처럼 보여 다음 병합의 newer-wins 판정(§위 문서)을 오염시킨다(파일 쪽이
-  // 실제로는 안 바뀐 필드까지 "더 최근" 으로 착각해 가져간다). 지금은 백업 왕복 안에서만 도니 무해
-  // 하지만, **LWW 로 동기화할 미래에는 이 변경 자체가 다른 기기에 영영 전파되지 않는다** — 워터마크
-  // 만 바뀐 로우는 `updatedAt` 이 그대로라 "바뀐 것 없음" 으로 보인다. sync 재검토 항목에 같이 남긴다.
-  const rows = merged.rows.map((routine) => {
-    const a = localThrough.get(routine.id);
-    const b = incomingThrough.get(routine.id);
-    const through = a === undefined ? b : b === undefined || a > b ? a : b;
-    return through === undefined || through === routine.materializedThrough
-      ? routine
-      : { ...routine, materializedThrough: through };
-  });
-  return { rows, counts: merged.counts };
-}
-
-/**
  * 교체 (R7). 결과는 파일의 전량 그대로이고, 개수만 현재 데이터와 대조해 알려준다 —
  * 로컬에만 있던 항목은 사라지므로 "유지" 가 아니다(그래서 `kept` 는 항상 0 이다).
  * 사라지는 양은 실행 **전에** 다이얼로그가 "지금 있는 카테고리 N개 · 할 일 M개가 사라져요" 로 보여준다.
@@ -261,12 +199,10 @@ export function planImport(input: {
   // 삭제에는 `touch()` 가 찍을 시각(`now`)이 필요하고 `planImport` 는 지금 순수 함수라 그 입력이
   // 없다 — 시그니처를 늘리는 일이라 이번 라운드는 결정만 기록하고 후속으로 넘긴다.
   const diaryEntries = plan(adoptLocal(local.diaryEntries), adoptFile(document.diaryEntries));
-  const routineLocal = adoptLocal(local.routines);
-  const routineIncoming = adoptFile(document.routines);
-  const routines =
-    mode === 'merge'
-      ? planMergeRoutines(routineLocal, routineIncoming)
-      : planReplace(routineLocal, routineIncoming);
+  // 루틴은 이제 다른 테이블과 같은 일반 newer-wins(`plan`)를 쓴다(ADR-0018) — `fillFloor` 는 오직
+  // 사용자 조작(생성·재개)으로만 바뀌는 필드라 전용 병합(구 `planMergeRoutines`, max 고정)이 더
+  // 필요 없다. `routine.rules.ts`·`ROUTINE_KEYS` 주석 참고.
+  const routines = plan(adoptLocal(local.routines), adoptFile(document.routines));
 
   return {
     snapshot: {

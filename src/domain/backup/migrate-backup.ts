@@ -33,10 +33,38 @@ const migrateV1ToV2: MigrationStep = (body) => {
  */
 const migrateV2ToV3: MigrationStep = (body) => body;
 
+/**
+ * v3 → v4 (ADR-0018): 루틴 필드 **이름만** 바꾼다 — `materializedThrough` → `fillFloor`(값은
+ * 그대로, `db.ts` 의 `.upgrade()` 와 같은 규칙). 다른 6 테이블은 손대지 않는다. `routines` 가
+ * 배열이 아니거나 원소가 객체가 아니면 그대로 통과시킨다 — 판정은 뒤의 검증(`validate-rows.ts`)이
+ * 한다(파일 머리 주석의 "조용히 보정하지 않는다" 원칙).
+ */
+const migrateV3ToV4: MigrationStep = (body) => {
+  const routines = body['routines'];
+  if (!Array.isArray(routines)) {
+    return body;
+  }
+  return {
+    ...body,
+    routines: routines.map((routine) => {
+      if (typeof routine !== 'object' || routine === null || Array.isArray(routine)) {
+        return routine;
+      }
+      const row = routine as Record<string, unknown>;
+      if (!('materializedThrough' in row)) {
+        return row;
+      }
+      const { materializedThrough, ...rest } = row;
+      return { ...rest, fillFloor: materializedThrough };
+    }),
+  };
+};
+
 /** 시작 버전 → 그 버전을 하나 올리는 단계. 빠진 번호가 있으면 변환할 수 없다는 뜻이다. */
 const STEPS = new Map<number, MigrationStep>([
   [1, migrateV1ToV2],
   [2, migrateV2ToV3],
+  [3, migrateV3ToV4],
 ]);
 
 /**

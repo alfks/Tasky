@@ -148,11 +148,11 @@ describe('readDiaryEntry — 왕복 (diary.md §4)', () => {
   });
 });
 
-describe('readRoutine — materializedThrough 왕복 (ADR-0017, ROUTINE_KEYS 주석)', () => {
-  it('materializedThrough 가 그대로 남는다', () => {
-    const row = makeRoutine({ materializedThrough: '2026-04-30' });
+describe('readRoutine — fillFloor 왕복 (ADR-0018, ROUTINE_KEYS 주석)', () => {
+  it('fillFloor 가 그대로 남는다', () => {
+    const row = makeRoutine({ fillFloor: '2026-04-30' });
     const restored = readRoutine(row, 'routines[0]');
-    expect(restored.materializedThrough).toBe('2026-04-30');
+    expect(restored.fillFloor).toBe('2026-04-30');
   });
 
   it('recurrence(weekly) 가 그대로 남는다', () => {
