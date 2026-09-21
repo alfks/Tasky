@@ -5,6 +5,8 @@
 // 상단에는 **앱 이름만** 둔다(R12). 도구 줄은 테마 토글 · 설정 · 백업/복원 · **루틴**(routine.md §2,
 // T-83) 넷이다 — R12 원문("하단 셋")은 이 티켓으로 넷째 진입점이 붙어 갱신이 필요하다(문서 갱신은
 // 별도 `docs` 티켓 몫이라 여기서는 코드만 앞서 고친다).
+import { useCallback } from 'react';
+
 import type { Category } from '@/domain/category/category';
 import type { CategoryId } from '@/domain/ids';
 
@@ -60,7 +62,19 @@ export function ShellSidebar({
   const routineRemovalFocus = useRemovalReturnFocus({ preferToast: false });
   // 계정 블록(sync.md §2, R12-a)이 필요로 한다 — `sync` 는 `backup` 을 import 할 수 없어
   // 셸이 꺼내 prop 으로 내린다(backup/index.ts 머리주석의 선례).
-  const exportBackup = useBackupStore((state) => state.exportBackup);
+  //
+  // **`refresh()` 를 먼저 부르는 이유**: `exportBackup()` 은 `canExport(state)` 를 보고, 그 판정은
+  // `state.current`(엔티티 개수)가 있어야 참이 된다 — `current` 는 백업 다이얼로그를 **연 적이
+  // 있어야만**(`openDialog` → `refresh`) 채워진다. 로그아웃·계정 삭제·계정 삭제 안내는 다이얼로그를
+  // 연 적 없이도 눌릴 수 있는 버튼이라, `refresh()` 없이 그대로 넘기면 `current === null` 이라
+  // `canExport` 가 거짓이 되어 내보내기가 **매번 조용히 실패한다**(실측: e2e 로 처음 드러났다 —
+  // 계정 삭제가 아무 일도 없이 끝났다). `refresh` 는 멱등이고 비용도 엔티티 6종 조회 한 번뿐이다.
+  const exportBackupOnly = useBackupStore((state) => state.exportBackup);
+  const refreshBackupCounts = useBackupStore((state) => state.refresh);
+  const exportBackup = useCallback(async () => {
+    await refreshBackupCounts();
+    return exportBackupOnly();
+  }, [refreshBackupCounts, exportBackupOnly]);
   return (
     <nav
       aria-label="카테고리"

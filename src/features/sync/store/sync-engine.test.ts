@@ -289,3 +289,40 @@ describe('sync-engine: dataRevision (돌연변이 2 대상)', () => {
     expect(stateB.dataRevision).toBe(1);
   });
 });
+
+describe('sync-engine: 오프라인 중에도 pendingCount 가 정직하다(R6, e2e 로 드러난 회귀)', () => {
+  beforeEach(() => {
+    resetEngineForTest();
+  });
+
+  it('네트워크 왕복 없이도 로컬 아웃박스 건수를 즉시 반영한다', async () => {
+    await getRepositories().sync.wipeLocal();
+    await getRepositories().sync.setState({ deviceId: 'd1', userSub: 's', cursor: 0 });
+    const category = createCategory(
+      { name: '오프라인', color: '#CFEB8F', existing: [] },
+      { now: () => '2026-09-21T00:00:00.000Z', id: () => crypto.randomUUID() },
+    );
+    await getRepositories().categories.upsert(category);
+    await getRepositories().sync.enqueueAll(); // 오프라인 상태의 로컬 쓰기를 흉내낸다
+
+    // sync() 를 부르면 실패하는 트랜스포트 — 오프라인 시뮬레이션. 그래도 pendingCount 는 갱신돼야 한다.
+    setSyncTransport({
+      me: async () => {
+        throw new Error('offline');
+      },
+      sync: async () => {
+        throw new Error('offline');
+      },
+      logout: async () => {},
+      deleteAccount: async () => {},
+    });
+    const originalOnLine = Object.getOwnPropertyDescriptor(navigator, 'onLine');
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+
+    const { rt, state } = fakeRuntime();
+    startEngine(rt);
+    await vi.waitFor(() => expect(state.pendingCount).toBe(1));
+
+    if (originalOnLine) Object.defineProperty(navigator, 'onLine', originalOnLine);
+  });
+});

@@ -16,9 +16,15 @@ type AccountBlockProps = {
 
 type Status = 'synced' | 'pending' | 'offline';
 
+/**
+ * "대기 N건" 이 "오프라인" 보다 먼저다 — 오프라인 중에 쓴 변경이 있으면 "몇 건이 밀렸는지" 가
+ * "온라인인지" 보다 더 실질적인 정보다(sync.md R6 "저장됨처럼 보이는데 서버에 아직 없는 상태를
+ * 정직하게 표시한다"). 대기 중인 게 없을 때만 순수 오프라인 안내로 내려간다(e2e 로 드러난 순서
+ * 버그 — 예전 순서는 오프라인이면 대기 건수를 무조건 가렸다).
+ */
 function statusOf(online: boolean, pendingCount: number): Status {
-  if (!online) return 'offline';
-  return pendingCount > 0 ? 'pending' : 'synced';
+  if (pendingCount > 0) return 'pending';
+  return online ? 'synced' : 'offline';
 }
 
 const STATUS_TEXT: Record<Status, (pendingCount: number) => string> = {

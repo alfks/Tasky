@@ -220,6 +220,11 @@ async function pushAndPull(repo: SyncRepository, state: SyncState): Promise<bool
 }
 
 async function cycleOnce(): Promise<void> {
+  // 오프라인이어도 "○ 대기 N건"(R6)은 정직해야 한다 — 아래 왕복(applyResponse)만 pendingCount 를
+  // 갱신하면 오프라인 중에는 로컬에 막 쌓인 변경이 화면에 전혀 안 보인다(실측: e2e 로 잡힌 문제).
+  // 로컬 아웃박스 건수는 네트워크 없이도 읽을 수 있으므로 온라인 판정보다 먼저 한 번 반영한다.
+  const localRepo = getRepositories().sync;
+  rt.setState({ pendingCount: await localRepo.countOutbox() });
   if (!navigator.onLine) return;
   const verify = await verifySession(rt);
   if (verify === 'signed-out') {
