@@ -43,8 +43,9 @@ export type ServerChange = {
   /** `wire.ts#SyncChange.baseSeq` 그대로 — 0 이면 생성 시도, 0 초과면 갱신 시도. */
   baseSeq: number;
   /**
-   * 클라이언트가 실어 보낸 `Meta.updatedAt`. 호출부가 `clampFutureUpdatedAt(raw, receivedAt)` 을
-   * 거친 뒤의 값을 넣어야 한다 — 이 함수 자체는 클램프하지 않는다(수신 시각을 모른다, 순수성).
+   * 클라이언트가 실어 보낸 **원본** `Meta.updatedAt` — 클램프 전 값 그대로 넣는다.
+   * `applyServerRules` 가 세 번째 인자 `receivedAt` 을 받아 함수 안에서 직접 클램프한다(호출부가
+   * 클램프를 잊을 수 없도록 계약을 구조로 강제한다, 아래 `clampFutureUpdatedAt` jsdoc).
    */
   updatedAt: string;
 };
@@ -67,15 +68,20 @@ export type ServerRuleResult =
 /**
  * 미래 시각 클램프 — `updatedAt` 이 서버 수신 시각보다 미래면 수신 시각으로 내려 앉힌다(ADR-0005
  * §충돌 정책 "서버는 미래 시각을 수신 시각으로 클램프"). 순수 함수 — `Date` 를 직접 부르지 않고
- * 수신 시각을 인자로 받는다(ADR-0005 규칙 2). 호출부(Worker, T-93)가 실제 수신 시각을 넣어 이
- * 함수를 거친 뒤에야 `ServerChange.updatedAt`/`ExistingServerRow.updatedAt` 을 만들어야 한다 —
- * `applyServerRules` 는 이미 클램프됐다고 가정하고 다시 클램프하지 않는다.
+ * 수신 시각을 인자로 받는다(ADR-0005 규칙 2).
  *
  * ISO 8601 UTC 문자열(`toISOString()` 형식, ADR-0005)은 사전순 비교가 시간순 비교와 같다.
  *
+ * **`applyServerRules` 가 내부에서 이 함수를 직접 부른다** — 예전엔 "호출부가 클램프한 뒤의 값을
+ * `ServerChange.updatedAt` 에 넣어야 한다"는 jsdoc 계약뿐이었는데, jsdoc 은 tsc 도 테스트도 강제하지
+ * 못한다(호출부가 클램프를 빠뜨려도 타입 에러도 실패하는 테스트도 없다). 지금은 `applyServerRules`
+ * 가 세 번째 인자 `receivedAt` 을 직접 받아 갱신(baseSeq>0) 판정 직전에 클램프하므로, 호출부는
+ * 클램프를 잊을 수 없다(구조로 강제). 이 함수 자체는 여전히 독립적으로 export 돼 있고(단위 테스트
+ * 대상), `applyServerRules` 밖에서 다시 쓸 일이 생겨도 재사용할 수 있다.
+ *
  * **호출 자리(SYNC_DESIGN.md §②-2, 아직 구현 없음)**: 요청 로우 검증 뒤·upsert 전, `worker/sync/
- * handler.ts`(T-93)가 `Date.now()`(Worker 의 수신 시각)를 `receivedAt` 으로 넣어 이 함수를 부른다 —
- * `Date` 호출은 그 경계 파일에만 있고, 이 함수 자체는 여전히 순수하다.
+ * handler.ts`(T-93)가 `Date.now()`(Worker 의 수신 시각)를 `receivedAt` 으로 `applyServerRules` 에
+ * 넘긴다 — `Date` 호출은 그 경계 파일에만 있고, 이 파일의 함수들은 여전히 순수하다.
  */
 export function clampFutureUpdatedAt(updatedAt: string, receivedAt: string): string {
   return updatedAt > receivedAt ? receivedAt : updatedAt;
@@ -88,6 +94,7 @@ function isValidBaseSeq(baseSeq: number): boolean {
 export function applyServerRules(
   existing: ExistingServerRow | undefined,
   change: ServerChange,
+  receivedAt: string,
 ): ServerRuleResult {
   if (existing !== undefined && (existing.tbl !== change.tbl || existing.id !== change.id)) {
     throw new Error(
@@ -106,6 +113,8 @@ export function applyServerRules(
   if (isCreateAttempt) {
     return 'reject-exists';
   }
-  // 갱신 시도: updatedAt LWW. 동률이면 지금 도착한 change 가 이긴다(서버 도착 순).
-  return change.updatedAt >= existing.updatedAt ? 'update' : 'reject-stale';
+  // 갱신 시도: updatedAt LWW. 미래 시각을 먼저 클램프하고(호출부가 잊을 수 없도록 이 함수 안에서
+  // 한다, `receivedAt` 을 인자로 받아 순수성은 유지한다) 동률이면 지금 도착한 change 가 이긴다.
+  const clampedUpdatedAt = clampFutureUpdatedAt(change.updatedAt, receivedAt);
+  return clampedUpdatedAt >= existing.updatedAt ? 'update' : 'reject-stale';
 }

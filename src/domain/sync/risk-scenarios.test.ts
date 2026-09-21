@@ -45,12 +45,16 @@ describe('F1 — routineInstanceSlotId + applyServerRules 조합은 함수 수�
     expect(idFromDeviceA).toBe(idFromDeviceB); // 결정적 id — 이것이 F1 을 함수 수준에서 닫는 전제
 
     // 기기 A 가 먼저 도착: 서버는 아직 이 id 를 모른다 → insert.
-    const decisionForA = applyServerRules(undefined, {
-      tbl: 'todos',
-      id: idFromDeviceA,
-      baseSeq: 0, // rev===1, 한 번도 안 고침 → 생성 시도(deriveBaseSeq)
-      updatedAt: '2026-02-05T09:00:00.000Z',
-    });
+    const decisionForA = applyServerRules(
+      undefined,
+      {
+        tbl: 'todos',
+        id: idFromDeviceA,
+        baseSeq: 0, // rev===1, 한 번도 안 고침 → 생성 시도(deriveBaseSeq)
+        updatedAt: '2026-02-05T09:00:00.000Z',
+      },
+      '2026-02-05T09:00:00.000Z',
+    );
     expect(decisionForA).toBe('insert');
 
     // A 가 적용된 뒤 서버 상태.
@@ -62,33 +66,44 @@ describe('F1 — routineInstanceSlotId + applyServerRules 조합은 함수 수�
     };
 
     // 기기 B 가 같은 id 로 나중에 도착: 이미 있으므로 reject-exists — 로우 1개만 남는다.
-    const decisionForB = applyServerRules(serverAfterA, {
-      tbl: 'todos',
-      id: idFromDeviceB,
-      baseSeq: 0,
-      updatedAt: '2026-02-05T09:05:00.000Z',
-    });
+    const decisionForB = applyServerRules(
+      serverAfterA,
+      {
+        tbl: 'todos',
+        id: idFromDeviceB,
+        baseSeq: 0,
+        updatedAt: '2026-02-05T09:05:00.000Z',
+      },
+      '2026-02-05T09:05:00.000Z',
+    );
     expect(decisionForB).toBe('reject-exists');
   });
 });
 
 describe('F2 — 배경 채우기가 사용자의 중지를 덮지 않는다는 전제는 실제 코드와 반대다(드러내기, T-92)', () => {
   // routine-fill.ts 는 read-only 로만 import 한다 — owns(`src/domain/sync/**`) 밖이라 고칠 수 없다.
+  const routine: Routine = makeRoutine({
+    materializedThrough: '2026-01-15' as DateKey,
+    updatedAt: FIXTURE_INSTANT, // 사용자 조작 없음 — 이 값이 유지돼야 F2 전제가 성립한다
+  });
+  // 배경 채우기: 사용자 조작이 전혀 없는데 워터마크 구간만 전진한다(오프라인 방문 등).
+  const deps = fixedDeps({ now: '2026-06-01T00:00:00.000Z' }); // 원래 updatedAt 과 다른 시각
+
+  // 가드: it.fails 밖의 별도 it — "채울 게 있다"는 이 시나리오의 전제가 살아있는지만 단언한다.
+  // it.fails 안에 있으면 planRoutineFill 이 null 을 돌려주게 바뀌어도(예: "채울 게 없으면 null")
+  // 그 assertion 실패가 그대로 "기대한 실패"로 삼켜져 초록불이 침묵한다 — 그래서 밖으로 뺐다.
+  it('가드: 이 시나리오는 실제로 채울 것이 있다(planRoutineFill 이 null 이 아니다)', () => {
+    const plan = planRoutineFill({ routine, through: '2026-01-22' as DateKey, existing: [] }, deps);
+    expect(plan).not.toBeNull();
+  });
+
   it.fails(
     '기대(F2 의 전제): 채울 것이 있어도 사용자가 아무 것도 고치지 않았다면 updatedAt 은 그대로여야 한다 — 실제는 항상 touch 해서 이 기대가 깨진다(routine-fill.ts:78, T-92)',
     () => {
-      const routine: Routine = makeRoutine({
-        materializedThrough: '2026-01-15' as DateKey,
-        updatedAt: FIXTURE_INSTANT, // 사용자 조작 없음 — 이 값이 유지돼야 F2 전제가 성립한다
-      });
-      // 배경 채우기: 사용자 조작이 전혀 없는데 워터마크 구간만 전진한다(오프라인 방문 등).
-      const deps = fixedDeps({ now: '2026-06-01T00:00:00.000Z' }); // 원래 updatedAt 과 다른 시각
       const plan = planRoutineFill(
         { routine, through: '2026-01-22' as DateKey, existing: [] },
         deps,
       );
-
-      expect(plan).not.toBeNull();
       // F2 가 전제하는 정책(후보 3): 배경 채우기는 행을 touch 하지 않는다.
       expect(plan?.routine.updatedAt).toBe(routine.updatedAt);
     },
