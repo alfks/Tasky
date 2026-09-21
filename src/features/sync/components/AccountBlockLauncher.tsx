@@ -5,6 +5,7 @@
 import { useEffect } from 'react';
 
 import { AccountBlock } from '@/features/sync/components/AccountBlock';
+import { AccountDeletedNotice } from '@/features/sync/components/AccountDeletedNotice';
 import { UploadDialog } from '@/features/sync/components/UploadDialog';
 import { registerExportBackup, useSyncStore } from '@/features/sync/store/sync-store';
 
@@ -14,6 +15,7 @@ type AccountBlockLauncherProps = {
 
 export function AccountBlockLauncher({ exportBackup }: AccountBlockLauncherProps) {
   const uploadPrompt = useSyncStore((state) => state.uploadPrompt);
+  const accountDeletedNotice = useSyncStore((state) => state.accountDeletedNotice);
 
   // 계정 전환(§D-9 "sub ≠ userSub")처럼 사용자 상호작용 없이 자동으로 일어나는 내보내기가
   // 필요할 때 엔진(지연)이 이 콜백을 쓴다 — 마운트된 동안만 유효하다.
@@ -26,6 +28,7 @@ export function AccountBlockLauncher({ exportBackup }: AccountBlockLauncherProps
     <>
       <AccountBlock exportBackup={exportBackup} />
       {uploadPrompt ? <UploadDialog exportBackup={exportBackup} /> : null}
+      {accountDeletedNotice ? <AccountDeletedNotice exportBackup={exportBackup} /> : null}
     </>
   );
 }

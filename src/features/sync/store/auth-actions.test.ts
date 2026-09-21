@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createCategory } from '@/domain/category/category.rules';
 
@@ -6,7 +6,10 @@ import { getRepositories, setSyncTransport } from '@/repositories/container';
 import { createMemorySyncServer } from '@/repositories/memory/sync-server';
 import { createMemorySyncTransport } from '@/repositories/memory/sync-transport';
 
+import { createHttpSyncTransport } from '@/infra/sync/http-transport';
+
 import {
+  acknowledgeAccountDeleted,
   performDeleteAccount,
   performLogout,
   probeSession,
@@ -114,6 +117,74 @@ describe('auth-actions: verifySession — 401/전환 처리(R1)', () => {
     expect(await verifySession(rt)).toBe('offline');
     const after = await getRepositories().sync.getState();
     expect(after?.userSub).toBe('sub-old'); // 미뤘으니 그대로
+  });
+});
+
+describe('auth-actions: 계정 삭제 안내(sync.md §6, ADR-0019 — E-3 성공 기준)', () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(async () => {
+    await getRepositories().sync.wipeLocal();
+    await getRepositories().sync.setState({
+      deviceId: 'device-b',
+      userSub: 'sub-1',
+      userEmail: 'a@example.com',
+      cursor: 7,
+    });
+    const category = createCategory({ name: '다른 기기', color: '#CFEB8F', existing: [] }, deps);
+    await getRepositories().categories.upsert(category);
+    global.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: 'account-deleted' }), {
+          status: 410,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    );
+    setSyncTransport(createHttpSyncTransport());
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('워커가 실제로 주는 모양(410 + {error:"account-deleted"})을 받으면 안내 플래그가 켜지고 로컬은 그대로다', async () => {
+    const { rt, state } = fakeRuntime();
+    const result = await verifySession(rt);
+
+    expect(result).toBe('account-deleted');
+    expect(state.accountDeletedNotice).toBe(true);
+    const after = await getRepositories().sync.getState();
+    expect(after?.userSub).toBe('sub-1'); // 표식을 지우지 않는다 — 조용히 로그아웃시키지 않는다
+    const categories = await getRepositories().categories.list({ includeClosed: true });
+    expect(categories).toHaveLength(1); // 로컬 데이터도 그대로
+  });
+
+  it('acknowledgeAccountDeleted 확인 후에야 내보내고 지운다', async () => {
+    const { rt, state } = fakeRuntime();
+    await verifySession(rt); // 안내를 먼저 띄운다
+    expect(state.accountDeletedNotice).toBe(true);
+
+    const exportBackup = vi.fn(async () => true);
+    const ok = await acknowledgeAccountDeleted(rt, exportBackup);
+
+    expect(ok).toBe(true);
+    expect(exportBackup).toHaveBeenCalledTimes(1);
+    expect(state.phase).toBe('login');
+    expect(state.accountDeletedNotice).toBe(false);
+    const categories = await getRepositories().categories.list({ includeClosed: true });
+    expect(categories).toHaveLength(0);
+  });
+
+  it('내보내기를 취소하면 아무것도 지우지 않는다', async () => {
+    const { rt, state } = fakeRuntime();
+    await verifySession(rt);
+
+    const ok = await acknowledgeAccountDeleted(rt, async () => false);
+
+    expect(ok).toBe(false);
+    expect(state.phase).toBeUndefined(); // 아직 안 바뀜
+    const categories = await getRepositories().categories.list({ includeClosed: true });
+    expect(categories).toHaveLength(1);
   });
 });
 

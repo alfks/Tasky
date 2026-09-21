@@ -6,6 +6,7 @@
 import type { SyncState } from '@/domain/sync/wire';
 
 import { getRepositories, getSyncTransport } from '@/repositories/container';
+import { isTransportError } from '@/repositories/sync-transport';
 
 import type { SyncRuntime } from '@/features/sync/store/sync-store';
 
@@ -122,23 +123,45 @@ export async function performDeleteAccount(
 }
 
 /**
- * 엔진이 사이클을 시작하기 전에 부른다(표식 있는 상태의 401/계정 전환 처리, R1).
- *
- * **알려진 한계**: `/api/account/delete` 로 삭제된 계정을 **다른** 기기가 만나면 worker 는 410 을
- * 주지만(worker/auth/session.ts), `src/infra/sync/http-transport.ts`(T-92 owns, 이 티켓 밖)는
- * 401 이 아닌 모든 실패를 `'server'` 로 뭉뚱그려 `'account-deleted'` 를 구분하지 못한다 — 그래서
- * 여기서는 sync.md §6 의 "안내 다이얼로그" 대신 **R1 그대로**(401 → 표식 삭제, 안내 없이 로그인
- * 화면)로 처리한다. E-3 옵션 2 를 온전히 구현하려면 `TransportFailure` 에 셋째 값이 필요하다.
+ * 계정 삭제 안내를 확인했을 때(sync.md §6, ADR-0019) — [내보내고 지우기] 하나뿐이다. 서버가 이미
+ * 410 응답에 `Set-Cookie` 로 세션 쿠키를 지웠으므로(`worker/auth/handlers.ts#handleMe`) 여기서
+ * 따로 `transport.logout()` 을 부르지 않는다(이미 무효한 세션에 로그아웃을 또 요청할 이유가 없다).
+ */
+export async function acknowledgeAccountDeleted(
+  rt: SyncRuntime,
+  exportBackup: () => Promise<boolean>,
+): Promise<boolean> {
+  const exported = await exportBackup();
+  if (!exported) return false; // 내보내기를 취소했으면 안내를 다시 보여준다(호출부가 유지)
+  await getRepositories().sync.wipeLocal();
+  rt.setState({
+    phase: 'login',
+    email: null,
+    pendingCount: 0,
+    uploadPrompt: false,
+    accountDeletedNotice: false,
+  });
+  return true;
+}
+
+/**
+ * 엔진이 사이클을 시작하기 전에 부른다(표식 있는 상태의 401/계정 전환/계정 삭제 처리, R1·§6).
  */
 export async function verifySession(
   rt: SyncRuntime,
-): Promise<'ok' | 'signed-out' | 'switched' | 'offline'> {
+): Promise<'ok' | 'signed-out' | 'switched' | 'offline' | 'account-deleted'> {
   const state = await getRepositories().sync.getState();
   if (state?.userSub === undefined) return 'signed-out';
   let session;
   try {
     session = await getSyncTransport().me();
-  } catch {
+  } catch (error) {
+    if (isTransportError(error) && error.kind === 'account-deleted') {
+      // sync.md §6: 조용히 로그아웃시키지 않는다 — 로컬 표식·데이터는 그대로 두고 안내만 띄운다.
+      // 사용자가 [내보내고 지우기] 를 확인해야 비로소 지워진다(acknowledgeAccountDeleted).
+      rt.setState({ accountDeletedNotice: true });
+      return 'account-deleted';
+    }
     return 'offline';
   }
   if (session === null) {

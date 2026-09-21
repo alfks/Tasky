@@ -33,6 +33,9 @@ export type SyncStoreState = {
   pendingCount: number;
   /** R7 첫 로그인 업로드 다이얼로그를 띄울지. */
   uploadPrompt: boolean;
+  /** 이 계정이 다른 기기에서 삭제됐다는 안내를 띄울지(sync.md §6, ADR-0019 — 조용히 로그아웃시키지
+   * 않는다). 표식·로컬 데이터는 사용자가 확인할 때까지 그대로 둔다. */
+  accountDeletedNotice: boolean;
   /** 원격에서 받아 적용한 변경이 있을 때마다 +1 — 다른 feature 가 재조회 트리거로 구독한다
    * (`ShellHeader#useSummaryRevision`, `backup/index.ts` 의 `dataRevision` 과 같은 패턴). */
   dataRevision: number;
@@ -49,6 +52,11 @@ export type SyncStoreActions = {
   ) => Promise<boolean>;
   /** Esc·✕·바깥 클릭 — 선택을 보류한다(다음 접속에 다시 묻는다, R7 다이얼로그 규칙). */
   deferUpload: () => void;
+  /** 계정 삭제 안내의 [내보내고 지우기]. 실패(내보내기 취소)면 false — 안내가 다시 보인다. */
+  acknowledgeAccountDeleted: (exportBackup: () => Promise<boolean>) => Promise<boolean>;
+  /** Esc·✕ — 안내를 잠시 닫는다. 로컬은 그대로라 다음 사이클에서 서버가 다시 410 을 주면
+   * 되살아난다(말없이 사라지지 않는다, 아래 verifySession 이 매번 다시 켠다). */
+  dismissAccountDeletedNotice: () => void;
   /** 성공(내보내기 확인 → 삭제까지 끝남)하면 true. 내보내기를 취소했으면 false(로그아웃하지 않는다). */
   logout: (exportBackup: () => Promise<boolean>) => Promise<boolean>;
   /** 성공하면 true. */
@@ -80,6 +88,7 @@ const initialState: SyncStoreState = {
   online: typeof navigator === 'undefined' ? true : navigator.onLine,
   pendingCount: 0,
   uploadPrompt: false,
+  accountDeletedNotice: false,
   dataRevision: 0,
 };
 
@@ -164,6 +173,13 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
   },
 
   deferUpload: () => set({ uploadPrompt: false }),
+
+  acknowledgeAccountDeleted: async (exportBackup) => {
+    const { acknowledgeAccountDeleted } = await import('@/features/sync/store/auth-actions');
+    return acknowledgeAccountDeleted(runtime(), exportBackup);
+  },
+
+  dismissAccountDeletedNotice: () => set({ accountDeletedNotice: false }),
 
   logout: async (exportBackup) => {
     const { performLogout } = await import('@/features/sync/store/auth-actions');

@@ -145,9 +145,10 @@ describe('sync 지연 로드 경계 — 진입 그래프 도달성', () => {
     'features/sync/components/AccountBlock.tsx',
     'features/sync/components/UploadDialog.tsx',
     'features/sync/components/AccountDeleteDialog.tsx',
+    'features/sync/components/AccountDeletedNotice.tsx',
   ].sort();
 
-  it('진입에 닿는 src/features/sync/** 는 정확히 이 여덟 파일뿐이다', () => {
+  it('진입에 닿는 src/features/sync/** 는 정확히 이 아홉 파일뿐이다', () => {
     const syncFiles = [...rel].filter((f) => f.startsWith('features/sync/')).sort();
     expect(syncFiles).toEqual(SYNC_ENTRY_ALLOWLIST);
   });
