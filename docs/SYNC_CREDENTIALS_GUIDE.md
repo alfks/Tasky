@@ -1,3 +1,5 @@
+<!-- 읽기 조건: `docs/specs/sync.md` 구현 티켓을 발행하기 전에, 프로젝트 소유자가 혼자 자격증명을 발급할 때. -->
+
 # 동기화 자격증명 발급 가이드 (구글 OAuth + Cloudflare D1)
 
 **이 문서가 다루는 것**: 동기화(구글 로그인 + Cloudflare D1)에 필요한 자격증명을 **어디서 발급받고
@@ -8,7 +10,6 @@ Worker**에 쓴다) · Cloudflare `wrangler secret put`(**배포된 Worker 자�
 `GOOGLE_CLIENT_SECRET`을 `.env`에만 적어 두면 로컬 `wrangler dev`도, 배포된 Worker도 그 값을 모른다.
 이게 이 발급 과정에서 가장 헷갈리는 지점이므로 각 절마다 "어디에 넣는지"를 명시한다.
 
-읽기 조건: `docs/specs/sync.md` 구현 티켓을 발행하기 **전에**, 프로젝트 소유자가 혼자 따라 하는 문서.
 근거: `docs/specs/sync.md` §4·§6, `docs/decisions/ADR-0015` §1·결과 4, `.env.example`,
 `.dev.vars.example`, `wrangler.jsonc`, `scripts/deploy.sh`, `worker/auth/google.ts`, `worker/router.ts`.
 레포 파일은 이 가이드가 고치지 않는다 — 사용자가 채우는 것은 **`.env`·`.dev.vars`(둘 다 git 제외)와
