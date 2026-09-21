@@ -74,11 +74,7 @@ function resolveFillWindow(
  * 계산이 따로 노는 경로가 없다 — 갈리면 호출부가 존재를 안 물어본 슬롯을 만들거나, 반대로 물어본
  * 슬롯을 안 만드는 사고가 난다).
  */
-export function candidateFillDates(
-  routine: Routine,
-  through: DateKey,
-  today?: DateKey,
-): DateKey[] {
+export function candidateFillDates(routine: Routine, through: DateKey, today?: DateKey): DateKey[] {
   const window = resolveFillWindow(routine, through, today);
   if (window === null) {
     return [];

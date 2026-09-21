@@ -88,7 +88,11 @@ function existingIdsFor(routine: Routine, existing: readonly Todo[]): Set<string
 /** `materializeRoutines` 가 저장소 계층에서 하는 일을 재현한다: 계획 → 트랜잭션 커밋. **루틴 로우는
  * 쓰지 않는다**(ADR-0018 §결정 3) — `plan.todos` 만 쓴다. 0건이면(R4) 아무것도 쓰지 않는다(빈
  * 트랜잭션을 만들 이유가 없다). */
-async function materialize(repos: Repositories, routineId: RoutineId, through: DateKey): Promise<void> {
+async function materialize(
+  repos: Repositories,
+  routineId: RoutineId,
+  through: DateKey,
+): Promise<void> {
   const current = await repos.routines.getById(routineId);
   if (current === undefined) {
     return;

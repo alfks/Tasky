@@ -85,11 +85,10 @@ export function pauseRoutine(routine: Routine, deps: MetaDeps): Persistable<Rout
 
 /**
  * 재개 (R7): 다시 지연 생성을 켠다. **소급하지 않는다** — 멈춰 있던 구간은 채우지 않도록
- * `fillFloor` 를 `max(기존 값, today 전날)` 로 옮긴다(과거로 되돌아가지 않는다). 최종 설계에서
- * `fillFloor` 를 바꾸는 곳은 이 함수와 생성(`createRoutine`) 둘뿐이다(ADR-0018) — 둘 다 사용자가
- * 직접 누른 조작이라 아웃박스에 실려도 안전하다. **지금은 `planRoutineFill`(배경 채우기)도 이 값을
- * 전진시킨다** — `routine.ts` 의 `fillFloor` 필드 주석과 ADR-0018 재검토 트리거를 본다(임시,
- * PR #121 리뷰 Blocker, `SyncRepository.existingIds` 가 배선되면 없앤다).
+ * `fillFloor` 를 `max(기존 값, today 전날)` 로 옮긴다(과거로 되돌아가지 않는다). `fillFloor` 를
+ * 바꾸는 곳은 이 함수와 생성(`createRoutine`) 둘뿐이다(ADR-0018 §결정 3, T-92b 로 원안 복귀) — 둘
+ * 다 사용자가 직접 누른 조작이라 아웃박스에 실려도 안전하다. `planRoutineFill`(배경 채우기)은 이
+ * 값을 전혀 건드리지 않는다.
  */
 export function resumeRoutine(
   routine: Routine,

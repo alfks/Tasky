@@ -111,7 +111,9 @@ async function tombstoneInclusiveIds(
   today: DateKey | undefined,
 ): Promise<ReadonlySet<string>> {
   const candidateIds = routines.flatMap((routine) =>
-    candidateFillDates(routine, through, today).map((date) => routineInstanceSlotId(routine.id, date)),
+    candidateFillDates(routine, through, today).map((date) =>
+      routineInstanceSlotId(routine.id, date),
+    ),
   );
   if (candidateIds.length === 0) {
     return new Set();
