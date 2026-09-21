@@ -4,13 +4,13 @@
 //
 // - F1(id 충돌): `routineInstanceSlotId` 를 `planRoutineFill` 이 실제로 쓴다(`routine-fill.ts`) —
 //   여전히 닫혀 있다.
-// - F2(배경 채우기가 사용자 중지를 덮는다) — **2026-09-21 정정(PR #121 리뷰 Blocker)**: 최종 설계는
-//   `planRoutineFill` 이 루틴 로우를 전혀 안 쓰는 것이지만, 그러려면 `SyncRepository.existingIds`
-//   (T-92 후속, 이 티켓 owns 밖)가 배선돼야 한다. 그 전까지는 소프트 삭제한 인스턴스가 재방문마다
-//   부활하는 더 급한 회귀가 있어, `fillFloor` 전진을 **임시로** 되살렸다 — 배경 채우기가 다시 루틴
-//   로우를 `touch()` 한다. 동기화 아웃박스 적재가 아직 어떤 쓰기 경로에도 배선돼 있지 않아(T-92b
-//   착수 전) F2 자체는 지금 재현되지 않는다(아래 테스트가 그 전제를 직접 확인한다) — 포트가 배선되면
-//   이 전진을 다시 없앤다(ADR-0018 재검토 트리거).
+// - F2(배경 채우기가 사용자 중지를 덮는다) — **2026-09-21 정정의 정정(T-92b)**: PR #121 은
+//   `SyncRepository.existingIds`(당시 T-92b owns 밖)가 없어 `fillFloor` 전진을 임시로 되살렸었다.
+//   T-92b 가 그 포트를 배선했으므로 최종 설계(ADR-0018 §결정 3)로 되돌렸다 — `planRoutineFill`
+//   (`RoutineFillPlan`)은 이제 루틴 로우를 아예 돌려주지 않는다. 배경 채우기가 루틴 로우를 전혀
+//   안 쓰니 아웃박스에 실릴 것도 없고, 그래서 다른 기기의 "중지" 를 덮는 경로 자체가 성립하지 않는다
+//   (아래 테스트가 그걸 직접 본다 — 두 기기·실제 동기화 왕복으로 증명하는 스위트는
+//   `todo-routine-fill.test.ts`). 이 재검토 트리거는 이제 해소됐다.
 // - F3(워터마크 후퇴): 이제 슬롯 id(F1)가 중복 방지의 유일한 근거라, `fillFloor` 가 병합에서
 //   후퇴해도(두 기기가 갈렸다가 옛 값이 이겨도) 같은 슬롯은 같은 id 를 만들어 서버가 중복을 거절한다
 //   — F3 의 원래 실패 모드("워터마크 후퇴 → 제목 대조가 달라져 중복 생성")는 제목 대조를 그만둔
@@ -88,7 +88,7 @@ describe('F1 — routineInstanceSlotId + applyServerRules 조합이 앱 경로�
   });
 });
 
-describe('F2 — 배경 채우기가 루틴 로우를 다시 쓴다(임시 복원, PR #121 리뷰 Blocker)', () => {
+describe('F2 — 배경 채우기가 루틴 로우를 쓰지 않는다(ADR-0018 §결정 3, T-92b 로 최종 설계 복귀)', () => {
   const routine: Routine = makeRoutine({
     fillFloor: '2026-01-15' as DateKey,
     updatedAt: FIXTURE_INSTANT, // 사용자 조작 없음
@@ -96,7 +96,7 @@ describe('F2 — 배경 채우기가 루틴 로우를 다시 쓴다(임시 복�
   // 배경 채우기: 사용자 조작이 전혀 없는데 날짜 범위만 넓어진다(오프라인 방문 등).
   const deps = fixedDeps({ now: '2026-06-01T00:00:00.000Z' }); // 원래 updatedAt 과 다른 시각
 
-  it('채울 것이 있으면 결과의 routine 은 touch 된 새 값이다 — 최종 설계(F2 완전 방어)는 아직 아니다', () => {
+  it('채울 것이 있어도 결과는 todos 뿐이다 — 루틴 로우가 없으니 touch 될 것도, 아웃박스에 실릴 것도 없다', () => {
     const plan = planRoutineFill(
       { routine, through: '2026-01-22' as DateKey, existingIds: new Set() },
       deps,
@@ -104,12 +104,9 @@ describe('F2 — 배경 채우기가 루틴 로우를 다시 쓴다(임시 복�
 
     expect(plan).not.toBeNull();
     expect(plan?.todos.length).toBeGreaterThan(0);
-    // routine-fill.ts 상단 주석·ADR-0018 재검토 트리거: `SyncRepository.existingIds`(T-92 후속)가
-    // 배선되기 전까지는 부활 방지가 이 전진에 기대므로, 아웃박스 적재가 배선되는 순간까지는 F2 가
-    // 다시 열린다 — 지금은 어떤 쓰기 경로도 syncOutbox 에 아무것도 싣지 않아(T-92b 착수 전) 잠들어
-    // 있을 뿐이다.
-    expect(plan?.routine.fillFloor).toBe('2026-01-22');
-    expect(plan?.routine.updatedAt).toBe('2026-06-01T00:00:00.000Z');
+    // `RoutineFillPlan` 에는 이제 `routine` 필드 자체가 없다(타입 수준에서 F2 를 막는다) — 누가
+    // 실수로 루틴 로우를 다시 실어 보내려 해도 `plan.routine` 은 컴파일이 안 된다.
+    expect(plan).not.toHaveProperty('routine');
   });
 });
 
