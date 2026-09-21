@@ -10,7 +10,7 @@
 // 데이터는 UI 경로로만 만든다(tests/AGENTS.md 규칙3) — 표 행 수는 기간의 날 수(`periodDays.length`)
 // 로 정해지므로(TrendChart 는 데이터가 없는 날도 표에 "기록 없음" 행을 낸다) 투두 하나만 있어도
 // "이 기간에 기록이 없어요" 빈 상태를 벗어나 표 전체가 그려진다 — 대량 시드가 필요 없다.
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures/stub-login';
 
 import type { Page } from '@playwright/test';
 

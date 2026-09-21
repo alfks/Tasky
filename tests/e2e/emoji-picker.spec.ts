@@ -11,7 +11,7 @@
 //
 // 헬퍼는 `selection-ring.spec.ts` 의 것과 같은 모양이지만 **복사본**이다: 그 파일은 다른 티켓과
 // 공유하는 자리라 export 를 추가하려면 그쪽을 건드려야 한다. 재는 대상이 달라 함께 움직일 이유도 없다.
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures/stub-login';
 
 import type { Locator, Page } from '@playwright/test';
 

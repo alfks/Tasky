@@ -2,7 +2,7 @@
 // main.tsx 하나다. 재export 는 금지 — 레포지토리 주입 외의 일을 하면 경계가 새어나간다.
 import { useEffect, useState, type ReactNode } from 'react';
 
-import { setRepositories } from '@/repositories/container';
+import { setRepositories, setSyncTransport } from '@/repositories/container';
 import { isRepositoryError } from '@/repositories/repository-error';
 
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -20,12 +20,14 @@ import { Skeleton } from '@/components/ui/Skeleton';
  * 여기서 한 번 열어 두면 그 실패가 `RepositoryError('SCHEMA_UPGRADE_FAILED')` 로 **여기서** 잡힌다.
  * 첫 페인트 비용은 늘지 않는다 — 어차피 첫 조회가 같은 열기를 유발하고 Dexie 의 `open()` 은 멱등이다.
  */
-const injection: Promise<void> = import('@/infra/indexeddb/repositories').then(
-  async ({ createIndexedDbRepositories, openIndexedDb }) => {
-    setRepositories(createIndexedDbRepositories());
-    await openIndexedDb();
-  },
-);
+const injection: Promise<void> = Promise.all([
+  import('@/infra/indexeddb/repositories'),
+  import('@/infra/sync/http-transport'),
+]).then(async ([{ createIndexedDbRepositories, openIndexedDb }, { createHttpSyncTransport }]) => {
+  setRepositories(createIndexedDbRepositories());
+  setSyncTransport(createHttpSyncTransport());
+  await openIndexedDb();
+});
 
 /** 스키마가 못 올라갔을 때 (TECH_PLAN §5 규칙 4). 데이터는 그대로 있고 쓰기만 막힌다. */
 const SCHEMA_FAILED_MESSAGE =

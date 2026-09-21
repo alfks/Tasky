@@ -134,9 +134,19 @@ export function isEmptyDataset(state: BackupState): boolean {
   );
 }
 
-/** 내보내기 버튼을 누를 수 있는가. */
-export function canExport(state: BackupState): boolean {
-  return state.phase === 'idle' && state.current !== null && !isEmptyDataset(state);
+/**
+ * 내보내기 버튼을 누를 수 있는가.
+ *
+ * `allowEmpty` 는 **인증 경로 전용**(sync.md — 리뷰 Major 1)이다: 로그아웃·계정 삭제·계정 전환·
+ * 계정 삭제 안내 확인은 로그인이 필수라 내보내기가 막히면 사용자가 빠져나갈 문이 없다 — 로컬이
+ * 비어 있어도(할 일 0건) 거의 빈 JSON 하나를 내보내고 정상적으로 진행돼야 한다. 수동 "내보내기"
+ * 버튼(`BackupDialog`)은 이 옵션 없이 그대로 부른다 — 빈 상태에서 누를 이유가 없는 그 버튼까지
+ * 풀어 줄 필요는 없다(§2 빈 상태 문구가 여전히 그 자리를 설명한다).
+ */
+export function canExport(state: BackupState, options?: { allowEmpty?: boolean }): boolean {
+  if (state.phase !== 'idle' || state.current === null) return false;
+  if (options?.allowEmpty === true) return true;
+  return !isEmptyDataset(state);
 }
 
 /** 가져오기 버튼을 누를 수 있는가 (R7: 교체는 확인 체크 필수). */

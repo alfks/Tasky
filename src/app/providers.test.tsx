@@ -24,9 +24,14 @@ type RepositoryErrors = {
 
 const createIndexedDbRepositories = vi.fn(() => ({}) as never);
 const openIndexedDb = vi.fn(() => Promise.resolve());
+const createHttpSyncTransport = vi.fn(() => ({}) as never);
 
 vi.mock('@/infra/indexeddb/repositories', () => ({ createIndexedDbRepositories, openIndexedDb }));
-vi.mock('@/repositories/container', () => ({ setRepositories: vi.fn() }));
+vi.mock('@/infra/sync/http-transport', () => ({ createHttpSyncTransport }));
+vi.mock('@/repositories/container', () => ({
+  setRepositories: vi.fn(),
+  setSyncTransport: vi.fn(),
+}));
 
 /**
  * 모듈 스코프 주입을 다시 실행시킨다 — import 는 리셋 **뒤에** 해야 한다.

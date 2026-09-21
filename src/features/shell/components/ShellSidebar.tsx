@@ -12,6 +12,7 @@ import { BackupLauncher } from '@/features/backup';
 import { CategoryList } from '@/features/category';
 import { useRemovalReturnFocus } from '@/features/shell/hooks/useRemovalReturnFocus';
 import { APP_NAME } from '@/features/shell/lib/title';
+import { AccountBlockLauncher } from '@/features/sync';
 import { ThemeModeToggle, ThemeSettingsPopover } from '@/features/theme';
 import { RoutineManager } from '@/features/todo';
 
@@ -41,6 +42,14 @@ type ShellSidebarProps = {
   categories: readonly Category[];
   onSelectCategory: (id: CategoryId) => void;
   onRemoveCategory: (category: Category) => void;
+  /**
+   * 계정 블록(로그아웃·계정 삭제)이 쓰는 내보내기. `AppShell` 이 `useBackupStore` 에서 만들어
+   * prop 으로 내린다 — **리뷰 Major 3**: 이 컴포넌트는 사이드바가 컬럼일 때(또는 드로어를 연
+   * 동안)만 마운트되므로, 여기서 직접 만들면 좁은 뷰포트에서 드로어를 한 번도 연 적 없는 세션엔
+   * `exportBackup` 을 등록할 통로 자체가 없다(그 통로는 이제 `ShellOverlays` 의 항상-마운트
+   * 오버레이가 갖는다 — `AppShell` 이 같은 함수를 이 prop 으로 여기에도, 그쪽에도 함께 내린다).
+   */
+  exportBackup: () => Promise<boolean>;
 };
 
 export function ShellSidebar({
@@ -49,6 +58,7 @@ export function ShellSidebar({
   categories,
   onSelectCategory,
   onRemoveCategory,
+  exportBackup,
 }: ShellSidebarProps) {
   // 루틴 삭제로 그 행이 사라진 뒤 포커스가 `<body>` 로 떨어지지 않게(app-shell R14) — 카테고리
   // 삭제가 쓰는 것과 같은 헬퍼, 인스턴스만 이 사이드바 전용으로 새로 둔다.
@@ -111,6 +121,10 @@ export function ShellSidebar({
           removalReturnFocus={routineRemovalFocus.returnFocus}
         />
       </div>
+
+      {/* 계정 블록은 세션에 종속된 상태라 나머지 진입점(도구 줄)과 분리해 사이드바 맨 끝에 둔다
+          (sync.md §2, app-shell.md R12-a). */}
+      <AccountBlockLauncher exportBackup={exportBackup} />
     </nav>
   );
 }

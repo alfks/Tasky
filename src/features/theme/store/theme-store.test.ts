@@ -236,3 +236,40 @@ describe('setSystemDark (R7)', () => {
     expect(screen().theme).toBe('dark');
   });
 });
+
+describe('reloadFromStorage (T94_LAZY_BOUNDARY.md §D-10 — 동기화가 settings 를 채택했을 때)', () => {
+  it('저장소의 새 값을 화면·미러에 반영한다 — init 의 "한 번만" 가드가 없다', async () => {
+    const store = createThemeStore(fixedDeps());
+    await store.getState().init();
+    expect(store.getState().mode).toBe('system');
+
+    // 다른 기기가 원격에서 올린 값을 엔진이 로컬 저장소에 적용했다고 가정 — 스토어 밖에서 바뀐다.
+    await repositories.settings.upsert(
+      setThemeMode(makeSettings({ accentColor: CORAL_LIGHT }), 'dark', fixedDeps()),
+    );
+
+    await store.getState().reloadFromStorage();
+
+    expect(store.getState().mode).toBe('dark');
+    expect(store.getState().accentColor).toBe(CORAL_LIGHT);
+    expect(screen()).toEqual({ theme: 'dark', accent: CORAL_DARK, themeColor: THEME_COLOR.dark });
+    expect(mirror()).toEqual(toMirror('dark', CORAL_LIGHT));
+  });
+
+  it('settings 행이 없으면 화면을 건드리지 않는다', async () => {
+    const store = createThemeStore(fixedDeps());
+    await store.getState().reloadFromStorage();
+    expect(store.getState().status).toBe('idle');
+  });
+
+  it('저장소를 못 읽으면 화면은 그대로 두고 에러만 남긴다', async () => {
+    const store = createThemeStore(fixedDeps());
+    await store.getState().init();
+    vi.spyOn(repositories.settings, 'get').mockRejectedValueOnce(new Error('boom'));
+
+    await store.getState().reloadFromStorage();
+
+    expect(store.getState().error).not.toBeNull();
+    expect(store.getState().mode).toBe('system'); // 안 바뀜
+  });
+});

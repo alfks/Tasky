@@ -24,6 +24,9 @@ type BackupImportSectionProps = {
   mode: ImportMode;
   acknowledged: boolean;
   busy: boolean;
+  /** 로그인(동기화 켜짐) 상태에서 "교체" 를 비활성화한다(sync.md R7-a). 이유는 `replaceDisabledReason`. */
+  replaceDisabled?: boolean;
+  replaceDisabledReason?: string;
   onSelect: (file: File | null) => void;
   onModeChange: (mode: ImportMode) => void;
   onAcknowledgedChange: (acknowledged: boolean) => void;
@@ -42,6 +45,8 @@ export function BackupImportSection({
   mode,
   acknowledged,
   busy,
+  replaceDisabled = false,
+  replaceDisabledReason,
   onSelect,
   onModeChange,
   onAcknowledgedChange,
@@ -89,19 +94,27 @@ export function BackupImportSection({
         aria-label="가져오기 방식"
         className="flex flex-col gap-[var(--space-2)] border-0 p-0"
       >
-        {MODES.map((option) => (
-          <label key={option.value} className="flex items-center gap-[var(--space-2)] text-sm">
-            <input
-              type="radio"
-              name={radioName}
-              value={option.value}
-              checked={mode === option.value}
-              disabled={busy}
-              onChange={() => onModeChange(option.value)}
-            />
-            {option.label}
-          </label>
-        ))}
+        {MODES.map((option) => {
+          const optionDisabled = option.value === 'replace' && replaceDisabled;
+          return (
+            <label
+              key={option.value}
+              aria-disabled={optionDisabled ? true : undefined}
+              title={optionDisabled ? replaceDisabledReason : undefined}
+              className="flex items-center gap-[var(--space-2)] text-sm aria-disabled:text-muted"
+            >
+              <input
+                type="radio"
+                name={radioName}
+                value={option.value}
+                checked={mode === option.value}
+                disabled={busy || optionDisabled}
+                onChange={() => onModeChange(option.value)}
+              />
+              {option.label}
+            </label>
+          );
+        })}
       </fieldset>
 
       {mode === 'replace' ? (

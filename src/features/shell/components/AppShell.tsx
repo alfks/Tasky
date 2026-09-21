@@ -5,7 +5,7 @@
 // 여기서 처음으로 feature 들이 서로를 본다. 그래서 feature 사이의 배선(토스트 뷰포트 하나, 단축키
 // 레이어 하나, 삭제 제어기 한 벌, 타이머 슬롯 둘, 문서 제목)은 전부 이 파일과 형제 파일에 모인다 —
 // feature 안에 흩으면 같은 배선이 두 번 생기고, 그것이 토스트 두 개가 겹친 이유였다.
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useBackupStore } from '@/features/backup';
 import {
@@ -73,6 +73,26 @@ function ShellBody() {
   const reportFailure = useShellStorageStore((s) => s.reportFailure);
   const [categoryFormOpen, setCategoryFormOpen] = useState(false);
   const openBackupDialog = useBackupStore((s) => s.openDialog);
+
+  // 계정 블록(sync.md §2, R12-a)이 필요로 한다 — `sync` 는 `backup` 을 import 할 수 없어
+  // 셸이 꺼내 prop 으로 내린다(backup/index.ts 머리주석의 선례). 여기서 만들어 `ShellSidebar`
+  // (컬럼·드로어 두 인스턴스)와 `ShellOverlays`(리뷰 Major 3 — 레이아웃과 무관하게 항상 마운트되는
+  // 계정 다이얼로그들, 같은 함수)에 **같은 인스턴스**로 내린다.
+  //
+  // **`refresh()` 를 먼저 부르는 이유**: `exportBackup()` 은 `canExport(state)` 를 보고, 그 판정은
+  // `state.current`(엔티티 개수)가 있어야 참이 된다 — `current` 는 백업 다이얼로그를 **연 적이
+  // 있어야만**(`openDialog` → `refresh`) 채워진다. 로그아웃·계정 삭제·계정 삭제/전환 안내는
+  // 다이얼로그를 연 적 없이도 눌릴 수 있는 버튼이라, `refresh()` 없이 그대로 넘기면
+  // `current === null` 이라 `canExport` 가 거짓이 되어 내보내기가 **매번 조용히 실패한다**(실측:
+  // e2e 로 처음 드러났다 — 계정 삭제가 아무 일도 없이 끝났다). `refresh` 는 멱등이고 비용도 엔티티
+  // 6종 조회 한 번뿐이다. `allowEmpty: true` 는 리뷰 Major 1 — 로컬이 비어 있어도 인증 경로(로그
+  // 아웃·계정 삭제·계정 전환)는 통과해야 사용자가 갇히지 않는다.
+  const exportBackupOnly = useBackupStore((state) => state.exportBackup);
+  const refreshBackupCounts = useBackupStore((state) => state.refresh);
+  const exportBackup = useCallback(async () => {
+    await refreshBackupCounts();
+    return exportBackupOnly({ allowEmpty: true });
+  }, [refreshBackupCounts, exportBackupOnly]);
 
   // 통계 화면(T-85, stats.md "메인 컬럼 전체 대체"). 커맨드 팔레트 "통계 보기"가 `open` 을 켠다.
   const reportsOpen = useReportsStore((s) => s.open);
@@ -167,6 +187,7 @@ function ShellBody() {
               categories={categories}
               onSelectCategory={focusCategory}
               onRemoveCategory={requestRemove}
+              exportBackup={exportBackup}
             />
           </div>
         ) : null}
@@ -231,6 +252,7 @@ function ShellBody() {
         onRemoveCategory={requestRemove}
         removalReturnFocus={removalFocus.returnFocus}
         onSelectCategory={focusCategory}
+        exportBackup={exportBackup}
       />
     </div>
   );

@@ -7,6 +7,10 @@
 // - 카테고리 만들기(빈 상태 CTA 에서)
 // - 카테고리 삭제 대화상자 — `useCategoryRemoval()` 제어기를 사이드바의 `onRemove` 와 **같은 것**으로
 //   받는다. 이 배선이 없으면 카테고리 메뉴에 "삭제" 항목 자체가 생기지 않는다(T-12b 핸드오프).
+// - 계정 동기화 오버레이(R7 업로드·계정 삭제 안내·계정 전환 안내) — **레이아웃과 무관하게 항상
+//   마운트된다**(리뷰 Major 3). 드로어 안의 `ShellSidebar` 와 달리 `Dialog` 밖(이 컴포넌트의
+//   최상위 프래그먼트)에 있다 — 그래야 드로어를 한 번도 연 적 없는 좁은 뷰포트 세션에서도 R7·
+//   계정 삭제·계정 전환 안내가 뜨고 `exportBackup` 등록이 이뤄진다.
 import type { Category } from '@/domain/category/category';
 import type { CategoryId } from '@/domain/ids';
 
@@ -19,6 +23,7 @@ import { INSIGHT_OVERLAY_ID } from '@/features/shell/components/ShellHeader';
 import { ShellInsights } from '@/features/shell/components/ShellInsights';
 import { ShellSidebar } from '@/features/shell/components/ShellSidebar';
 import { APP_NAME } from '@/features/shell/lib/title';
+import { AccountSyncOverlays } from '@/features/sync';
 
 import { Dialog } from '@/components/ui/Dialog';
 
@@ -36,6 +41,9 @@ type ShellOverlaysProps = {
   /** 삭제로 사라진 행 대신 포커스를 받을 요소 (R14). 주지 않으면 포커스가 `<body>` 로 떨어진다. */
   removalReturnFocus: () => HTMLElement | null;
   onSelectCategory: (id: CategoryId) => void;
+  /** 계정 블록(로그아웃·계정 삭제·계정 전환)이 쓰는 내보내기 — `AppShell` 이 만들어 이 컴포넌트와
+   * `ShellSidebar` 양쪽에 같은 함수를 내린다. */
+  exportBackup: () => Promise<boolean>;
 };
 
 export function ShellOverlays({
@@ -50,6 +58,7 @@ export function ShellOverlays({
   onRemoveCategory,
   removalReturnFocus,
   onSelectCategory,
+  exportBackup,
 }: ShellOverlaysProps) {
   return (
     <>
@@ -69,8 +78,12 @@ export function ShellOverlays({
             onSelectCategory(id);
           }}
           onRemoveCategory={onRemoveCategory}
+          exportBackup={exportBackup}
         />
       </Dialog>
+
+      {/* 리뷰 Major 3 — `Dialog` 밖, 레이아웃 분기 밖. 드로어가 닫혀 있어도 항상 마운트된다. */}
+      <AccountSyncOverlays exportBackup={exportBackup} />
 
       <Dialog
         open={insightOverlayOpen}

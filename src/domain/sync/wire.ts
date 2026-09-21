@@ -116,4 +116,11 @@ export type SyncState = {
   lastSyncedAt?: string;
   /** ③-4: 같은 로우가 `invalid` 로 연속 3회 거절되면 그 (tbl,id) 를 격리한다. */
   quarantined?: readonly { tbl: SyncTable; id: string }[];
+  /**
+   * 첫 로그인 R7 업로드 다이얼로그를 Esc·✕ 로 보류했는가(리뷰 Major 4). 참이면 다음 부팅
+   * (`auth-actions.ts#resumeIfDeferred`)이 로컬 데이터가 아직 있는지 다시 보고, 있으면 다이얼로그를
+   * 한 번 더 띄운다 — "다음 접속에 다시 묻는다"(R7) 는 문구를 실제로 지키는 자리가 여기다. 이 필드는
+   * **기기별 결정 상태**라 동기화 대상 7테이블이 아니라 `SyncState`(§4 "새 로컬 개념 넷")에 둔다.
+   */
+  uploadDeferred?: boolean;
 };

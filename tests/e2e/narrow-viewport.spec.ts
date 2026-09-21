@@ -10,7 +10,7 @@
 //
 // 헤더를 가장 빡빡한 상태로 만들어 두고 잰다: ☰ · 팔레트 입구 · **타이머 칩** · 달성률 넷이
 // 한 줄에 있는 상태(app-shell R15). 칩이 없으면 제일 잘 넘치는 경우를 비켜 가게 된다.
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures/stub-login';
 
 import type { Page } from '@playwright/test';
 

@@ -9,8 +9,17 @@ import type { SyncRequest, SyncResponse } from '@/domain/sync/wire';
 
 export type SessionInfo = { sub: string; email: string; expiresAt: string };
 
-/** 트랜스포트 실패의 갈래. UI 는 문구가 아니라 이 값으로 분기한다. */
-export type TransportFailure = 'unauthorized' | 'offline' | 'server';
+/**
+ * 트랜스포트 실패의 갈래. UI 는 문구가 아니라 이 값으로 분기한다.
+ *
+ * `'account-deleted'`(ADR-0019, sync.md §6): 이 세션의 계정이 **다른 기기**에서 삭제됐다 —
+ * worker 가 평범한 401 이 아니라 `410 + { error: 'account-deleted' }` 를 돌려준다
+ * (`worker/auth/session.ts#requireSession`, `worker/router.ts#sessionErrorResponse`,
+ * `worker/auth/handlers.ts#handleMe` — `/api/me`·`/api/sync` 둘 다 같은 모양). `'unauthorized'`
+ * 와 구분해야 하는 이유: 401 은 "다시 로그인하세요"(조용히 로그인 화면으로)지만 이 값은
+ * "말없이 버리지 않는다"(ADR-0015 §5) 는 결정에 따라 **안내 다이얼로그**를 거쳐야 한다.
+ */
+export type TransportFailure = 'unauthorized' | 'offline' | 'server' | 'account-deleted';
 
 /**
  * 트랜스포트 실패. `RepositoryError` 와 같은 이유로 클래스를 쓴다(스택 트레이스·`instanceof` 판정 —
@@ -34,9 +43,11 @@ export function isTransportError(value: unknown): value is TransportError {
 }
 
 export interface SyncTransport {
-  /** 세션 확인. 401 은 `null`(정상 분기), 네트워크 실패는 `TransportError('offline')`. */
+  /** 세션 확인. 401 은 `null`(정상 분기), 410(계정 삭제)은 `TransportError('account-deleted')`,
+   * 네트워크 실패는 `TransportError('offline')`. */
   me(): Promise<SessionInfo | null>;
-  /** 한 왕복. 401 → `TransportError('unauthorized')`, 5xx → `'server'`, fetch 실패 → `'offline'`. */
+  /** 한 왕복. 401 → `TransportError('unauthorized')`, 410 → `'account-deleted'`, 5xx →
+   * `'server'`, fetch 실패 → `'offline'`. */
   sync(request: SyncRequest): Promise<SyncResponse>;
   logout(): Promise<void>;
   deleteAccount(): Promise<void>;

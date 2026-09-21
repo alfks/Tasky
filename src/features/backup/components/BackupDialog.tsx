@@ -14,9 +14,13 @@ import {
   issueMessage,
 } from '@/features/backup/store/backup-state';
 import { useBackupStore, type BackupStore } from '@/features/backup/store/backup-store';
+import { useSyncStore } from '@/features/sync';
 
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
+
+/** sync.md R7-a: 로그인(동기화 켜짐) 상태에서는 "교체" 를 비활성화한다. */
+const REPLACE_DISABLED_REASON = '로그인 상태에서는 병합만 가능해요';
 
 /** 렌더에 필요한 조각만 한 번에 구독한다(필드가 전부 같은 참조면 리렌더가 없다). */
 const selectView = (state: BackupStore) => ({
@@ -40,6 +44,7 @@ const selectView = (state: BackupStore) => ({
 
 export function BackupDialog() {
   const view = useBackupStore(useShallow(selectView));
+  const loggedIn = useSyncStore((state) => state.phase === 'ready');
   // 누를 수 없는 이유는 툴팁만으로는 키보드·스크린리더 사용자에게 닿지 않는다(§5, 리뷰 Minor-6).
   const blockedReasonId = useId();
   const closeDialog = useBackupStore((state) => state.closeDialog);
@@ -95,6 +100,8 @@ export function BackupDialog() {
           mode={view.mode}
           acknowledged={view.acknowledged}
           busy={busy}
+          replaceDisabled={loggedIn}
+          replaceDisabledReason={REPLACE_DISABLED_REASON}
           onSelect={(file) => void selectFile(file)}
           onModeChange={setMode}
           onAcknowledgedChange={setAcknowledged}

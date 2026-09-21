@@ -8,7 +8,7 @@
 // 심은 시각이 절대적이라 러너가 느려도 판정이 바뀌지 않는다.
 //
 // 셀렉터는 smoke.spec.ts 와 같이 **역할 + 접근 이름**만 쓴다.
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures/stub-login';
 
 import type { Page } from '@playwright/test';
 

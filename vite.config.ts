@@ -9,21 +9,32 @@ import { defineConfig, type Plugin } from 'vite';
 const src = fileURLToPath(new URL('./src', import.meta.url));
 
 /**
- * 동적 import 청크(= Dexie + infra)를 <head> 의 modulepreload 로 알린다.
+ * 동적 import 청크(= Dexie + infra + 동기화 엔진/auth-actions/http-transport 와 그것들이 공유하는
+ * 조각)를 <head> 의 modulepreload 로 알린다.
  *
  * 없으면 브라우저는 "진입 청크를 받아 실행한 뒤에야" 그 청크를 발견하므로 왕복이 직렬로 쌓인다
  * (실측: Fast 3G 상당에서 첫 콘텐츠가 정적 import 판보다 85ms 늦었다). 이 링크가 있으면 두 청크를
  * **동시에** 받으면서도 Dexie 는 진입 청크의 파싱·실행 경로 밖에 남는다 — 지연 로드의 이득만 남는다.
+ *
+ * **필터가 `c.isDynamicEntry` 가 아니라 "진입이 아니고 문서에 없으면"인 이유**(2026-09-21,
+ * T-94/T94_LAZY_BOUNDARY.md §1 사실 4): 동적 청크 둘 이상이 같은 모듈을 나눠 쓰면(예: 엔진과
+ * `http-transport` 가 함께 쓰는 `@/repositories/sync-transport` 값) rolldown 이 그 모듈을 **공유
+ * 청크**로 따로 떼는데, 이 공유 청크는 `isDynamicEntry` 가 아니다(그 자신이 `import()` 의 직접
+ * 대상이 아니라 다른 청크가 정적으로 끌어오는 조각이라서) — 그래서 옛 필터로는 이런 청크가
+ * modulepreload 를 못 받고, `scripts/check-dist.mjs` 가 "index.html 의 어디에서도 참조되지
+ * 않습니다" 로 빌드를 막는다(실측: `wire-*`·`sync-transport-*`·`validate-rows-*`). 새 필터는 진입
+ * 청크 자신과 이미 다른 방식으로 문서에 실린 것(진입 스크립트 `src=`)만 빼고 **모든 청크**를
+ * preload 한다 — 그래야 무엇이 몇 개로 갈리든 항상 문서가 전부를 가리킨다.
  */
 function preloadAsyncChunks(): Plugin {
   return {
     name: 'tasky:preload-async-chunks',
     transformIndexHtml: {
       order: 'post',
-      handler(_html, ctx) {
+      handler(html, ctx) {
         if (ctx.bundle === undefined) return [];
         return Object.values(ctx.bundle)
-          .filter((c) => c.type === 'chunk' && c.isDynamicEntry)
+          .filter((c) => c.type === 'chunk' && !c.isEntry && !html.includes(c.fileName))
           .map((c) => ({
             tag: 'link',
             attrs: { rel: 'modulepreload', crossorigin: '', href: `/${c.fileName}` },
