@@ -6,8 +6,17 @@
 // #2·#3 벡터가 빨개진다, (3) seq 서브쿼리를 상수 1 로 바꾸면 "500건 서로 다른 seq" 가 빨개진다,
 // (7) `device_id <> ?` 를 지우면 "자기 변경은 풀에 안 온다" 가 빨개진다, (8) `cursor < gcFloor`
 // 분기를 지우면 resync 테스트가 빨개진다.
+//
+// **저장된 `updated_at` 컬럼 값도 벡터마다 직접 확인한다**(`applied` 인 벡터만) — `server-rules.ts
+// #applyServerRules` 는 판정(`insert`/`update`/…)만 정하고 "저장되는 값이 클램프됐는가"는 보지
+// 않는다(그 함수는 순수 판정기고, 생성 시도의 저장값 클램프는 애초에 그 함수가 손대지 않는
+// 영역이다). 그래서 `expected` 일치만으로는 §0 상태 블록 1번 버그(`pushOne` 이 생성 경로에서
+// `clampFutureUpdatedAt` 을 건너뛰어 미래 시각이 그대로 저장되는 것)를 잡지 못한다 — 이 파일이
+// 실제로 저장된 컬럼을 읽어 `clampFutureUpdatedAt(change.updatedAt, receivedAt)` 와 비교하는 것이
+// 그 버그의 유일한 회귀 방지선이다(생성 경로에서 클램프를 다시 빼면 이 assertion 이 빨개진다).
 import { describe, expect, it } from 'vitest';
 
+import { clampFutureUpdatedAt } from '@/domain/sync/server-rules';
 import { SERVER_RULE_VECTORS } from '@/domain/sync/server-rules.vectors';
 
 import { deleteAllForUser, gcFloor, pull, pushOne, touchDevice } from '../db/entities';
@@ -75,6 +84,16 @@ describe('SERVER_RULE_VECTORS — 실 D1', () => {
               : 'insert'
             : (`reject-${outcome.reason}` as const);
         expect(actual, vector.name).toBe(vector.expected);
+        if (outcome.kind === 'applied') {
+          // 판정이 아니라 **저장된 값**을 본다 — 위 파일 jsdoc: 생성 경로 클램프 누락(§0 상태
+          // 블록 1번)은 `expected` 만으로는 안 잡힌다.
+          const stored = await fx.db
+            .prepare('SELECT updated_at FROM entities WHERE sub = ? AND tbl = ? AND id = ?')
+            .bind(sub, vector.change.tbl, id)
+            .first<{ updated_at: string }>();
+          const expectedStored = clampFutureUpdatedAt(vector.change.updatedAt, vector.receivedAt);
+          expect(stored?.updated_at, `${vector.name} (저장된 updated_at)`).toBe(expectedStored);
+        }
       }
     } finally {
       await fx.dispose();

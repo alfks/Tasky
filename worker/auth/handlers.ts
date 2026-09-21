@@ -86,9 +86,18 @@ export async function handleCallback(request: Request, env: Env, now: string): P
     .run();
   // 삭제된 계정 기록이 있으면 재로그인 시점에 지운다 — 본인이 같은 구글 계정으로 다시 가입하는
   // 정상 흐름을 영구히 막지 않는다(docs/specs/sync.md §6 "함정" 각주, ADR-0019 §계정 삭제).
-  // 이 시점의 "부활" 위험(다른 기기가 자동으로 옛 데이터를 되올리는 것)은 여기서 발생하지 않는다 —
-  // 그 기기의 다음 동기화 요청은 **자신의** 세션으로 인증하고, 그 세션은 계정 삭제 시점에 이미
-  // deleted_users 로 걸러졌을 것이므로(session.ts) 이 재가입과 무관하게 410 을 먼저 받는다.
+  //
+  // **정정(이전 판은 틀렸다)**: 예전 주석은 "이 시점의 부활 위험은 여기서 발생하지 않는다 — 다른
+  // 기기의 다음 요청은 자신의 세션으로 인증하고, 그 세션은 삭제 시점에 이미 deleted_users 로
+  // 걸러졌을 것"이라고 단언했는데, 그 전제가 틀렸다 — **걸러지는 것은 "다음 요청을 보낸" 세션뿐**
+  // 이다(session.ts#requireSession 의 410 판정은 요청이 와야 발동하는 지연 정리다). 삭제 창 동안
+  // 그 기기가 요청을 한 번도 안 보내면 `sessions` 행은 손대지 않은 채 그대로 남는다. 세션 쿠키를
+  // 탈취당한 사용자가 계정을 지워 그 세션을 무력화하려 해도, 걸러지지 않은 그 세션 행이 남아있는
+  // 채로 같은 구글 계정으로 재가입하면 아래 `DELETE FROM deleted_users` 가 "삭제됨" 표식을 지우는
+  // 순간 그 탈취된 쿠키가 다시 유효해진다(실 D1 재현됨). 그래서 `deleted_users` 를 지우기 **전에**
+  // 이 sub 의 `sessions` 를 전부 지운다 — 재가입으로 방금 만든 새 세션(아래 `createSession`)은 이
+  // 문장 **뒤에** 발급되므로 영향받지 않는다.
+  await env.DB.prepare('DELETE FROM sessions WHERE sub = ?').bind(identity.sub).run();
   await env.DB.prepare('DELETE FROM deleted_users WHERE sub = ?').bind(identity.sub).run();
 
   const { signedSid } = await createSession(env, identity.sub, now);

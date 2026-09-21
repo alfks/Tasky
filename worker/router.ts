@@ -92,10 +92,12 @@ export async function handleRequest(request: Request, env: Env, now: string): Pr
 
   if (method === 'POST' && pathname === '/api/sync') {
     if (!hasCsrfHeader(request) || !hasJsonContentType(request)) return csrfRejected();
-    const parsed = await readJsonBody(request);
-    if (!parsed.ok) return parsed.response;
+    // 세션 확인이 본문 버퍼링보다 먼저 — 무쿠키 요청이 2 MB 를 반복 보내면 인증 전에 전량
+    // 버퍼링 + JSON.parse 가 끝나는 것을 막는다(§0 상태 블록 4번).
     const session = await requireSession(request, env, now);
     if (!session.ok) return sessionErrorResponse(session);
+    const parsed = await readJsonBody(request);
+    if (!parsed.ok) return parsed.response;
     const userDb = forUser(env.DB, session.sub);
     const { status, response } = await handleSync(parsed.body, userDb, now);
     const headers: Record<string, string> = {};
@@ -105,10 +107,11 @@ export async function handleRequest(request: Request, env: Env, now: string): Pr
 
   if (method === 'POST' && pathname === '/api/account/delete') {
     if (!hasCsrfHeader(request) || !hasJsonContentType(request)) return csrfRejected();
-    const sized = await enforceBodySize(request); // 본문 내용은 쓰지 않는다 — 크기 상한만 적용
-    if (!sized.ok) return sized.response;
+    // 세션 확인이 본문 버퍼링보다 먼저(위 /api/sync 와 같은 이유, §0 상태 블록 4번).
     const session = await requireSession(request, env, now);
     if (!session.ok) return sessionErrorResponse(session);
+    const sized = await enforceBodySize(request); // 본문 내용은 쓰지 않는다 — 크기 상한만 적용
+    if (!sized.ok) return sized.response;
     return handleAccountDelete(env, session.sub, session.sid, now);
   }
 

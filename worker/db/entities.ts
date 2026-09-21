@@ -72,9 +72,9 @@ export async function pushOne(
   }
 
   const isCreateAttempt = input.baseSeq === 0;
-  const storedUpdatedAt = isCreateAttempt
-    ? input.updatedAt
-    : clampFutureUpdatedAt(input.updatedAt, receivedAt);
+  // 생성·갱신 모두 클램프한다 — 생성만 건너뛰면 미래 시각(시계 어긋난 기기)이 그대로 저장돼,
+  // 그 뒤 정상 시각의 모든 갱신·삭제가 LWW 에서 영구히 져 로우가 동결된다(§0 상태 블록 1번, ADR-0005).
+  const storedUpdatedAt = clampFutureUpdatedAt(input.updatedAt, receivedAt);
   const stmt = isCreateAttempt ? CREATE_SQL : UPDATE_SQL;
   const result = await db
     .prepare(stmt)

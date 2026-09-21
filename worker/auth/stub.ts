@@ -32,6 +32,10 @@ export async function handleStubLogin(request: Request, env: Env, now: string): 
   )
     .bind(sub, email, now)
     .run();
+  // `auth/handlers.ts#handleCallback` 과 같은 이유로 같은 순서다 — 재가입이 탈취된 옛 세션을
+  // 되살리지 않도록 `deleted_users` 를 지우기 전에 이 sub 의 `sessions` 를 먼저 비운다(그 파일의
+  // jsdoc 참고, 실 D1 재현됨). 스텁도 실제 계정 재활성화 경로라 같은 취약점을 그대로 갖는다.
+  await env.DB.prepare('DELETE FROM sessions WHERE sub = ?').bind(sub).run();
   await env.DB.prepare('DELETE FROM deleted_users WHERE sub = ?').bind(sub).run();
   const { signedSid } = await createSession(env, sub, now);
   return new Response(null, {

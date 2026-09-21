@@ -174,4 +174,51 @@ describe('POST /api/account/delete — 순서와 다른 기기의 관측', () =>
       await fx.dispose();
     }
   });
+
+  it('삭제 창 동안 한 번도 요청을 보내지 않은 세션(탈취된 쿠키)은 재가입 뒤에도 되살아나지 않는다', async () => {
+    // 리뷰 라운드 2(보안) 재현: 세션 쿠키를 탈취당한 사용자가 그 세션을 무력화하려고 계정을
+    // 삭제해도, 그 세션이 삭제 창 동안 한 번도 요청을 보내지 않으면 `sessions` 행은 지연 정리
+    // (session.ts#requireSession 의 410 판정)를 거치지 않아 그대로 남는다. 그 상태로 같은 구글
+    // 계정이 재가입하면, `deleted_users` 기록만 지우고 `sessions` 를 손대지 않는 예전 순서에서는
+    // 그 탈취된 쿠키가 다시 유효해졌다(실 D1 재현됨) — `handleCallback`/`handleStubLogin` 이
+    // `deleted_users` 를 지우기 전에 그 sub 의 `sessions` 를 먼저 비우면 이 시나리오는 막힌다.
+    const fx = await createD1Fixture();
+    try {
+      const now = '2026-01-01T00:00:00.000Z';
+      const sub = 'sub-stolen-cookie';
+      await seedUser(fx, sub, now);
+      const env: Env = { ...envOf(fx), AUTH_STUB: '1' };
+      const deletingSession = await createSession(env, sub, now);
+      // 탈취된 쿠키 — 삭제 창 동안 단 한 번도 요청을 보내지 않는다(지연 정리가 발동할 기회가 없다).
+      const stolenSession = await createSession(env, sub, now);
+
+      const deleteRes = await handleRequest(deleteRequest(deletingSession.signedSid), env, now);
+      expect(deleteRes.status).toBe(204);
+
+      // 삭제 시점에는 다른 기기의 세션 행을 건드리지 않는다(ADR-0019 순서 결정) — 탈취된 세션도
+      // 예외가 아니다. 아직 남아있어야 한다.
+      const [stolenSid] = stolenSession.signedSid.split('.');
+      const stolenRowBeforeRelogin = await fx.db
+        .prepare('SELECT 1 FROM sessions WHERE sid = ?')
+        .bind(stolenSid)
+        .first();
+      expect(stolenRowBeforeRelogin).not.toBeNull();
+
+      // 같은 구글 계정으로 재가입한다(스텁 — handleCallback 과 같은 순서를 탄다).
+      const stubRes = await handleRequest(
+        new Request(`https://localhost/auth/stub-login?sub=${sub}&email=${sub}@x.com`),
+        env,
+        now,
+      );
+      expect(stubRes.status).toBe(302);
+
+      // 탈취된 쿠키로 보낸 요청은 401 이어야 한다 — 평범한 401 인 이유는 재가입이 이미
+      // `deleted_users` 기록을 지웠으므로 410(account-deleted) 판정 자체가 더는 발동하지 않기
+      // 때문이다(그 세션 행이 재가입 시점에 함께 지워졌다는 뜻).
+      const meRes = await handleRequest(meRequest(stolenSession.signedSid), env, now);
+      expect(meRes.status).toBe(401);
+    } finally {
+      await fx.dispose();
+    }
+  });
 });
