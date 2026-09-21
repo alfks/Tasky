@@ -65,6 +65,11 @@ export function createTodo(
     /** 같은 날짜·카테고리의 기존 투두. `order` 계산에만 쓴다. */
     siblings: readonly Todo[];
     routineId?: RoutineId;
+    /**
+     * 결정적 id 를 강제한다(루틴 슬롯 id, ADR-0018) — 없으면 기존처럼 `deps.id()` 난수를 쓴다
+     * (`createMeta` 의 `fields.id` 오버라이드 통로, `meta.ts` jsdoc).
+     */
+    id?: string;
   },
   deps: MetaDeps,
 ): Persistable<Todo> {
@@ -78,6 +83,7 @@ export function createTodo(
     done: false,
     order: nextTodoOrder(input.siblings),
     ...(input.routineId === undefined ? {} : { routineId: input.routineId }),
+    ...(input.id === undefined ? {} : { id: input.id }),
   });
 }
 

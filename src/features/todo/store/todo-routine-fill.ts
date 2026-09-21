@@ -2,7 +2,7 @@
 // 제한(code-style §5)을 넘겨 이 파일로 뗐다 — 루틴 관리(중지·재개·삭제)는 `todo-routine-manage.ts`.
 //
 // **등록은 이제 `Routine` 레코드를 항상 저장한다**(R5, R21과의 핵심 차이). 종료일이 있든 없든
-// `createRoutineRule` 이 레코드를 만들고, `planRoutineFill`(ADR-0017 워터마크)이 그 구간의 투두를
+// `createRoutineRule` 이 레코드를 만들고, `planRoutineFill`(ADR-0018 `fillFloor`)이 그 구간의 투두를
 // 계획한다. 즉시 채우기(등록 시점, R3·R4)와 지연 생성(방문 시점, R6)은 **같은 계산**을 쓴다 — 구간만
 // 다르다(등록은 `resolveImmediateFillThrough`, 방문은 날짜 스트립이 새로 연 범위).
 import type { DatasetWrite } from '@/domain/dataset';
@@ -16,9 +16,10 @@ import {
   createRoutine as createRoutineRule,
   deleteRoutine as deleteRoutineRule,
 } from '@/domain/routine/routine.rules';
+import { routineInstanceSlotId } from '@/domain/routine/slot-id';
 import type { RoutineRecurrence } from '@/domain/todo/routine.rules';
 import type { Todo } from '@/domain/todo/todo';
-import { deleteTodo } from '@/domain/todo/todo.rules';
+import { deleteTodo, normalizeTodoTitle } from '@/domain/todo/todo.rules';
 
 import { getRepositories, type Repositories } from '@/repositories/container';
 
@@ -74,6 +75,26 @@ export type RoutineFillActions = {
   }) => Promise<boolean>;
 };
 
+/**
+ * `existing`(그 구간의 살아 있는 투두)에서 `planRoutineFill` 이 쓸 `existingIds` 를 만든다. 두 가지를
+ * 더한다 — ① 각 로우의 실제 id(슬롯 id 로 만들어진 로우와의 idempotency, F1), ② 같은 날짜·카테고리·
+ * 정규화된 제목이 이미 있으면(R4·R21 dedup — 사용자가 직접 만든 투두 포함, 실제 id 는 슬롯 id 가
+ * 아닐 수 있다) 그 날짜의 **슬롯 id 를 대신 채워 넣는다** — `planRoutineFill` 은 멤버십만 보므로
+ * 이렇게 하면 실제 id 가 달라도 그 슬롯을 "이미 있다" 로 판정해 건너뛴다. `expandRoutineDates` 를
+ * 다시 돌지 않는다 — 후보 날짜가 아니라 **이미 조회된 existing** 을 슬롯 id 로 사상할 뿐이다.
+ */
+function existingIdsFor(routine: Routine, existing: readonly Todo[]): Set<string> {
+  const title = normalizeTodoTitle(routine.title);
+  const ids = new Set<string>();
+  for (const todo of existing) {
+    ids.add(todo.id);
+    if (todo.categoryId === routine.categoryId && normalizeTodoTitle(todo.title) === title) {
+      ids.add(routineInstanceSlotId(routine.id, todo.date));
+    }
+  }
+  return ids;
+}
+
 /** 종료일 있는 등록도 포함해 **항상** `Routine` 레코드를 만들고, 그 구간을 즉시 채운다(R3~R5). */
 async function planCreateRoutine(
   ctx: TodoContext,
@@ -103,8 +124,13 @@ async function planCreateRoutine(
     endDate: input.endDate,
     visibleRangeEnd,
   });
+  // 새 루틴이라 보통 이 구간엔 아무것도 없다 — 그래도 같은 제목의 투두를 먼저 만들어 둔 경우(리뷰
+  // Major 1 픽스처, R4·R21 dedup)까지 감안해 실제로 조회한다. 슬롯 id 는 아직 존재하지 않는 로우와
+  // 겹칠 수 없으므로(방금 만든 routine.id 라 서버·다른 기기가 먼저 알 수 없다) 여기서는 **살아 있는**
+  // 로우만으로 충분하다 — 툼스톤 인식(`SyncRepository.existingIds`)은 T-92 후속(ADR-0018)이 배선한다.
   const existing = await getRepositories().todos.listByDateRange(input.startDate, through);
-  const filled = planRoutineFill({ routine, through, existing }, ctx.deps);
+  const existingIds = existingIdsFor(routine, existing);
+  const filled = planRoutineFill({ routine, through, existingIds, siblings: existing }, ctx.deps);
   // `through >= startDate` 는 `resolveImmediateFillThrough` 가 늘 보장하고 `routine.active` 는 방금
   // 만든 레코드라 항상 true 다 — `planRoutineFill` 이 null 을 돌려줄 조건이 성립하지 않는다. 그래도
   // 시그니처가 `| null` 이라 방어적으로만 다룬다(대상 없음과 같은 취급 — 저장하지 않고 실패).
@@ -118,9 +144,12 @@ async function planCreateRoutine(
   if (input.endDate !== undefined && filled.todos.length === 0) {
     return { plan: { writes: [], apply: () => ({}) }, createdIds: [] };
   }
+  // `routine` 을 그대로 쓴다 — `planRoutineFill` 은 더 이상 루틴 로우를 돌려주지 않는다(ADR-0018,
+  // 배경 채우기가 로우를 touch 해 동기화 아웃박스에 싣지 않도록). `fillFloor` 는 `createRoutineRule`
+  // 이 이미 startDate 전날로 찍어 뒀고, 채우기가 그 값을 다시 옮기지 않는다.
   const writes: DatasetWrite[] = [
     ...filled.todos.map((entity) => ({ table: 'todos' as const, entity })),
-    { table: 'routines' as const, entity: filled.routine },
+    { table: 'routines' as const, entity: routine },
   ];
   return {
     plan: {
@@ -129,7 +158,7 @@ async function planCreateRoutine(
         const visible = filled.todos.filter((todo) => todo.date === state.date);
         return {
           byId: visible.length === 0 ? state.byId : withTodos(state.byId, visible),
-          routines: withRoutines(state.routines, [filled.routine]),
+          routines: withRoutines(state.routines, [routine]),
         };
       },
     },
@@ -170,7 +199,18 @@ async function planUndoRoutine(ctx: TodoContext, ids: readonly TodoId[]): Promis
   };
 }
 
-/** 지연 생성(R6) 계획: 워터마크가 `through` 에 못 미친 무기한 루틴만, 살아 있는 카테고리만 채운다. */
+/**
+ * 지연 생성(R6) 계획: `fillFloor` 이하는 절대 건드리지 않는 무기한 루틴만, 살아 있는 카테고리만
+ * 채운다. **루틴 로우는 쓰지 않는다**(ADR-0018) — `fillFloor` 는 사용자 조작(생성·재개)으로만
+ * 바뀌므로, 이 배경 작업이 매번 재방문할 범위는 `fillFloor+1` 로 고정돼 있다(전진하지 않는다).
+ * 중복 생성 방지는 슬롯 id 존재 여부(`existingIds`)만으로 한다.
+ *
+ * **알려진 한계(ADR-0018, T-92 후속이 닫는다)**: 여기서 쓰는 `existingIds` 는 `TodoRepository.
+ * listByDateRange`(살아 있는 로우만) 로 구한다 — 소프트 삭제된 슬롯은 포함하지 않는다. 그래서
+ * 지운 루틴 인스턴스가 이 경로만으로는 다음 방문에 다시 채워질 수 있다. 툼스톤까지 포함한 존재
+ * 판정은 `SyncRepository.existingIds`(bulkGet, 저장소 계층)가 해야 하고, 그 인터페이스는 이 티켓
+ * owns 밖이다 — 배선되면 이 줄만 바뀐다.
+ */
 async function planMaterializeRoutines(
   ctx: TodoContext,
   input: { to: DateKey; today: DateKey },
@@ -184,33 +224,25 @@ async function planMaterializeRoutines(
   const through = input.to < horizon ? input.to : horizon;
   const liveIds = new Set(liveCategories.map((category) => category.id));
   const due = all.filter(
-    (routine) =>
-      routine.active && liveIds.has(routine.categoryId) && routine.materializedThrough < through,
+    (routine) => routine.active && liveIds.has(routine.categoryId) && routine.fillFloor < through,
   );
   if (due.length === 0) {
     // 조회 2회, 쓰기 0회로 끝나는 보통의 경우(R6) — 그래도 state.routines 는 최신으로 맞춘다.
     return { writes: [], apply: (state) => ({ routines: withRoutines(state.routines, all) }) };
   }
 
-  const fillFrom = due
-    .map((routine) => addCivilDays(routine.materializedThrough, 1))
-    .sort()[0] as DateKey;
+  const fillFrom = due.map((routine) => addCivilDays(routine.fillFloor, 1)).sort()[0] as DateKey;
   const existing = await todos.listByDateRange(fillFrom, through);
   const created: Persistable<Todo>[] = [];
-  const updated: Persistable<Routine>[] = [];
   const writes: DatasetWrite[] = [];
   for (const routine of due) {
     const plan = planRoutineFill(
-      { routine, through, existing: [...existing, ...created] },
+      { routine, through, existingIds: existingIdsFor(routine, existing), siblings: existing },
       ctx.deps,
     );
     if (plan === null) continue;
     created.push(...plan.todos);
-    updated.push(plan.routine);
-    writes.push(...plan.todos.map((entity) => ({ table: 'todos' as const, entity })), {
-      table: 'routines' as const,
-      entity: plan.routine,
-    });
+    writes.push(...plan.todos.map((entity) => ({ table: 'todos' as const, entity })));
   }
   return {
     writes,
@@ -219,7 +251,7 @@ async function planMaterializeRoutines(
         state.byId,
         created.filter((todo) => todo.date === state.date),
       ),
-      routines: withRoutines(withRoutines(state.routines, all), updated),
+      routines: withRoutines(state.routines, all),
     }),
   };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { routineInstanceSlotId } from '@/domain/sync/routine-slot';
+import { routineInstanceSlotId } from '@/domain/routine/slot-id';
 
 /** `meta.ts` 의 `UUID_V4_PATTERN` 과 같은 정규식(그 상수는 export 되지 않아 여기서 다시 적는다). */
 const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

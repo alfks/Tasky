@@ -26,7 +26,7 @@ export function makeRoutine(overrides: Partial<Routine> & { seq?: number } = {})
     recurrence: DEFAULT_RECURRENCE,
     startDate,
     active: true,
-    materializedThrough: startDate,
+    fillFloor: startDate,
     ...rest,
   };
 }

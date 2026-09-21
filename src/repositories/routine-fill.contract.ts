@@ -1,14 +1,14 @@
-// `(routineId, date)` 워터마크 멱등성(ADR-0017, routine.md R6·R7·R10) — `RoutineRepository`·
-// `TodoRepository`·`DatasetRepository` 를 **실제 구현**(memory·indexeddb) 위에서 함께 돌린다.
+// 슬롯 id 채우기(ADR-0018, routine.md R6·R7·R10) — `RoutineRepository`·`TodoRepository`·
+// `DatasetRepository` 를 **실제 구현**(memory·indexeddb) 위에서 함께 돌린다.
 //
 // D-day 의 계약 스위트(`dday-repository.contract.ts`)와 같은 이유로 `memory.contract.test.ts`/
 // `indexeddb.contract.test.ts` 에 끼지 않고 별도 파일(`routine-fill.contract.test.ts`)이 부른다.
 // `routine-repository.contract.ts`(CRUD 계약)와 파일을 가르는 이유는 300줄 제한(code-style §5)이다.
 //
-// 여기서 재현하는 절차(`materialize`)는 T-82 의 스토어 액션 `materializeRoutines` 가 훗날 할 일과
-// 같다 — 단, 그 배선(date-strip 방문 시점 호출)은 T-82 owns 다. 이 파일은 **저장소 계층**에서 워터마크
-// 멱등성 자체만 고정한다. `materialize` 는 매번 **저장소에서 다시 읽은** 루틴을 쓴다(실제 배선도 그렇다
-// — 스토어에 캐시된 낡은 값으로 계획을 세우면 워터마크가 뒤로 물러날 수 있다).
+// 여기서 재현하는 절차(`materialize`)는 스토어 액션 `materializeRoutines`(`todo-routine-fill.ts`)가
+// 하는 일과 같다. **채우기는 이제 루틴 로우를 쓰지 않는다**(ADR-0018) — `materialize` 는 매번
+// `routines.getById` 로 다시 읽은 루틴을 그대로 돌려준다(값이 바뀔 일이 없다는 것 자체가 이 계약의
+// 핵심 단언이다, "채우기는 루틴 로우를 쓰지 않는다").
 import type { DatasetWrite } from '@/domain/dataset';
 import type { DateKey } from '@/domain/date/date-key';
 import type { RoutineId } from '@/domain/ids';
@@ -16,12 +16,15 @@ import { createMeta, markDeleted, touch, type MetaDeps, type Persistable } from 
 import type { Routine } from '@/domain/routine/routine';
 import { planRoutineFill } from '@/domain/routine/routine-fill';
 import { pauseRoutine, resumeRoutine } from '@/domain/routine/routine.rules';
+import { routineInstanceSlotId } from '@/domain/routine/slot-id';
 import type { Todo } from '@/domain/todo/todo';
+import { normalizeTodoTitle } from '@/domain/todo/todo.rules';
 
 import type { Repositories } from '@/repositories/container';
 import {
   contractCategory,
   contractDeps,
+  contractSettings,
   CONTRACT_CATEGORY_ID,
   type ContractTarget,
 } from '@/repositories/contract';
@@ -36,7 +39,7 @@ function freshRoutine(deps = contractDeps()): Persistable<Routine> {
     recurrence: { type: 'weekly', daysOfWeek: [4] },
     startDate: START,
     active: true,
-    materializedThrough: '2026-01-14' as DateKey,
+    fillFloor: '2026-01-14' as DateKey,
   });
 }
 
@@ -58,7 +61,30 @@ function uncloneableTodo(deps: MetaDeps): Persistable<Todo> {
 
 let materializeCallSeq = 0;
 
-/** T-82 `materializeRoutines` 가 할 일을 저장소 계층에서 재현한다: 계획 → 한 트랜잭션 커밋. */
+/**
+ * `existing`(툼스톤 포함 전량)에서 `planRoutineFill` 이 쓸 `existingIds` 를 만든다 — 각 로우의 실제
+ * id(idempotency) + 같은 카테고리·정규화된 제목이 이미 있으면 그 날짜의 슬롯 id(R4 dedup, 실제 id 가
+ * 슬롯 id 가 아니어도 상관없다 — `planRoutineFill` 은 멤버십만 본다).
+ *
+ * **프로덕션(`todo-routine-fill.ts`)과 다른 점**: 여기서는 `DatasetRepository.readAll()`(툼스톤
+ * 포함, ADR-0009)로 이미 지운/옮긴 슬롯까지 인식한다 — 실제 앱은 `SyncRepository.existingIds`(T-92
+ * 후속, 이 티켓 owns 밖)가 같은 보장을 bulkGet 하나로 준다. `readAll()` 을 여기서 쓰는 것은 그 넷째
+ * 프로덕션 호출처가 아니라 **테스트 전용 근사**다(ADR-0009 규칙 4는 프로덕션 호출처 수를 센다).
+ */
+function existingIdsFor(routine: Routine, existing: readonly Todo[]): Set<string> {
+  const title = normalizeTodoTitle(routine.title);
+  const ids = new Set<string>();
+  for (const todo of existing) {
+    ids.add(todo.id);
+    if (todo.categoryId === routine.categoryId && normalizeTodoTitle(todo.title) === title) {
+      ids.add(routineInstanceSlotId(routine.id, todo.date));
+    }
+  }
+  return ids;
+}
+
+/** `materializeRoutines` 가 저장소 계층에서 하는 일을 재현한다: 계획 → 트랜잭션 커밋. 루틴 로우는
+ * 절대 다시 쓰지 않는다 — 반환값은 항상 `routines.getById` 로 다시 읽은 **불변** 값이다. */
 async function materialize(
   repos: Repositories,
   routineId: RoutineId,
@@ -68,43 +94,50 @@ async function materialize(
   if (current === undefined) {
     return undefined;
   }
-  const existing = await repos.todos.listByDateRange(current.materializedThrough, through);
+  const snapshot = await repos.dataset.readAll();
   materializeCallSeq += 1;
   const plan = planRoutineFill(
-    { routine: current, through, existing },
+    { routine: current, through, existingIds: existingIdsFor(current, snapshot.todos) },
     contractDeps({ seed: materializeCallSeq * 1000 }),
   );
-  if (plan === null) {
+  if (plan === null || plan.todos.length === 0) {
     return current;
   }
-  const writes: DatasetWrite[] = [
-    ...plan.todos.map((entity) => ({ table: 'todos' as const, entity })),
-    { table: 'routines' as const, entity: plan.routine },
-  ];
+  const writes: DatasetWrite[] = plan.todos.map((entity) => ({ table: 'todos' as const, entity }));
   await repos.dataset.write(writes);
-  return plan.routine;
+  return current;
 }
 
 export function runRoutineFillContract(target: ContractTarget): void {
-  describe(`루틴 지연 생성 워터마크 멱등성 (${target.name})`, () => {
+  describe(`루틴 슬롯 id 채우기 (${target.name})`, () => {
     let repos: Repositories;
     let routine: Persistable<Routine>;
 
     beforeEach(async () => {
       repos = await target.create();
       await repos.categories.upsert(contractCategory(contractDeps()));
+      // `materialize()` 가 `dataset.readAll()` 로 existingIds 를 만드므로(툼스톤 포함, 아래 주석)
+      // settings 행이 있어야 한다(readAll 계약, ADR-0009).
+      await repos.settings.upsert(contractSettings(contractDeps()));
       routine = freshRoutine();
       await repos.routines.upsert(routine);
     });
 
-    it('같은 구간을 두 번 채워도 인스턴스가 두 번 생기지 않는다(멱등)', async () => {
+    it('같은 구간을 두 번 채워도 인스턴스가 두 번 생기지 않는다(멱등, 슬롯 id 판정)', async () => {
       const through = '2026-01-29' as DateKey; // 1/15·1/22·1/29 세 번
-      const first = await materialize(repos, routine.id, through);
-      const second = await materialize(repos, routine.id, through); // 워터마크가 이미 through
+      await materialize(repos, routine.id, through);
+      await materialize(repos, routine.id, through);
 
       const todos = await repos.todos.listByDateRange(START, through);
       expect(todos).toHaveLength(3);
-      expect(second?.materializedThrough).toBe(first?.materializedThrough);
+    });
+
+    it('채운 뒤에도 루틴 로우는 rev 그대로다 — 채우기가 로우를 쓰지 않는다(ADR-0018)', async () => {
+      const before = await repos.routines.getById(routine.id);
+      await materialize(repos, routine.id, '2026-01-29' as DateKey);
+      const after = await repos.routines.getById(routine.id);
+      expect(after?.rev).toBe(before?.rev);
+      expect(after?.updatedAt).toBe(before?.updatedAt);
     });
 
     it('삭제한 인스턴스는 그 뒤 구간을 채워도 부활하지 않는다', async () => {
@@ -144,30 +177,26 @@ export function runRoutineFillContract(target: ContractTarget): void {
       it('구조적 복제 불가 로우가 섞이면 이미 적용된 것까지 전부 롤백된다(원자성, indexeddb)', async () => {
         const through = '2026-01-15' as DateKey;
         const plan = planRoutineFill(
-          { routine, through, existing: [] },
+          { routine, through, existingIds: new Set() },
           contractDeps({ seed: 200 }),
         );
         expect(plan).not.toBeNull();
 
         const writes: DatasetWrite[] = [
           ...plan!.todos.map((entity) => ({ table: 'todos' as const, entity })),
-          { table: 'routines' as const, entity: plan!.routine },
           { table: 'todos' as const, entity: uncloneableTodo(contractDeps({ seed: 300 })) },
         ];
 
         await expect(repos.dataset.write(writes)).rejects.toThrow();
 
         expect(await repos.todos.listByDateRange(START, through)).toEqual([]);
-        const stored = await repos.routines.getById(routine.id);
-        expect(stored?.materializedThrough).toBe(routine.materializedThrough); // 워터마크 불변
       });
     }
 
     it('중지 중에는 채우지 않고, 재개하면 소급 없이 재개 시점부터 이어간다(R7)', async () => {
       await repos.routines.upsert(pauseRoutine(routine, contractDeps()));
 
-      const stillPaused = await materialize(repos, routine.id, '2026-01-22' as DateKey);
-      expect(stillPaused?.materializedThrough).toBe(routine.materializedThrough); // 중지 중엔 안 움직인다
+      await materialize(repos, routine.id, '2026-01-22' as DateKey);
       expect(await repos.todos.listByDateRange(START, '2026-01-22' as DateKey)).toEqual([]);
 
       // 3/1 에 재개 — 1/14~2/28 구간은 영영 채우지 않는다(소급 없음).
@@ -175,11 +204,10 @@ export function runRoutineFillContract(target: ContractTarget): void {
       const paused = (await repos.routines.getById(routine.id))!;
       await repos.routines.upsert(resumeRoutine(paused, today, contractDeps()));
 
-      const afterResume = await materialize(repos, routine.id, '2026-03-05' as DateKey);
+      await materialize(repos, routine.id, '2026-03-05' as DateKey);
       const todos = await repos.todos.listByDateRange(START, '2026-03-05' as DateKey);
       // 1/15~2/28 구간(멈춰 있던 동안)은 영영 안 채운다 — 재개 뒤 첫 목요일(3/5)만 생긴다.
       expect(todos.map((t) => t.date)).toEqual(['2026-03-05']);
-      expect(afterResume?.materializedThrough).toBe('2026-03-05');
     });
   });
 }

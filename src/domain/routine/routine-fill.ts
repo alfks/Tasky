@@ -1,46 +1,61 @@
 // 무기한 루틴 채우기 계획 — 즉시 채우기(R3·R4)와 지연 생성(R6)이 공유하는 **하나의 계산**.
 //
-// 워터마크 설계(ADR-0017)의 핵심: `(routineId, date)` 슬롯은 `routine.materializedThrough` 를 지나며
-// 정확히 한 번만 계획된다. `TodoRepository.listByDateRange` 로 "이미 있는지" 되물어 판정하지 않는다
-// — 그 조회는 소프트 삭제 툼스톤을 감추므로(ADR-0007) 지운 인스턴스가 다음 방문에 부활한다
-// (routine.md §4 원문의 "결과에 없는 쌍만 upsert" 를 정정하는 이유, ADR-0017 §결정).
+// **슬롯 id 설계(ADR-0018, ADR-0017 §재검토 위험 1)**: `(routineId, date)` 슬롯의 id 는
+// `routineInstanceSlotId` 로 만든 결정적 값이다 — 두 기기가 독립적으로 같은 슬롯을 채워도 같은 id 를
+// 만들어, 서버의 "생성은 없을 때만"(`server-rules.ts`)이 하나만 남기고 나머지를 거절한다(F1).
+// 이미 그 슬롯 id 를 가진 로우가 있으면(살아 있든 툼스톤이든) `existingIds` 로 건너뛴다 — 판정
+// 자체는 **호출부**(`SyncRepository.existingIds`, T-92 후속)의 몫이고 이 함수는 멤버십만 본다.
+//
+// **`fillFloor`(구 `materializedThrough`)는 이 함수가 더 이상 옮기지 않는다**(ADR-0018 §위험 2).
+// 예전에는 채우기 자체가 매 호출마다 이 값을 구간 끝으로 전진시켜 중복·부활을 막았지만, 그러면
+// 배경 채우기(R6, 사용자 조작이 전혀 없는 방문)가 루틴 로우를 매번 `touch()` 해 동기화 아웃박스에
+// 싣고, 그 뒤 다른 기기의 "중지" 편집을 LWW 로 덮을 수 있었다. 지금은 채우기가 루틴 로우를 전혀
+// 쓰지 않는다 — `fillFloor` 는 `routine.rules.ts` 의 `createRoutine`·`resumeRoutine`(둘 다 사용자
+// 조작)만 바꾼다.
 import { addCivilDays } from '@/domain/date/civil';
 import type { DateKey } from '@/domain/date/date-key';
-import { touch, type MetaDeps, type Persistable } from '@/domain/meta';
+import type { MetaDeps, Persistable } from '@/domain/meta';
 import type { Routine } from '@/domain/routine/routine';
 import { shouldMaterialize } from '@/domain/routine/routine.rules';
+import { routineInstanceSlotId } from '@/domain/routine/slot-id';
 import { expandRoutineDates } from '@/domain/todo/routine.rules';
 import type { Todo } from '@/domain/todo/todo';
-import { createTodo, normalizeTodoTitle } from '@/domain/todo/todo.rules';
+import { createTodo } from '@/domain/todo/todo.rules';
 
-/** `planRoutineFill` 의 결과. 채울 것이 있든 없든 `routine` 은 항상 워터마크가 이동한 새 값이다. */
+/** `planRoutineFill` 의 결과. 루틴 로우는 실리지 않는다(위 파일 주석) — 호출부가 다시 쓸 일이 없다. */
 export type RoutineFillPlan = {
   todos: readonly Persistable<Todo>[];
-  routine: Persistable<Routine>;
 };
 
 /**
- * `routine.materializedThrough` 다음 날부터 `through` 까지(양끝 포함, 종료일 상한 적용)를 계획한다.
- * 만들 투두가 0건이어도(routine.md R4 — 패턴 자체는 유효한데 그 구간엔 맞는 날짜가 없는 경우) **오류가
- * 아니다**: `routine` 은 워터마크가 이동한 채로 돌아온다. 채울 구간 자체가 없으면(비활성이거나
- * `through` 가 다음 날보다 앞) `null` — 이때는 워터마크도 움직이지 않아 다음 호출이 같은 구간을
- * 다시 시도한다(ADR-0017 원자성).
+ * `routine.fillFloor` 다음 날부터 `through` 까지(양끝 포함, 종료일 상한 적용)를 계획한다. 만들 투두가
+ * 0건이어도(routine.md R4 — 패턴 자체는 유효한데 그 구간엔 맞는 날짜가 없는 경우) **오류가 아니다**.
+ * 채울 구간 자체가 없으면(비활성이거나 `through` 가 다음 날보다 앞) `null`.
  *
- * `existing` 은 이 구간의 **살아 있는** 투두다(같은 날짜·카테고리·정규화된 제목이면 건너뛴다 — R21
- * 과 같은 dedup 규칙, `routine-fill.contract.ts` 가 두 흐름이 갈리지 않는지 고정한다).
+ * `existingIds` 에 이미 있는 슬롯 id 는 건너뛴다 — 살아 있든 툼스톤이든 호출부가 이미 판정해 넘긴
+ * 값이라 이 함수는 다시 묻지 않는다(F1 방어 + 재방문 dedup, `fillFloor` 가 더 이상 전진하지 않으므로
+ * 같은 구간을 여러 번 다시 훑어도 이 판정 하나로 멱등하다).
+ *
+ * `siblings` 는 `order` 계산에만 쓴다(todo.md R5) — 같은 날짜·카테고리에 이미 있는 투두 **뒤**에
+ * 새 인스턴스를 붙인다. dedup 판정에는 관여하지 않는다(그건 `existingIds` 뿐이다) — 호출부가
+ * `siblings` 를 비워 보내도 정확성은 그대로다(순서만 그룹 맨 앞에서 시작한다).
  */
 export function planRoutineFill(
-  input: { routine: Routine; through: DateKey; existing: readonly Todo[] },
+  input: {
+    routine: Routine;
+    through: DateKey;
+    existingIds: ReadonlySet<string>;
+    siblings?: readonly Todo[];
+  },
   deps: MetaDeps,
 ): RoutineFillPlan | null {
-  const { routine, through, existing } = input;
-  const from = addCivilDays(routine.materializedThrough, 1);
+  const { routine, through, existingIds, siblings = [] } = input;
+  const from = addCivilDays(routine.fillFloor, 1);
   const to = routine.endDate !== undefined && routine.endDate < through ? routine.endDate : through;
   if (!routine.active || to < from) {
     return null;
   }
 
-  const title = normalizeTodoTitle(routine.title);
   const todos: Persistable<Todo>[] = [];
   for (const date of expandRoutineDates({
     startDate: from,
@@ -50,12 +65,8 @@ export function planRoutineFill(
     if (!shouldMaterialize(routine, date)) {
       continue;
     }
-    const siblings = existing.filter(
-      (todo) => todo.date === date && todo.categoryId === routine.categoryId,
-    );
-    // 기존 값은 백업 복원 경로에서 정규화되지 않은 채로 올 수 있어 다시 정규화해 비교한다
-    // (todo-actions.ts#createRoutineAction 의 같은 주석 — 복제가 아니라 같은 이유의 같은 판단이다).
-    if (siblings.some((sibling) => normalizeTodoTitle(sibling.title) === title)) {
+    const id = routineInstanceSlotId(routine.id, date);
+    if (existingIds.has(id)) {
       continue;
     }
     todos.push(
@@ -65,18 +76,16 @@ export function planRoutineFill(
           date,
           title: routine.title,
           memo: routine.memo,
-          siblings,
+          siblings: siblings.filter((todo) => todo.date === date),
           routineId: routine.id,
+          id,
         },
         deps,
       ),
     );
   }
 
-  return {
-    todos,
-    routine: touch({ ...routine, materializedThrough: to }, deps.now()),
-  };
+  return { todos };
 }
 
 /**

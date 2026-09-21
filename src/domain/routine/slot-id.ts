@@ -1,4 +1,4 @@
-// 루틴 인스턴스의 결정적 슬롯 id (SYNC_DESIGN.md §①-2, ADR-0017 §재검토 트리거 위험 1).
+// 루틴 인스턴스의 결정적 슬롯 id (ADR-0018, ADR-0017 §재검토 트리거 위험 1).
 //
 // **채택한 후보 1/3: "인스턴스 id 를 `(routineId, date)` 결정적 id 로 바꿔 위험 1(두 기기 독립
 // 채우기 → id 가 달라 중복)을 구조로 제거한다."** 두 기기가 같은 슬롯을 독립적으로 채워도 같은
@@ -6,20 +6,17 @@
 // `reject-exists` 로 거절한다 — 이 파일 + `server-rules.ts` 의 조합이 F1 을 **함수 수준에서** 닫는다
 // (`risk-scenarios.test.ts` 가 그 조합을 직접 실행해 고정한다).
 //
-// **실측: 앱 경로는 아직 이 함수를 쓰지 않는다.** `src/domain/routine/` 전체에서 `routineInstanceSlotId`
-// 를 참조하는 곳은 0건이다 — 실제 채우기(`routine-fill.ts` → `createTodo` → `createMeta`)는 여전히
-// `deps.id()` 난수로 id 를 만든다. 즉 이 함수가 **존재한다**는 것과 **F1 이 앱에서 닫혔다**는 것은
-// 다른 주장이다 — 후자는 아직 참이 아니다.
+// **배선됨(T-92, ADR-0018)**: `routine-fill.ts#planRoutineFill` 이 이제 `deps.id()` 난수 대신 이
+// 함수로 만든 id 를 `createTodo` 에 넘긴다 — F1 이 앱 경로에서 닫혔다.
 //
-// **이 티켓 owns 밖의 일**: 이 함수를 실제로 `planRoutineFill`(src/domain/routine/routine-fill.ts)
-// 이 부르게 만드는 배선, 그리고 `Routine.materializedThrough` 를 "사용자 조작으로만 바뀌는 하한"으로
-// 재정의하는 것(후보 2·3, watermark-merge.ts 참고)은 `src/domain/routine/**` 을 건드려야 해서 이
-// 티켓(`src/domain/sync/**`) 밖이다 — 후속 티켓(T-92)이 배선한다.
+// **`src/domain/sync/` 에서 여기로 옮겼다(T-92)**: 이 함수가 실제로 쓰이는 곳(`planRoutineFill`)이
+// `src/domain/routine/**` 라서 원래 자리(`domain/sync`, T-91 당시 owns 제약으로 임시로 둔 곳)보다
+// 이쪽이 맞다. `domain/sync` → `domain/routine` 의존은 없다(방향: routine 이 자신의 슬롯 id 함수를
+// 갖고, sync 쪽은 필요하면 이 경로를 그대로 import 한다).
 //
-// **왜 `src/lib/hash.ts` 가 아니라 여기 있는가**: 설계 문서 §③-1 은 이 함수를 `src/domain/routine/`
-// 에, 해시 자체는 `src/lib/hash.ts` 에 두라고 적었다. 이 티켓의 owns 는 `src/domain/sync/**` 뿐이라
-// 두 위치 다 만들 수 없었고, 이 함수가 sync 의 병합 위험(F1)을 닫기 위해 존재하는 이상 당장은 이
-// 디렉토리가 가장 정직한 자리다(라우틴 도메인으로 옮기는 리팩터는 후속 티켓의 몫으로 남긴다).
+// **왜 `src/lib/hash.ts` 가 아니라 여기 있는가**: SYNC_DESIGN.md §③-1 원안은 해시 자체를
+// `src/lib/hash.ts` 로 빼라고 적었지만 채택하지 않았다 — 도메인이 `@/lib` 를 하나도 import 하지 않는
+// 현재 상태(Worker 번들 안전)를 지키는 편이 FNV-1a 40줄을 파일 하나로 또 쪼개는 것보다 낫다.
 //
 // **해시**: `crypto`·`Math.random` 은 도메인 어디서도 부를 수 없다(ADR-0005 규칙 2) — 순수 산술
 // FNV-1a 32비트를 네 개의 다른 시드로 돌려 128비트를 만든다. 암호학적 해시가 아니지만 목적(우연한

@@ -11,28 +11,25 @@
 
 - 있음: `wire.ts`(프로토콜 타입, Worker 와 공유), `server-rules.ts`+`.vectors.ts`(서버 판정 — Worker·
   메모리 가짜 서버가 같은 벡터를 돈다), `client-merge.ts`+`.vectors.ts`(풀 병합 표), `remote-rows.ts`
-  (원격 로우 검증), `outbox.ts`(아웃박스 순수 로직), `routine-slot.ts`(루틴 인스턴스 결정적 id — **함수
-  수준**, `src/domain/routine/` 에서 참조 0건이라 앱 채우기 경로는 아직 안 쓴다), `watermark-merge.ts`
-  (워터마크 단조 병합 — 역시 **함수 수준**, `Routine` 병합 경로에 배선되지 않았다),
-  `risk-scenarios.test.ts`(ADR-0017 위험 중 F1·F3 을 **함수 수준**에서 시험 — 앱 경로 배선은 아니다.
-  F2 는 시험이 아니라 실제 코드가 그 전제를 깨고 있음을 `it.fails` 로 드러내는 것이다. 셋 다 실제
-  배선은 T-92).
+  (원격 로우 검증 + `adopt()` 로 저장 직전 봉인, ADR-0018), `outbox.ts`(아웃박스 순수 로직),
+  `risk-scenarios.test.ts`(ADR-0017 §재검토 트리거의 F1·F2·F3 이 **앱 경로에서 실제로 닫혔음을**
+  고정한다 — T-92/ADR-0018 이후).
 - 없음(다른 곳): `SyncRepository`/`SyncTransport` **인터페이스**는 `src/repositories/`, 실제
   IndexedDB·HTTP 왕복은 `src/infra/**`, D1·OAuth·세션은 `worker/**`, 로그인 화면·상태 UI는
-  `src/features/sync/**`. `Routine.materializedThrough` 를 "사용자 조작으로만 바뀌는 하한"으로
-  재정의하는 것과 `planRoutineFill` 이 `routine-slot.ts` 를 실제로 쓰게 배선하는 것은
-  `src/domain/routine/**`(여기 없음, 후속 티켓).
+  `src/features/sync/**`. 루틴 슬롯 id(`routineInstanceSlotId`)는 `src/domain/routine/slot-id.ts`
+  (T-92 가 이 디렉토리에서 옮겼다 — 실제 쓰는 곳이 `planRoutineFill` 이라 그쪽이 맞다).
+  `materializedThrough`→`fillFloor` 재정의·`watermark-merge.ts`(사용처가 없어져 삭제) 도 같은 이유로
+  여기 없다.
 
 ## 고유 규칙 (일반 규칙은 [../AGENTS.md](../AGENTS.md))
 
 1. **`server-rules.ts`·`server-rules.vectors.ts` 는 이 디렉토리가 유일한 소스다.** Worker(`worker/`)
    와 메모리 가짜 트랜스포트(`src/repositories/memory/`)는 이 파일들을 **import 해서 그대로** 쓴다 —
    같은 규칙을 다시 옮겨 적지 않는다(SYNC_DESIGN.md §0 결론 9 "거짓 초록불 구조 차단").
-2. **`adopt()` 를 여기서 부르지 않는다.** `src/domain/backup/AGENTS.md` 가 아직 "호출처는
-   `plan-import.ts` 하나로 모으고 늘리지 않는다"를 규정한다 — 이를 넓히려면 ADR-0009 개정(설계상
-   ADR-0018)과 `eslint.config.mjs` 예외가 먼저 있어야 하고 둘 다 이 디렉토리 owns 밖이다.
-   `remote-rows.ts` 는 `validate-rows.ts` reader 의 내부 `assertMeta` 검증까지만 쓰고 브랜딩은
-   하지 않는다 — 저장 직전 브랜딩은 `SyncRepository.applyRemote` 구현(T-92 상당)의 몫이다.
+2. **`adopt()` 는 `remote-rows.ts` 에서만 부른다.** ADR-0009 규칙 1 이 "`plan-import.ts` +
+   `sync/remote-rows.ts` 둘" 로 개정됐다(ADR-0018) — 이 파일 밖(다른 `domain/sync/**` 파일)에서
+   부르면 여전히 리뷰 Blocker다. 린트 예외는 필요 없었다(`meta.ts` jsdoc — 호출처 제한은 도구가
+   아니라 리뷰가 지킨다).
 3. **`planMerge`(`src/domain/backup/plan-import.ts`)를 재사용하지 않는다.** 백업 병합은
    `updatedAt`(기기 시계) 축, 정상 상태 동기화는 서버 `seq`(아웃박스 존재로 대리) 축이라 판정
    기준이 다르다(SYNC_DESIGN.md §①-1). 로우 검증·`isTombstone` 같은 **공유 가능한 부분**은 그대로
@@ -48,8 +45,9 @@ pnpm test src/domain/sync --coverage --reporter=dot 2>&1 | tail -20
 
 ## 자주 하는 실수
 
-- `Persistable<T>` 를 여기서 만들려고 `as Persistable<...>` 캐스팅을 시도하는 것 — 브랜드는
-  `meta.ts` 안에서만 만들어지고 다른 곳의 캐스팅은 린트가 막는다(ADR-0007). 이 디렉토리는 검증까지만
-  하고 브랜딩하지 않는다(규칙 2).
-- 워터마크(`materializedThrough`)를 일반 로우 LWW 에 같이 실어 병합하는 것 — `watermark-merge.ts`
-  로 **따로** 합쳐야 후퇴(ADR-0017 §재검토 위험 3)가 안 생긴다.
+- `Persistable<T>` 를 `remote-rows.ts` 밖에서 만들려고 `as Persistable<...>` 캐스팅을 시도하는 것 —
+  브랜드는 `meta.ts`(+`remote-rows.ts` 의 `adopt()` 호출) 안에서만 만들어지고 다른 곳의 캐스팅은
+  린트가 막는다(ADR-0007, 규칙 2).
+- `fillFloor` 를 배경 채우기가 다시 옮기도록 배선하는 것 — ADR-0018 이 그 경로를 없앤 이유가
+  "배경 채우기가 사용자 중지를 덮는다"(ADR-0017 §재검토 위험 2)이다. `fillFloor` 는
+  `routine.rules.ts` 의 `createRoutine`·`resumeRoutine`(사용자 조작)만 바꾼다.

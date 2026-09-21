@@ -55,7 +55,7 @@ function contractRoutine(
     recurrence: { type: 'weekly', daysOfWeek: [4] },
     startDate: CONTRACT_DATE,
     active: true,
-    materializedThrough: CONTRACT_DATE,
+    fillFloor: CONTRACT_DATE,
     ...fields,
   });
 }

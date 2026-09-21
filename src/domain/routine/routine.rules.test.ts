@@ -28,13 +28,13 @@ function makeRoutine(overrides: Partial<Routine> = {}): Routine {
     recurrence: { type: 'weekly', daysOfWeek: [4] }, // 목요일
     startDate: '2026-01-15' as DateKey,
     active: true,
-    materializedThrough: '2026-01-14' as DateKey,
+    fillFloor: '2026-01-14' as DateKey,
     ...overrides,
   };
 }
 
 describe('createRoutine (R5)', () => {
-  it('종료일 없이 만들면 무기한이고 materializedThrough 는 시작일 전날이다', () => {
+  it('종료일 없이 만들면 무기한이고 fillFloor 는 시작일 전날이다', () => {
     const routine = createRoutine(
       {
         title: ' 운동 ',
@@ -46,7 +46,7 @@ describe('createRoutine (R5)', () => {
     );
     expect(routine.title).toBe('운동');
     expect(routine.active).toBe(true);
-    expect(routine.materializedThrough).toBe('2026-01-14');
+    expect(routine.fillFloor).toBe('2026-01-14');
     expect('endDate' in routine).toBe(false);
   });
 
@@ -137,25 +137,25 @@ describe('pauseRoutine · resumeRoutine (R7·R7-a)', () => {
     const routine = makeRoutine();
     const paused = pauseRoutine(routine, deps);
     expect(paused.active).toBe(false);
-    expect(paused.materializedThrough).toBe(routine.materializedThrough);
+    expect(paused.fillFloor).toBe(routine.fillFloor);
     expect(paused.rev).toBe(routine.rev + 1);
   });
 
-  it('재개하면 materializedThrough 가 today 전날로 옮겨진다(소급 없음)', () => {
-    // 오래 중지돼 있던 루틴 — materializedThrough 가 today 보다 훨씬 앞이다.
-    const routine = makeRoutine({ active: false, materializedThrough: '2026-01-01' as DateKey });
+  it('재개하면 fillFloor 가 today 전날로 옮겨진다(소급 없음)', () => {
+    // 오래 중지돼 있던 루틴 — fillFloor 가 today 보다 훨씬 앞이다.
+    const routine = makeRoutine({ active: false, fillFloor: '2026-01-01' as DateKey });
     const resumed = resumeRoutine(routine, '2026-03-01' as DateKey, deps);
     expect(resumed.active).toBe(true);
-    expect(resumed.materializedThrough).toBe('2026-02-28'); // today(3/1) 전날 — 1/1~2/28 구간은 영영 안 채운다
+    expect(resumed.fillFloor).toBe('2026-02-28'); // today(3/1) 전날 — 1/1~2/28 구간은 영영 안 채운다
   });
 
   it('재개 시 이미 today 전날보다 앞선 값이 아니면(더 최근이면) 뒤로 물러나지 않는다', () => {
     const routine = makeRoutine({
       active: false,
-      materializedThrough: '2026-03-10' as DateKey, // today(3/1) 보다도 나중
+      fillFloor: '2026-03-10' as DateKey, // today(3/1) 보다도 나중
     });
     const resumed = resumeRoutine(routine, '2026-03-01' as DateKey, deps);
-    expect(resumed.materializedThrough).toBe('2026-03-10');
+    expect(resumed.fillFloor).toBe('2026-03-10');
   });
 
   it('종료일이 있는 루틴은 중지·재개할 수 없다(R7-a)', () => {

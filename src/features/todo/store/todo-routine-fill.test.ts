@@ -52,7 +52,9 @@ describe('createRoutine — 무기한 등록(routine.md R2~R5)', () => {
     const saved = await getRepositories().routines.list({ includeInactive: true });
     expect(saved).toHaveLength(1);
     expect(saved[0]?.active).toBe(true);
-    expect(saved[0]?.materializedThrough).toBe(mondayStart); // 시작일 하루만 즉시 채우기 대상이었다
+    // fillFloor 는 채우기 결과와 무관하게 생성 시점(시작일 전날) 값 그대로다(ADR-0018) — 채우기가
+    // 더 이상 이 값을 옮기지 않는다.
+    expect(saved[0]?.fillFloor).toBe(addCivilDays(mondayStart, -1));
   });
 
   it('보이는 범위 끝까지 즉시 채운다(R3) — 시작일이 그 끝보다 뒤면 시작일 하루만(구간 보정)', async () => {
@@ -71,8 +73,9 @@ describe('createRoutine — 무기한 등록(routine.md R2~R5)', () => {
     expect(ids).not.toBe(false);
     expect(ids).toHaveLength(3); // 1/15·1/22·1/29 세 목요일
 
+    // 채운 날짜 수와 무관하게 fillFloor 는 생성 시점 값(시작일 전날) 그대로다(ADR-0018).
     const saved = await getRepositories().routines.list();
-    expect(saved[0]?.materializedThrough).toBe('2026-01-29');
+    expect(saved[0]?.fillFloor).toBe(addCivilDays(FIXTURE_DATE, -1));
   });
 });
 
@@ -217,8 +220,14 @@ describe('materializeRoutines — 지연 생성 배선(routine.md R6·R7·R11)',
     const farFuture = addCivilDays(FIXTURE_DATE, 400) as DateKey;
     await state().materializeRoutines({ from: FIXTURE_DATE, to: farFuture, today: FIXTURE_DATE });
 
+    const horizon = addCivilDays(FIXTURE_DATE, MATERIALIZE_HORIZON_DAYS) as DateKey;
+    const created = await getRepositories().todos.listByDateRange(FIXTURE_DATE, farFuture);
+    expect(created.length).toBeGreaterThan(0);
+    expect(created.every((todo) => todo.date <= horizon)).toBe(true); // 지평선을 넘는 날짜는 없다
+
+    // 배경 채우기는 루틴 로우를 쓰지 않는다(ADR-0018) — fillFloor 는 생성 시점 값 그대로다.
     const [routine] = await getRepositories().routines.list();
-    expect(routine?.materializedThrough).toBe(addCivilDays(FIXTURE_DATE, MATERIALIZE_HORIZON_DAYS));
+    expect(routine?.fillFloor).toBe(addCivilDays(FIXTURE_DATE, -1));
   });
 });
 
