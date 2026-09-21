@@ -11,7 +11,11 @@ import type { DateKey } from '@/domain/date/date-key';
 import type { CategoryId, RoutineId, TodoId } from '@/domain/ids';
 import type { Persistable } from '@/domain/meta';
 import type { Routine } from '@/domain/routine/routine';
-import { planRoutineFill, resolveImmediateFillThrough } from '@/domain/routine/routine-fill';
+import {
+  FILL_BACKFILL_HORIZON_DAYS,
+  planRoutineFill,
+  resolveImmediateFillThrough,
+} from '@/domain/routine/routine-fill';
 import {
   createRoutine as createRoutineRule,
   deleteRoutine as deleteRoutineRule,
@@ -128,6 +132,8 @@ async function planCreateRoutine(
   // Major 1 픽스처, R4·R21 dedup)까지 감안해 실제로 조회한다. 슬롯 id 는 아직 존재하지 않는 로우와
   // 겹칠 수 없으므로(방금 만든 routine.id 라 서버·다른 기기가 먼저 알 수 없다) 여기서는 **살아 있는**
   // 로우만으로 충분하다 — 툼스톤 인식(`SyncRepository.existingIds`)은 T-92 후속(ADR-0018)이 배선한다.
+  // `today` 는 넘기지 않는다 — 방금 만든 루틴이라 스캔 지평선(Major 3, `FILL_BACKFILL_HORIZON_DAYS`)
+  // 에 걸릴 일이 없다.
   const existing = await getRepositories().todos.listByDateRange(input.startDate, through);
   const existingIds = existingIdsFor(routine, existing);
   const filled = planRoutineFill({ routine, through, existingIds, siblings: existing }, ctx.deps);
@@ -144,12 +150,11 @@ async function planCreateRoutine(
   if (input.endDate !== undefined && filled.todos.length === 0) {
     return { plan: { writes: [], apply: () => ({}) }, createdIds: [] };
   }
-  // `routine` 을 그대로 쓴다 — `planRoutineFill` 은 더 이상 루틴 로우를 돌려주지 않는다(ADR-0018,
-  // 배경 채우기가 로우를 touch 해 동기화 아웃박스에 싣지 않도록). `fillFloor` 는 `createRoutineRule`
-  // 이 이미 startDate 전날로 찍어 뒀고, 채우기가 그 값을 다시 옮기지 않는다.
+  // `filled.routine` 을 쓴다(`routine` 그대로가 아니다) — `planRoutineFill` 이 `fillFloor` 를
+  // `through` 까지 전진시켜 돌려준다(임시 복원, PR #121 리뷰 Blocker — `routine-fill.ts` 상단 주석).
   const writes: DatasetWrite[] = [
     ...filled.todos.map((entity) => ({ table: 'todos' as const, entity })),
-    { table: 'routines' as const, entity: routine },
+    { table: 'routines' as const, entity: filled.routine },
   ];
   return {
     plan: {
@@ -158,7 +163,7 @@ async function planCreateRoutine(
         const visible = filled.todos.filter((todo) => todo.date === state.date);
         return {
           byId: visible.length === 0 ? state.byId : withTodos(state.byId, visible),
-          routines: withRoutines(state.routines, [routine]),
+          routines: withRoutines(state.routines, [filled.routine]),
         };
       },
     },
@@ -200,16 +205,19 @@ async function planUndoRoutine(ctx: TodoContext, ids: readonly TodoId[]): Promis
 }
 
 /**
- * 지연 생성(R6) 계획: `fillFloor` 이하는 절대 건드리지 않는 무기한 루틴만, 살아 있는 카테고리만
- * 채운다. **루틴 로우는 쓰지 않는다**(ADR-0018) — `fillFloor` 는 사용자 조작(생성·재개)으로만
- * 바뀌므로, 이 배경 작업이 매번 재방문할 범위는 `fillFloor+1` 로 고정돼 있다(전진하지 않는다).
- * 중복 생성 방지는 슬롯 id 존재 여부(`existingIds`)만으로 한다.
+ * 지연 생성(R6) 계획: 무기한·활성 루틴 중 살아 있는 카테고리를 가리키는 것만 채운다.
  *
- * **알려진 한계(ADR-0018, T-92 후속이 닫는다)**: 여기서 쓰는 `existingIds` 는 `TodoRepository.
- * listByDateRange`(살아 있는 로우만) 로 구한다 — 소프트 삭제된 슬롯은 포함하지 않는다. 그래서
- * 지운 루틴 인스턴스가 이 경로만으로는 다음 방문에 다시 채워질 수 있다. 툼스톤까지 포함한 존재
- * 판정은 `SyncRepository.existingIds`(bulkGet, 저장소 계층)가 해야 하고, 그 인터페이스는 이 티켓
- * owns 밖이다 — 배선되면 이 줄만 바뀐다.
+ * **`fillFloor` 를 전진시킨다(임시 복원, PR #121 리뷰 Blocker)**: 최종 설계는 이 배경 작업이 루틴
+ * 로우를 전혀 안 쓰는 것이다(ADR-0018) — 그러려면 중복 생성 방지가 `SyncRepository.existingIds`
+ * (bulkGet, 툼스톤 포함, 저장소 계층)에 기대야 하는데 그 인터페이스는 이 티켓 owns 밖이라 아직 없다.
+ * 그 전까지 `existingIds` 를 `TodoRepository.listByDateRange`(살아 있는 로우만) 로만 구하면, 소프트
+ * 삭제한 인스턴스가 재방문마다 다시 훑는 구간에 걸려 부활한다(실측: 삭제 → 더 넓은 범위 재방문 →
+ * 부활, `todo-routine-fill.test.ts` "삭제한 인스턴스는…"). **워터마크 전진(이 함수가 기록한 fillFloor
+ * 를 다음 due 판정이 그대로 읽는 것)이 재스캔 자체를 없애 부활을 막는다** — `routines.upsert` 로
+ * 저장한 `plan.routine` 이 다음 호출의 `all`/`due` 계산에 그대로 들어온다. 대가(사용자 조작 없이도
+ * 루틴 로우를 `touch()` 함)는 있지만, 동기화 아웃박스 적재가 아직 어떤 쓰기 경로에도 배선돼 있지
+ * 않아(T-92b 착수 전) 지금은 F2(ADR-0017 §재검토 위험 2)를 재현하지 않는다 — `SyncRepository.
+ * existingIds` 가 배선되면 이 전진을 다시 없앤다(ADR-0018 재검토 트리거).
  */
 async function planMaterializeRoutines(
   ctx: TodoContext,
@@ -231,18 +239,40 @@ async function planMaterializeRoutines(
     return { writes: [], apply: (state) => ({ routines: withRoutines(state.routines, all) }) };
   }
 
-  const fillFrom = due.map((routine) => addCivilDays(routine.fillFloor, 1)).sort()[0] as DateKey;
+  // 뒤로 훑는 길이는 지평선(Major 3, `FILL_BACKFILL_HORIZON_DAYS`)에서 잘린다 — `planRoutineFill`
+  // 내부 계산과 같은 값이어야 쿼리 범위와 실제로 채우는 범위가 어긋나지 않는다.
+  const backfillFloor = addCivilDays(input.today, -FILL_BACKFILL_HORIZON_DAYS);
+  const fillFrom = due
+    .map((routine) => {
+      const earliest = addCivilDays(routine.fillFloor, 1);
+      return backfillFloor > earliest ? backfillFloor : earliest;
+    })
+    .sort()[0] as DateKey;
   const existing = await todos.listByDateRange(fillFrom, through);
   const created: Persistable<Todo>[] = [];
+  const updatedRoutines: Persistable<Routine>[] = [];
   const writes: DatasetWrite[] = [];
   for (const routine of due) {
+    // 이미 이 호출에서 채운 것(created)도 같이 넣어야, 같은 배치의 다른 루틴과 카테고리·제목이
+    // 겹칠 때(R4·R21 dedup) 서로를 본다 — `existing` 만 보면 배치 안에서는 안 걸린다.
+    const priorTodos = [...existing, ...created];
     const plan = planRoutineFill(
-      { routine, through, existingIds: existingIdsFor(routine, existing), siblings: existing },
+      {
+        routine,
+        through,
+        today: input.today,
+        existingIds: existingIdsFor(routine, priorTodos),
+        siblings: priorTodos,
+      },
       ctx.deps,
     );
     if (plan === null) continue;
     created.push(...plan.todos);
-    writes.push(...plan.todos.map((entity) => ({ table: 'todos' as const, entity })));
+    updatedRoutines.push(plan.routine);
+    writes.push(...plan.todos.map((entity) => ({ table: 'todos' as const, entity })), {
+      table: 'routines' as const,
+      entity: plan.routine,
+    });
   }
   return {
     writes,
@@ -251,7 +281,7 @@ async function planMaterializeRoutines(
         state.byId,
         created.filter((todo) => todo.date === state.date),
       ),
-      routines: withRoutines(state.routines, all),
+      routines: withRoutines(withRoutines(state.routines, all), updatedRoutines),
     }),
   };
 }
