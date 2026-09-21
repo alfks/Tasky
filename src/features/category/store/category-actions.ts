@@ -88,9 +88,24 @@ function createLoadAction(
         if (seq !== loadSeq) {
           return;
         }
-        ctx.set({ byId: indexCategories(categories), status: 'ready' });
+        // `status` 는 아직 'loading' 으로 둔다 — 첫 실행 시드(R18)가 있으면 그것까지 끝나야
+        // "적재가 끝났다" 이기 때문이다. 여기서 바로 'ready' 로 올리면 화면이 잠깐 빈 상태
+        // ("아직 카테고리가 없어요" + [첫 카테고리 만들기])로 떴다가 시드가 끼어들며 바뀌는
+        // 깜빡임이 생기고, 그 창에서 사용자가 직접 만들면 시드분과 합쳐져 개수가 예상과 어긋난다
+        // (실측: 시드 앞에 지연을 인위로 주면 "핵심 흐름" e2e 의 사이드바 카테고리 개수 단언이
+        // 기대 1개·실제 2개로 결정적으로 깨졌다 — 이 재배열로 고정됨).
+        ctx.set({ byId: indexCategories(categories) });
         if (categories.length === 0) {
+          // 시드가 매달리면(예: IndexedDB 가 blocked 상태로 멈춤) 셸 전체가 로딩(스켈레톤)에
+          // 머문다 — 이전에는 'ready' 를 먼저 찍어 최소한 빈 목록은 보였다. 저장소 쓰기가
+          // 영영 끝나지 않는 경우는 이 구현에서 재현하기 어렵고(리뷰 실측), 여기서 막지는
+          // 않는다 — 그런 경우가 생기면 타임아웃/재시도는 별도 티켓으로 다룬다.
           await seed();
+        }
+        // 시드가 끝난 뒤에도 여전히 이 호출이 최신이어야 'ready' 로 올린다 — 시드가 도는 동안
+        // 새 load() 가 시작됐다면 그쪽 결과를 덮어쓰지 않는다.
+        if (seq === loadSeq) {
+          ctx.set({ status: 'ready' });
         }
       } catch (error) {
         if (seq === loadSeq) {
