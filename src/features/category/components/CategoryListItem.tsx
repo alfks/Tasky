@@ -131,8 +131,11 @@ export function CategoryListItem({
           : undefined
       }
       className={cn(
-        'flex items-center gap-[var(--space-1)] rounded-[var(--radius-md)]',
-        'transition-opacity duration-[var(--motion-fast)] ease-[var(--motion-ease)]',
+        // `group` 은 R29 의 "행 전체가 한 덩어리로 반응한다" 를 세우는 축이다 — 배경과 글자색이
+        // 따로 놀면 대비 계산(4.11 → 11.62)이 깨진다.
+        'group flex items-center gap-[var(--space-1)] rounded-[var(--radius-md)]',
+        'hover:bg-surface-3',
+        'transition-[background-color,opacity] duration-[var(--motion-fast)] ease-[var(--motion-ease)]',
         drag?.draggingId === category.id && 'opacity-50',
       )}
     >
@@ -141,6 +144,7 @@ export function CategoryListItem({
       ) : (
         <DragHandle
           item={category.name}
+          className="group-hover:text-text hover:bg-transparent"
           onDragStart={handleDragStart}
           onDragEnd={() => drag.onDragChange(null)}
           onMove={(direction) => void move(direction)}
@@ -158,8 +162,9 @@ export function CategoryListItem({
         className={cn(
           'flex h-[var(--control-height)] min-w-0 flex-1 items-center gap-[var(--space-2)]',
           'rounded-[var(--radius-md)] px-[var(--space-2)] text-left text-base text-text',
-          'hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
-          closed && 'text-muted',
+          // 배경은 행(`li`)이 칠한다(R29) — 본체만 칠하면 손잡이·`⋯` 칸이 빠진 반쪽 띠가 된다.
+          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
+          closed && 'text-muted group-hover:text-text',
         )}
       >
         <span
@@ -171,7 +176,7 @@ export function CategoryListItem({
         <span className="min-w-0 flex-1 truncate">{category.name}</span>
         {badge === null ? null : <span className="shrink-0 text-sm">{badge}</span>}
         {counts.total > 0 ? (
-          <span className="shrink-0 text-sm text-muted">
+          <span className="shrink-0 text-sm text-muted group-hover:text-text">
             {counts.done}/{counts.total}
           </span>
         ) : null}
@@ -180,6 +185,7 @@ export function CategoryListItem({
       <IconButton
         ref={menuAnchor}
         label={`${category.name} 메뉴`}
+        className="hover:enabled:bg-transparent"
         onClick={() => setMenuOpen((open) => !open)}
       >
         ⋯
