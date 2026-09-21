@@ -1,8 +1,10 @@
 // 읽기 조건: PWA 아이콘(`public/icon-*.png`)을 바꿀 때. 실행: `node scripts/make-icons.mjs`
 //
 // **아이콘 그림의 단일 소스.** 네 파일(192·512·maskable 512·apple-touch 180)은 전부 아래
-// `BODY_ART` + `FACE_ART` 에서 나온다 — 손으로 고친 PNG 를 섞지 마라. 하나만 고치면 나머지
-// 셋과 조용히 갈라진다.
+// `ART` 에서 나온다 — 손으로 고친 PNG 를 섞지 마라. 하나만 고치면 나머지 셋과 조용히 갈라진다.
+//
+// 도형(원·타원)을 겹쳐 만들지 않는다. 몸은 베지어 윤곽선 **하나**이고, 부피는 그라데이션이,
+// 질감은 털결 몇 가닥이 만든다 — 그래야 "조립한 도형"이 아니라 그림으로 읽힌다.
 // 그림 자체의 요구사항은 `docs/specs/pwa.md` R1·R1-a·R2 에 있다.
 //
 // 왜 SVG 를 브라우저로 굽는가: 이 환경에 이미지 라이브러리가 없다(sharp·PIL·ImageMagick 전부 없음).
@@ -20,48 +22,134 @@ import { deflateSync, inflateSync } from 'node:zlib';
 import { chromium } from '@playwright/test';
 
 const BG = '#7CC6FF'; // pwa.md R1 의 theme_color
-const INK = '#2E3440'; // 눈 둘 + 코 — 하프물범의 검정
-const BUMP = '#D2DAE6'; // 흰 몸 **위에** 얹힌 흰 부분(지느러미·주둥이)의 경계
-const BLUSH = '#CBD3E0'; // 볼터치
+const INK = '#2F3542'; // 눈 둘 + 코 — 하프물범의 검정
 
 /**
- * 하프물범 새끼(pwa.md R2). 통통한 달걀 몸이 살짝 기울어 머리는 왼쪽 위·꼬리는 오른쪽 아래로 간다.
- * 512 좌표계에서 그린다.
+ * 몸 + 꼬리를 **윤곽선 하나**로 뜬다. 좌우 곡률이 일부러 다르다 — 타원 두 개를 겹친 것이 아니라
+ * 손으로 그린 선으로 읽히게 하는 것이 요점이다. 오른쪽 아래에서 꼬리 두 갈래가 자라 나온다.
  */
-const BODY_ART = `
-  <g fill="#fff">
-    <ellipse cx="330" cy="436" rx="56" ry="31" transform="rotate(26 330 436)"/>
-    <ellipse cx="376" cy="394" rx="42" ry="28" transform="rotate(56 376 394)"/>
-  </g>
-  <path d="M256 96 C338 96 384 158 384 238 C384 330 344 404 300 424
-           C278 436 234 436 212 424 C168 404 128 330 128 238
-           C128 158 174 96 256 96 Z" fill="#fff"/>
-  <g fill="${BUMP}">
-    <path d="M332 270 C350 290 352 330 332 352 C314 372 298 358 302 330 C306 302 316 278 332 270 Z"/>
-    <path d="M186 288 C204 306 208 346 190 368 C172 388 156 374 158 346 C160 318 170 296 186 288 Z"/>
-  </g>`;
+const SILHOUETTE = `M248 74
+  C314 72 364 112 380 170
+  C395 222 392 282 374 330
+  C402 340 430 362 438 390
+  C443 407 428 419 407 414
+  C415 429 404 445 383 447
+  C355 450 328 433 311 409
+  C288 428 252 436 222 425
+  C168 405 132 351 120 289
+  C107 229 116 163 150 120
+  C175 89 210 75 248 74 Z`;
 
 /**
- * 얼굴은 같은 크기의 점 셋(눈 둘 + 코)이 전부다 — 입선도 수염도 없다.
- *
- * **몸과 달리 기울이지 않는다.** 사진(입체)에서는 비스듬한 눈이 자연스럽지만, 납작한 아이콘에서
- * 눈높이가 어긋나면 그냥 삐뚤어져 보인다. 그래서 실루엣만 기울이고 얼굴은 수평으로 얹는다.
- * 볼터치도 여기 있다 — 몸과 같이 돌리면 오른쪽 볼이 앞지느러미와 겹쳐 얼룩이 된다.
+ * 부피는 평면 회색 덩어리가 아니라 그라데이션이 만든다 — 빛은 왼쪽 위, 그늘은 오른쪽 아래.
+ * `objectBoundingBox` 기준이라 maskable 의 축소(scale)에도 그대로 따라간다.
  */
-const FACE_ART = `
-  <g fill="${BLUSH}">
-    <ellipse cx="186" cy="252" rx="17" ry="11"/>
-    <ellipse cx="320" cy="256" rx="17" ry="11"/>
-  </g>
-  <g fill="${BUMP}">
-    <ellipse cx="240" cy="266" rx="16" ry="12"/>
-    <ellipse cx="274" cy="266" rx="16" ry="12"/>
-  </g>
-  <g fill="${INK}">
-    <circle cx="208" cy="200" r="18"/>
-    <circle cx="304" cy="200" r="18"/>
-    <circle cx="256" cy="238" r="17"/>
+const DEFS = `
+  <defs>
+    <linearGradient id="fur" x1="0.22" y1="0.08" x2="0.82" y2="0.96">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.52" stop-color="#fbfcfe"/>
+      <stop offset="1" stop-color="#d4dcea"/>
+    </linearGradient>
+    <radialGradient id="sheen" cx="0.33" cy="0.24" r="0.52">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="flipper" x1="0.2" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#e6ecf6"/>
+      <stop offset="1" stop-color="#c2cddf"/>
+    </linearGradient>
+    <radialGradient id="blush" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#b9c6da" stop-opacity="0.85"/>
+      <stop offset="0.6" stop-color="#c6d1e1" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#c6d1e1" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="socket" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#cdd6e4" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#cdd6e4" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="body"><path d="${SILHOUETTE}"/></clipPath>
+  </defs>`;
+
+/**
+ * 털결. 밖으로 솟는 가시가 아니라 윤곽을 따라 눕는 **초승달**이다 — 실루엣을 아주 조금
+ * 흐트러뜨려 "잘라 낸 도형"이 아니라 "털 덮인 몸"으로 읽히게 한다. 솟게 그렸더니 뿔이 됐다.
+ */
+const FUR_EDGE = `
+  <g fill="url(#fur)">
+    <path d="M146 128 C162 102 190 80 220 70 C194 86 170 106 156 132 Z"/>
+    <path d="M118 262 C113 238 114 212 121 188 C114 214 112 240 116 266 Z"/>
+    <path d="M142 352 C130 332 122 310 119 290 C124 314 133 336 148 356 Z"/>
   </g>`;
+
+/** 몸 안쪽의 짧은 결 몇 가닥. 아래쪽에 두면 입이나 수염으로 읽혀서 왼쪽 면에만 둔다. */
+const FUR_TEXTURE = `
+  <g stroke="#dfe6f2" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.8">
+    <path d="M168 168 C178 156 190 148 202 144"/>
+    <path d="M150 210 C160 196 172 186 184 180"/>
+    <path d="M152 300 C160 286 170 276 180 270"/>
+    <path d="M196 342 C204 330 214 322 224 318"/>
+  </g>`;
+
+/** 앞지느러미 — 밑동이 굵고 끝이 뾰족한 물방울. 밑동에 그림자를 깔아 몸에서 살짝 떠 보이게. */
+const FLIPPERS = `
+  <g clip-path="url(#body)">
+    <path d="M338 250 C362 276 368 326 348 354 C332 376 310 364 308 336
+             C306 302 320 270 338 250 Z" fill="#b9c4d6" opacity="0.35"
+          transform="translate(4 8)"/>
+    <path d="M338 250 C362 276 368 326 348 354 C332 376 310 364 308 336
+             C306 302 320 270 338 250 Z" fill="url(#flipper)"/>
+    <path d="M188 296 C210 322 214 368 194 392 C180 408 160 398 158 372
+             C156 342 172 312 188 296 Z" fill="#b9c4d6" opacity="0.3"
+          transform="translate(3 7)"/>
+    <path d="M188 296 C210 322 214 368 194 392 C180 408 160 398 158 372
+             C156 342 172 312 188 296 Z" fill="url(#flipper)"/>
+  </g>`;
+
+/** 주둥이 — 두 혹을 한 곡선으로 잇고 가운데를 옅은 선 하나로 가른다. */
+const MUZZLE = `
+  <path d="M228 256 C239 247 252 249 256 260 C260 249 273 247 284 256
+           C295 265 290 281 274 283 C264 284 258 279 256 272
+           C254 279 248 284 238 283 C222 281 217 265 228 256 Z"
+        fill="#e9eef7"/>
+  <path d="M256 260 C256 268 256 275 256 280" stroke="#c3cdde" stroke-width="3.5"
+        stroke-linecap="round" fill="none"/>`;
+
+/** 눈 — 정원이 아니라 세로로 살짝 긴 계란형. 하이라이트 둘 + 옅은 눈두덩 음영. */
+const eye = (cx, cy, tilt) => `
+  <g transform="rotate(${tilt} ${cx} ${cy})">
+    <ellipse cx="${cx}" cy="${cy}" rx="34" ry="32" fill="url(#socket)"/>
+    <path d="M${cx} ${cy - 22} C${cx + 14} ${cy - 22} ${cx + 21} ${cy - 9} ${cx + 21} ${cy + 3}
+             C${cx + 21} ${cy + 16} ${cx + 12} ${cy + 23} ${cx} ${cy + 23}
+             C${cx - 12} ${cy + 23} ${cx - 21} ${cy + 16} ${cx - 21} ${cy + 3}
+             C${cx - 21} ${cy - 9} ${cx - 14} ${cy - 22} ${cx} ${cy - 22} Z" fill="${INK}"/>
+    <path d="M${cx - 10} ${cy - 13} C${cx - 3} ${cy - 17} ${cx + 3} ${cy - 11} ${cx} ${cy - 4}
+             C${cx - 4} ${cy + 2} ${cx - 13} ${cy - 3} ${cx - 10} ${cy - 13} Z" fill="#fff"/>
+    <circle cx="${cx + 9}" cy="${cy + 11}" r="4" fill="#fff" opacity="0.8"/>
+  </g>`;
+
+/** 코 — 곡선이 있는 둥근 역삼각형. 위쪽에 작은 반사광. */
+const NOSE = `
+  <path d="M236 222 C236 213 245 208 256 208 C267 208 276 213 276 222
+           C276 233 265 244 256 249 C247 244 236 233 236 222 Z" fill="${INK}"/>
+  <path d="M246 217 C250 214 255 214 258 216 C254 219 249 220 246 217 Z"
+        fill="#fff" opacity="0.5"/>`;
+
+/** 하프물범 새끼 한 마리(pwa.md R2). 512 좌표계에서 그린다. */
+const ART = `${DEFS}
+  ${FUR_EDGE}
+  <path d="${SILHOUETTE}" fill="url(#fur)"/>
+  <g clip-path="url(#body)">
+    <ellipse cx="216" cy="196" rx="190" ry="190" fill="url(#sheen)"/>
+    ${FUR_TEXTURE}
+  </g>
+  ${FLIPPERS}
+  <ellipse cx="172" cy="250" rx="28" ry="19" fill="url(#blush)"/>
+  <ellipse cx="322" cy="252" rx="28" ry="19" fill="url(#blush)"/>
+  ${MUZZLE}
+  ${eye(208, 188, -4)}
+  ${eye(304, 184, 4)}
+  ${NOSE}`;
 
 /** `radius` 0 = 꽉 찬 사각, `scale` < 1 = maskable 안전 영역용 축소. */
 const svg = ({ radius, scale = 1 }) => {
@@ -69,10 +157,7 @@ const svg = ({ radius, scale = 1 }) => {
   return `
   <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
     <rect width="512" height="512" rx="${radius}" fill="${BG}"/>
-    <g transform="${fit} translate(12 -8)">
-      <g transform="rotate(-12 256 256)">${BODY_ART}</g>
-      ${FACE_ART}
-    </g>
+    <g transform="${fit} translate(2 -6) rotate(-9 256 256)">${ART}</g>
   </svg>`;
 };
 
