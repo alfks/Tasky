@@ -7,8 +7,12 @@ import Dexie from 'dexie';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { Category } from '@/domain/category/category';
+import type { Dday } from '@/domain/dday/dday';
+import type { DiaryEntry } from '@/domain/diary/diary-entry';
+import type { FocusSession } from '@/domain/focus/focus-session';
 import { createMeta, type MetaDeps } from '@/domain/meta';
 import { SYNC_TABLES } from '@/domain/sync/wire';
+import type { Settings } from '@/domain/theme/settings';
 import type { Todo } from '@/domain/todo/todo';
 
 import { isRepositoryError, type RepositoryError } from '@/repositories/repository-error';
@@ -23,6 +27,11 @@ import {
   type TaskyDb,
 } from '@/infra/indexeddb/db';
 import { storeOn } from '@/infra/indexeddb/query';
+
+import { makeDday } from '@/test/fixtures/dday';
+import { makeDiaryEntry } from '@/test/fixtures/diary';
+import { makeFocusSession } from '@/test/fixtures/focus-session';
+import { makeSettings } from '@/test/fixtures/settings';
 
 let seq = 0;
 const deps: MetaDeps = {
@@ -216,6 +225,10 @@ function legacyRoutine(overrides: Partial<LegacyRoutineRow> & { id: string }): L
 async function seedV3(): Promise<{
   todo: Todo;
   category: Category;
+  settings: Settings;
+  focusSession: FocusSession;
+  dday: Dday;
+  diaryEntry: DiaryEntry;
   routines: LegacyRoutineRow[];
 }> {
   const legacy = new Dexie('tasky');
@@ -228,6 +241,10 @@ async function seedV3(): Promise<{
   );
   const todo = V1_TODO();
   const category = V1_CATEGORY();
+  const settings = makeSettings();
+  const focusSession = makeFocusSession();
+  const dday = makeDday();
+  const diaryEntry = makeDiaryEntry();
   const routines = [
     legacyRoutine({ id: 'r0000000-0000-4000-8000-000000000001', active: true }), // 활성
     legacyRoutine({
@@ -242,11 +259,15 @@ async function seedV3(): Promise<{
   ];
   await legacy.table('todos').put(todo);
   await legacy.table('categories').put(category);
+  await legacy.table('settings').put(settings);
+  await legacy.table('focusSessions').put(focusSession);
+  await legacy.table('ddays').put(dday);
+  await legacy.table('diaryEntries').put(diaryEntry);
   for (const routine of routines) {
     await legacy.table('routines').put(routine);
   }
   legacy.close();
-  return { todo, category, routines };
+  return { todo, category, settings, focusSession, dday, diaryEntry, routines };
 }
 
 describe('스키마 v3 → v4 업그레이드 (ADR-0018)', () => {
@@ -278,12 +299,16 @@ describe('스키마 v3 → v4 업그레이드 (ADR-0018)', () => {
   });
 
   it('v3 → v4 는 routines 말고 다른 6테이블 로우를 값째로 그대로 둔다', async () => {
-    const { todo, category } = await seedV3();
+    const { todo, category, settings, focusSession, dday, diaryEntry } = await seedV3();
 
     await db.open();
 
     expect(await db.todos.get(todo.id)).toEqual({ ...todo });
     expect(await db.categories.get(category.id)).toEqual({ ...category });
+    expect(await db.settings.get(settings.id)).toEqual({ ...settings });
+    expect(await db.focusSessions.get(focusSession.id)).toEqual({ ...focusSession });
+    expect(await db.ddays.get(dday.id)).toEqual({ ...dday });
+    expect(await db.diaryEntries.get(diaryEntry.id)).toEqual({ ...diaryEntry });
   });
 
   it('v4 에서 신설된 syncOutbox·syncState 테이블은 비어 있고 곧바로 쓸 수 있다', async () => {
