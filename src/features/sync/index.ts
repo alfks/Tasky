@@ -5,6 +5,7 @@
 // 그것들을 정적으로 흡수하는 순간 진입 예산이 깨지기 때문이다(사실 4·5, 돌연변이 1).
 export { AuthGate } from '@/features/sync/components/AuthGate';
 export { AccountBlockLauncher } from '@/features/sync/components/AccountBlockLauncher';
+export { AccountSyncOverlays } from '@/features/sync/components/AccountSyncOverlays';
 
 export { useSyncStore } from '@/features/sync/store/sync-store';
 export type {

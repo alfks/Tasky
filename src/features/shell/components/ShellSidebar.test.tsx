@@ -26,6 +26,9 @@ import {
 
 const 운동 = makeCategory({ seq: 1, name: '운동', order: 0 });
 
+/** 계정 블록이 요구하는 prop — 이 파일의 관심사(루틴 진입점)와 무관하므로 항상 같은 대역을 준다. */
+const exportBackup = () => Promise.resolve(true);
+
 /** `ShellToasts`(app-shell R8 전역 허브)를 축약한 것 — 실제 토스트 DOM 을 만든다. */
 function ToastHost() {
   return <ToastViewport toasts={useToasts()} onClose={dismissToast} />;
@@ -54,6 +57,7 @@ describe('"루틴" 진입점', () => {
         categories={[운동]}
         onSelectCategory={vi.fn()}
         onRemoveCategory={vi.fn()}
+        exportBackup={exportBackup}
       />,
     );
 
@@ -70,6 +74,7 @@ describe('"루틴" 진입점', () => {
         categories={[운동]}
         onSelectCategory={vi.fn()}
         onRemoveCategory={vi.fn()}
+        exportBackup={exportBackup}
       />,
     );
 
@@ -93,6 +98,7 @@ describe('"루틴" 진입점', () => {
           categories={[운동]}
           onSelectCategory={vi.fn()}
           onRemoveCategory={vi.fn()}
+          exportBackup={exportBackup}
         />,
       );
 

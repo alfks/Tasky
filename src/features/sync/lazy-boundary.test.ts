@@ -143,12 +143,14 @@ describe('sync 지연 로드 경계 — 진입 그래프 도달성', () => {
     'features/sync/components/LoginScreen.tsx',
     'features/sync/components/AccountBlockLauncher.tsx',
     'features/sync/components/AccountBlock.tsx',
+    'features/sync/components/AccountSyncOverlays.tsx',
     'features/sync/components/UploadDialog.tsx',
     'features/sync/components/AccountDeleteDialog.tsx',
     'features/sync/components/AccountDeletedNotice.tsx',
+    'features/sync/components/AccountSwitchedNotice.tsx',
   ].sort();
 
-  it('진입에 닿는 src/features/sync/** 는 정확히 이 아홉 파일뿐이다', () => {
+  it('진입에 닿는 src/features/sync/** 는 정확히 이 열한 파일뿐이다(리뷰 Major 2·3 — 계정 전환 안내·항상-마운트 오버레이가 늘었다)', () => {
     const syncFiles = [...rel].filter((f) => f.startsWith('features/sync/')).sort();
     expect(syncFiles).toEqual(SYNC_ENTRY_ALLOWLIST);
   });
@@ -234,6 +236,7 @@ describe('sync 지연 로드 경계 — 방향 규칙(§D-10)', () => {
   const ASSEMBLERS = [
     'src/features/shell/components/ShellSidebar.tsx',
     'src/features/shell/components/ShellHeader.tsx',
+    'src/features/shell/components/ShellOverlays.tsx',
     'src/features/backup/components/BackupDialog.tsx',
   ];
 
