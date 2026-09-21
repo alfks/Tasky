@@ -6,11 +6,11 @@
 // `routine-repository.contract.ts`(CRUD 계약)와 파일을 가르는 이유는 300줄 제한(code-style §5)이다.
 //
 // 여기서 재현하는 절차(`materialize`)는 스토어 액션 `materializeRoutines`(`todo-routine-fill.ts`)가
-// 하는 일과 같다. **채우기는 지금 루틴 로우도 쓴다(임시 복원, PR #121 리뷰 Blocker/Major 2)** —
-// `plan.routine`(fillFloor 가 through 까지 전진한 값)을 `plan.todos` 와 같은 트랜잭션으로 쓴다.
-// 예전엔 이 헬퍼가 `plan.todos` 만 write 해 "채우기가 루틴 로우를 쓰도록 되돌리는" 돌연변이를 계약이
-// 구조적으로 관측할 수 없었다(리뷰 Major 2, 거짓 초록불) — 지금은 `plan.routine` 을 조건 없이 쓰고,
-// 아래 "fillFloor 가 전진한다" 단언이 그 돌연변이를 직접 잡는다.
+// 하는 일과 같다. **채우기는 루틴 로우를 쓰지 않는다(ADR-0018 §결정 3, 최종 설계로 복귀 — T-92b 가
+// PR #121 의 임시 복원을 되돌렸다)** — `planRoutineFill`(`RoutineFillPlan`)은 이제 `todos` 만 돌려주고
+// `fillFloor` 는 `routine.rules.ts` 의 `createRoutine`·`resumeRoutine` 만 옮긴다. 배경 채우기의
+// 중복·부활 방지는 `existingIdsFor`(아래, `DatasetRepository.readAll()` 로 툼스톤까지 본 테스트 전용
+// 근사 — 프로덕션은 `SyncRepository.existingIds`)가 맡는다.
 import type { DatasetWrite } from '@/domain/dataset';
 import type { DateKey } from '@/domain/date/date-key';
 import type { RoutineId } from '@/domain/ids';
@@ -85,18 +85,17 @@ function existingIdsFor(routine: Routine, existing: readonly Todo[]): Set<string
   return ids;
 }
 
-/** `materializeRoutines` 가 저장소 계층에서 하는 일을 재현한다: 계획 → 트랜잭션 커밋. `plan` 이
- * 있으면(0건 채움 포함, R4) `plan.routine` 을 **조건 없이** 같이 쓴다 — 이걸 빼먹으면(돌연변이 (9)류,
- * "채우기가 루틴 로우를 쓰지 않도록 되돌림") 아래 "fillFloor 가 전진한다" 테스트가 바로 빨간불이
- * 된다. 반환값은 실제로 쓴 `plan.routine`(routine 이 관여 안 했으면 원래 `current`)이다. */
+/** `materializeRoutines` 가 저장소 계층에서 하는 일을 재현한다: 계획 → 트랜잭션 커밋. **루틴 로우는
+ * 쓰지 않는다**(ADR-0018 §결정 3) — `plan.todos` 만 쓴다. 0건이면(R4) 아무것도 쓰지 않는다(빈
+ * 트랜잭션을 만들 이유가 없다). */
 async function materialize(
   repos: Repositories,
   routineId: RoutineId,
   through: DateKey,
-): Promise<Routine | undefined> {
+): Promise<void> {
   const current = await repos.routines.getById(routineId);
   if (current === undefined) {
-    return undefined;
+    return;
   }
   const snapshot = await repos.dataset.readAll();
   materializeCallSeq += 1;
@@ -104,15 +103,11 @@ async function materialize(
     { routine: current, through, existingIds: existingIdsFor(current, snapshot.todos) },
     contractDeps({ seed: materializeCallSeq * 1000 }),
   );
-  if (plan === null) {
-    return current;
+  if (plan === null || plan.todos.length === 0) {
+    return;
   }
-  const writes: DatasetWrite[] = [
-    ...plan.todos.map((entity) => ({ table: 'todos' as const, entity })),
-    { table: 'routines' as const, entity: plan.routine },
-  ];
+  const writes: DatasetWrite[] = plan.todos.map((entity) => ({ table: 'todos' as const, entity }));
   await repos.dataset.write(writes);
-  return plan.routine;
 }
 
 export function runRoutineFillContract(target: ContractTarget): void {
@@ -139,13 +134,13 @@ export function runRoutineFillContract(target: ContractTarget): void {
       expect(todos).toHaveLength(3);
     });
 
-    it('채운 뒤 루틴 로우의 fillFloor 는 through 까지 전진한다(임시 복원, PR #121 리뷰 Blocker)', async () => {
+    it('채운 뒤에도 루틴 로우의 fillFloor·rev 는 바뀌지 않는다(ADR-0018 §결정 3, 되돌리기 정정)', async () => {
       const before = await repos.routines.getById(routine.id);
       const through = '2026-01-29' as DateKey;
       await materialize(repos, routine.id, through);
       const after = await repos.routines.getById(routine.id);
-      expect(after?.fillFloor).toBe(through);
-      expect(after?.rev).toBe((before?.rev ?? 0) + 1); // touch() 가 rev 를 올린다 — 로우를 썼다는 증거
+      expect(after?.fillFloor).toBe(before?.fillFloor); // 얼려 둔다 — through 로 전진하지 않는다
+      expect(after?.rev).toBe(before?.rev); // 로우 자체를 쓰지 않았다는 증거(아웃박스에도 안 실린다)
     });
 
     it('삭제한 인스턴스는 그 뒤 구간을 채워도 부활하지 않는다', async () => {

@@ -9,9 +9,17 @@ import { addCivilDays, dayOfWeekOf } from '@/domain/date/civil';
 import type { DateKey } from '@/domain/date/date-key';
 import { adopt, markDeleted } from '@/domain/meta';
 import { pauseRoutine } from '@/domain/routine/routine.rules';
+import { toSyncChange } from '@/domain/sync/outbox';
+import { readRemoteRow } from '@/domain/sync/remote-rows';
+import { isResyncResponse, type SyncOkResponse, type SyncRequest } from '@/domain/sync/wire';
 
+import type { Repositories } from '@/repositories/container';
 import { getRepositories, setRepositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
+import { createMemorySyncServer, type MemorySyncServer } from '@/repositories/memory/sync-server';
+import { createMemorySyncTransport } from '@/repositories/memory/sync-transport';
+import type { RemoteWrite } from '@/repositories/sync-repository';
+import type { SessionInfo, SyncTransport } from '@/repositories/sync-transport';
 
 import { MATERIALIZE_HORIZON_DAYS } from '@/features/todo/store/todo-routine-fill';
 import { createTodoStore, type TodoStore } from '@/features/todo/store/todo-store';
@@ -52,9 +60,9 @@ describe('createRoutine — 무기한 등록(routine.md R2~R5)', () => {
     const saved = await getRepositories().routines.list({ includeInactive: true });
     expect(saved).toHaveLength(1);
     expect(saved[0]?.active).toBe(true);
-    // 즉시 채우기 구간이 시작일 하루뿐이라(방문 전) fillFloor 는 그 하루까지만 전진한다(PR #121
-    // 리뷰 Blocker 이후 임시 복원 — routine-fill.ts 상단 주석).
-    expect(saved[0]?.fillFloor).toBe(mondayStart);
+    // fillFloor 는 등록 시점 값(시작일 전날)에서 옮겨지지 않는다(ADR-0018 §결정 3) — 배경 채우기가
+    // 루틴 로우를 안 쓰므로 즉시 채우기 결과 0건이어도 전진할 값 자체가 없다.
+    expect(saved[0]?.fillFloor).toBe(addCivilDays(mondayStart, -1));
   });
 
   it('보이는 범위 끝까지 즉시 채운다(R3) — 시작일이 그 끝보다 뒤면 시작일 하루만(구간 보정)', async () => {
@@ -73,10 +81,10 @@ describe('createRoutine — 무기한 등록(routine.md R2~R5)', () => {
     expect(ids).not.toBe(false);
     expect(ids).toHaveLength(3); // 1/15·1/22·1/29 세 목요일
 
-    // 즉시 채운 구간 끝(보이는 범위 끝, 1/29)까지 fillFloor 가 전진한다(임시 복원, PR #121 리뷰
-    // Blocker).
+    // fillFloor 는 등록 시점 값(시작일 전날)에서 그대로다(ADR-0018 §결정 3) — 즉시 채우기가 세 건을
+    // 만들어도 그 값을 옮기지 않는다.
     const saved = await getRepositories().routines.list();
-    expect(saved[0]?.fillFloor).toBe('2026-01-29');
+    expect(saved[0]?.fillFloor).toBe(addCivilDays(FIXTURE_DATE, -1));
   });
 });
 
@@ -274,10 +282,11 @@ describe('materializeRoutines — 지연 생성 배선(routine.md R6·R7·R11)',
     expect(created.length).toBeGreaterThan(0);
     expect(created.every((todo) => todo.date <= horizon)).toBe(true); // 지평선을 넘는 날짜는 없다
 
-    // fillFloor 는 실제로 채운 구간 끝(지평선)까지만 전진한다 — 지평선 너머는 다음 방문이 마저
-    // 채운다(임시 복원, PR #121 리뷰 Blocker).
+    // fillFloor 는 배경 채우기가 전혀 옮기지 않는다(ADR-0018 §결정 3) — 등록 시점 값(시작일 전날)
+    // 그대로다. 지평선 너머를 다시 안 채우는 것은 `FILL_BACKFILL_HORIZON_DAYS`(스캔 비용 상한)가
+    // 막는다 — 위 단언들이 이미 그걸 본다.
     const [routine] = await getRepositories().routines.list();
-    expect(routine?.fillFloor).toBe(horizon);
+    expect(routine?.fillFloor).toBe(addCivilDays(FIXTURE_DATE, -1));
   });
 });
 
@@ -366,4 +375,140 @@ describe('materializeRoutines — 낭비 방지 캐시(리뷰 Major 2)', () => {
     await state().materializeRoutines({ ...range, revision: 2 }); // writeRevision 은 안 올랐어도
     expect(listCalls()).toBe(2); // revision 이 바뀌었으니 다시 읽는다
   });
+});
+
+// F2(배경 채우기가 다른 기기의 "중지" 를 덮는다, ADR-0017 §재검토 위험 2·ADR-0018 §재검토 트리거)
+// 방어 증명 — **실제 제품 경로**(`materializeRoutines` 스토어 액션 + `SyncRepository` 아웃박스 +
+// 메모리 가짜 서버 왕복)로 닫는다. `src/repositories/memory/routine-background-fill.test.ts`(T-92b
+// 초안, 호출부를 손으로 재현만 하던 파일)는 이 스위트로 옮기며 삭제했다 — 더는 두 곳에서 같은 것을
+// 다르게(하나는 진짜 경로로, 하나는 시뮬레이션으로) 증명하지 않는다.
+describe('materializeRoutines — 배경 채우기가 다른 기기의 "중지" 를 덮지 않는다(F2, 실제 스토어·동기화 경로)', () => {
+  const SESSION: SessionInfo = {
+    sub: 'user-1',
+    email: 'user@example.com',
+    expiresAt: '2099-01-01T00:00:00.000Z',
+  };
+
+  type Device = {
+    repos: Repositories;
+    store: Store;
+    transport: SyncTransport;
+    deviceId: string;
+    cursor: number;
+  };
+
+  async function createDevice(server: MemorySyncServer, deviceId: string): Promise<Device> {
+    const repos = createMemoryRepositories();
+    await repos.categories.upsert(adopt(makeCategory({ seq: 1 })));
+    return {
+      repos,
+      store: createTodoStore(fixedDeps()),
+      transport: createMemorySyncTransport(server, SESSION),
+      deviceId,
+      cursor: 0,
+    };
+  }
+
+  /** 한 왕복: 아웃박스 전량 push → ack/drop → pull 결과를 검증·적용(applyRemote) → 커서 갱신. */
+  async function sync(device: Device): Promise<void> {
+    const outbox = await device.repos.sync.listOutbox(500);
+    const rows = await device.repos.sync.readForPush(outbox);
+    const changes = rows
+      .filter((r): r is typeof r & { row: NonNullable<typeof r.row> } => r.row !== undefined)
+      .map((r) => toSyncChange(r.entry, r.row));
+    const missing = rows.filter((r) => r.row === undefined).map((r) => r.entry);
+    if (missing.length > 0) {
+      await device.repos.sync.dropOutbox(missing);
+    }
+
+    const request: SyncRequest = {
+      protocol: 1,
+      deviceId: device.deviceId,
+      cursor: device.cursor,
+      changes,
+    };
+    const response = await device.transport.sync(request);
+    if (isResyncResponse(response)) {
+      throw new Error('테스트 시나리오에서는 resync 가 나오면 안 된다');
+    }
+    const ok: SyncOkResponse = response;
+
+    const outboxByKey = new Map(outbox.map((e) => [`${e.tbl}|${e.id}`, e]));
+    const appliedEntries = ok.applied
+      .map((a) => outboxByKey.get(`${a.tbl}|${a.id}`))
+      .filter((e): e is NonNullable<typeof e> => e !== undefined);
+    if (appliedEntries.length > 0) {
+      await device.repos.sync.ackOutbox(appliedEntries);
+    }
+    const rejectedToDrop = ok.rejected
+      .filter((r) => r.reason === 'exists' || r.reason === 'stale')
+      .map((r) => ({ tbl: r.tbl, id: r.id }));
+    if (rejectedToDrop.length > 0) {
+      await device.repos.sync.dropOutbox(rejectedToDrop);
+    }
+
+    const validated: RemoteWrite[] = [];
+    for (const pulled of ok.pulled) {
+      const result = readRemoteRow(pulled.tbl, pulled.id, pulled.row);
+      if (result.ok) {
+        validated.push({ tbl: pulled.tbl, seq: pulled.seq, entity: result.entity } as RemoteWrite);
+      }
+    }
+    if (validated.length > 0) {
+      await device.repos.sync.applyRemote(validated);
+    }
+    device.cursor = ok.cursor;
+  }
+
+  it(
+    '기기 A 가 중지 → 기기 B 가 materializeRoutines(배경 채우기, 실제 스토어 액션) → 동기화 → ' +
+      'A 의 중지가 유지된다(F2 없음)',
+    async () => {
+      const server = createMemorySyncServer();
+      const deviceA = await createDevice(server, 'device-a');
+      const deviceB = await createDevice(server, 'device-b');
+
+      // A: 실제 스토어 액션으로 루틴을 등록하고 올린다.
+      setRepositories(deviceA.repos);
+      await deviceA.store.getState().createRoutine({
+        categoryId: FIXTURE_CATEGORY_ID,
+        title: '아침 명상',
+        startDate: FIXTURE_DATE,
+        recurrence: WEEKLY_RECURRENCE,
+      });
+      await sync(deviceA);
+
+      // B: 받는다.
+      await sync(deviceB);
+      setRepositories(deviceB.repos);
+      const [routineOnB] = await deviceB.repos.routines.list();
+      expect(routineOnB?.active).toBe(true);
+
+      // A: 사용자가 중지한다(t1) — 실제 저장소 경로(routines.upsert, sync 가 아웃박스에 싣는다).
+      setRepositories(deviceA.repos);
+      const localA = (await deviceA.repos.routines.getById(routineOnB!.id))!;
+      await deviceA.repos.routines.upsert(pauseRoutine(localA, fixedDeps()));
+      await sync(deviceA); // 서버에 중지가 올라간다.
+
+      // B: A 의 중지를 아직 모른 채(오프라인) 실제 스토어 액션 materializeRoutines 로 배경 채우기를
+      // 한다(t2 > t1, 넓은 범위) — todo-routine-fill.ts 가 실제로 배선한 경로 그대로다.
+      setRepositories(deviceB.repos);
+      const ok = await deviceB.store.getState().materializeRoutines({
+        from: FIXTURE_DATE,
+        to: '2026-03-15' as DateKey,
+        today: '2026-03-10' as DateKey,
+      });
+      expect(ok).toBe(true);
+
+      // 구조적 증거: 배경 채우기가 루틴 로우를 전혀 안 썼으므로 아웃박스에 routines 항목이 없다 —
+      // 있었다면(누군가 plan.routine 류를 되살렸다면) 여기서 바로 잡힌다.
+      const outboxAfterFill = await deviceB.repos.sync.listOutbox(100);
+      expect(outboxAfterFill.some((e) => e.tbl === 'routines')).toBe(false);
+
+      await sync(deviceB); // B 는 자신의 todos 만 밀어올리고, A 의 중지를 받아온다(LWW).
+
+      const afterB = await deviceB.repos.routines.getById(routineOnB!.id);
+      expect(afterB?.active).toBe(false); // A 의 중지가 유지된다 — F2 없음
+    },
+  );
 });

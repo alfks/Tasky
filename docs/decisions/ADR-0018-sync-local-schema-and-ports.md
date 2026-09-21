@@ -3,8 +3,10 @@
 
 # ADR-0018: 동기화 로컬 스키마(v4) — 아웃박스·슬롯 id·`fillFloor`·포트 분리
 
-- 상태: **accepted, 2026-09-21 정정(PR #121 리뷰 Blocker) 반영** — 아래 §결정 3·4, §감수하는 점,
-  §지켜야 할 규칙 1·2 는 원안 그대로가 **아니다**. 맨 아래 "## 정정" 절을 먼저 읽는다.
+- 상태: **accepted.** 2026-09-21 정정(PR #121 리뷰 Blocker)으로 §결정 3·4·§감수하는 점·§지켜야 할
+  규칙 1·2 가 잠깐 원안 밖으로 나갔었으나, 같은 날 "## 정정의 정정"(T-92b, `SyncRepository.
+existingIds` 배선)으로 **원안(§결정 3·4)으로 복귀**했다 — 지금 코드가 실제로 하는 일은 §결정 3·4
+  그대로다. 맨 아래 "## 정정의 정정" 절이 그 경위를 남긴다.
 - 날짜: 2026-09-21
 - 관련: 티켓 T-92, ADR-0005(충돌 정책), ADR-0007(툼스톤 조회), ADR-0009(규칙 1 개정),
   ADR-0015(§2 LWW), ADR-0016(스키마 v3), ADR-0017(**partially superseded by ADR-0018**),
@@ -53,29 +55,32 @@ T-91 이 동기화 판정 함수(순수)를 만들었지만 로컬 저장소·�
 
 - 좋은 점: F1 이 앱 경로에서 실제로 닫힌다(`risk-scenarios.test.ts`). 백업·동기화가 같은 `fillFloor`
   필드·같은 병합 규칙(newer-wins)을 공유한다.
-- 감수하는 점(**2026-09-21 정정 — 원래는 "임시로 부활을 감수한다" 였다. 감수하지 않기로 했다.
-  아래 "## 정정" 절을 본다**): `existingIds` 의 툼스톤 인식은 `SyncRepository`(T-92 후속)가 배선되기
-  전까지, 대신 `fillFloor` 전진(F2 를 다시 여는 대가)으로 부활을 막는다.
+- 감수하는 점: 없다 — **T-92b(정정의 정정)로 `SyncRepository.existingIds` 가 배선돼 원안대로다.**
+  (2026-09-21 정정에서 "`fillFloor` 전진으로 부활을 막는다"로 잠깐 바뀌었었으나 같은 날 되돌아갔다.
+  "## 정정의 정정" 절을 본다.) 지연 생성 재방문은 매번 `FILL_BACKFILL_HORIZON_DAYS` 만큼 다시
+  훑는다 — 그 스캔 비용(existingIds bulkGet 포함)이 새로 감수하는 점이다("## 정정의 정정" §비용).
 
 ## 지켜야 할 규칙 (검증 가능한 문장 — 리뷰 판정 근거)
 
-1. ~~`planRoutineFill` 은 `existingIds` 멤버십만 보고 루틴 로우를 읽지도 쓰지도 않는다~~ —
-   **2026-09-21 정정으로 무효.** 지금은 `existingIds` 멤버십을 보되, `routine`(fillFloor 전진)도
-   함께 돌려준다. "## 정정" 절을 본다.
-2. ~~`fillFloor` 를 바꾸는 함수는 `createRoutine`·`resumeRoutine` 둘뿐이다~~ — **2026-09-21 정정으로
-   무효.** 지금은 `planRoutineFill` 도 바꾼다("## 정정" 절).
+1. **`planRoutineFill` 은 `existingIds` 멤버십만 보고 루틴 로우를 읽지도 쓰지도 않는다.** (2026-09-21
+   정정에서 잠깐 무효였다가, 같은 날 "## 정정의 정정"(T-92b)으로 복원됐다 — `RoutineFillPlan` 에
+   `routine` 필드 자체가 없다.)
+2. **`fillFloor` 를 바꾸는 함수는 `createRoutine`·`resumeRoutine` 둘뿐이다.** (마찬가지로 복원됐다 —
+   `planRoutineFill`·배경 채우기 어느 쪽도 이제 이 값을 옮기지 않는다.)
 3. `syncOutbox`·`syncState` 의 인덱스는 실제로 쓰는 쿼리가 있는 것만(`db.ts` §B-4 표와 대조). (그대로
    유효)
 
 ## 재검토 트리거
 
-- `SyncRepository.existingIds` 가 배선되면(T-92 후속) "## 정정" 절의 `fillFloor` 전진을 되돌려 규칙
-  1·2 를 원안대로 복원하고, `todo-routine-fill.ts`·`routine-fill.ts`·`routine.ts` 의 관련 주석을
-  지운다(아래 정정 절이 정확히 그 되돌릴 지점을 명시한다).
-- **동기화 아웃박스 적재가 실제 쓰기 경로(`dataset.write` 또는 그 주변)에 배선되는 순간** — 지금은
-  `syncOutbox` 가 빈 스토어이고 그걸 채우는 코드가 없어 "## 정정" 의 `fillFloor` 전진이 F2 를 당장
-  재현하지 않는다. 적재가 배선되면 이 전제가 깨지므로, 그 PR 은 반드시 이 ADR 을 먼저 읽고 위
-  재검토 트리거의 되돌리기를 함께 하거나(포트가 같이 들어오면) 최소한 F2 회귀를 알고 진행해야 한다.
+**둘 다 해소됨(T-92b, "## 정정의 정정" 절) — 기록만 남긴다.**
+
+- ~~`SyncRepository.existingIds` 가 배선되면(T-92 후속) "## 정정" 절의 `fillFloor` 전진을 되돌려
+  규칙 1·2 를 원안대로 복원하고, 관련 주석을 지운다~~ — **해소.** 포트가 배선됐고(`sync-repository.ts`),
+  `todo-routine-fill.ts`·`routine-fill.ts`·`routine.rules.ts` 의 정정 주석도 지웠다.
+- ~~동기화 아웃박스 적재가 실제 쓰기 경로에 배선되는 순간, 그 PR 은 이 ADR 을 먼저 읽고 되돌리기를
+  함께 해야 한다~~ — **해소.** 아웃박스 적재(`query.ts`/`live.ts` 의 `put`/`bulkPut`)와 이 되돌리기가
+  같은 티켓(T-92b)에서 함께 들어갔다 — 트리거가 조건으로 건 "따로 갈리면 위험한" 그 순서가 실제로
+  갈리지 않았다.
 
 ## 정정 (2026-09-21, PR #121 리뷰 Blocker — `fillFloor` 전진을 임시로 되살린다)
 
@@ -114,3 +119,50 @@ T-91 이 동기화 판정 함수(순수)를 만들었지만 로컬 저장소·�
 기각 이유 표의 첫 행("워터마크 이름 유지 — 오독 위험")이 우려했던 것과 결이 같은 대가를 잠깐 다시
 진다. `docs/specs/routine.md` §4 의 "채우기는 이 값을 바꾸지 않는다" 서술도 지금은 정확하지 않다 —
 같은 정정을 반영하는 후속 문서 티켓이 필요하다(이 PR owns 밖이라 여기 남긴다).
+
+## 정정의 정정 (2026-09-21, T-92b — 위 "## 정정" 의 임시 복원을 되돌리고 원안(§결정 3·4)으로 복귀)
+
+**무엇이 바뀌었나**: 위 "## 정정" 절이 예고한 대로, `SyncRepository.existingIds`(T-92b 의 산출물,
+툼스톤 포함 벌크 조회)가 배선됐다. 이 포트가 있으면 §결정 3 의 원래 전제("호출부가 살아 있든
+툼스톤이든 이미 있는 슬롯 id 를 안다")가 실제로 성립하므로, `fillFloor` 전진을 유지할 이유가
+없어졌다 — 이 정정이 **그 전진을 되돌린다.**
+
+**바뀐 것**:
+
+- `RoutineFillPlan`(`routine-fill.ts`)에서 `routine` 필드를 뺐다 — `planRoutineFill` 은 이제
+  `todos` 만 돌려준다. 타입 자체가 "루틴 로우를 못 돌려준다"를 강제한다(누가 실수로 되살리려 해도
+  컴파일이 안 된다).
+- `todo-routine-fill.ts` 의 `planMaterializeRoutines`(지연 생성)가 `existingIds` 를
+  `candidateFillDates`(신규, `routine-fill.ts` — `planRoutineFill` 과 같은 창을 공유해 둘이
+  갈리지 않는다)로 얻은 후보 슬롯 id 를 `SyncRepository.existingIds`(툼스톤 포함)에 묻는 방식으로
+  바꿨다 — `TodoRepository.listByDateRange`(살아 있는 것만) 단독 기반이던 "## 정정" 이전 구성을
+  대체한다. `planCreateRoutine`(즉시 등록)은 그대로 제목 대조(`titleDedupIds`)만 쓴다 — 방금 만든
+  routine.id 라 서버·다른 기기가 먼저 알 수 없어 `existingIds` 를 물을 필요가 없다.
+- `routine-fill.contract.ts`·`risk-scenarios.test.ts`·`todo-routine-fill.test.ts` 의 "fillFloor 가
+  전진한다" 단언을 "얼어 있다"(`before`/`after` 의 `fillFloor`·`rev` 가 같다)로 뒤집었다.
+- **증명을 호출부 재현에서 실제 제품 경로로 옮겼다**: `todo-routine-fill.test.ts` 에
+  `materializeRoutines`(실제 스토어 액션) + `createMemoryRepositories`(실제 아웃박스 배선) + 메모리
+  가짜 서버 두 기기 동기화 왕복으로 F2 시나리오(A 중지 → B 배경 채우기 → 동기화 → A 의 중지 유지)를
+  새로 추가했다. `src/repositories/memory/routine-background-fill.test.ts`(T-92b 초안 — 도메인
+  함수를 손으로 불러 호출부를 흉내만 내던 파일)는 삭제했다.
+
+**돌연변이로 확인한 것(둘 다 실제 소스를 일시적으로 돌연변이시켜 확인 후 원복, 영구 테스트 아님)**:
+
+- `tombstoneInclusiveIds` 가 `SyncRepository.existingIds` 대신 빈 집합을 돌려주게(=예전
+  `listByDateRange` 기반과 동치) 하면 `todo-routine-fill.test.ts` 의 "소프트 삭제한 인스턴스는…
+  부활하지 않는다" 테스트가 **적색**이 된다(1/22 부활 재현).
+- `planRoutineFill` 이 `routine`(fillFloor 가 전진한 값)을 다시 돌려주고 `planMaterializeRoutines` 가
+  그걸 `dataset.write` 로 같이 쓰게(="## 정정" 이전 코드 그대로) 하면, F2 테스트의 "배경 채우기가
+  루틴 로우를 안 썼다"(아웃박스에 `routines` 항목 없음) 단언이 **적색**이 된다 — 아웃박스에 루틴
+  쓰기가 실제로 다시 실린다는 뜻이다.
+
+**비용(새로 감수하는 점)**: `fillFloor` 를 얼려 뒀으므로 지연 생성은 재방문마다
+`FILL_BACKFILL_HORIZON_DAYS`(1,095일) 구간을 다시 훑는다 — 이번엔 루틴 로우 쓰기 대신
+`SyncRepository.existingIds` bulkGet 이 그 비용을 진다. `todo-routine-fill.slow.test.ts` 실측(10
+루틴 × 3년 미방문, fake-indexeddb)이 약 400ms(전진판) → 약 980~1,070ms 로 늘었음을 확인했고, 예산을
+700ms 에서 1,400ms 로 정직하게 올렸다. `dataset.write` 를 `bulkPut` 으로 바꾸거나 `existingIds`
+조회를 청크로 나누는 최적화는 이 티켓 범위 밖이다(스캔 알고리즘이 아니라 쓰기·조회 처리량 문제).
+
+**결과**: §결정 3·4·§감수하는 점·§지켜야 할 규칙 1·2·§재검토 트리거가 전부 원안대로 참이다. 위
+"## 정정" 절은 2026-09-21 하루 동안의 임시 상태였던 경위로만 남긴다(삭제하지 않는다 — 왜 한 번
+되살렸다가 되돌렸는지가 다음에 같은 트레이드오프를 다시 고민하지 않게 하는 기록이다).

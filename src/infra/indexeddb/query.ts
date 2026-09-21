@@ -37,12 +37,17 @@ import type { DiaryEntry } from '@/domain/diary/diary-entry';
 import type { FocusSession } from '@/domain/focus/focus-session';
 import { isTombstone, type Meta, type Persistable } from '@/domain/meta';
 import type { Routine } from '@/domain/routine/routine';
+import type { SyncTable } from '@/domain/sync/wire';
 import type { Settings } from '@/domain/theme/settings';
 import type { Todo } from '@/domain/todo/todo';
 
 import { RepositoryError } from '@/repositories/repository-error';
+import { pick } from '@/repositories/sync-repository';
 
 import { createDb, db, STORES, type TaskyDb } from '@/infra/indexeddb/db';
+import { createSyncStore, type SyncStore } from '@/infra/indexeddb/sync-store';
+
+import { notifyLocalWrite } from '@/lib/write-signal';
 
 /** 런타임 흔적 없는 브랜드 키. LiveTable 은 실제로는 Dexie 테이블 그 자체다. */
 declare const LIVE_TABLE: unique symbol;
@@ -114,8 +119,18 @@ export type Store = {
    */
   readonly routines: LiveTable<Routine, IndexOf<typeof STORES.routines>>;
   /**
-   * **`DatasetRepository.write`·`restore` 전용** — 이 묶음의 일곱 테이블을 묶는 rw 트랜잭션. 중간에 던지면
-   * Dexie 가 전부 롤백한다(ADR-0009 결정 2 가 이 둘에만 허용한 예외).
+   * 동기화 저장소의 Dexie 배관(ADR-0018, `sync-store.ts`) — `syncOutbox`·`syncState` 두 스토어에
+   * 닿는 유일한 통로. `sync-indexeddb-repository.ts` 가 이 필드 위에서 `SyncRepository` 를 구현한다.
+   */
+  readonly sync: SyncStore;
+  /**
+   * **`DatasetRepository.write`·`restore` 전용** — 이 묶음의 일곱 테이블 + `syncOutbox` 를 묶는 rw
+   * 트랜잭션. 중간에 던지면 Dexie 가 전부 롤백한다(ADR-0009 결정 2 가 이 둘에만 허용한 예외).
+   *
+   * **`syncOutbox` 가 낀 이유(ADR-0018 §B-4)**: 아래 `put`/`bulkPut` 이 엔티티 put 과 같은 트랜잭션
+   * 안에서 아웃박스에도 적재하는데, 그 둘을 묶는 `t.db.transaction(...)` 이 **이미 열려 있는 이
+   * 트랜잭션 안에서 다시 열리는 서브트랜잭션**이다 — 바깥 트랜잭션의 테이블 목록에 `syncOutbox` 가
+   * 없으면 Dexie 가 `SubTransactionError` 를 던진다.
    *
    * **`run` 안에서는 이 파일의 헬퍼만 부른다.** Dexie 트랜잭션은 존(zone)으로 동작해서, 콜백 안에서
    * Dexie 가 아닌 프라미스를 `await` 하면 그 사이에 트랜잭션이 커밋돼 버린다(조용한 실패). 값 검증처럼
@@ -182,8 +197,9 @@ export function storeOn(database: TaskyDb): Store {
     ddays: brand(database.ddays, STORES.ddays),
     diaryEntries: brand(database.diaryEntries, STORES.diaryEntries),
     routines: brand(database.routines, STORES.routines),
-    // Dexie 의 테이블별 오버로드는 최대 5개까지만 타입이 있다 — 일곱 개는 배열 오버로드로 넘긴다
-    // (Dexie 공식 API, 동작은 같다).
+    sync: createSyncStore(database),
+    // Dexie 의 테이블별 오버로드는 최대 5개까지만 타입이 있다 — 여덟 개는 배열 오버로드로 넘긴다
+    // (Dexie 공식 API, 동작은 같다). `syncOutbox` 가 낀 이유는 위 `transaction` 필드 jsdoc.
     transaction: (run) =>
       database.transaction(
         'rw',
@@ -195,6 +211,7 @@ export function storeOn(database: TaskyDb): Store {
           database.routines,
           database.ddays,
           database.diaryEntries,
+          database.syncOutbox,
         ],
         run,
       ),
@@ -277,12 +294,29 @@ export async function liveOrderBy<T extends Meta, I extends string, K extends I>
   return live(await raw(table).orderBy(index).toArray());
 }
 
-/** 도메인 함수가 만든 값만 저장한다(브랜드로 강제). */
+/**
+ * 도메인 함수가 만든 값만 저장한다(브랜드로 강제).
+ *
+ * **아웃박스에 적재한다**(ADR-0018 §B-4) — 엔티티 put + `syncOutbox.put({tbl,id,rev})` 를 **같은
+ * Dexie 트랜잭션 안**에서 한다(`Table.db`·`Table.name` — 테이블 이름이 곧 `SyncTable` 값이다, 일곱
+ * 스토어 이름과 `wire.ts#SYNC_TABLES` 가 글자 단위로 같다). 이미 `store.transaction`(위 `Store.transaction`
+ * jsdoc) 안에서 불렸다면 이 호출은 **서브트랜잭션**이 된다 — 그 바깥 트랜잭션의 테이블 목록에
+ * `syncOutbox` 가 없으면 Dexie 가 `SubTransactionError` 를 던진다.
+ *
+ * 원격에서 받은 로우는 이 함수가 아니라 `Store.sync.putRemote`(`sync-store.ts`)를 쓴다(적재하지 않는다).
+ */
 export async function put<T extends Meta>(
   table: LiveTable<T, string>,
   entity: Persistable<T>,
 ): Promise<void> {
-  await raw(table).put(entity);
+  const t = raw(table);
+  const tbl = t.name as SyncTable;
+  const outbox = t.db.table('syncOutbox');
+  await t.db.transaction('rw', [t, outbox], async () => {
+    await t.put(entity);
+    await outbox.put({ tbl, ...pick(entity, ['id', 'rev']) });
+  });
+  notifyLocalWrite();
 }
 
 /**
@@ -317,10 +351,25 @@ export async function clear<T extends Meta>(table: LiveTable<T, string>): Promis
   await raw(table).clear();
 }
 
-/** **`DatasetRepository.restore` 전용** — 브랜드가 붙은 로우 여러 건을 한 번에. 청크 크기는 호출처가 정한다. */
+/**
+ * **`DatasetRepository.restore` 전용** — 브랜드가 붙은 로우 여러 건을 한 번에. 청크 크기는 호출처가 정한다.
+ *
+ * `put` 과 같은 이유로 아웃박스에도 같은 트랜잭션 안에서 적재한다(§B-4 "restore(bulkPut) 는 넣는다") —
+ * 로그인 상태에서 백업을 복원하면 그 내용이 서버로도 올라가야 한다. 빈 배열은 트랜잭션도 열지 않는다.
+ */
 export async function bulkPut<T extends Meta>(
   table: LiveTable<T, string>,
   entities: readonly Persistable<T>[],
 ): Promise<void> {
-  await raw(table).bulkPut([...entities]);
+  if (entities.length === 0) {
+    return;
+  }
+  const t = raw(table);
+  const tbl = t.name as SyncTable;
+  const outbox = t.db.table('syncOutbox');
+  await t.db.transaction('rw', [t, outbox], async () => {
+    await t.bulkPut([...entities]);
+    await outbox.bulkPut(entities.map((entity) => ({ tbl, ...pick(entity, ['id', 'rev']) })));
+  });
+  notifyLocalWrite();
 }

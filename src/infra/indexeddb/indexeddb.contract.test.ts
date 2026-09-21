@@ -8,6 +8,7 @@ import { contractDeps, contractTodo, type ContractTarget } from '@/repositories/
 import { runDatasetRepositoryContract } from '@/repositories/dataset-repository.contract';
 import { runFocusSessionRepositoryContract } from '@/repositories/focus-session-repository.contract';
 import { runSettingsRepositoryContract } from '@/repositories/settings-repository.contract';
+import { runSyncRepositoryContract } from '@/repositories/sync-repository.contract';
 import { runTodoRepositoryContract } from '@/repositories/todo-repository.contract';
 
 import { createStore } from '@/infra/indexeddb/query';
@@ -37,6 +38,7 @@ runCategoryRepositoryContract(INDEXEDDB);
 runSettingsRepositoryContract(INDEXEDDB);
 runFocusSessionRepositoryContract(INDEXEDDB);
 runDatasetRepositoryContract(INDEXEDDB);
+runSyncRepositoryContract(INDEXEDDB);
 
 describe('indexeddb ContractTarget 의 격리 (계약 스위트가 전제하는 성질)', () => {
   // 이 단언이 없으면 `create()` 를 전역 비우기로 되돌려도 계약 55건이 전부 초록이다(실측).

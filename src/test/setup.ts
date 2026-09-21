@@ -9,13 +9,23 @@ import 'fake-indexeddb/auto';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, expect } from 'vitest';
 
-import { setRepositories } from '@/repositories/container';
+import { setRepositories, setSyncTransport } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
+import { createMemorySyncServer } from '@/repositories/memory/sync-server';
+import { createMemorySyncTransport } from '@/repositories/memory/sync-transport';
 
 import { overlayLayerCount } from '@/components/ui/overlay-stack';
 import { clearToasts } from '@/components/ui/Toast';
 
 setRepositories(createMemoryRepositories());
+
+/**
+ * 동기화 트랜스포트도 전역으로 주입한다(§A-1) — `getSyncTransport()` 를 부르는 스토어·컴포넌트
+ * 테스트(T-94)가 `container.ts` 미주입 예외를 겪지 않게 한다. 세션은 `null`(로그인 전) 기본값 —
+ * 로그인 상태가 필요한 테스트는 자기 파일에서 `setSyncTransport(createMemorySyncTransport(server,
+ * session))` 로 다시 주입한다(레포지토리와 같은 패턴, `container.test.ts` 참고).
+ */
+setSyncTransport(createMemorySyncTransport(createMemorySyncServer(), null));
 
 /**
  * 토스트 허브(`components/ui/Toast.tsx` 의 `hubToasts`)를 **매 테스트 앞에서** 비운다 (T-49).

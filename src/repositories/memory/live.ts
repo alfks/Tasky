@@ -4,14 +4,28 @@
 //
 // 인덱스가 없는 저장소이므로 `liveBy`·`liveBetween`·`liveOrderBy` 는 배열 연산이지만, 시그니처와
 // 필터 위치를 맞춰 두면 계약 테스트가 두 구현에서 같은 결과를 요구할 수 있다.
+//
+// **아웃박스 적재(ADR-0018, §B-4)**: `put`·`replaceRows` 가 엔티티를 쓸 때마다 같은 테이블 묶음의
+// `syncOutbox` 맵에 `{tbl,id,rev}` 를 같이 적는다 — indexeddb 쪽 `query.ts#put`/`bulkPut` 이 한
+// Dexie 트랜잭션 안에서 하는 일과 같은 의미다(memory 는 단일 스레드라 트랜잭션이 필요 없다).
+// `putRemote`(원격 적용 전용)는 적재하지 않는다 — 그래야 풀로 받은 로우가 되돌아서 다시 푸시되지
+// 않는다. 각 `MemoryTable` 이 테이블 이름(`SyncTable`)과 **공유 아웃박스 맵**을 들고 있어, 호출부
+// (`todo-repository.ts` 등, 이 티켓 owns 밖)의 `put(table, entity)` 시그니처를 바꾸지 않고도
+// 적재를 넣을 수 있었다.
 import type { Category } from '@/domain/category/category';
 import type { Dday } from '@/domain/dday/dday';
 import type { DiaryEntry } from '@/domain/diary/diary-entry';
 import type { FocusSession } from '@/domain/focus/focus-session';
 import { isTombstone, type Meta, type Persistable } from '@/domain/meta';
 import type { Routine } from '@/domain/routine/routine';
+import type { OutboxEntry } from '@/domain/sync/outbox';
+import type { SyncState, SyncTable } from '@/domain/sync/wire';
 import type { Settings } from '@/domain/theme/settings';
 import type { Todo } from '@/domain/todo/todo';
+
+import { pick } from '@/repositories/sync-repository';
+
+import { notifyLocalWrite } from '@/lib/write-signal';
 
 /**
  * 한 테이블. **쓰기가 복사본을 넣는다**(`put`·`replaceRows`) — 호출자가 넘긴 객체를 나중에 변형해도
@@ -19,13 +33,25 @@ import type { Todo } from '@/domain/todo/todo';
  * 격리 수준이 같지 않다**: 조회 결과를 변형하면 memory 에서만 저장소가 따라 바뀐다. 조회 결과는
  * 브랜드가 없어 그대로 `upsert` 할 수 없고(ADR-0007 규칙 3-d) 변형은 도메인 함수를 거치므로
  * 앱 경로에서는 일어나지 않지만, memory 한정의 차이라는 점을 여기 적어 둔다.
+ *
+ * `name`·`outbox` 는 아웃박스 적재용(위 머리주석) — 한 `MemoryTables` 묶음의 일곱 테이블이 **같은**
+ * `outbox` 맵 인스턴스를 공유한다(`createMemoryTables` 가 한 번만 만들어 나눠 준다).
  */
-export type MemoryTable<T extends Meta> = { readonly rows: Map<string, T> };
+export type MemoryTable<T extends Meta> = {
+  readonly name: SyncTable;
+  readonly rows: Map<string, T>;
+  readonly outbox: Map<string, OutboxEntry>;
+};
+
+/** 아웃박스 맵의 키. `[tbl+id]` 복합 기본 키(indexeddb `syncOutbox`)와 같은 유일성을 낸다. */
+function outboxKey(tbl: SyncTable, id: string): string {
+  return `${tbl}|${id}`;
+}
 
 /**
  * 일곱 테이블 묶음. 한 memory 인스턴스의 전체 상태다.
  *
- * `routines` 가 끼는 이유: 루틴 지연 생성의 워터마크(`Routine.materializedThrough`)는 그 구간에서
+ * `routines` 가 끼는 이유: 루틴 지연 생성의 워터마크(`Routine.fillFloor`)는 그 구간에서
  * 만든 투두들과 **한 트랜잭션**(`DatasetRepository.write`)으로 커밋해야 한다(ADR-0017) — dataset
  * 저장소가 이 묶음을 공유해야만 그 원자성이 성립한다.
  *
@@ -34,6 +60,10 @@ export type MemoryTable<T extends Meta> = { readonly rows: Map<string, T> };
  * `DatasetRepository.readAll`/`restore`(백업/복원)는 **이 묶음만** 본다. 백업이 두 테이블을 실으려면
  * (T-86) 엔티티 저장소와 dataset 저장소가 **같은** 테이블 인스턴스를 봐야 하므로, 여기 합류시킨다
  * (routines 와 같은 이유 — "원자적 쓰기" 가 아니라 "같은 상태를 보이게" 가 합류 조건이 됐다).
+ *
+ * `syncOutbox`·`syncState`(ADR-0018)는 일곱 엔티티 테이블과 **같은 묶음**에 있어야 한다 — 아웃박스
+ * 적재가 엔티티 put 과 "같은 트랜잭션"(memory 는 단일 스레드라 같은 동기 구간)에서 일어나야 하기
+ * 때문이다. `syncOutbox` 는 각 `MemoryTable.outbox` 가 참조하는 것과 **같은 Map 인스턴스**다.
  */
 export type MemoryTables = {
   todos: MemoryTable<Todo>;
@@ -43,18 +73,23 @@ export type MemoryTables = {
   routines: MemoryTable<Routine>;
   ddays: MemoryTable<Dday>;
   diaryEntries: MemoryTable<DiaryEntry>;
+  syncOutbox: Map<string, OutboxEntry>;
+  syncState: { row: SyncState | undefined };
 };
 
 /** 빈 테이블 묶음. 테스트는 이것을 새로 만들어 격리한다. */
 export function createMemoryTables(): MemoryTables {
+  const outbox = new Map<string, OutboxEntry>();
   return {
-    todos: { rows: new Map<string, Todo>() },
-    categories: { rows: new Map<string, Category>() },
-    settings: { rows: new Map<string, Settings>() },
-    focusSessions: { rows: new Map<string, FocusSession>() },
-    routines: { rows: new Map<string, Routine>() },
-    ddays: { rows: new Map<string, Dday>() },
-    diaryEntries: { rows: new Map<string, DiaryEntry>() },
+    todos: { name: 'todos', rows: new Map<string, Todo>(), outbox },
+    categories: { name: 'categories', rows: new Map<string, Category>(), outbox },
+    settings: { name: 'settings', rows: new Map<string, Settings>(), outbox },
+    focusSessions: { name: 'focusSessions', rows: new Map<string, FocusSession>(), outbox },
+    routines: { name: 'routines', rows: new Map<string, Routine>(), outbox },
+    ddays: { name: 'ddays', rows: new Map<string, Dday>(), outbox },
+    diaryEntries: { name: 'diaryEntries', rows: new Map<string, DiaryEntry>(), outbox },
+    syncOutbox: outbox,
+    syncState: { row: undefined },
   };
 }
 
@@ -116,8 +151,33 @@ export async function liveOrderBy<T extends Meta, K extends keyof T>(
   });
 }
 
-/** 도메인 함수가 만든 값만 저장한다(브랜드로 강제). 저장은 복사본으로 한다. */
+/**
+ * 도메인 함수가 만든 값만 저장한다(브랜드로 강제). 저장은 복사본으로 한다.
+ *
+ * **아웃박스에 적재한다**(ADR-0018 §B-4) — 엔티티 저장소 7종의 `upsert`·`DatasetRepository.write`
+ * (둘 다 결국 이 함수를 부른다, `write-plan.ts`/`dataset-repository.ts` 의 `puttersFor`)가 로컬에서
+ * 만든 변경은 전부 다음 동기화 사이클에 실려야 한다. 원격에서 받은 로우는 이 함수가 아니라
+ * `putRemote` 를 쓴다(적재하지 않는다).
+ */
 export async function put<T extends Meta>(
+  table: MemoryTable<T>,
+  entity: Persistable<T>,
+): Promise<void> {
+  table.rows.set(entity.id, { ...entity });
+  table.outbox.set(outboxKey(table.name, entity.id), {
+    tbl: table.name,
+    ...pick(entity, ['id', 'rev']),
+  });
+  notifyLocalWrite();
+}
+
+/**
+ * **`SyncRepository.applyRemote` 전용** — `put` 과 달리 아웃박스에 적재하지 않는다. 풀로 받은 로우를
+ * 그대로 적재하면 다음 사이클에 서버로 되돌아 푸시되는 무의미한 왕복이 생긴다(§B-4 "putRemote·clear
+ * 는 넣지 않는다"). 로컬 쓰기 신호도 울리지 않는다 — 원격 적용은 "로컬에서 무언가 바뀌어 푸시할 것이
+ * 생겼다"는 신호가 아니다.
+ */
+export async function putRemote<T extends Meta>(
   table: MemoryTable<T>,
   entity: Persistable<T>,
 ): Promise<void> {
@@ -150,6 +210,10 @@ export function allRows<T extends Meta>(table: MemoryTable<T>): T[] {
 /**
  * **`DatasetRepository.restore` 전용** — 테이블을 물리적으로 비우고 스냅샷으로 대체한다.
  * 앱에 물리 삭제가 있는 유일한 자리이며, 인자가 툼스톤을 포함한 최종 전량이라 안전하다(ADR-0009 결정 4).
+ *
+ * **아웃박스에도 적재한다**(§B-4 "restore(replaceRows) 는 넣는다") — 로그인 상태에서 백업을 복원하면
+ * 그 내용이 서버로도 올라가야 한다(로그인 전이면 `sync.enqueueAll()` 이 아직 불리지 않아 사실상
+ * 무해하지만, 로그인 뒤 복원이면 이 적재가 유일한 통로다).
  */
 export function replaceRows<T extends Meta>(
   table: MemoryTable<T>,
@@ -158,5 +222,10 @@ export function replaceRows<T extends Meta>(
   table.rows.clear();
   for (const row of rows) {
     table.rows.set(row.id, { ...row });
+    table.outbox.set(outboxKey(table.name, row.id), {
+      tbl: table.name,
+      ...pick(row, ['id', 'rev']),
+    });
   }
+  notifyLocalWrite();
 }

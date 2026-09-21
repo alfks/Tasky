@@ -4,6 +4,7 @@ import { addCivilDays } from '@/domain/date/civil';
 import type { DateKey } from '@/domain/date/date-key';
 import type { Routine } from '@/domain/routine/routine';
 import {
+  candidateFillDates,
   FILL_BACKFILL_HORIZON_DAYS,
   planRoutineFill,
   resolveImmediateFillThrough,
@@ -44,14 +45,14 @@ describe('planRoutineFill — 슬롯 id 로 채우기 (routine.md R3·R4·R6, AD
     expect(plan?.todos.every((t) => t.routineId === routine.id)).toBe(true);
   });
 
-  it('결과의 routine 은 fillFloor 가 through 까지 전진한 새 값이다(임시 복원, PR #121 리뷰 Blocker)', () => {
+  it('루틴 로우를 돌려주지 않는다(ADR-0018 §결정 3) — fillFloor 를 옮기지 않으므로 배경 채우기가 아웃박스에 실릴 것이 없다(F2 방어)', () => {
     const routine = makeRoutine();
     const plan = planRoutineFill(
       { routine, through: '2026-01-29' as DateKey, existingIds: new Set() },
       deps,
     );
-    expect(plan?.routine.fillFloor).toBe('2026-01-29');
-    expect(plan?.routine.rev).toBe(routine.rev + 1);
+    expect(plan).not.toHaveProperty('routine');
+    expect(Object.keys(plan ?? {})).toEqual(['todos']);
   });
 
   it('만든 투두의 id 는 routineInstanceSlotId(routine.id, date) 다(F1 방어)', () => {
@@ -124,23 +125,22 @@ describe('planRoutineFill — 슬롯 id 로 채우기 (routine.md R3·R4·R6, AD
     expect(plan?.todos.map((t) => t.date)).toEqual(['2026-01-15', '2026-01-22']);
   });
 
-  it('호출부가 이전 plan.routine 을 넘기면 fillFloor 전진으로 지난 구간을 다시 훑지 않는다(부활 방지)', () => {
+  it('fillFloor 가 얼어 있어도 소프트 삭제한 슬롯은 existingIds(툼스톤 포함)가 있으면 부활하지 않는다', () => {
+    // fillFloor 를 안 옮기므로(ADR-0018 §결정 3) 재방문마다 같은 from(fillFloor+1)부터 다시 훑는다 —
+    // 1/15 슬롯이 소프트 삭제됐어도 existingIds 에 그 슬롯 id 가 들어 있으면(호출부가
+    // `SyncRepository.existingIds` 툼스톤 포함 조회로 넘긴다) 다시 만들지 않는다.
     const routine = makeRoutine();
-    const first = planRoutineFill(
-      { routine, through: '2026-01-15' as DateKey, existingIds: new Set() },
-      deps,
-    );
-    expect(first?.todos.map((t) => t.date)).toEqual(['2026-01-15']);
-    expect(first?.routine.fillFloor).toBe('2026-01-15');
+    const deletedSlot = routineInstanceSlotId(routine.id, '2026-01-15' as DateKey);
 
-    // 호출부가 first.routine(fillFloor 전진한 값)을 다음 호출에 넘긴다 — 실제 스토어 배선과 같다.
-    // 1/15 슬롯이 그 사이 소프트 삭제돼 existingIds(살아 있는 로우만)에 없어도, from 이 이미
-    // 1/16 이라 1/15 는 애초에 재계획 대상이 아니다.
-    const second = planRoutineFill(
-      { routine: first!.routine, through: '2026-01-22' as DateKey, existingIds: new Set() },
+    const revisit = planRoutineFill(
+      {
+        routine, // fillFloor 그대로(전진 없음) — 두 번째 호출도 1/16(fillFloor+1)부터 훑는다.
+        through: '2026-01-22' as DateKey,
+        existingIds: new Set([deletedSlot]), // 툼스톤 포함 조회 결과를 흉내낸다.
+      },
       deps,
     );
-    expect(second?.todos.map((t) => t.date)).toEqual(['2026-01-22']);
+    expect(revisit?.todos.map((t) => t.date)).toEqual(['2026-01-22']); // 1/15 는 부활하지 않는다
   });
 
   it('여전히 existingIds 멤버십만으로도 멱등이다(같은 구간을 fillFloor 고정인 채 두 번 계획해도 중복 없음)', () => {
@@ -173,8 +173,8 @@ describe('planRoutineFill — 슬롯 id 로 채우기 (routine.md R3·R4·R6, AD
     const horizonFloor = addCivilDays(today, -FILL_BACKFILL_HORIZON_DAYS);
     expect(plan?.todos[0]?.date).toBe(horizonFloor); // 지평선보다 오래된 날짜는 후보에서 빠진다
     expect(plan?.todos.every((t) => t.date >= horizonFloor)).toBe(true);
-    // 훑지 않은 과거 구간도 fillFloor 는 through 까지 전진한다 — 다시는 훑지 않는다(설계가 감수).
-    expect(plan?.routine.fillFloor).toBe(today);
+    // fillFloor 를 옮기지 않으므로(ADR-0018 §결정 3) 훑지 않은 과거 구간은 다음 방문에도 그대로
+    // 지평선 밖이다 — 영영 채워지지 않는다는 트레이드오프가 매 방문 같은 지평선으로 재확인된다.
   });
 
   it('today 를 안 넘기면(즉시 등록 경로) 지평선 없이 fillFloor 그대로부터 훑는다', () => {
@@ -223,5 +223,43 @@ describe('resolveImmediateFillThrough (R3 구간 보정)', () => {
     });
     const plan = planRoutineFill({ routine, through, existingIds: new Set() }, deps);
     expect(plan?.todos.map((t) => t.date)).toEqual(['2026-01-20']);
+  });
+});
+
+describe('candidateFillDates — planRoutineFill 과 같은 창(ADR-0018)', () => {
+  it('planRoutineFill 이 실제로 만드는 날짜와 정확히 같다(existingIds 를 비웠을 때)', () => {
+    const routine = makeRoutine();
+    const dates = candidateFillDates(routine, '2026-01-29' as DateKey);
+    const plan = planRoutineFill(
+      { routine, through: '2026-01-29' as DateKey, existingIds: new Set() },
+      deps,
+    );
+    expect(dates).toEqual(plan?.todos.map((t) => t.date));
+  });
+
+  it('비활성이거나 구간이 뒤집히면 빈 배열이다(null 대신) — 호출부가 빈 후보로 안전하게 다룰 수 있다', () => {
+    expect(candidateFillDates(makeRoutine({ active: false }), '2026-01-29' as DateKey)).toEqual([]);
+    expect(
+      candidateFillDates(
+        makeRoutine({ startDate: '2026-02-01' as DateKey, fillFloor: '2026-01-31' as DateKey }),
+        '2026-01-20' as DateKey,
+      ),
+    ).toEqual([]);
+  });
+
+  it('today 가 있으면 지평선을 똑같이 적용한다', () => {
+    const today = '2026-09-21' as DateKey;
+    const ancientFloor = addCivilDays(today, -1460) as DateKey;
+    const routine = makeRoutine({
+      recurrence: { type: 'weekly', daysOfWeek: [0, 1, 2, 3, 4, 5, 6] },
+      startDate: addCivilDays(ancientFloor, -1000) as DateKey,
+      fillFloor: ancientFloor,
+    });
+    const horizonFloor = addCivilDays(today, -FILL_BACKFILL_HORIZON_DAYS);
+
+    const dates = candidateFillDates(routine, today, today);
+
+    expect(dates[0]).toBe(horizonFloor);
+    expect(dates.every((d) => d >= horizonFloor)).toBe(true);
   });
 });
