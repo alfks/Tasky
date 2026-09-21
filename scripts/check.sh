@@ -4,7 +4,7 @@
 # 사용법:
 #   bash scripts/check.sh [base]                모든 검사를 순서대로 실행, 요약 출력 (base 기본값 main)
 #   bash scripts/check.sh <step> [base 또는 인자]  검사 하나만 실행, 그 검사의 exit code 그대로 반환
-# step 이름: forbidden-words | env-secrets | agents-md | author | wt | arch | lint | typecheck | format | test
+# step 이름: forbidden-words | env-secrets | agents-md | author | wt | arch | worker-sql | lint | typecheck | format | test
 #
 # 이 스크립트가 검사 목록의 단일 소스다. .github/workflows/ci.yml 은 guard/build 각 잡에서
 # 이 스크립트를 `--guard`/`--build` 로 한 번씩만 호출한다(로직 중복 없음). 스텝을 검사마다
@@ -30,6 +30,9 @@ step_author()          { bash scripts/check-author.sh "${1:-main}"; }
 # arch: 레이어 경계 픽스처 + 아키텍처 규칙 2차 패스(--no-inline-config, ADR-0008). node_modules 가 필요하므로
 # guard 가 아니라 build 에 있다 — 스캐폴딩 전에는 check-arch.sh 가 스스로 SKIP 한다.
 step_arch()            { if has_pnpm; then bash scripts/check-arch.sh; else skip_pnpm; fi; }
+# worker-sql: worker/db/** 의 SQL 이 sub = ? 를 바인딩하는지(T-93, SYNC_DESIGN.md §②-5). pnpm 이
+# 필요 없다(순수 셸+node 스크립트) — worker/db 가 없으면 그 스크립트 자체가 SKIP 한다.
+step_worker_sql()      { bash scripts/check-worker-sql.sh; }
 step_lint()            { if has_pnpm; then pnpm lint; else skip_pnpm; fi; }
 step_typecheck()       { if has_pnpm; then pnpm typecheck; else skip_pnpm; fi; }
 step_test()            { if has_pnpm; then pnpm test -- --reporter=dot; else skip_pnpm; fi; }
@@ -40,7 +43,7 @@ step_wt()              { bash scripts/test-wt.sh; }
 # 그 스크립트가 존재하지 않으므로, 개별 pnpm 명령을 직접 호출하는 현재 형태를 유지한다.
 
 case "${1:-}" in
-  forbidden-words|env-secrets|agents-md|author|arch|lint|typecheck|test|format|wt)
+  forbidden-words|env-secrets|agents-md|author|arch|worker-sql|lint|typecheck|test|format|wt)
     step="$1"; shift
     "step_${step//-/_}" "$@"
     exit $?
@@ -81,6 +84,7 @@ run_guard() {
 }
 run_build() {
   run_step "레이어 경계 린트 검증 + 아키텍처 2차 패스" step_arch
+  run_step "worker/db SQL 사용자 격리 검사" step_worker_sql
   run_step "pnpm lint"                step_lint
   run_step "pnpm typecheck"           step_typecheck
   run_step "pnpm format:check"        step_format

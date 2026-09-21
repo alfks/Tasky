@@ -55,6 +55,16 @@ const config = defineConfig({
   plugins: [react(), preloadAsyncChunks(), stripHtmlComments()],
   // tsconfig.json 의 paths 와 한 쌍이다(vitest.config.ts 도 같은 별칭을 따로 건다).
   resolve: { alias: { '@': src } },
+  server: {
+    // `pnpm dev`(vite, 이 파일)와 `pnpm start`(wrangler dev, worker/index.ts)를 동시에 띄워 개발할
+    // 때 브라우저가 8787(Worker)로 직접 요청하지 않고 vite dev 서버(기본 5173)를 그대로 두고
+    // /api·/auth 요청만 넘긴다 — CORS·쿠키 도메인 분리를 피한다(같은 오리진으로 보인다). `pnpm dev`
+    // 만 띄웠을 때는(Worker 없음) 이 프록시가 그냥 연결 실패로 넘어갈 뿐 vite 자체는 그대로 돈다.
+    proxy: {
+      '/api': 'http://localhost:8787',
+      '/auth': 'http://localhost:8787',
+    },
+  },
   build: {
     // dist/client 를 유지한다: serwist.config.js 의 globDirectory, scripts/deploy.sh 의 산출물 검사,
     // wrangler.jsonc 의 assets.directory, 배포 워크플로가 모두 이 경로를 가리킨다.

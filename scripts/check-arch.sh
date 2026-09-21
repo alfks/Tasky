@@ -30,8 +30,17 @@ fi
 # 빨개지는데 화면 어디에도 잔여물이라는 말이 없다 — T-62 실측(재현: 이 스크립트를 픽스처 생성 직후 kill -9 → 122개 잔존).
 # 쓸어 담는 범위는 DIRS 가 아니라 src/** 전체다: DIRS 는 feature 를 앞의 2개만 덮으므로, 그 밖의 feature 에 떨어진
 # 잔여물은 매 실행 살아남아 typecheck 를 계속 빨갛게 만든다(재현됨).
-sweep_arch_dirs() { [ -d src ] && find src -type d -name __arch__ -prune -exec rm -rf {} + 2>/dev/null; return 0; }
-stale_arch_dirs() { [ -d src ] || { echo 0; return 0; }; find src -type d -name __arch__ -prune 2>/dev/null | wc -l | tr -d " "; }
+sweep_arch_dirs() {
+  [ -d src ] && find src -type d -name __arch__ -prune -exec rm -rf {} + 2>/dev/null
+  [ -d worker ] && find worker -maxdepth 1 -type d -name __arch__ -prune -exec rm -rf {} + 2>/dev/null
+  return 0
+}
+stale_arch_dirs() {
+  local n=0
+  [ -d src ] && n=$((n + $(find src -type d -name __arch__ -prune 2>/dev/null | wc -l | tr -d " ")))
+  [ -d worker ] && n=$((n + $(find worker -maxdepth 1 -type d -name __arch__ -prune 2>/dev/null | wc -l | tr -d " ")))
+  echo "$n"
+}
 
 covjson=""; json=""; HELD_LOCK=""
 cleanup() {
@@ -191,9 +200,13 @@ if [ -d src ]; then
   # --format json 으로 받는 이유: 위반 보고와 함께 "이 패스가 실제로 어떤 파일을 봤는지"를 같은 한 번의 실행에서
   # 확인하기 위해서다. 트래킹된 src 코드 파일이 하나라도 결과에 없으면 대상 경로가 좁혀졌거나 전역 ignores 가
   # 그 파일을 먹은 것이므로(둘 다 2차 패스를 조용히 무력화한다) 실패로 본다.
+  # worker/** 도 같이 본다(T-93, §A-2) — src 밖의 두 번째 진입점이라 별도 인자로 넘긴다(전수 분류
+  # 자체는 여전히 src 전용, 위 1절 참고).
+  WORKER_ARG=""
+  [ -d worker ] && WORKER_ARG="worker"
   covjson="$(mktemp)"
-  eslint_json "$covjson" 2 --format json src || exit 1
-  covfiles="$(git ls-files src | grep -E '\.tsx?$' || true)"
+  eslint_json "$covjson" 2 --format json src $WORKER_ARG || exit 1
+  covfiles="$(git ls-files src ${WORKER_ARG:+worker} | grep -E '\.tsx?$' || true)"
   if ! node -e '
 const fs = require("fs"), path = require("path");
 const [jsonPath, ...expected] = process.argv.slice(1);
@@ -245,6 +258,7 @@ FA="$1"; FB="${2:-}"
 
 DIRS="src src/domain src/repositories src/infra src/components src/lib src/app src/test src/styles src/features src/features/$FA"
 [ -n "$FB" ] && DIRS="$DIRS src/features/$FB"
+[ -d worker ] && DIRS="$DIRS worker"
 # 정리는 위 cleanup(trap) 이 src/** 전체를 쓸어서 한다 — 이 목록에 의존하지 않는다(목록 밖 잔여물이 실제로 남았다).
 for d in $DIRS; do
   rm -rf "$d/__arch__"; mkdir -p "$d/__arch__"
@@ -301,6 +315,8 @@ add "$FT/dyn-tpl.ts"   no-restricted-syntax       'export const x = import(`@/in
 # (c2) 경로 표기 정규형(CANONICAL) — 같은 파일을 다른 문자열로 써서 문자열 기반 규칙을 우회하는 경로를 막는다.
 #      아래가 뚫리면 조립 지점·lib 시계·db.ts·자기 배럴·패키지 목록이 전부 함께 뚫린다(라운드 3 검증 4-b).
 printf '// 아키텍처 검사 임시 파일\nexport const a = 1;\n' > src/domain/__arch__/a.rules.ts
+# worker/** 픽스처(T-93, §A-2)가 참조할 실재 모듈 — '.vectors' 이름 확장 검사용.
+[ -d worker ] && printf '// 아키텍처 검사 임시 파일\nexport const a = 1;\n' > src/domain/__arch__/a.vectors.ts
 add "$FT/note-dot.ts"       no-restricted-imports "$I '@/infra/__arch__/./a'; export const x = a;"
 add "$FT/note-dotdot.ts"    no-restricted-imports "$I '@/infra/__arch__/../__arch__/a'; export const x = a;"
 add "$FT/note-slash2.ts"    no-restricted-imports "$I '@/infra//__arch__/a'; export const x = a;"
@@ -388,6 +404,13 @@ add src/infra/__arch__/ok-dexie.ts   - "import Dexie from 'dexie'; export const 
 add src/test/__arch__/ok-infra.ts    - "$I '@/infra/__arch__/a'; export const x = a;"
 add "$FT/ok.test.ts"       - "$I '@/infra/__arch__/a'; export const x = a;"
 [ -n "$FB" ] && add "$FT/ok-other.ts" - "$I '@/features/$FB'; export const x = a;"
+
+# worker/** (T-93, §A-2 표 그대로) — 부정 2건 + 긍정 1건.
+if [ -d worker ]; then
+  add worker/__arch__/infra.ts     no-restricted-imports "$I '@/infra/__arch__/a'; export const x = a;"
+  add worker/__arch__/vectors.ts   no-restricted-imports "$I '@/domain/__arch__/a.vectors'; export const x = a;"
+  add worker/__arch__/domain-ok.ts -                      "$I '@/domain/sync/wire'; export const x = a;"
+fi
 
 json="$(mktemp)"
 eslint_json "$json" 1 --no-ignore --format json $FILES || exit 1   # 위반이 있으면 eslint 는 rc=1 — 정상. rc>=2 만 실패다

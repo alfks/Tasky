@@ -118,8 +118,11 @@ const CANONICAL = {
     "import 경로 표기 위반 — 파일 하나의 표기는 정규형 하나뿐이다: './' '../' 세그먼트, 중복·후행 슬래시, 백슬래시·인코딩·공백, 확장자(.ts/.tsx/.js…), '/index' 금지. 다른 표기는 문자열 기반 경계 규칙을 우회한다 (code-style.md §7).",
 };
 const TEST_FILE = {
-  regex: '\\.(contract\\.|slow\\.)?test(\\.[cm]?[jt]sx?)?$',
-  message: '테스트 파일은 테스트만 import 한다 (code-style.md §11).',
+  // `.vectors` 도 테스트 전용 파일이다(T-93, ADR-0019 §A-3) — `*.vectors.ts`(서버·클라이언트 판정
+  // 고정 벡터)는 도메인·메모리 가짜 서버·Worker 세 계층의 테스트가 같이 읽어야 하므로 프로덕션
+  // 번들에는 절대 새지 않아야 한다. 이 패턴 확장이 `worker/**` 블록에도 그대로 거울된다.
+  regex: '(\\.(contract\\.|slow\\.)?test|\\.vectors)(\\.[cm]?[jt]sx?)?$',
+  message: '테스트 파일은 테스트만 import 한다 (code-style.md §11). `.vectors` 파일도 테스트 전용.',
 };
 const STORAGE = ['dexie', 'zustand'];
 /** 패키지 허용 목록(regex 부정 선독): '@/' 와 allowPkgs 외 전부 금지 */
@@ -131,6 +134,15 @@ const denyPackages = (label, pkgs) => ({
   regex: `^(${pkgs.join('|')})(\\/|$)`,
   message: `[${label}] 이 레이어에서 금지된 패키지입니다. ${DOC}`,
 });
+/** worker/** 전용: 상대 경로('.'로 시작)·'@/'(domain 만, 아래 allowPattern 이 좁힌다)·
+ * 'cloudflare:workers' 를 뺀 나머지 외부 패키지 import 를 금지한다. `onlyPackages()` 는 상대 경로를
+ * 함께 허용하지 못해(그 헬퍼의 전제가 'src/ 안 상대 경로 금지') worker 에는 쓸 수 없다 — 이 블록
+ * 하나만 별도로 둔다. */
+const WORKER_EXTERNAL_PATTERN = {
+  regex: '^(?!\\.|@\\/|cloudflare:workers(?:\\/|$))',
+  message:
+    "[worker] 외부 패키지 허용 목록 밖: 'cloudflare:workers' 만 허용(그 외엔 상대 경로 또는 '@/domain/**'). docs/ARCHITECTURE.md §1",
+};
 
 /** "이 파일은 존재하면 안 된다" — 파일 자체가 에러(no-restricted-syntax 의 Program 셀렉터) */
 const forbidFile = (message) => ({
@@ -612,6 +624,63 @@ const config = [
     }),
   },
 
+  // worker/** 안의 상대 경로(`./`·`../`)는 이 블록에서 허용한다(RELATIVE 규칙 미적용 — 위 주석).
+  // 외부 패키지는 'cloudflare:workers' 만(현재 실제로 쓰지 않지만 Durable Objects 류를 붙일 때를
+  // 대비해 열어 둔다, SYNC_T92_T94_DECOMPOSITION §A-2). '@/' 는 아래 allowPattern 이 domain 으로 좁힌다.
+  // --- worker/** (T-93, ADR-0019) ---
+  // `src/` 레이어 체계(ADR-0006) 밖의 두 번째 진입점이라 `layerRules()`(RELATIVE·CANONICAL 을
+  // 강제하는 helper, '@/*' 별칭 한 벌 전제)를 그대로 쓰지 않는다 — worker/** 자기 참조는 상대
+  // 경로를 쓰고(별칭을 'worker/' 용으로 하나 더 만들지 않는다, worker/AGENTS.md 규칙 2), '@/'
+  // 로 시작하는 import 만 domain 으로 제한한다. 이 블록은 `files: 'src/**'` 가 아니라서
+  // eslint.config.mjs 파일 끝의 가드 2·3(문자열 패턴↔거울↔zone 일치 강제)의 대상이 아니다 — 그
+  // 가드들은 `isSrcBlock` 로 좁혀져 있다(가드 코드 참고). 대신 아래 자체 거울을 손으로 맞춘다.
+  {
+    files: ['worker/**'],
+    // worker/test/** 는 src/test/** 와 같은 원칙(픽스처·하네스, 경계 제한 없음) — D1 통합 테스트가
+    // 'wrangler'(getPlatformProxy)를 불러야 하므로 외부 패키지 허용 목록도 여기서는 의미가 없다.
+    ignores: ['worker/**/*.test.ts', 'worker/test/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            WORKER_EXTERNAL_PATTERN,
+            allowPattern('worker', exceptOf(['domain'], [])),
+            TEST_FILE,
+          ],
+        },
+      ],
+      'no-restricted-syntax': [
+        'error',
+        NO_REACT_FC,
+        NO_DYNAMIC_NONLITERAL,
+        ...mirrors(WORKER_EXTERNAL_PATTERN),
+        ...mirrors(allowPattern('worker', exceptOf(['domain'], []))),
+        ...mirrors(TEST_FILE),
+      ],
+      'import/no-restricted-paths': [
+        'error',
+        {
+          basePath: ROOT,
+          zones: [
+            {
+              target: './worker',
+              from: './src',
+              except: exceptOf(['domain'], []),
+              message: allowMessage('worker', exceptOf(['domain'], [])),
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Worker 모듈 엔트리는 `export default { fetch }` 가 필수다 — 설정 파일 예외(아래)와 같은
+    // 방식으로 이 파일만 연다. 2차 패스는 `files` 로 좁힌 'off' 를 그대로 보존한다(가드 5는
+    // ARCH_RULES_LAYER 가 "적어도 한 블록에서 켜져 있는지"만 보므로 이 예외와 충돌하지 않는다).
+    files: ['worker/index.ts'],
+    rules: { 'import/no-default-export': 'off' },
+  },
   // --- 예외 ---
   {
     // 설정 파일만 default export 를 쓴다. src/app/** 은 더 이상 예외가 아니다 — App Router 가 강제하던
@@ -635,6 +704,19 @@ const config = [
       'no-restricted-globals': 'off',
       'import/no-restricted-paths': 'off',
       ...importRules([], SYNTAX_BASE),
+    },
+  },
+  {
+    // worker 테스트: 경계 제한(상대 경로 포함)이 전혀 없다(src/test/** 와 같은 원칙 — 계약·D1
+    // 통합 테스트가 여러 파일을 겸해서 상대 경로로 부른다, worker/AGENTS.md). **이 블록은 바로 위
+    // 범용 테스트 예외 블록(`**/*.test.{ts,tsx}`)이 RELATIVE·CANONICAL 을 되살리므로 그 뒤에 와야
+    // 한다** — 먼저 두면(실측) 나중 블록이 이겨 worker 테스트에도 "상대 경로 금지" 가 다시 걸린다.
+    files: ['worker/**/*.test.ts'],
+    rules: {
+      'max-lines': 'off',
+      'import/no-restricted-paths': 'off',
+      'no-restricted-imports': 'off',
+      'no-restricted-syntax': 'off',
     },
   },
 
@@ -695,7 +777,13 @@ for (const block of config) {
   const syntax = block.rules?.['no-restricted-syntax']?.slice(1);
   const files = (block.files ?? []).flat(Infinity).filter((f) => typeof f === 'string'); // files 는 중첩 배열이 허용된다
   const where = files.join(', ');
-  const isSrcBlock = files.some((f) => f.startsWith('src/') || f.includes('*.test.'));
+  // `worker/**` 는 이 가드 밖이다(§A-2) — RELATIVE·CANONICAL('@/*' 한 별칭 전제, code-style §7)은
+  // src/ 표기 규칙이고 worker/** 는 상대 경로를 쓴다(worker/AGENTS.md 규칙 2). 이 제외가 없으면
+  // `worker/**/*.test.ts` 처럼 파일명에 '*.test.' 를 담은 패턴이 아래 substring 검사에 걸려
+  // isSrcBlock 으로 오분류된다(실측).
+  const isSrcBlock = files.some(
+    (f) => !f.startsWith('worker/') && (f.startsWith('src/') || f.includes('*.test.')),
+  );
   if (!isSrcBlock || (!patterns && !syntax)) continue;
   if (syntax?.length === 1 && syntax[0].selector === 'Program') continue; // forbidFile: 파일 자체가 에러
   if (!patterns || !syntax) {
