@@ -37,8 +37,9 @@ export function isSyncTable(value: string): value is SyncTable {
 
 /**
  * 로컬 변경 한 건(아웃박스 → 요청). `baseSeq` 는 "이 로우가 서버에 이미 있다고 이 기기가 믿는지"를
- * 나타내는 신호다 — `0` 이면 **생성**(서버가 없을 때만 받는다), `0` 초과면 **갱신**(서버가 항상
- * 받아 나중 도착이 이긴다). SYNC_DESIGN.md §②-2 의 SQL 이 실제로 비교하는 것은 `baseSeq` 의
+ * 나타내는 신호다 — `0` 이면 **생성**(서버가 없을 때만 받는다), `0` 초과면 **갱신**(`updatedAt` 이
+ * 크면 이긴다, 동률이면 도착 순 — 지면 `rejected: 'stale'`, `server-rules.ts` LWW). SYNC_DESIGN.md
+ * §②-2 의 SQL 이 실제로 비교하는 것은 `baseSeq` 의
  * **영(0) 여부뿐**이다(어느 seq 였는지는 저장도 비교도 하지 않는다) — 그래서 클라이언트는 서버가
  * 준 정확한 seq 를 기억할 필요가 없고(스펙 §4 "로우 밖, 커서 하나"), 이미 갖고 있는 `Meta.rev` 로
  * 그 여부만 판단하면 충분하다(`outbox.ts#deriveBaseSeq`).

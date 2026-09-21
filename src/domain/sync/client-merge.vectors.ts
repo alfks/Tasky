@@ -37,7 +37,7 @@ export const CLIENT_MERGE_VECTORS: readonly ClientMergeVector[] = [
     expected: { action: 'adopt-remote-and-drop-outbox' },
   },
   {
-    name: '있고 아웃박스에 있음, rev>1(이미 고침) → 로컬 유지, 이어지는 푸시가 나중 도착으로 이긴다',
+    name: "있고 아웃박스에 있음, rev>1(이미 고침) → 로컬 유지, 이어지는 푸시는 updatedAt 이 크면 이기고(동률이면 도착 순) 지면 rejected:'stale'",
     input: { local: metaOf(2), inOutbox: true },
     expected: { action: 'keep-local' },
   },
