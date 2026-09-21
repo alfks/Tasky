@@ -20,8 +20,11 @@ import { pushToast } from '@/components/ui/Toast';
  */
 export type GatePhase = 'checking' | 'login' | 'ready';
 
-/** 로그인 화면에 남길 안내. OAuth 콜백이 `/?auth=error`·`/?auth=denied` 로 돌아온다(worker 실물 계약). */
-export type LoginNotice = 'denied' | 'error' | null;
+/** 로그인 화면에 남길 안내. `'denied'`·`'error'` 는 OAuth 콜백이 `/?auth=error`·`/?auth=denied` 로
+ * 돌아올 때(worker 실물 계약). `'signed-out'` 은 URL 이 아니라 `verifySession` 이 표식은 있는데
+ * 세션만 없어졌음을 감지했을 때(리뷰 Major 3, user) — 세션 만료든 "다른 기기 모두 로그아웃" 이든
+ * 최초 실행과 구분해 "왜 로그인 화면인지" 를 한 줄이라도 말해 준다. */
+export type LoginNotice = 'denied' | 'error' | 'signed-out' | null;
 
 export type SyncStoreState = {
   phase: GatePhase;

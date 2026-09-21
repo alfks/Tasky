@@ -233,7 +233,11 @@ export async function verifySession(
   }
   if (session === null) {
     await getRepositories().sync.setState({ deviceId: state.deviceId, cursor: 0 });
-    rt.setState({ phase: 'login', email: null, pendingCount: 0 });
+    // 리뷰 Major 3(user) — 표식이 있었는데(위에서 이미 걸러졌다) 세션만 없어졌다는 건 만료됐거나
+    // 다른 기기에서("다른 기기 모두 로그아웃") 끊겼다는 뜻이다. 로그인 화면이 "왜" 를 한 줄이라도
+    // 말하게 `loginNotice` 를 남긴다 — 최초 실행(표식 자체가 없던 경우, `sync-store.ts#bootstrap`)
+    // 과 달리 이 경로만 지나간다.
+    rt.setState({ phase: 'login', email: null, pendingCount: 0, loginNotice: 'signed-out' });
     return 'signed-out';
   }
   if (session.sub !== state.userSub) {
