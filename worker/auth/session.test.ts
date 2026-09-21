@@ -2,7 +2,7 @@
 // **돌연변이 4**(HMAC 비교 삭제)의 목표 테스트: `위조 쿠키는 401` 이 이 파일에서 빨개져야 한다.
 import { describe, expect, it } from 'vitest';
 
-import { createSession, requireSession } from './session';
+import { createSession, requireSession, signIn } from './session';
 import { createD1Fixture, type D1Fixture } from '../test/d1-harness';
 
 import type { Env } from '../env';
@@ -170,6 +170,112 @@ describe('requireSession', () => {
       expect(result).toEqual({ ok: false, status: 410, reason: 'account-deleted' });
       const row = await fx.db.prepare('SELECT 1 FROM sessions WHERE sid = ?').bind(sid).first();
       expect(row).toBeNull();
+    } finally {
+      await fx.dispose();
+    }
+  });
+});
+
+// signIn(ADR-0020) — 재가입이 아닌 평범한 로그인은 다른 세션(같은 sub 든 다른 sub 든)을 건드리지
+// 않는다는 회귀 가드. "재가입일 때만 폐기" 쪽 시나리오(계정 삭제 → 재가입)는
+// `worker/account/delete.test.ts` 가 라우터를 통해 끝까지 검증한다(ADR-0020 §6-1).
+describe('signIn', () => {
+  it('사용자 보고 증상 — 같은 sub 로 두 번째 로그인해도 첫 세션은 살아 있다(회귀 가드, 옛 코드에서 빨개진다)', async () => {
+    const fx = await createD1Fixture();
+    try {
+      const now = '2026-01-01T00:00:00.000Z';
+      const env = envOf(fx);
+      const deviceA = await signIn(env, { sub: 'sub-two-devices', email: 'a@x.com' }, now);
+      await signIn(env, { sub: 'sub-two-devices', email: 'a@x.com' }, now);
+
+      const request = new Request('https://tasky.example.workers.dev/api/me', {
+        headers: { Cookie: `tasky_session=${encodeURIComponent(deviceA.signedSid)}` },
+      });
+      const result = await requireSession(request, env, now);
+      expect(result).toMatchObject({ ok: true, sub: 'sub-two-devices' });
+
+      const row = await fx.db
+        .prepare('SELECT COUNT(*) c FROM sessions WHERE sub = ?')
+        .bind('sub-two-devices')
+        .first<{ c: number }>();
+      expect(row?.c).toBe(2);
+    } finally {
+      await fx.dispose();
+    }
+  });
+
+  it('deleted_users 행이 없는 로그인은 같은 sub 의 다른 세션에도, 다른 sub 의 세션에도 손대지 않는다', async () => {
+    const fx = await createD1Fixture();
+    try {
+      const now = '2026-01-01T00:00:00.000Z';
+      const env = envOf(fx);
+      const otherSub = await signIn(env, { sub: 'sub-untouched', email: 'o@x.com' }, now);
+      const firstLogin = await signIn(env, { sub: 'sub-relog', email: 'r@x.com' }, now);
+      // 두 번째 로그인 — deleted_users 행이 없으므로 조건부 폐기가 0행에 맞아야 한다.
+      await signIn(env, { sub: 'sub-relog', email: 'r@x.com' }, now);
+
+      const [otherSid] = otherSub.signedSid.split('.');
+      const otherRow = await fx.db
+        .prepare('SELECT 1 FROM sessions WHERE sid = ?')
+        .bind(otherSid)
+        .first();
+      expect(otherRow).not.toBeNull();
+
+      const [firstSid] = firstLogin.signedSid.split('.');
+      const firstRow = await fx.db
+        .prepare('SELECT 1 FROM sessions WHERE sid = ?')
+        .bind(firstSid)
+        .first();
+      expect(firstRow).not.toBeNull();
+    } finally {
+      await fx.dispose();
+    }
+  });
+
+  it('만료된 세션은 로그인 시점에 청소되고, 살아있는 세션은 남는다', async () => {
+    const fx = await createD1Fixture();
+    try {
+      const now = '2026-01-01T00:00:00.000Z';
+      const env = envOf(fx);
+      const expired = await createSession(env, 'sub-cleanup', now);
+      const [expiredSid] = expired.signedSid.split('.');
+      await fx.db
+        .prepare('UPDATE sessions SET expires_at = ? WHERE sid = ?')
+        .bind('2020-01-01T00:00:00.000Z', expiredSid)
+        .run();
+      const alive = await createSession(env, 'sub-cleanup', now);
+      const [aliveSid] = alive.signedSid.split('.');
+
+      await signIn(env, { sub: 'sub-cleanup', email: 'c@x.com' }, now);
+
+      const expiredRow = await fx.db
+        .prepare('SELECT 1 FROM sessions WHERE sid = ?')
+        .bind(expiredSid)
+        .first();
+      expect(expiredRow).toBeNull();
+      const aliveRow = await fx.db
+        .prepare('SELECT 1 FROM sessions WHERE sid = ?')
+        .bind(aliveSid)
+        .first();
+      expect(aliveRow).not.toBeNull();
+    } finally {
+      await fx.dispose();
+    }
+  });
+
+  it('signIn 뒤 users 행이 존재하고 email 이 upsert 된다', async () => {
+    const fx = await createD1Fixture();
+    try {
+      const now = '2026-01-01T00:00:00.000Z';
+      const env = envOf(fx);
+      await signIn(env, { sub: 'sub-upsert', email: 'old@x.com' }, now);
+      await signIn(env, { sub: 'sub-upsert', email: 'new@x.com' }, now);
+
+      const row = await fx.db
+        .prepare('SELECT email FROM users WHERE sub = ?')
+        .bind('sub-upsert')
+        .first<{ email: string }>();
+      expect(row?.email).toBe('new@x.com');
     } finally {
       await fx.dispose();
     }
