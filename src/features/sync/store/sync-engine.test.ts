@@ -426,3 +426,54 @@ describe('sync-engine: pendingCount 는 엔진 사이클을 기다리지 않는�
     await vi.waitFor(() => expect(state.pendingCount).toBe(1));
   });
 });
+
+describe('sync-engine: 계정 삭제 안내가 뜬 뒤 다음 사이클(같은 근본 원인 — 1회성 신호를 계속 버림)', () => {
+  beforeEach(() => {
+    resetEngineForTest();
+    // 위 "온라인/오프라인" 테스트가 navigator.onLine 을 false 로 바꾼 뒤 원래 값이 own property 가
+    // 아니면(getOwnPropertyDescriptor 가 undefined) 복원하지 못하고 새는 경우가 있다 — 이 사이클은
+    // 온라인 전제이므로 여기서 명시적으로 되돌린다(다른 테스트의 순서에 기대지 않는다).
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+  });
+
+  it('accountDeletedNotice 가 이미 떠 있으면 그다음 사이클의 401(me()===null)이 표식·안내를 지우지 않는다', async () => {
+    await getRepositories().sync.wipeLocal();
+    await getRepositories().sync.setState({
+      deviceId: 'd1',
+      userSub: 's',
+      userEmail: 'a@example.com',
+      cursor: 0,
+    });
+    // 계정 삭제 직후 서버가 세션 행·쿠키를 지웠으므로 그다음 me() 는 410 이 아니라 평범한
+    // 401(=null) 이다 — verifySession 의 session===null 갈래가 이 사이클에서도 그대로 도는지가
+    // 이 테스트의 핵심(리뷰: 안내가 뜬 뒤에도 엔진이 계속 30초마다 이 갈래를 탄다).
+    const meMock = vi.fn(async () => null);
+    setSyncTransport({
+      me: meMock,
+      sync: async () => ({
+        cursor: 0,
+        applied: [],
+        rejected: [],
+        pulled: [],
+        more: false,
+        gcFloor: 0,
+      }),
+      logout: async () => {},
+      deleteAccount: async () => {},
+      logoutOthers: async () => {},
+    });
+
+    const { rt, state } = fakeRuntime();
+    state.accountDeletedNotice = true; // 이전 사이클이 이미 안내를 띄웠다고 가정
+    startEngine(rt);
+
+    await vi.waitFor(() => expect(meMock).toHaveBeenCalled());
+    await vi.waitFor(async () => {
+      const after = await getRepositories().sync.getState();
+      expect(after?.userSub).toBe('s'); // 표식을 지우면 안 된다 — 사용자가 안내를 확인하기 전까지는
+    });
+
+    expect(state.accountDeletedNotice).toBe(true); // 안내가 그대로 살아 있어야 한다
+    expect(state.phase).not.toBe('login'); // 로그인 화면으로 되돌아가 안내를 무너뜨리면 안 된다
+  });
+});

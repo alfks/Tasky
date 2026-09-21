@@ -404,18 +404,28 @@ describe('auth-actions: performLogoutOthers(ADR-0020 §결정 5, 리뷰 Major 1)
   });
 
   it('계정이 다른 기기에서 삭제됐으면(410) signed-out — 계정 삭제 안내를 곧장 띄운다(1회성 410 을 삼키지 않는다)', async () => {
-    global.fetch = vi.fn(
-      async () =>
-        new Response(JSON.stringify({ error: 'account-deleted' }), {
+    // 실제 서버 순서(worker/auth/session.ts#requireSession + handlers.ts#sessionErrorResponse):
+    // logout-others 의 410 이 세션 행을 지우고 쿠키도 지운다 — 그래서 **바로 다음 요청은 410 이
+    // 아니라 평범한 401** 이다. 두 요청 모두 410 을 주는 mock 은 재확인(verifySession 의 새
+    // me() 호출)이 우연히 같은 410 을 다시 만나 버그를 가린다(리뷰 재확인, 2026-09-21) — 그래서
+    // 여기서는 1번째만 410, 2번째부터는 401 로 실제 순서를 흉내낸다.
+    let calls = 0;
+    global.fetch = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
+        return new Response(JSON.stringify({ error: 'account-deleted' }), {
           status: 410,
           headers: { 'Content-Type': 'application/json' },
-        }),
-    );
+        });
+      }
+      return new Response(null, { status: 401 }); // 세션 행·쿠키가 이미 지워진 뒤의 평범한 401
+    });
     setSyncTransport(createHttpSyncTransport());
     const { rt, state } = fakeRuntime();
 
     expect(await performLogoutOthers(rt)).toBe('signed-out');
-    expect(state.accountDeletedNotice).toBe(true);
+    expect(state.accountDeletedNotice).toBe(true); // 계정 삭제 안내가 떠야 한다
+    expect(state.loginNotice).not.toBe('signed-out'); // "로그인이 풀렸어요" 로그인 화면으로 덮이면 안 된다
   });
 
   it('그 밖의 서버 오류면 error — 게이트는 건드리지 않는다', async () => {

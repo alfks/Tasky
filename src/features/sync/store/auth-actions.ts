@@ -137,7 +137,17 @@ export async function performLogout(
   } catch {
     // 서버 로그아웃 실패는 로컬 정리를 막지 않는다 — 세션 쿠키는 만료되면 어차피 무효화된다.
   }
-  rt.setState({ phase: 'login', email: null, pendingCount: 0, uploadPrompt: false });
+  // 리뷰 Nit — `loginNotice` 도 함께 비운다. `bootstrap` 이 URL(`?auth=denied|error`)에서 남긴
+  // 안내는 `phase: 'ready'` 로도 저장될 수 있어(같은 탭에서 이미 로그인된 채 그 쿼리로 돌아온
+  // 경우), 그 뒤 사용자가 의도적으로 로그아웃해도 여기서 지우지 않으면 다음 로그인 화면에
+  // "로그인이 취소됐어요" 같은 낡은 문구가 엉뚱하게 뜬다.
+  rt.setState({
+    phase: 'login',
+    email: null,
+    pendingCount: 0,
+    uploadPrompt: false,
+    loginNotice: null,
+  });
   return true;
 }
 
@@ -164,12 +174,19 @@ export async function performDeleteAccount(
  * 손대지 않는다).
  *
  * **리뷰 Major 1** — 실패를 갈래별로 다룬다(전에는 전부 `false` 로 뭉개 범용 재시도 토스트만
- * 띄웠다). `unauthorized`(이 기기 세션이 이미 죽음)·`account-deleted`(계정이 다른 기기에서
- * 삭제됨, 410 — **1회성**: `requireSession` 이 첫 410 에서 세션 행을 지워버려 여기서 삼키면
- * `AccountDeletedNotice` 가 다시 뜰 기회가 없다)는 재시도로 고쳐지지 않으므로 다음 엔진 사이클
- * (최대 30초, 탭 숨김이면 그마저 없음)을 기다리지 않고 `verifySession` 으로 게이트를 바로
- * 넘긴다. `offline`은 서버가 아니라 네트워크 문제임을 그대로 말한다. 그 밖(5xx 등)만 범용
- * 재시도 문구.
+ * 띄웠다). `unauthorized`(이 기기 세션이 이미 죽음)는 다음 엔진 사이클(최대 30초, 탭 숨김이면
+ * 그마저 없음)을 기다리지 않고 `verifySession` 으로 게이트를 바로 넘긴다.
+ *
+ * **`account-deleted`(계정이 다른 기기에서 삭제됨, 410)는 `verifySession` 을 다시 부르지
+ * 않는다(리뷰 재확인, 2차 라운드 Major) — 1회성**: `requireSession` 이 이 첫 410 에서 이미 세션
+ * 행을 지우고 `sessionErrorResponse` 가 쿠키까지 지운다(`worker/auth/handlers.ts`). 그래서 여기서
+ * `verifySession` 을 불러 `/api/me` 를 한 번 더 왕복하면 그 요청은 410 이 아니라 **평범한 401**
+ * 을 받고, `verifySession` 은 `session === null` 갈래로 빠져 `AccountDeletedNotice` 대신 로그인
+ * 화면(`loginNotice: 'signed-out'`)을 띄운다 — 안내가 뜰 기회를 재확인 한 번으로 날려버린다(실측,
+ * 410 을 한 번만 흉내낸 이전 mock 은 두 번째 호출도 같은 410 을 돌려줘 이 문제를 가렸다). 그래서
+ * `verifySession` 의 410 처리(`accountDeletedNotice: true`)와 같은 모양으로 여기서 **직접**
+ * 안내를 켠다 — 다시 왕복하지 않는다. `offline`은 서버가 아니라 네트워크 문제임을 그대로 말한다.
+ * 그 밖(5xx 등)만 범용 재시도 문구.
  */
 export async function performLogoutOthers(
   rt: SyncRuntime,
@@ -179,7 +196,11 @@ export async function performLogoutOthers(
     return 'ok';
   } catch (error) {
     if (isTransportError(error)) {
-      if (error.kind === 'unauthorized' || error.kind === 'account-deleted') {
+      if (error.kind === 'account-deleted') {
+        rt.setState({ accountDeletedNotice: true });
+        return 'signed-out';
+      }
+      if (error.kind === 'unauthorized') {
         await verifySession(rt);
         return 'signed-out';
       }
@@ -232,6 +253,14 @@ export async function verifySession(
     return 'offline';
   }
   if (session === null) {
+    // 리뷰 재확인(2차 라운드 Major, 같은 근본 원인) — 계정 삭제 안내가 이미 떠 있으면(직전
+    // 사이클이 410 을 받아 `accountDeletedNotice: true` 를 켰다) 이 갈래로 덮어쓰지 않는다.
+    // 안내가 뜬 뒤의 `/api/me` 는 세션 행·쿠키가 이미 지워진 채라 410 이 아니라 평범한 401(=null)
+    // 이라, 여기서 그대로 진행하면 30초마다 도는 다음 사이클이 안내를 로그인 화면으로 갈아치운다
+    // (사용자가 [내보내고 지우기] 를 누르기도 전에, 실측: 엔진 e2e). 표식·로컬은 그대로 두고
+    // 사용자가 `acknowledgeAccountDeleted` 로 확인할 때까지 기다린다 — "말없이 버리지 않는다"
+    // (ADR-0015 §5) 는 최초 감지뿐 아니라 안내가 떠 있는 동안 내내 지켜야 하는 약속이다.
+    if (rt.getState().accountDeletedNotice) return 'account-deleted';
     await getRepositories().sync.setState({ deviceId: state.deviceId, cursor: 0 });
     // 리뷰 Major 3(user) — 표식이 있었는데(위에서 이미 걸러졌다) 세션만 없어졌다는 건 만료됐거나
     // 다른 기기에서("다른 기기 모두 로그아웃") 끊겼다는 뜻이다. 로그인 화면이 "왜" 를 한 줄이라도
