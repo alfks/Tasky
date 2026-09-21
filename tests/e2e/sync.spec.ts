@@ -180,18 +180,17 @@ test.describe('동기화: 두 기기(sync.md R5·R6)', () => {
     await waitForShell(page);
     // 첫 실행 시드(category R18)가 카테고리 + 설정 두 로우를 아웃박스에 남긴다 — `waitForShell`
     // 은 `<h1>` 만 보고 이 시드가 로컬에 커밋됐는지는 보장하지 않는다. 시드 카테고리가 실제로
-    // 보일 때까지 기다려 "로컬 커밋은 끝났다"를 확인한 다음, `visibilitychange` 로 사이클을
-    // 강제해 그 두 로우를 실제로 밀어 보낸 뒤에야 "동기화됨"을 확인한다.
+    // 보일 때까지 기다려 "로컬 커밋은 끝났다"를 확인한다.
     //
-    // 이 둘을 빼고 그냥 "동기화됨" 문구만 기다리면(실측으로 드러난 경합): 엔진의 첫 사이클이
-    // 시드 커밋보다 먼저 끝나 아웃박스가 비어 있는 그 순간에도 "동기화됨"이 뜬다 — 문구는
-    // 참이 되지만 시드 두 로우는 아직 서버에 못 갔다. 그 직후 오프라인으로 전환하면 시드분
-    // 2건이 못 나간 채로 남아, 뒤이어 만든 새 카테고리 1건과 합쳐져 "대기 3건"으로 보인다
-    // (기대는 "대기 1건").
+    // **`visibilitychange` 강제 호출은 이제 없다**(리뷰 Minor 5 — 근본 수정 후 제거, 이전엔 여기서
+    // 사이클을 강제로 앞당겨 "동기화됨"이 뜨기 전에 시드 두 로우가 실제로 나갔는지를 가렸다).
+    // `sync-engine.ts` 가 로컬 쓰기 직후(`onLocalWrite`) `pendingCount` 를 디바운스 없이 바로
+    // 반영하므로, 시드 커밋이 엔진의 첫 사이클보다 늦어도 "대기 N건" 이 먼저 뜨고, 1.5초 뒤
+    // 디바운스 사이클이 실제로 밀어 보낸 다음에야 "동기화됨"으로 바뀐다 — 문구가 항상 사실을
+    // 따라간다. 아래는 그 자연스러운 전이를 그대로 기다린다(폴링 30초보다 한참 짧다).
     await expect(page.getByRole('region', { name: SEED_CATEGORY_NAME })).toBeVisible({
       timeout: 15_000,
     });
-    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
     await expect(statusLine(page)).toHaveText('● 동기화됨', { timeout: 15_000 });
 
     await ctx.setOffline(true);
@@ -218,6 +217,10 @@ test.describe('동기화: 계정 삭제 안내(sync.md §6, ADR-0019)', () => {
     await pageA.addInitScript(() => {
       Reflect.deleteProperty(window, 'showSaveFilePicker');
     });
+    // B 는 **좁은 뷰포트**(<1024px, `layout.ts` narrow)로, 드로어를 한 번도 열지 않는다 —
+    // 리뷰 Major 3 회귀 가드다. 예전엔 계정 삭제 안내가 `ShellSidebar`(사이드바가 컬럼일 때,
+    // 또는 드로어를 연 동안만 마운트)에 얹혀 있어 이 조합에서 영원히 뜨지 않았다.
+    await pageB.setViewportSize({ width: 375, height: 740 });
     await loginTwoIndependentSessions(pageA, pageB, account);
     await waitForShell(pageA);
     await waitForShell(pageB);

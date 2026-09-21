@@ -49,6 +49,15 @@ describe('sync-store: 업로드 다이얼로그 보류(R7 Esc/✕)', () => {
     useSyncStore.getState().deferUpload();
     expect(useSyncStore.getState().uploadPrompt).toBe(false);
   });
+
+  // 리뷰 Major 4 — "보류" 는 "결정 안 했다" 지 "결정했다(동기화됨)" 가 아니다. `uploadPending`
+  // 은 다이얼로그가 닫혀도 그대로 남아, 계정 블록이 "● 동기화됨" 을 참칭하지 않게 한다.
+  it('deferUpload 은 uploadPending 은 그대로 남긴다', async () => {
+    useSyncStore.setState({ uploadPrompt: true, uploadPending: true });
+    useSyncStore.getState().deferUpload();
+    expect(useSyncStore.getState().uploadPrompt).toBe(false);
+    expect(useSyncStore.getState().uploadPending).toBe(true);
+  });
 });
 
 describe('sync-store: exportBackup 등록', () => {

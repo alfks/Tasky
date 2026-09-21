@@ -50,8 +50,44 @@ async function completeLogin(rt: SyncRuntime, sub: string, email: string): Promi
   const state: SyncState = { deviceId, userSub: sub, userEmail: email, cursor: 0 };
   await getRepositories().sync.setState(state);
   const upload = await hasLocalData();
-  rt.setState({ phase: 'ready', email, loginNotice: null, uploadPrompt: upload });
+  rt.setState({
+    phase: 'ready',
+    email,
+    loginNotice: null,
+    uploadPrompt: upload,
+    uploadPending: upload,
+  });
   if (!upload) void rt.ensureEngineStarted();
+}
+
+/**
+ * 지난 접속에서 R7 을 보류했다면(`SyncState.uploadDeferred`) 다시 묻는다 — 리뷰 Major 4, R7 스펙
+ * "선택을 보류하고 다음 접속 때 다시 묻는다" 를 실제로 지킨다. 그사이 로컬 데이터가 없어졌으면
+ * (백업 가져오기로 지워졌다거나) 표식만 정리하고 조용히 넘어간다 — 없는 데이터를 올릴지 묻지 않는다.
+ */
+export async function resumeIfDeferred(rt: SyncRuntime, state: SyncState): Promise<void> {
+  if (state.uploadDeferred !== true) return;
+  const upload = await hasLocalData();
+  if (!upload) {
+    await getRepositories().sync.setState({ ...state, uploadDeferred: false });
+    return;
+  }
+  rt.setState({ uploadPrompt: true, uploadPending: true });
+}
+
+/**
+ * R7 다이얼로그를 Esc·✕·바깥 클릭으로 보류했을 때(리뷰 Major 4). 보류는 "올리지 않겠다" 가 아니라
+ * "지금 결정하지 않겠다" 다 — 그래서 엔진은 그대로 시작한다(이미 아웃박스에 있는 변경·오프라인
+ * 표시는 결정과 무관하게 정상 동작해야 한다). 결정하지 않은 로컬 데이터가 있다는 사실만 표식에
+ * 남겨(`uploadDeferred`) 다음 접속에서 `resumeIfDeferred` 가 다시 묻는다. `uploadPending` 은
+ * 여기서 건드리지 않는다 — 다이얼로그만 닫힐 뿐 결정은 여전히 안 났다(`AccountBlock#statusOf`).
+ */
+export async function deferUpload(rt: SyncRuntime): Promise<void> {
+  const state = await getRepositories().sync.getState();
+  if (state !== undefined) {
+    await getRepositories().sync.setState({ ...state, uploadDeferred: true });
+  }
+  void rt.ensureEngineStarted();
 }
 
 /** 표식이 없을 때 배경에서 세션 유무를 확인한다(OAuth 콜백 복귀 — worker 는 `/` 로 그대로 돌아온다). */
@@ -76,14 +112,14 @@ export async function resolveUploadChoice(
     const exported = await exportBackup();
     if (!exported) return false; // 저장 취소 — wipe 하지 않는다(사실 10, sync.md R7)
     await getRepositories().sync.wipeLocal();
-    rt.setState({ uploadPrompt: false });
+    rt.setState({ uploadPrompt: false, uploadPending: false });
     void rt.ensureEngineStarted();
     return true;
   }
   // "올리기" = enqueueAll + 정상 사이클(사용자 결정 — sync.md R7 주석). 서버 LWW 가 곧 백업
   // 병합의 newer-wins 와 같은 규칙이라 결과가 같고, 코드 경로를 하나로 유지한다.
   await getRepositories().sync.enqueueAll();
-  rt.setState({ uploadPrompt: false });
+  rt.setState({ uploadPrompt: false, uploadPending: false });
   void rt.ensureEngineStarted();
   return true;
 }
@@ -149,7 +185,7 @@ export async function acknowledgeAccountDeleted(
  */
 export async function verifySession(
   rt: SyncRuntime,
-): Promise<'ok' | 'signed-out' | 'switched' | 'offline' | 'account-deleted'> {
+): Promise<'ok' | 'signed-out' | 'switch-pending' | 'offline' | 'account-deleted'> {
   const state = await getRepositories().sync.getState();
   if (state?.userSub === undefined) return 'signed-out';
   let session;
@@ -170,27 +206,59 @@ export async function verifySession(
     return 'signed-out';
   }
   if (session.sub !== state.userSub) {
-    // sync.md R1: 다른 계정으로 로그인 — 이전 계정 로컬을 내보내고 지운 뒤 새 계정을 전량 받는다.
-    // "올리기" 선택지는 없다(다른 계정 데이터를 합치는 것은 항상 틀린 동작).
-    const exportBackup = rt.getExportBackup();
-    const exported = exportBackup === null ? false : await exportBackup();
-    if (!exported) {
-      // 내보내기를 아직 등록 전이거나 취소했으면 전환을 미룬다 — 다음 사이클에서 다시 묻는다.
-      return 'offline';
-    }
-    await getRepositories().sync.wipeLocal();
-    await getRepositories().sync.setState({
-      deviceId: state.deviceId,
-      userSub: session.sub,
-      userEmail: session.email,
-      cursor: 0,
-    });
-    rt.setState((prev) => ({ email: session.email, dataRevision: prev.dataRevision + 1 }));
-    return 'switched';
+    // sync.md R1: 다른 계정으로 로그인 — 안내만 띄우고 아무것도 건드리지 않는다(리뷰 Major 2).
+    // 예전엔 여기서 곧장 사용자 활성화 없이 `exportBackup()` 을 불렀는데, 그 경로는 대부분
+    // 브라우저에서 `showSaveFilePicker` 가 거부돼 앵커 다운로드로 떨어지고(`browser-file.ts`),
+    // 그 경로는 저장 완료를 확인하지 못해도 곧장 성공을 보고해 파일이 실제로 없어도 로컬을
+    // 지울 수 있었다(실측). `confirmAccountSwitch` 의 사용자 클릭이 그 저장에 필요한 제스처를
+    // 공급한다 — "올리기" 선택지는 여전히 없다(다른 계정 데이터를 합치는 것은 항상 틀린 동작).
+    rt.setState({ accountSwitchedNotice: true });
+    return 'switch-pending';
   }
   if (session.email !== state.userEmail) {
     await getRepositories().sync.setState({ ...state, userEmail: session.email });
     rt.setState({ email: session.email });
   }
   return 'ok';
+}
+
+/**
+ * 계정 전환 안내의 [내보내고 지우기](리뷰 Major 2). 이전 계정 로컬을 내보내고 지운 뒤 표식을 새
+ * 계정으로 연다 — cursor 0 이라 다음 엔진 사이클이 그 계정의 데이터를 전량 받는다(예전
+ * `verifySession` 의 `pullAll` 특수 처리와 같은 효과를 일반 사이클이 그대로 낸다).
+ */
+export async function confirmAccountSwitch(
+  rt: SyncRuntime,
+  exportBackup: () => Promise<boolean>,
+): Promise<boolean> {
+  const exported = await exportBackup();
+  if (!exported) return false; // 저장 취소/실패 — 안내를 다시 보여준다(호출부가 유지)
+  let session;
+  try {
+    session = await getSyncTransport().me();
+  } catch {
+    return false; // 재확인 왕복 실패 — 안내를 유지하고 다음에 다시 시도한다
+  }
+  const state = await getRepositories().sync.getState();
+  if (state === undefined) return false;
+  if (session === null) {
+    // 그사이 로그아웃됨 — 전환이 아니라 로그아웃으로 정리한다.
+    await getRepositories().sync.wipeLocal();
+    await getRepositories().sync.setState({ deviceId: state.deviceId, cursor: 0 });
+    rt.setState({ phase: 'login', email: null, pendingCount: 0, accountSwitchedNotice: false });
+    return true;
+  }
+  await getRepositories().sync.wipeLocal();
+  await getRepositories().sync.setState({
+    deviceId: state.deviceId,
+    userSub: session.sub,
+    userEmail: session.email,
+    cursor: 0,
+  });
+  rt.setState((prev) => ({
+    email: session.email,
+    dataRevision: prev.dataRevision + 1,
+    accountSwitchedNotice: false,
+  }));
+  return true;
 }

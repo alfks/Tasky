@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createCategory } from '@/domain/category/category.rules';
+import type { SyncState } from '@/domain/sync/wire';
 
 import { getRepositories, setSyncTransport } from '@/repositories/container';
 import { createMemorySyncServer } from '@/repositories/memory/sync-server';
@@ -10,10 +11,13 @@ import { createHttpSyncTransport } from '@/infra/sync/http-transport';
 
 import {
   acknowledgeAccountDeleted,
+  confirmAccountSwitch,
+  deferUpload,
   performDeleteAccount,
   performLogout,
   probeSession,
   resolveUploadChoice,
+  resumeIfDeferred,
   verifySession,
 } from '@/features/sync/store/auth-actions';
 import type { SyncRuntime } from '@/features/sync/store/sync-store';
@@ -74,7 +78,9 @@ describe('auth-actions: verifySession — 401/전환 처리(R1)', () => {
     expect(categories).toHaveLength(1); // 401 은 로컬을 지우지 않는다
   });
 
-  it('sub 가 다르면 switched — exportBackup 성공 시 로컬을 지우고 새 표식으로 cursor 0 을 연다', async () => {
+  // 리뷰 Major 2: 감지 즉시 지우지 않는다 — 안내만 띄우고 사용자 확인(confirmAccountSwitch)을
+  // 기다린다. 아래 describe 가 확인 흐름을 별도로 검증한다.
+  it('sub 가 다르면 switch-pending — 안내만 띄우고 로컬·표식은 그대로다', async () => {
     await getRepositories().sync.setState({
       deviceId: 'device-1',
       userSub: 'sub-old',
@@ -90,22 +96,58 @@ describe('auth-actions: verifySession — 401/전환 처리(R1)', () => {
         expiresAt: '2099-01-01T00:00:00.000Z',
       }),
     );
-    const { rt, setExportBackup } = fakeRuntime();
-    setExportBackup(async () => true);
-    expect(await verifySession(rt)).toBe('switched');
+    const { rt, state } = fakeRuntime();
+    expect(await verifySession(rt)).toBe('switch-pending');
+    expect(state.accountSwitchedNotice).toBe(true);
     const categories = await getRepositories().categories.list({ includeClosed: true });
-    expect(categories).toHaveLength(0); // wipeLocal 이 실제로 지웠다(돌연변이 7 대상)
+    expect(categories).toHaveLength(1); // 아직 안 지웠다
     const after = await getRepositories().sync.getState();
-    expect(after).toMatchObject({ deviceId: 'device-1', userSub: 'sub-new', cursor: 0 });
+    expect(after).toMatchObject({ deviceId: 'device-1', userSub: 'sub-old', cursor: 5 }); // 표식도 그대로
+  });
+});
+
+describe('auth-actions: confirmAccountSwitch(R1, 리뷰 Major 2)', () => {
+  beforeEach(async () => {
+    await getRepositories().sync.wipeLocal();
   });
 
-  it('sub 가 다르면 switched — exportBackup 이 등록 안 됐으면 전환을 미룬다(offline 리턴)', async () => {
+  it('exportBackup 성공 시 로컬을 지우고 새 표식으로 cursor 0 을 연다', async () => {
     await getRepositories().sync.setState({
       deviceId: 'device-1',
       userSub: 'sub-old',
       userEmail: 'old@example.com',
-      cursor: 0,
+      cursor: 5,
     });
+    const category = createCategory({ name: '옛 계정', color: '#CFEB8F', existing: [] }, deps);
+    await getRepositories().categories.upsert(category);
+    setSyncTransport(
+      createMemorySyncTransport(createMemorySyncServer(), {
+        sub: 'sub-new',
+        email: 'new@example.com',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      }),
+    );
+    const { rt, state } = fakeRuntime();
+    state.accountSwitchedNotice = true;
+    const ok = await confirmAccountSwitch(rt, async () => true);
+
+    expect(ok).toBe(true);
+    expect(state.accountSwitchedNotice).toBe(false);
+    const categories = await getRepositories().categories.list({ includeClosed: true });
+    expect(categories).toHaveLength(0); // wipeLocal 이 실제로 지웠다
+    const after = await getRepositories().sync.getState();
+    expect(after).toMatchObject({ deviceId: 'device-1', userSub: 'sub-new', cursor: 0 });
+  });
+
+  it('exportBackup 이 실패/취소면 아무것도 지우지 않는다', async () => {
+    await getRepositories().sync.setState({
+      deviceId: 'device-1',
+      userSub: 'sub-old',
+      userEmail: 'old@example.com',
+      cursor: 5,
+    });
+    const category = createCategory({ name: '옛 계정', color: '#CFEB8F', existing: [] }, deps);
+    await getRepositories().categories.upsert(category);
     setSyncTransport(
       createMemorySyncTransport(createMemorySyncServer(), {
         sub: 'sub-new',
@@ -114,9 +156,13 @@ describe('auth-actions: verifySession — 401/전환 처리(R1)', () => {
       }),
     );
     const { rt } = fakeRuntime();
-    expect(await verifySession(rt)).toBe('offline');
+    const ok = await confirmAccountSwitch(rt, async () => false);
+
+    expect(ok).toBe(false);
+    const categories = await getRepositories().categories.list({ includeClosed: true });
+    expect(categories).toHaveLength(1);
     const after = await getRepositories().sync.getState();
-    expect(after?.userSub).toBe('sub-old'); // 미뤘으니 그대로
+    expect(after?.userSub).toBe('sub-old'); // 아직 그대로
   });
 });
 
@@ -189,11 +235,86 @@ describe('auth-actions: 계정 삭제 안내(sync.md §6, ADR-0019 — E-3 성�
 });
 
 describe('auth-actions: resolveUploadChoice(R7)', () => {
+  beforeEach(async () => {
+    await getRepositories().sync.wipeLocal();
+  });
+
   it('export-wipe 가 exportBackup 실패면 wipeLocal 을 부르지 않는다', async () => {
     const { rt } = fakeRuntime();
     const exportBackup = vi.fn(async () => false);
     const ok = await resolveUploadChoice(rt, 'export-wipe', exportBackup);
     expect(ok).toBe(false);
+  });
+
+  it('선택이 끝나면 uploadPrompt 뿐 아니라 uploadPending 도 함께 꺼진다(리뷰 Major 4)', async () => {
+    await getRepositories().sync.setState({
+      deviceId: 'device-1',
+      userSub: 'sub-1',
+      userEmail: 'a@example.com',
+      cursor: 0,
+    });
+    const { rt, state } = fakeRuntime();
+    state.uploadPrompt = true;
+    state.uploadPending = true;
+    const ok = await resolveUploadChoice(rt, 'upload', async () => true);
+    expect(ok).toBe(true);
+    expect(state.uploadPrompt).toBe(false);
+    expect(state.uploadPending).toBe(false);
+  });
+});
+
+describe('auth-actions: deferUpload·resumeIfDeferred(R7 보류 — 리뷰 Major 4)', () => {
+  beforeEach(async () => {
+    await getRepositories().sync.wipeLocal();
+  });
+
+  it('deferUpload 은 표식에 uploadDeferred 를 남기고 엔진을 시작한다("결정하지 않겠다"지 "안 올리겠다"가 아니다)', async () => {
+    await getRepositories().sync.setState({
+      deviceId: 'device-1',
+      userSub: 'sub-1',
+      userEmail: 'a@example.com',
+      cursor: 0,
+    });
+    const { rt, ensureEngineStarted } = fakeRuntime();
+    await deferUpload(rt);
+    expect(ensureEngineStarted).toHaveBeenCalledTimes(1);
+    const after = await getRepositories().sync.getState();
+    expect(after?.uploadDeferred).toBe(true);
+  });
+
+  it('resumeIfDeferred 는 로컬 데이터가 남아 있으면 다음 접속에서 다시 uploadPrompt 를 켠다(R7 스펙 그대로)', async () => {
+    const state: SyncState = {
+      deviceId: 'device-1',
+      userSub: 'sub-1',
+      userEmail: 'a@example.com',
+      cursor: 0,
+      uploadDeferred: true,
+    };
+    await getRepositories().sync.setState(state);
+    const category = createCategory({ name: '보류분', color: '#CFEB8F', existing: [] }, deps);
+    await getRepositories().categories.upsert(category);
+
+    const { rt, state: rtState } = fakeRuntime();
+    await resumeIfDeferred(rt, state);
+    expect(rtState.uploadPrompt).toBe(true);
+    expect(rtState.uploadPending).toBe(true);
+  });
+
+  it('resumeIfDeferred 는 그사이 로컬 데이터가 없어졌으면 표식만 지우고 조용히 넘어간다', async () => {
+    const state: SyncState = {
+      deviceId: 'device-1',
+      userSub: 'sub-1',
+      userEmail: 'a@example.com',
+      cursor: 0,
+      uploadDeferred: true,
+    };
+    await getRepositories().sync.setState(state);
+
+    const { rt, state: rtState } = fakeRuntime();
+    await resumeIfDeferred(rt, state);
+    expect(rtState.uploadPrompt).toBeUndefined();
+    const after = await getRepositories().sync.getState();
+    expect(after?.uploadDeferred).toBe(false);
   });
 });
 

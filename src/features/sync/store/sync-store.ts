@@ -29,13 +29,24 @@ export type SyncStoreState = {
   email: string | null;
   loginNotice: LoginNotice;
   online: boolean;
-  /** 아웃박스에 남은 건수 — 계정 블록의 "○ 대기 N건"(R6). 엔진이 사이클마다 갱신한다. */
+  /** 아웃박스에 남은 건수 — 계정 블록의 "○ 대기 N건"(R6). 엔진이 사이클마다, 그리고 로컬 쓰기
+   * 직후(리뷰 Minor 5)에도 갱신한다. */
   pendingCount: number;
-  /** R7 첫 로그인 업로드 다이얼로그를 띄울지. */
+  /** R7 첫 로그인 업로드 다이얼로그를 띄울지(다이얼로그가 **열려** 있는가). */
   uploadPrompt: boolean;
+  /**
+   * R7 선택을 **아직 하지 않았는가**(리뷰 Major 4). `uploadPrompt` 와 다르다 — Esc·✕(`deferUpload`)
+   * 로 다이얼로그를 닫아도 결정은 안 났으므로 이 값은 그대로 `true` 로 남는다. 계정 블록이 이 값을
+   * 보고 "동기화됨" 을 참칭하지 않는다(`AccountBlock#statusOf`). `resolveUpload` 가 실제 선택
+   * (올리기/내보내고 지우기)을 처리해야만 `false` 로 내려간다.
+   */
+  uploadPending: boolean;
   /** 이 계정이 다른 기기에서 삭제됐다는 안내를 띄울지(sync.md §6, ADR-0019 — 조용히 로그아웃시키지
    * 않는다). 표식·로컬 데이터는 사용자가 확인할 때까지 그대로 둔다. */
   accountDeletedNotice: boolean;
+  /** 로그인된 계정이 표식의 계정과 다르다는 안내를 띄울지(sync.md R1, 리뷰 Major 2). 사용자가
+   * [내보내고 지우기] 를 눌러야 실제로 내보내고 전환한다 — 배경에서 조용히 하지 않는다. */
+  accountSwitchedNotice: boolean;
   /** 원격에서 받아 적용한 변경이 있을 때마다 +1 — 다른 feature 가 재조회 트리거로 구독한다
    * (`ShellHeader#useSummaryRevision`, `backup/index.ts` 의 `dataRevision` 과 같은 패턴). */
   dataRevision: number;
@@ -50,13 +61,22 @@ export type SyncStoreActions = {
     choice: 'upload' | 'export-wipe',
     exportBackup: () => Promise<boolean>,
   ) => Promise<boolean>;
-  /** Esc·✕·바깥 클릭 — 선택을 보류한다(다음 접속에 다시 묻는다, R7 다이얼로그 규칙). */
+  /**
+   * Esc·✕·바깥 클릭 — 선택을 **보류**한다. "안 올리겠다" 가 아니라 "지금 결정하지 않겠다" 이므로
+   * (리뷰 Major 4) 엔진은 그대로 시작하고(이미 아웃박스에 있는 변경·오프라인 표시는 정상 동작해야
+   * 한다), 결정하지 않은 로컬 데이터가 있다는 사실만 표식에 남겨 다음 접속에 다시 묻는다(R7).
+   */
   deferUpload: () => void;
   /** 계정 삭제 안내의 [내보내고 지우기]. 실패(내보내기 취소)면 false — 안내가 다시 보인다. */
   acknowledgeAccountDeleted: (exportBackup: () => Promise<boolean>) => Promise<boolean>;
   /** Esc·✕ — 안내를 잠시 닫는다. 로컬은 그대로라 다음 사이클에서 서버가 다시 410 을 주면
    * 되살아난다(말없이 사라지지 않는다, 아래 verifySession 이 매번 다시 켠다). */
   dismissAccountDeletedNotice: () => void;
+  /** 계정 전환 안내의 [내보내고 지우기]. 실패(내보내기 취소)면 false — 안내가 다시 보인다. */
+  confirmAccountSwitch: (exportBackup: () => Promise<boolean>) => Promise<boolean>;
+  /** Esc·✕ — 안내를 잠시 닫는다. 로컬은 그대로라 다음 동기화 확인이 다시 다른 `sub` 를 받으면
+   * 되살아난다(`dismissAccountDeletedNotice` 와 같은 규칙). */
+  dismissAccountSwitchedNotice: () => void;
   /** 성공(내보내기 확인 → 삭제까지 끝남)하면 true. 내보내기를 취소했으면 false(로그아웃하지 않는다). */
   logout: (exportBackup: () => Promise<boolean>) => Promise<boolean>;
   /** 성공하면 true. */
@@ -88,7 +108,9 @@ const initialState: SyncStoreState = {
   online: typeof navigator === 'undefined' ? true : navigator.onLine,
   pendingCount: 0,
   uploadPrompt: false,
+  uploadPending: false,
   accountDeletedNotice: false,
+  accountSwitchedNotice: false,
   dataRevision: 0,
 };
 
@@ -126,10 +148,11 @@ async function ensureEngineStarted(): Promise<void> {
 let bootstrapStarted = false;
 
 /**
- * `AccountBlockLauncher`(진입)가 마운트 시 `exportBackup` 을 등록해 둔다. `sync` 는 `backup` 을
- * import 할 수 없으므로(§D-10, `sync → backup` 금지) 값을 직접 끌어오지 않고, 이미 ShellSidebar
- * → AccountBlockLauncher 로 내려온 prop 을 여기 등록해 지연 청크(엔진·auth-actions)가 필요할 때
- * `SyncRuntime.getExportBackup()` 으로 읽어 쓴다.
+ * `AccountSyncOverlays`(진입, `ShellOverlays` 가 레이아웃과 무관하게 항상 문다 — 리뷰 Major 3)가
+ * 마운트 시 `exportBackup` 을 등록해 둔다. `sync` 는 `backup` 을 import 할 수 없으므로(§D-10,
+ * `sync → backup` 금지) 값을 직접 끌어오지 않고, 이미 `AppShell` → `ShellOverlays` 로 내려온 prop
+ * 을 여기 등록해 지연 청크(엔진·auth-actions)가 필요할 때 `SyncRuntime.getExportBackup()` 으로
+ * 읽어 쓴다.
  */
 let registeredExportBackup: (() => Promise<boolean>) | null = null;
 
@@ -164,6 +187,11 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
       return;
     }
     set({ phase: 'ready', email: state.userEmail ?? null, loginNotice });
+    // 지난 접속에서 R7 을 보류했다면(표식의 `uploadDeferred`) 다시 묻는다 — "다음 접속에 다시
+    // 묻는다" 는 R7 규칙을 실제로 지킨다(리뷰 Major 4). 그사이 데이터가 사라졌으면(다른 경로로
+    // 정리됨) 표식만 지우고 조용히 넘어간다. 어느 쪽이든 엔진은 항상 시작한다.
+    const { resumeIfDeferred } = await import('@/features/sync/store/auth-actions');
+    await resumeIfDeferred(runtime(), state);
     void ensureEngineStarted();
   },
 
@@ -172,7 +200,13 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
     return resolveUploadChoice(runtime(), choice, exportBackup);
   },
 
-  deferUpload: () => set({ uploadPrompt: false }),
+  deferUpload: () => {
+    set({ uploadPrompt: false }); // 다이얼로그만 닫는다 — `uploadPending` 은 그대로 참이다.
+    void (async () => {
+      const { deferUpload } = await import('@/features/sync/store/auth-actions');
+      await deferUpload(runtime());
+    })();
+  },
 
   acknowledgeAccountDeleted: async (exportBackup) => {
     const { acknowledgeAccountDeleted } = await import('@/features/sync/store/auth-actions');
@@ -180,6 +214,20 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
   },
 
   dismissAccountDeletedNotice: () => set({ accountDeletedNotice: false }),
+
+  confirmAccountSwitch: async (exportBackup) => {
+    const { confirmAccountSwitch } = await import('@/features/sync/store/auth-actions');
+    const ok = await confirmAccountSwitch(runtime(), exportBackup);
+    if (ok) {
+      // 최대 30초 폴링을 기다리지 않고 새 계정 데이터를 바로 당긴다 — `sync-engine.ts` 는 이미
+      // 돌고 있으므로(`deferUpload`/최초 로그인 배선) 시작이 아니라 **지금** 한 사이클을 당긴다.
+      const { requestSyncNow } = await import('@/features/sync/store/sync-engine');
+      requestSyncNow();
+    }
+    return ok;
+  },
+
+  dismissAccountSwitchedNotice: () => set({ accountSwitchedNotice: false }),
 
   logout: async (exportBackup) => {
     const { performLogout } = await import('@/features/sync/store/auth-actions');

@@ -11,6 +11,7 @@ import { useSyncStore } from '@/features/sync/store/sync-store';
 
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
+import { pushToast } from '@/components/ui/Toast';
 
 type UploadDialogProps = {
   exportBackup: () => Promise<boolean>;
@@ -45,7 +46,12 @@ export function UploadDialog({ exportBackup }: UploadDialogProps) {
   const choose = async (choice: 'upload' | 'export-wipe') => {
     setBusy(true);
     try {
-      await resolveUpload(choice, exportBackup);
+      const ok = await resolveUpload(choice, exportBackup);
+      // "올리기" 는 내보내기를 거치지 않으므로 실패 문구를 이 갈래에만 낸다(리뷰 Minor 6-a,
+      // `AccountBlock` 이 로그아웃·계정 삭제 실패에 토스트를 띄우는 것과 같은 방식).
+      if (!ok && choice === 'export-wipe') {
+        pushToast({ message: '저장을 확인할 수 없어 아직 지우지 않았어요.' });
+      }
     } finally {
       setBusy(false);
     }

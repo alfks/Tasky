@@ -233,11 +233,11 @@ async function cycleOnce(): Promise<void> {
   }
   if (verify === 'offline') return;
   if (verify === 'account-deleted') return; // 안내가 떴다 — 사용자가 확인할 때까지 아무것도 안 한다
+  // 계정 전환 안내가 떴다 — 사용자가 [내보내고 지우기] 를 확인할 때까지 아무것도 하지 않는다
+  // (리뷰 Major 2). 확인은 `confirmAccountSwitch` 가 표식을 새 계정으로 옮기고, 다음 사이클의
+  // 보통 `pushAndPull`(cursor 0)이 `pullAll` 과 같은 효과로 그 계정 데이터를 전량 받는다.
+  if (verify === 'switch-pending') return;
   const repo = getRepositories().sync;
-  if (verify === 'switched') {
-    await pullAll(repo);
-    return;
-  }
   let state = await repo.getState();
   if (state === undefined || state.userSub === undefined) return;
   // `more` 는 재귀 `runCycle()` 이 아니라 여기서 직접 루프를 돈다 — `runCycle` 의 재진입 가드
@@ -249,6 +249,26 @@ async function cycleOnce(): Promise<void> {
     state = (await repo.getState()) ?? state;
     more = await pushAndPull(repo, state);
   }
+}
+
+/**
+ * 로컬 쓰기 직후 아웃박스 건수만 바로 반영한다(디바운스 없이) — 리뷰 Minor 5: 전에는
+ * `pendingCount` 를 `cycleOnce` 안에서만 갱신해, 실제 동기화 사이클(1.5초 디바운스 + 네트워크
+ * 왕복)이 끝나기 전까지 "밀린 건수"가 화면에 반영되지 않았다(e2e 는 `visibilitychange` 를
+ * 강제로 던져 사이클을 앞당기는 우회로 이 지연을 가려 통과시켰을 뿐, 근본 수정이 아니었다).
+ * 로컬 읽기 한 번뿐이라 네트워크 사이클을 기다릴 이유가 없다.
+ */
+async function refreshPendingCount(): Promise<void> {
+  const count = await getRepositories().sync.countOutbox();
+  rt.setState({ pendingCount: count });
+}
+
+/** 엔진이 이미 돌고 있으면 디바운스 없이 **지금** 한 사이클을 당긴다. 계정 전환 확인처럼 사용자
+ * 조작 직후 최대 30초 폴링을 기다리게 하지 않기 위해서다(리뷰 Major 2). 엔진이 아직 시작 전이면
+ * 아무 일도 하지 않는다 — 시작은 `ensureEngineStarted` 의 몫이고, 이 함수는 트리거일 뿐이다. */
+export function requestSyncNow(): void {
+  if (!started) return;
+  void runCycle();
 }
 
 /** 앱이 시작할 때 딱 한 번. 첫 사이클을 즉시 돌리고, 트리거를 건다. */
@@ -266,7 +286,10 @@ export function startEngine(runtime: SyncRuntime): void {
   });
   window.addEventListener('focus', () => schedule(TRIGGER_DEBOUNCE_MS));
   window.addEventListener('online', () => schedule(TRIGGER_DEBOUNCE_MS));
-  onLocalWrite(() => schedule(WRITE_DEBOUNCE_MS));
+  onLocalWrite(() => {
+    void refreshPendingCount();
+    schedule(WRITE_DEBOUNCE_MS);
+  });
 }
 
 /** 테스트 전용 — 모듈 스코프 가드·타이머를 되돌린다. */

@@ -14,15 +14,21 @@ type AccountBlockProps = {
   exportBackup: () => Promise<boolean>;
 };
 
-type Status = 'synced' | 'pending' | 'offline';
+type Status = 'synced' | 'pending' | 'offline' | 'deciding';
 
 /**
  * "대기 N건" 이 "오프라인" 보다 먼저다 — 오프라인 중에 쓴 변경이 있으면 "몇 건이 밀렸는지" 가
  * "온라인인지" 보다 더 실질적인 정보다(sync.md R6 "저장됨처럼 보이는데 서버에 아직 없는 상태를
  * 정직하게 표시한다"). 대기 중인 게 없을 때만 순수 오프라인 안내로 내려간다(e2e 로 드러난 순서
  * 버그 — 예전 순서는 오프라인이면 대기 건수를 무조건 가렸다).
+ *
+ * `uploadPending` 이 **가장 먼저다**(리뷰 Major 4) — R7 선택을 아직 안 했다는 뜻이라, 그 로컬
+ * 데이터는 아웃박스에 없어 `pendingCount` 에 안 잡히지만 "동기화됨" 은 명백한 거짓말이다. 사용자가
+ * Esc·✕ 로 다이얼로그를 보류해도(`deferUpload`) 이 값은 그대로 참으로 남아, 새로고침해 다시
+ * 결정하기 전까지는 "● 동기화됨" 이 뜨지 않는다.
  */
-function statusOf(online: boolean, pendingCount: number): Status {
+function statusOf(online: boolean, pendingCount: number, uploadPending: boolean): Status {
+  if (uploadPending) return 'deciding';
   if (pendingCount > 0) return 'pending';
   return online ? 'synced' : 'offline';
 }
@@ -31,19 +37,21 @@ const STATUS_TEXT: Record<Status, (pendingCount: number) => string> = {
   synced: () => '● 동기화됨',
   pending: (n) => `○ 대기 ${n}건`,
   offline: () => '○ 오프라인 · 온라인이 되면 이어서 보냅니다',
+  deciding: () => '○ 업로드 확인이 필요해요 · 새로고침하면 다시 물어요',
 };
 
 export function AccountBlock({ exportBackup }: AccountBlockProps) {
   const email = useSyncStore((state) => state.email);
   const online = useSyncStore((state) => state.online);
   const pendingCount = useSyncStore((state) => state.pendingCount);
+  const uploadPending = useSyncStore((state) => state.uploadPending);
   const logout = useSyncStore((state) => state.logout);
   const deleteAccount = useSyncStore((state) => state.deleteAccount);
 
   const [confirming, setConfirming] = useState<'logout' | 'delete' | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const status = statusOf(online, pendingCount);
+  const status = statusOf(online, pendingCount, uploadPending);
 
   const handleLogout = async () => {
     setBusy(true);
@@ -70,7 +78,10 @@ export function AccountBlock({ exportBackup }: AccountBlockProps) {
   return (
     <div className="flex flex-col gap-[var(--space-1)] border-t border-border pt-[var(--space-2)]">
       <p className="truncate px-[var(--space-1)] text-sm font-medium text-text">{email}</p>
-      <p className="px-[var(--space-1)] text-xs text-muted">{STATUS_TEXT[status](pendingCount)}</p>
+      {/* 리뷰 Minor 6-b — 오프라인 전환·대기 건수 증가를 스크린리더가 듣게 한다. */}
+      <p role="status" className="px-[var(--space-1)] text-xs text-muted">
+        {STATUS_TEXT[status](pendingCount)}
+      </p>
       <div className="flex gap-[var(--space-2)] px-[var(--space-1)]">
         <button
           type="button"

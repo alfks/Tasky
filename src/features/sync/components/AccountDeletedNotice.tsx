@@ -10,6 +10,7 @@ import { useSyncStore } from '@/features/sync/store/sync-store';
 
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
+import { pushToast } from '@/components/ui/Toast';
 
 type AccountDeletedNoticeProps = {
   exportBackup: () => Promise<boolean>;
@@ -23,7 +24,10 @@ export function AccountDeletedNotice({ exportBackup }: AccountDeletedNoticeProps
   const acknowledge = async () => {
     setBusy(true);
     try {
-      await acknowledgeAccountDeleted(exportBackup);
+      const ok = await acknowledgeAccountDeleted(exportBackup);
+      // 리뷰 Minor 6-a — 실패(내보내기 취소/실패)를 조용히 삼키지 않는다. 안내는 다이얼로그가
+      // 그대로 다시 보여준다(`ok=false` 면 `accountDeletedNotice` 를 그대로 둔다).
+      if (!ok) pushToast({ message: '저장을 확인할 수 없어 아직 지우지 않았어요.' });
     } finally {
       setBusy(false);
     }

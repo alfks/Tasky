@@ -326,3 +326,36 @@ describe('sync-engine: 오프라인 중에도 pendingCount 가 정직하다(R6, 
     if (originalOnLine) Object.defineProperty(navigator, 'onLine', originalOnLine);
   });
 });
+
+describe('sync-engine: pendingCount 는 엔진 사이클을 기다리지 않는다(리뷰 Minor 5)', () => {
+  beforeEach(() => {
+    resetEngineForTest();
+  });
+
+  it('사이클이 네트워크 왕복에 걸려 있어도(running=true) 로컬 쓰기 직후 대기 건수가 즉시 반영된다', async () => {
+    await getRepositories().sync.wipeLocal();
+    await getRepositories().sync.setState({ deviceId: 'd1', userSub: 's', cursor: 0 });
+
+    // 첫 사이클의 sync() 가 영원히 안 끝난다 — `running` 가드가 계속 참으로 남아, 이 사이클이
+    // 끝나야만 도는 옛 경로(cycleOnce 안의 pendingCount 갱신)라면 이 테스트가 절대 통과할 수
+    // 없다. `onLocalWrite` 에서 직접 `countOutbox` 를 읽는 새 경로만 이 상황에서도 반영된다.
+    setSyncTransport({
+      me: async () => ({ sub: 's', email: 'e', expiresAt: '' }),
+      sync: () => new Promise<never>(() => {}),
+      logout: async () => {},
+      deleteAccount: async () => {},
+    });
+
+    const { rt, state } = fakeRuntime();
+    startEngine(rt);
+    await vi.waitFor(() => expect(state.pendingCount).toBe(0)); // 첫 사이클 진입, sync() 에서 대기 중
+
+    const category = createCategory(
+      { name: '즉시 반영', color: '#CFEB8F', existing: [] },
+      { now: () => '2026-09-21T00:00:00.000Z', id: () => crypto.randomUUID() },
+    );
+    await getRepositories().categories.upsert(category); // 아웃박스 적재 + notifyLocalWrite
+
+    await vi.waitFor(() => expect(state.pendingCount).toBe(1));
+  });
+});
