@@ -56,7 +56,7 @@ async function seedRoutine(page: Page, title: string): Promise<void> {
             recurrence: { type: 'weekly', daysOfWeek: [0, 1, 2, 3, 4, 5, 6] },
             startDate: '2020-01-01',
             active: true,
-            materializedThrough: '2020-01-01',
+            fillFloor: '2020-01-01',
           });
           tx.oncomplete = () => {
             db.close();
