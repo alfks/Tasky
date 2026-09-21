@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createCategory } from '@/domain/category/category.rules';
+import { createCategory, updateCategory } from '@/domain/category/category.rules';
 import type { SyncRequest, SyncResponse } from '@/domain/sync/wire';
 
 import { getRepositories, setRepositories, setSyncTransport } from '@/repositories/container';
@@ -39,6 +39,7 @@ function fakeTransport(
     },
     logout: async () => {},
     deleteAccount: async () => {},
+    logoutOthers: async () => {},
   };
   return { transport, calls };
 }
@@ -235,6 +236,70 @@ describe('sync-engine: 연속 invalid 3회 격리(돌연변이 6 대상)', () =>
   });
 });
 
+describe('sync-engine: ackApplied 는 실제로 푸시한 rev 로 대조한다(회귀 방지)', () => {
+  beforeEach(() => {
+    resetEngineForTest();
+  });
+
+  it('푸시 왕복 중 같은 로우를 다시 고치면 ack 가 그 편집을 아웃박스에서 지우지 않는다', async () => {
+    await getRepositories().sync.wipeLocal();
+    const category = createCategory(
+      { name: '원래 이름', color: '#CFEB8F', existing: [] },
+      { now: () => '2026-09-21T00:00:00.000Z', id: () => crypto.randomUUID() },
+    );
+    await getRepositories().categories.upsert(category);
+    await getRepositories().sync.enqueueAll(); // rev 1 로 큐 적재
+    await getRepositories().sync.setState({ deviceId: 'd1', userSub: 's', cursor: 0 });
+
+    // sync() 를 호출부가 원할 때 풀어줄 수 있도록 응답을 보류한다 — "왕복이 아직 안 끝남"을 흉내낸다.
+    let resolveSync: ((response: SyncResponse) => void) | undefined;
+    const calls: SyncRequest[] = [];
+    setSyncTransport({
+      me: async () => ({ sub: 's', email: 'e', expiresAt: '' }),
+      sync: async (request) => {
+        calls.push(request);
+        return new Promise<SyncResponse>((resolve) => {
+          resolveSync = resolve;
+        });
+      },
+      logout: async () => {},
+      deleteAccount: async () => {},
+      logoutOthers: async () => {},
+    });
+
+    const { rt } = fakeRuntime();
+    startEngine(rt);
+    await vi.waitFor(() => expect(calls.length).toBe(1)); // rev=1 을 실었고 응답 대기 중
+
+    // 응답이 오기 전에 같은 로우를 다시 고친다 — 아웃박스 rev 가 2로 오른다.
+    const edited = updateCategory(category, { name: '고친 이름' }, [], {
+      now: () => '2026-09-21T00:00:01.000Z',
+      id: () => crypto.randomUUID(),
+    });
+    await getRepositories().categories.upsert(edited);
+    expect(await getRepositories().sync.countOutbox()).toBe(1);
+
+    // 서버가 이제야 rev=1 시점 push 를 applied 로 확인해 준다.
+    resolveSync?.({
+      cursor: 1,
+      applied: [{ tbl: 'categories', id: category.id, seq: 1 }],
+      rejected: [],
+      pulled: [],
+      more: false,
+      gcFloor: 0,
+    });
+
+    await vi.waitFor(async () => {
+      const state = await getRepositories().sync.getState();
+      expect(state?.cursor).toBe(1); // 이 사이클이 끝났음을 기다린다
+    });
+    // rev=2 편집은 아직 서버에 보내지 못했으니 아웃박스에 남아 있어야 한다.
+    expect(await getRepositories().sync.countOutbox()).toBe(1);
+    const stored = await getRepositories().categories.getById(category.id);
+    expect(stored?.name).toBe('고친 이름'); // 편집이 사라지지 않았다
+  });
+});
+
 describe('sync-engine: dataRevision (돌연변이 2 대상)', () => {
   beforeEach(() => {
     resetEngineForTest();
@@ -315,6 +380,7 @@ describe('sync-engine: 오프라인 중에도 pendingCount 가 정직하다(R6, 
       },
       logout: async () => {},
       deleteAccount: async () => {},
+      logoutOthers: async () => {},
     });
     const originalOnLine = Object.getOwnPropertyDescriptor(navigator, 'onLine');
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
@@ -344,6 +410,7 @@ describe('sync-engine: pendingCount 는 엔진 사이클을 기다리지 않는�
       sync: () => new Promise<never>(() => {}),
       logout: async () => {},
       deleteAccount: async () => {},
+      logoutOthers: async () => {},
     });
 
     const { rt, state } = fakeRuntime();
@@ -357,5 +424,56 @@ describe('sync-engine: pendingCount 는 엔진 사이클을 기다리지 않는�
     await getRepositories().categories.upsert(category); // 아웃박스 적재 + notifyLocalWrite
 
     await vi.waitFor(() => expect(state.pendingCount).toBe(1));
+  });
+});
+
+describe('sync-engine: 계정 삭제 안내가 뜬 뒤 다음 사이클(같은 근본 원인 — 1회성 신호를 계속 버림)', () => {
+  beforeEach(() => {
+    resetEngineForTest();
+    // 위 "온라인/오프라인" 테스트가 navigator.onLine 을 false 로 바꾼 뒤 원래 값이 own property 가
+    // 아니면(getOwnPropertyDescriptor 가 undefined) 복원하지 못하고 새는 경우가 있다 — 이 사이클은
+    // 온라인 전제이므로 여기서 명시적으로 되돌린다(다른 테스트의 순서에 기대지 않는다).
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+  });
+
+  it('accountDeletedNotice 가 이미 떠 있으면 그다음 사이클의 401(me()===null)이 표식·안내를 지우지 않는다', async () => {
+    await getRepositories().sync.wipeLocal();
+    await getRepositories().sync.setState({
+      deviceId: 'd1',
+      userSub: 's',
+      userEmail: 'a@example.com',
+      cursor: 0,
+    });
+    // 계정 삭제 직후 서버가 세션 행·쿠키를 지웠으므로 그다음 me() 는 410 이 아니라 평범한
+    // 401(=null) 이다 — verifySession 의 session===null 갈래가 이 사이클에서도 그대로 도는지가
+    // 이 테스트의 핵심(리뷰: 안내가 뜬 뒤에도 엔진이 계속 30초마다 이 갈래를 탄다).
+    const meMock = vi.fn(async () => null);
+    setSyncTransport({
+      me: meMock,
+      sync: async () => ({
+        cursor: 0,
+        applied: [],
+        rejected: [],
+        pulled: [],
+        more: false,
+        gcFloor: 0,
+      }),
+      logout: async () => {},
+      deleteAccount: async () => {},
+      logoutOthers: async () => {},
+    });
+
+    const { rt, state } = fakeRuntime();
+    state.accountDeletedNotice = true; // 이전 사이클이 이미 안내를 띄웠다고 가정
+    startEngine(rt);
+
+    await vi.waitFor(() => expect(meMock).toHaveBeenCalled());
+    await vi.waitFor(async () => {
+      const after = await getRepositories().sync.getState();
+      expect(after?.userSub).toBe('s'); // 표식을 지우면 안 된다 — 사용자가 안내를 확인하기 전까지는
+    });
+
+    expect(state.accountDeletedNotice).toBe(true); // 안내가 그대로 살아 있어야 한다
+    expect(state.phase).not.toBe('login'); // 로그인 화면으로 되돌아가 안내를 무너뜨리면 안 된다
   });
 });

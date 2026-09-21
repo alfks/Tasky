@@ -2,9 +2,16 @@
 // (SYNC_DESIGN.md §②-3). 정적 자산(그 밖의 모든 경로)은 `worker/index.ts` 가 `env.ASSETS` 로 넘긴다
 // (`run_worker_first`) — 이 파일은 `/api/*`·`/auth/*` 만 안다.
 import { handleAccountDelete } from './account/delete';
-import { clearSessionCookie, setSessionCookie } from './auth/cookies';
-import { handleCallback, handleLogin, handleLogout, handleMe } from './auth/handlers';
-import { requireSession, type SessionResult } from './auth/session';
+import { setSessionCookie } from './auth/cookies';
+import {
+  handleCallback,
+  handleLogin,
+  handleLogout,
+  handleLogoutOthers,
+  handleMe,
+  sessionErrorResponse,
+} from './auth/handlers';
+import { requireSession } from './auth/session';
 import { handleStubLogin } from './auth/stub';
 import { forUser } from './db/user-db';
 import { handleSync } from './sync/handler';
@@ -63,16 +70,6 @@ async function readJsonBody(
   }
 }
 
-function sessionErrorResponse(session: Extract<SessionResult, { ok: false }>): Response {
-  if (session.status === 410) {
-    return json(
-      { error: 'account-deleted' },
-      { status: 410, headers: { 'Set-Cookie': clearSessionCookie() } },
-    );
-  }
-  return json({ error: 'unauthorized' }, { status: 401 });
-}
-
 export async function handleRequest(request: Request, env: Env, now: string): Promise<Response> {
   const url = new URL(request.url);
   const { pathname } = url;
@@ -86,6 +83,11 @@ export async function handleRequest(request: Request, env: Env, now: string): Pr
   if (method === 'POST' && pathname === '/auth/logout') {
     if (!hasCsrfHeader(request)) return csrfRejected();
     return handleLogout(request, env, now);
+  }
+
+  if (method === 'POST' && pathname === '/auth/logout-others') {
+    if (!hasCsrfHeader(request)) return csrfRejected();
+    return handleLogoutOthers(request, env, now);
   }
 
   if (method === 'GET' && pathname === '/api/me') return handleMe(request, env, now);

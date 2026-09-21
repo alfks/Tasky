@@ -4,33 +4,29 @@
 // 컨텍스트의 두 탭은 쿠키·IndexedDB 를 공유하는 같은 기기라 동기화를 재현하지 못한다
 // (tests/AGENTS.md 규칙 3 의 다기기 버전).
 //
-// **"두 기기, 같은 계정" 을 두 번째 `stubLogin` 으로 만들지 않는다.** 실측(이 스펙을 처음 짤 때
-// 드러남): `worker/auth/handlers.ts#handleCallback`·`worker/auth/stub.ts#handleStubLogin` 둘 다
-// 새 로그인마다 `DELETE FROM sessions WHERE sub = ?` 를 **무조건** 먼저 돌린다 — 계정 재가입이
-// 탈취된 옛 세션을 되살리지 못하게 막는 조치인데, 부작용으로 **같은 계정의 다른 기기 로그인도
-// 함께 죽는다**(재현: A 로그인 → B 로그인 → A 의 쿠키로 `/api/me` 가 즉시 401). `sessions` 테이블에
-// `device_id` 컬럼조차 없다(0001_init.sql) — 세션은 애초에 기기별로 분리되지 않는다. 이건
-// `worker/**`(T-93 owns) 의 동작이라 여기서 고치지 않고, 대신 **한 번만 로그인한 세션 쿠키를
-// 둘째 컨텍스트에 그대로 복사**해 "같은 계정, 두 기기"를 흉내낸다 — `deviceId`(동기화 프로토콜의
-// 기기 구분자, `entities.device_id`)는 클라이언트 `syncState`가 스스로 만드는 값이라 세션과
-// 무관하고, 두 컨텍스트의 IndexedDB 는 어차피 따로다. **이 셋업 자체가 실제 제품의 한계를 가린다
-// 는 뜻이다 — PR 본문·보고에 남긴다.**
+// **"두 기기, 같은 계정" 은 진짜 두 번째 `stubLogin` 으로 만든다.** 예전에는
+// `worker/auth/handlers.ts#handleCallback`·`worker/auth/stub.ts#handleStubLogin` 이 새 로그인마다
+// 그 sub 의 세션을 **무조건** 전량 폐기해(`DELETE FROM sessions WHERE sub = ?`), 둘째 기기가
+// 로그인하는 순간 첫째 기기가 로그아웃됐다(사용자가 보고한 바로 그 증상) — 그래서 이 스펙은 한 번만
+// 로그인한 세션 쿠키를 둘째 컨텍스트에 복사하거나, D1 에서 세션 행을 직접 되살리는 우회로 "두 기기"를
+// 흉내냈고, 그 우회 자체가 실제 제품의 한계를 가린다고 스스로 적어 두었다. **그 한계는 이제 고쳤다**
+// (`worker/auth/session.ts#signIn`, ADR-0020): 세션 전량 폐기는 `deleted_users` 에 그 sub 의 표식이
+// 있을 때(계정을 삭제했다가 같은 구글 계정으로 재가입하는 경로)만 실행되고, 평범한 로그인은 다른
+// 기기의 세션을 건드리지 않는다. 그래서 아래 시나리오는 전부 두 컨텍스트에서 각각 `stubLogin` 을
+// 부르는 진짜 두 번째 로그인이다 — 쿠키 복사·D1 되살리기 헬퍼는 더 이상 없다.
 //
 // 이 파일은 `@playwright/test` 를 **직접** 쓴다(`./fixtures/stub-login` 의 `test` 가 아니다) —
 // 그 fixture 는 `page` 를 건드리기 전에 자동으로 로그인시키는데, 아래 시나리오는 무쿠키 상태를
 // 직접 검증해야 해서 자동 로그인이 방해가 된다. 대신 그 파일의 `randomAccount`/`stubLogin`
 // 헬퍼만 가져다 쓴다.
-import { execFileSync } from 'node:child_process';
-
 import { expect, test } from '@playwright/test';
 
 import { randomAccount, stubLogin } from './fixtures/stub-login';
 
-import type { BrowserContext, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 const CATEGORY = '동기화 확인';
 const TODO = '두 기기 확인';
-const SESSION_COOKIE = 'tasky_session';
 /** 첫 실행 시드(category R18, `SEED_CATEGORY.name`)의 카테고리 이름 — 그 상수를 그대로 가져오면
  * 도메인 계층을 이 스펙이 import 하게 되므로, 여기서는 리터럴로만 맞춘다. */
 const SEED_CATEGORY_NAME = 'todo';
@@ -38,89 +34,6 @@ const SEED_CATEGORY_NAME = 'todo';
 async function waitForShell(page: Page): Promise<void> {
   await page.waitForSelector('main#shell-main');
   await expect(page.getByRole('heading', { name: 'Tasky', level: 1 })).toBeVisible();
-}
-
-/** A 가 이미 로그인한 세션 쿠키를 B 컨텍스트에 그대로 심는다(위 머리주석 — 둘째 기기가 새로
- * 로그인하면 첫째 기기의 세션이 죽는다). B 의 IndexedDB 는 여전히 독립이라 로컬 표식이 없으므로
- * `AuthGate` 는 `probeSession()`(배경 `/api/me`)으로 이 쿠키를 확인하고 들어간다.
- *
- * **계정 삭제 시나리오에는 쓰지 않는다** — `worker/account/delete.ts` 가 "요청을 보낸 기기 자신의
- * `sid` 만" 지우므로, A·B 가 같은 `sid`(=같은 세션 행)를 공유하면 A 의 삭제가 B 의 세션까지
- * 함께 지워 B 는 410 이 아니라 그냥 401(세션 없음)을 받는다 — 아래 `d1Query`/`d1Restore` 로 B 만의
- * 독립된 세션 행을 되살린 시나리오에서 써야 한다. */
-async function joinAsSecondDevice(sourceCtx: BrowserContext, targetPage: Page): Promise<void> {
-  const cookies = await sourceCtx.cookies();
-  const session = cookies.find((c) => c.name === SESSION_COOKIE);
-  if (session === undefined) throw new Error('세션 쿠키를 찾지 못했다 — 먼저 로그인했는지 확인');
-  await targetPage.context().addCookies([session]);
-  await targetPage.goto('/');
-}
-
-const D1_PERSIST = '.wrangler/e2e';
-
-/** 로컬 D1(SQLite, wrangler dev 가 쓰는 바로 그 파일)에 SELECT 한다 — `sessions` 행 조작 전용. */
-function d1Query<T>(sql: string): T[] {
-  const out = execFileSync(
-    'pnpm',
-    [
-      'exec',
-      'wrangler',
-      'd1',
-      'execute',
-      'tasky',
-      '--local',
-      '--persist-to',
-      D1_PERSIST,
-      '--command',
-      sql,
-      '--json',
-    ],
-    { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] },
-  );
-  const [batch] = JSON.parse(out) as { results: T[] }[];
-  return batch?.results ?? [];
-}
-
-function d1Run(sql: string): void {
-  execFileSync(
-    'pnpm',
-    [
-      'exec',
-      'wrangler',
-      'd1',
-      'execute',
-      'tasky',
-      '--local',
-      '--persist-to',
-      D1_PERSIST,
-      '--command',
-      sql,
-    ],
-    { stdio: 'ignore' },
-  );
-}
-
-/**
- * A 로그인 → **B 도 새로 로그인**(같은 계정) → A 의 세션 행이 로그인 순간 지워지므로(위 머리주석)
- * D1 에서 직접 되살린다. 결과: A·B 가 **서로 다른, 둘 다 유효한** 세션 행을 갖는다 — 실제 두 기기와
- * 같은 모양이라 계정 삭제의 410 판정(요청을 보낸 기기의 세션만 지운다, worker/account/delete.ts)을
- * 그대로 시험할 수 있다.
- */
-async function loginTwoIndependentSessions(
-  pageA: Page,
-  pageB: Page,
-  account: { sub: string; email: string },
-): Promise<void> {
-  await stubLogin(pageA, account);
-  const [rowA] = d1Query<{ sid: string; created_at: string; expires_at: string }>(
-    `SELECT sid, created_at, expires_at FROM sessions WHERE sub='${account.sub}'`,
-  );
-  if (rowA === undefined) throw new Error('A 의 세션 행을 D1 에서 못 찾았다');
-  await stubLogin(pageB, account); // A 의 행을 지우고 B 의 행을 만든다
-  d1Run(
-    `INSERT INTO sessions (sid, sub, created_at, expires_at) VALUES ('${rowA.sid}', '${account.sub}', '${rowA.created_at}', '${rowA.expires_at}')`,
-  );
-  // A 의 브라우저 쿠키는 그대로다(서명은 D1 행과 무관) — 행만 되살리면 다시 유효해진다.
 }
 
 async function createCategory(page: Page, name: string): Promise<void> {
@@ -147,7 +60,7 @@ test.describe('동기화: 두 기기(sync.md R5·R6)', () => {
     const pageA = await ctxA.newPage();
     const pageB = await ctxB.newPage();
     await stubLogin(pageA, account);
-    await joinAsSecondDevice(ctxA, pageB);
+    await stubLogin(pageB, account); // 같은 계정으로 진짜 두 번째 로그인(ADR-0020) — A 는 죽지 않는다
     await waitForShell(pageA);
     await waitForShell(pageB);
 
@@ -221,7 +134,11 @@ test.describe('동기화: 계정 삭제 안내(sync.md §6, ADR-0019)', () => {
     // 리뷰 Major 3 회귀 가드다. 예전엔 계정 삭제 안내가 `ShellSidebar`(사이드바가 컬럼일 때,
     // 또는 드로어를 연 동안만 마운트)에 얹혀 있어 이 조합에서 영원히 뜨지 않았다.
     await pageB.setViewportSize({ width: 375, height: 740 });
-    await loginTwoIndependentSessions(pageA, pageB, account);
+    // 진짜 두 번째 로그인(ADR-0020) — A·B 가 서로 다른, 둘 다 유효한 세션 행을 갖는다. 계정 삭제는
+    // 요청을 보낸 기기 자신의 세션만 지우므로(worker/account/delete.ts) B 의 세션은 그대로 남고,
+    // 다음 확인에서 `deleted_users` 표식을 보고 410 을 받는다.
+    await stubLogin(pageA, account);
+    await stubLogin(pageB, account);
     await waitForShell(pageA);
     await waitForShell(pageB);
 
@@ -239,6 +156,103 @@ test.describe('동기화: 계정 삭제 안내(sync.md §6, ADR-0019)', () => {
     await expect(pageB.getByRole('alertdialog', { name: '계정이 삭제됐어요' })).toBeVisible({
       timeout: 15_000,
     });
+
+    await ctxA.close();
+    await ctxB.close();
+  });
+});
+
+test.describe('동기화: 다기기 로그인(ADR-0020)', () => {
+  test('A 로그인 뒤 B 가 같은 계정으로 로그인해도 A 는 로그아웃되지 않는다(사용자 보고 증상)', async ({
+    browser,
+  }) => {
+    const account = randomAccount();
+    const ctxA = await browser.newContext();
+    const ctxB = await browser.newContext();
+    const pageA = await ctxA.newPage();
+    const pageB = await ctxB.newPage();
+
+    await stubLogin(pageA, account);
+    await waitForShell(pageA);
+
+    // B 가 같은 계정으로 새로 로그인한다. 예전 코드(고치기 전 `worker/auth/session.ts`)는 로그인마다
+    // 그 sub 의 세션을 무조건 전량 폐기해 이 시점에 A 의 세션 행이 죽었다 — 사용자가 보고한 증상
+    // 그대로다. ADR-0020 이후에는 `deleted_users` 표식이 있을 때(계정 삭제 뒤 재가입)만 전량
+    // 폐기가 실행되므로, 평범한 두 번째 로그인은 A 의 세션을 건드리지 않는다.
+    await stubLogin(pageB, account);
+    await waitForShell(pageB);
+
+    // 서버 판정을 페이지 안에서 직접 확인한다. `ctxA.request`(Playwright 의 Node 쪽 API 요청
+    // 컨텍스트)는 쓰지 않는다 — 세션 쿠키가 `Secure` 인데(worker/auth/cookies.ts, 프로덕션과 같은
+    // 속성을 유지하려고 dev 에서도 내리지 않는다) 그 컨텍스트는 브라우저의 "localhost 는 안전
+    // 출처" 예외를 모르고 평범한 HTTP(스킴 http)로만 봐서 `Secure` 쿠키를 보내지 않는다(실측 —
+    // 고쳐진 코드로도 이 경로로는 401 이 난다, 세션이 죽은 것과는 무관한 오탐). 페이지 안의
+    // `fetch` 는 실제 브라우저 보안 컨텍스트를 타므로 쿠키가 정상적으로 실린다.
+    const meStatus = await pageA.evaluate(async () => (await fetch('/api/me')).status);
+    expect(meStatus).toBe(200);
+
+    // UI 로도 확인한다 — `visibilitychange` 는 sync-engine 의 확인 사이클(2초 디바운스 뒤
+    // `verifySession` → `/api/me`, `sync-engine.ts#TRIGGER_DEBOUNCE_MS`)을 깨운다. `waitForResponse`
+    // 로 그 왕복이 실제로 끝나길 기다린다 — 곧장 `main#shell-main` 을 다시 재면 이미 그려져 있던
+    // 걸 또 확인하는 것뿐이라 디바운스가 끝나기도 전에 항상 통과한다(tests/AGENTS.md 규칙 2, 음성
+    // 대조로 실측). 예전 코드라면 이 왕복이 401 을 돌려주고 `AuthGate` 가 `phase: 'login'` 으로
+    // 바뀌어 `main#shell-main` 이 사라진다.
+    const [response] = await Promise.all([
+      pageA.waitForResponse((res) => res.url().includes('/api/me'), { timeout: 10_000 }),
+      pageA.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))),
+    ]);
+    expect(response.status()).toBe(200);
+    await expect(pageA.getByRole('main')).toBeVisible();
+
+    await ctxA.close();
+    await ctxB.close();
+  });
+});
+
+test.describe('동기화: 다른 기기 모두 로그아웃(ADR-0020 §결정 5, 리뷰 Minor 4)', () => {
+  test('A 가 누르면 A 는 로그인 상태를 유지하고, B 는 다음 확인에서 로그인 화면으로 돌아간다', async ({
+    browser,
+  }) => {
+    const account = randomAccount();
+    const ctxA = await browser.newContext();
+    const ctxB = await browser.newContext();
+    const pageA = await ctxA.newPage();
+    const pageB = await ctxB.newPage();
+
+    // 진짜 두 번째 로그인(ADR-0020) — A·B 가 서로 다른, 둘 다 유효한 세션 행을 갖는다.
+    await stubLogin(pageA, account);
+    await stubLogin(pageB, account);
+    await waitForShell(pageA);
+    await waitForShell(pageB);
+
+    await pageA.getByRole('button', { name: '다른 기기 모두 로그아웃' }).click();
+    await pageA
+      .getByRole('alertdialog', { name: '다른 기기를 모두 로그아웃할까요?' })
+      .getByRole('button', { name: '로그아웃' })
+      .click();
+    await expect(pageA.getByText('다른 기기를 로그아웃했어요.')).toBeVisible();
+
+    // A: 이 기기 자신은 로그인 상태를 유지한다 — 새로고침해도 셸이 그대로 보인다.
+    await pageA.reload();
+    await waitForShell(pageA);
+
+    // B: 다음 확인(visibilitychange 트리거)에서 401 을 받아 로그인 화면으로 돌아간다. `sync-engine.ts`
+    // 의 확인 사이클(`verifySession`)이 `/api/me` 를 부르고, 세션이 없어졌으니 `AuthGate` 가
+    // `phase: 'login'` 으로 바뀌어 `main#shell-main` 이 사라진다(리뷰 Major 3, user — 로그인 화면이
+    // "왜" 인지 한 줄을 남긴다).
+    const [response] = await Promise.all([
+      pageB.waitForResponse((res) => res.url().includes('/api/me'), { timeout: 10_000 }),
+      pageB.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))),
+    ]);
+    expect(response.status()).toBe(401);
+    await expect(pageB.getByRole('link', { name: 'Google로 계속하기' })).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(
+      pageB.getByText(
+        '로그인이 풀렸어요. 세션이 만료되었거나 다른 기기에서 로그아웃했을 수 있어요.',
+      ),
+    ).toBeVisible();
 
     await ctxA.close();
     await ctxB.close();

@@ -5,9 +5,12 @@
 // `handleLogin`) 진짜 `<a>` 로 충분하다 — onClick 도 fetch 도 필요 없다.
 import { useSyncStore } from '@/features/sync/store/sync-store';
 
-const NOTICE_TEXT: Record<'denied' | 'error', string> = {
+const NOTICE_TEXT: Record<'denied' | 'error' | 'signed-out', string> = {
   denied: '로그인이 취소됐어요. 다시 시도해 주세요.',
   error: '로그인 중 문제가 생겼어요. 다시 시도해 주세요.',
+  // 리뷰 Major 3(user) — 세션 만료와 "다른 기기 모두 로그아웃" 둘 다 같은 경로(verifySession)로
+  // 여기 온다. 어느 쪽인지 서버가 구분해 알려주지 않으니(범위 밖) 둘 다 아우르는 문구만 쓴다.
+  'signed-out': '로그인이 풀렸어요. 세션이 만료되었거나 다른 기기에서 로그아웃했을 수 있어요.',
 };
 
 export function LoginScreen() {

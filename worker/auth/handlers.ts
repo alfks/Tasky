@@ -11,9 +11,10 @@ import {
 import { createGoogleProvider } from './google';
 import { randomToken, signValue, verifySignedValue } from './hmac';
 import { codeChallengeS256 } from './pkce';
-import { createSession, destroySession, requireSession } from './session';
+import { destroyOtherSessions, destroySession, requireSession, signIn } from './session';
 
 import type { Env } from '../env';
+import type { SessionResult } from './session';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -22,6 +23,24 @@ function json(body: unknown, init: ResponseInit = {}): Response {
     ...init,
     headers: { ...JSON_HEADERS, ...init.headers },
   });
+}
+
+/**
+ * `requireSession` 실패를 한 형태로 돌린다 — 401 은 몸 없는 JSON 에러, 410 은 `account-deleted`
+ * 본문 + `Set-Cookie` 로 쿠키를 지운다(`worker/router.ts` 의 `/api/sync`·`/api/account/delete` 와
+ * 동일 규약, `handleMe` 도 이 함수를 쓴다). **410 은 이 세션 행이 지워지는 유일한 순간이다** —
+ * `requireSession` 이 지연 정리로 그 자리에서 행을 지우므로, 그 요청에 몸과 쿠키 클리어를 함께
+ * 실어 보내지 않으면 그 정보(왜 로그아웃됐는지)는 영영 사라진다(리뷰 Finding 1). 이 함수를 거치지
+ * 않고 `requireSession` 의 실패를 직접 응답으로 바꾸는 핸들러를 새로 만들지 않는다.
+ */
+export function sessionErrorResponse(session: Extract<SessionResult, { ok: false }>): Response {
+  if (session.status === 410) {
+    return json(
+      { error: 'account-deleted' },
+      { status: 410, headers: { 'Set-Cookie': clearSessionCookie() } },
+    );
+  }
+  return json({ error: 'unauthorized' }, { status: 401 });
 }
 
 function googleFor(request: Request, env: Env) {
@@ -103,28 +122,28 @@ export async function handleCallback(request: Request, env: Env, now: string): P
     return redirect('?auth=error');
   }
 
-  await env.DB.prepare(
-    'INSERT INTO users (sub, email, created_at) VALUES (?, ?, ?) ON CONFLICT(sub) DO UPDATE SET email = excluded.email',
-  )
-    .bind(identity.sub, identity.email, now)
-    .run();
-  // 삭제된 계정 기록이 있으면 재로그인 시점에 지운다 — 본인이 같은 구글 계정으로 다시 가입하는
-  // 정상 흐름을 영구히 막지 않는다(docs/specs/sync.md §6 "함정" 각주, ADR-0019 §계정 삭제).
+  // `users` upsert · 세션 전량 폐기 판정 · `deleted_users` 표식 삭제 · 새 세션 발급은
+  // `session.ts#signIn` 한 곳으로 합쳐져 있다(ADR-0020) — 로컬 스텁(`stub.ts#handleStubLogin`)도
+  // 같은 함수를 부른다.
   //
-  // **정정(이전 판은 틀렸다)**: 예전 주석은 "이 시점의 부활 위험은 여기서 발생하지 않는다 — 다른
-  // 기기의 다음 요청은 자신의 세션으로 인증하고, 그 세션은 삭제 시점에 이미 deleted_users 로
-  // 걸러졌을 것"이라고 단언했는데, 그 전제가 틀렸다 — **걸러지는 것은 "다음 요청을 보낸" 세션뿐**
-  // 이다(session.ts#requireSession 의 410 판정은 요청이 와야 발동하는 지연 정리다). 삭제 창 동안
-  // 그 기기가 요청을 한 번도 안 보내면 `sessions` 행은 손대지 않은 채 그대로 남는다. 세션 쿠키를
-  // 탈취당한 사용자가 계정을 지워 그 세션을 무력화하려 해도, 걸러지지 않은 그 세션 행이 남아있는
-  // 채로 같은 구글 계정으로 재가입하면 아래 `DELETE FROM deleted_users` 가 "삭제됨" 표식을 지우는
-  // 순간 그 탈취된 쿠키가 다시 유효해진다(실 D1 재현됨). 그래서 `deleted_users` 를 지우기 **전에**
-  // 이 sub 의 `sessions` 를 전부 지운다 — 재가입으로 방금 만든 새 세션(아래 `createSession`)은 이
-  // 문장 **뒤에** 발급되므로 영향받지 않는다.
-  await env.DB.prepare('DELETE FROM sessions WHERE sub = ?').bind(identity.sub).run();
-  await env.DB.prepare('DELETE FROM deleted_users WHERE sub = ?').bind(identity.sub).run();
-
-  const { signedSid } = await createSession(env, identity.sub, now);
+  // **정정(이전 판은 무조건 폐기했다)**: 예전엔 로그인마다 무조건 `DELETE FROM sessions WHERE
+  // sub = ?` 를 돌렸다. 그 이유였던 공격은 그대로 실재한다 — 삭제된 계정 기록(`deleted_users`)이
+  // 있으면 재가입 시점에 지워야 본인이 같은 구글 계정으로 다시 가입하는 정상 흐름을 영구히 막지
+  // 않는데(docs/specs/sync.md §6 "함정" 각주, ADR-0019 §계정 삭제), **걸러지는 것은 "다음 요청을
+  // 보낸" 세션뿐**이다(`session.ts#requireSession` 의 410 판정은 요청이 와야 발동하는 지연 정리다).
+  // 삭제 창 동안 요청을 한 번도 안 보낸 세션(탈취된 쿠키 포함)은 `sessions` 행이 손대지 않은 채
+  // 남고, `deleted_users` 표식을 지우는 순간 되살아난다(실 D1 재현됨). 그런데 **무조건 폐기는 이
+  // 방어와 무관한 대가를 치렀다** — 같은 계정으로 이미 로그인해 있던 다른 기기의 세션까지 매
+  // 로그인마다 같이 죽였다(사용자 보고 버그). SYNC_DESIGN.md §②-3 은 `/auth/logout` 을 "자기
+  // `sid` 행만 삭제(다른 기기 유지)" 로 이미 적어 두었었다 — 세션이 기기마다 따로 사는 것이 원래
+  // 설계였고, 로그인 시점의 전량 폐기만 그 설계와 어긋나 있었다.
+  //
+  // **그래서 폐기를 없애는 대신 조건을 건다**: `deleted_users` 에 이 sub 행이 있을 때만 지운다
+  // (`signIn` 내부의 `EXISTS` 판정, 판정과 삭제를 한 문장에 둔다 — ADR-0020 §3). 재가입이 아닌
+  // 평범한 로그인은 `deleted_users` 행이 없으므로 그 문장이 0행에 맞아 다른 기기를 살려 두고,
+  // 재가입일 때만 옛 코드와 같은 결과(그 sub 의 세션 전량 삭제 후 새 세션 발급)를 낸다 — 옛
+  // 코드의 순서 보장(폐기 → 표식 삭제 → 새 세션 발급)은 그대로다.
+  const { signedSid } = await signIn(env, identity, now);
   return new Response(null, {
     status: 302,
     headers: {
@@ -134,26 +153,52 @@ export async function handleCallback(request: Request, env: Env, now: string): P
   });
 }
 
+/**
+ * **리뷰 Finding 1 판단**: 실패 분기(만료/위조/이미 삭제된 세션)에도 `sessionErrorResponse` 를
+ * 쓴다. 이 핸들러는 클라이언트가 "어차피 로그아웃할 생각"으로 부르는 경로라(`performLogout` 이
+ * 서버 실패를 그냥 삼키고 로컬 정리를 진행한다) `handleLogoutOthers` 만큼 몸의 내용 자체가
+ * 절박하지는 않지만, 쿠키를 지우지 않으면 이미 서버에서 지워진 세션의 쿠키가 브라우저에 계속
+ * 남는다(무해하지만 불필요하다) — `sessionErrorResponse` 를 쓰는 데 비용이 없으므로 핸들러마다
+ * 응답 모양을 다르게 두지 않고 같은 경로로 통일한다.
+ */
 export async function handleLogout(request: Request, env: Env, now: string): Promise<Response> {
   const result = await requireSession(request, env, now);
-  if (!result.ok) {
-    return new Response(null, { status: result.status === 410 ? 410 : 401 });
-  }
+  if (!result.ok) return sessionErrorResponse(result);
   await destroySession(env, result.sid);
   return new Response(null, { status: 204, headers: { 'Set-Cookie': clearSessionCookie() } });
 }
 
+/**
+ * "다른 기기 모두 로그아웃"(ADR-0020 §결정 5) — 호출자의 세션은 그대로 두고 그 `sub` 의 나머지
+ * `sessions` 행만 지운다. 슬라이딩 갱신을 그대로 적용한다(`/api/sync` 와 같은 이유 — 호출자
+ * 세션은 이 요청 뒤에도 계속 쓰이므로 갱신 기회를 놓치지 않는다).
+ *
+ * **리뷰 Finding 1 수정**: `requireSession` 의 410 은 그 세션 행을 지우는 **유일한 기회**이자
+ * **1회성 신호**다(지연 정리) — 이 응답에서 `sessionErrorResponse` 가 같은 몸으로 쿠키까지
+ * 지우므로, 클라이언트가 이 410 을 그 자리에서 쓰지 않으면 다음 `/api/me` 는 행도 쿠키도 이미
+ * 없어 평범한 401 만 보고 그 뜻("계정이 삭제됐다")은 영영 사라진다. 그래서 `sessionErrorResponse`
+ * 로 `handleMe` 와 같은 몸(`{error:'account-deleted'}`)과 `Set-Cookie` 클리어를 함께 보낸다 —
+ * 클라이언트(`performLogoutOthers`, `src/features/sync/store/auth-actions.ts`)는 `isTransportError`
+ * 로 실패를 갈래별로 나누고(9b6b2a3), `account-deleted` 갈래에서는 `verifySession` 을 다시 불러
+ * `/api/me` 를 재확인하지 않고 `accountDeletedNotice` 를 그 자리에서 직접 켠다(646defb) — 재확인
+ * 왕복 한 번이 이 1회성 신호를 평범한 401 로 바꿔 안내를 띄울 기회를 날려버리기 때문이다.
+ */
+export async function handleLogoutOthers(
+  request: Request,
+  env: Env,
+  now: string,
+): Promise<Response> {
+  const result = await requireSession(request, env, now);
+  if (!result.ok) return sessionErrorResponse(result);
+  await destroyOtherSessions(env, result.sub, result.sid);
+  const headers: Record<string, string> = {};
+  if (result.refreshedCookie) headers['Set-Cookie'] = setSessionCookie(result.refreshedCookie);
+  return new Response(null, { status: 204, headers });
+}
+
 export async function handleMe(request: Request, env: Env, now: string): Promise<Response> {
   const result = await requireSession(request, env, now);
-  if (!result.ok) {
-    if (result.status === 410) {
-      return json(
-        { error: 'account-deleted' },
-        { status: 410, headers: { 'Set-Cookie': clearSessionCookie() } },
-      );
-    }
-    return json({ error: 'unauthorized' }, { status: 401 });
-  }
+  if (!result.ok) return sessionErrorResponse(result);
   const row = await env.DB.prepare('SELECT email FROM users WHERE sub = ?')
     .bind(result.sub)
     .first<{ email: string }>();

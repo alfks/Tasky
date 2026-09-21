@@ -45,6 +45,18 @@ function meRequest(signedSid: string): Request {
   });
 }
 
+/** 스텁 로그인 응답의 `Set-Cookie` 에서 `signIn` 이 돌려준 것과 같은 형태(sid.서명, 디코드된
+ * 값)의 signedSid 를 되돌린다 — `meRequest`/`createSession` 이 쓰는 형태와 맞춘다. */
+function signedSidFromSetCookie(setCookie: string | null): string {
+  const match = setCookie?.match(/tasky_session=([^;]+)/);
+  if (!match) throw new Error('Set-Cookie 에 tasky_session 이 없습니다');
+  return decodeURIComponent(match[1]);
+}
+
+function stubLoginRequest(sub: string): Request {
+  return new Request(`https://localhost/auth/stub-login?sub=${sub}&email=${sub}@x.com`);
+}
+
 describe('POST /api/account/delete — 순서와 다른 기기의 관측', () => {
   it('삭제한 기기 자신은 204 를 받고 쿠키가 지워진다', async () => {
     const fx = await createD1Fixture();
@@ -217,6 +229,67 @@ describe('POST /api/account/delete — 순서와 다른 기기의 관측', () =>
       // 때문이다(그 세션 행이 재가입 시점에 함께 지워졌다는 뜻).
       const meRes = await handleRequest(meRequest(stolenSession.signedSid), env, now);
       expect(meRes.status).toBe(401);
+    } finally {
+      await fx.dispose();
+    }
+  });
+
+  it('탈취 세션과 삭제 창 동안 오프라인이었던 정당한 기기(C) 는 재가입 뒤 둘 다 401 이고, 재가입이 만든 새 세션은 200', async () => {
+    // ADR-0020 §3 "남는 위험"의 변형 — 조건부 폐기는 sub 단위라 "누가 탈취했고 누가 정당한지"를
+    // 구분하지 못한다. 삭제 창 동안 오프라인이었던 정당한 기기도 재가입 시점에 함께 지워진다(옛
+    // 코드와 같은 결과, ADR-0019 §결정 5 괄호 그대로) — 이 테스트는 그 대가가 재가입 이후에도
+    // 여전히 사실인지, 그리고 재가입이 만든 새 세션은 정상 동작하는지를 함께 확인한다.
+    const fx = await createD1Fixture();
+    try {
+      const now = '2026-01-01T00:00:00.000Z';
+      const sub = 'sub-offline-c';
+      await seedUser(fx, sub, now);
+      const env: Env = { ...envOf(fx), AUTH_STUB: '1' };
+      const deletingSession = await createSession(env, sub, now);
+      const stolenSession = await createSession(env, sub, now); // 탈취된 쿠키, 삭제 창 동안 침묵
+      const offlineCSession = await createSession(env, sub, now); // 정당한 기기, 삭제 창 동안 오프라인
+
+      const deleteRes = await handleRequest(deleteRequest(deletingSession.signedSid), env, now);
+      expect(deleteRes.status).toBe(204);
+
+      const stubRes = await handleRequest(stubLoginRequest(sub), env, now);
+      expect(stubRes.status).toBe(302);
+      const newSignedSid = signedSidFromSetCookie(stubRes.headers.get('Set-Cookie'));
+
+      const stolenRes = await handleRequest(meRequest(stolenSession.signedSid), env, now);
+      expect(stolenRes.status).toBe(401);
+      const offlineCRes = await handleRequest(meRequest(offlineCSession.signedSid), env, now);
+      expect(offlineCRes.status).toBe(401);
+
+      const newRes = await handleRequest(meRequest(newSignedSid), env, now);
+      expect(newRes.status).toBe(200);
+    } finally {
+      await fx.dispose();
+    }
+  });
+
+  it('삭제 뒤 재가입을 두 번 연속 해도 첫 재가입 세션은 두 번째 재가입 때문에 지워지지 않는다(EXISTS 가 두 번째엔 거짓)', async () => {
+    // ADR-0020 §3 "변형들"의 동시 재가입 레이스 — 여기서는 순차적으로 재현한다. 첫 재가입이
+    // deleted_users 표식을 지우고 나면, 곧바로 이어지는 두 번째 재가입(같은 sub)의 조건부 폐기는
+    // EXISTS 가 거짓이라 0행에 맞아야 한다 — 첫 재가입이 막 발급한 세션을 두 번째 로그인이 지우면
+    // "재가입 뒤 정당한 세션이 곧바로 로그아웃된다"는 새 회귀가 생긴다.
+    const fx = await createD1Fixture();
+    try {
+      const now = '2026-01-01T00:00:00.000Z';
+      const sub = 'sub-double-relogin';
+      await seedUser(fx, sub, now);
+      const env: Env = { ...envOf(fx), AUTH_STUB: '1' };
+      const session = await createSession(env, sub, now);
+      await handleRequest(deleteRequest(session.signedSid), env, now);
+
+      const firstRes = await handleRequest(stubLoginRequest(sub), env, now);
+      const firstSignedSid = signedSidFromSetCookie(firstRes.headers.get('Set-Cookie'));
+
+      const secondRes = await handleRequest(stubLoginRequest(sub), env, now);
+      expect(secondRes.status).toBe(302);
+
+      const firstStillOk = await handleRequest(meRequest(firstSignedSid), env, now);
+      expect(firstStillOk.status).toBe(200);
     } finally {
       await fx.dispose();
     }

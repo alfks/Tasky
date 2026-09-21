@@ -77,5 +77,12 @@ export function createHttpSyncTransport(): SyncTransport {
         throw failureFor(response.status);
       }
     },
+
+    logoutOthers: async () => {
+      const response = await safeFetch('/auth/logout-others', { method: 'POST', headers: HEADERS });
+      if (!response.ok) {
+        throw failureFor(response.status);
+      }
+    },
   };
 }
