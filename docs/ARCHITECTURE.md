@@ -107,14 +107,14 @@ Tasky/
     │   ├── todo/  category/  date/  theme/  focus/  backup/  dday/  diary/  routine/  sync/(순수 규칙만 — 서버 LWW·클라이언트 병합·아웃박스·와이어)
     │   └── meta.ts(Meta, Persistable, createMeta/touch/markDeleted/adopt)  ids.ts  dataset.ts  errors.ts
     ├── repositories/   → src/repositories/AGENTS.md
-    │   ├── todo-repository.ts  category-repository.ts  settings-repository.ts  focus-session-repository.ts  dataset-repository.ts  dday-repository.ts  diary-repository.ts  routine-repository.ts
+    │   ├── todo-repository.ts  category-repository.ts  settings-repository.ts  focus-session-repository.ts  dataset-repository.ts  dday-repository.ts  diary-repository.ts  routine-repository.ts  sync-repository.ts  sync-transport.ts
     │   ├── memory/           in-memory 구현(테스트) + live.ts(툼스톤 필터 헬퍼)
     │   ├── container.ts      컨테이너(get/setRepositories)
     │   └── write-plan.ts     데이터셋 쓰기 1단계(해석·검증) — memory·indexeddb 두 구현이 공용
     ├── infra/          → src/infra/AGENTS.md
     │   ├── indexeddb/        db.ts(Dexie 스키마·버전) · query.ts(조회 liveAll/liveOne/liveBy/liveBetween/liveOrderBy · 툼스톤만 deletedByIds · 쓰기 put · DatasetRepository 전용 allRows/clear/bulkPut/store.transaction · 스키마 열기 store.open · 묶음 Store/tables/createStore/storeOn) · *-indexeddb-repository.ts · repositories.ts(조립)
-    │   └── sync/             (아직 없음 — Worker 왕복이 붙을 자리. 순수 규칙은 domain/sync/ 에 이미 있다)
-    ├── lib/            → src/lib/AGENTS.md            cn.ts, date.ts(nowIso), id.ts(newId), a11y.ts, ime.ts, korean.ts, focus-fallback.ts, drag-order.ts
+    │   └── sync/             http-transport.ts(Worker 왕복). 순수 규칙은 domain/sync/, 계약은 repositories/sync-*
+    ├── lib/            → src/lib/AGENTS.md            cn.ts, date.ts(nowIso), id.ts(newId), a11y.ts, ime.ts, korean.ts, focus-fallback.ts, drag-order.ts, write-signal.ts
     ├── styles/         → src/styles/AGENTS.md         tokens.css, globals.css (.css 만)
     └── test/           → src/test/AGENTS.md           setup.ts, fixtures/
 ```

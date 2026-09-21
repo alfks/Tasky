@@ -38,11 +38,13 @@ E2E 브라우저는 설치돼 있다(`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`
 
 ## 동기화(로그인) 로컬 개발
 
-동기화는 Cloudflare Worker(`worker/`)가 붙어야 실제로 동작한다. **`becf8ae` 기준으로 Worker
-코드·D1 마이그레이션 파일이 아직 없다**(T-92 의 남은 부분·T-93·T-94). 지금 들어가 있는 것은 둘이다:
+동기화는 Cloudflare Worker(`worker/`)가 붙어야 실제로 동작한다. **#127 기준으로 Worker
+코드·D1 마이그레이션 파일이 아직 없다**(T-93·T-94). 지금 들어가 있는 것은 셋이다:
 배선(`wrangler.jsonc` 의 D1 바인딩 `DB`/`tasky`·`GOOGLE_CLIENT_ID` vars, `.env.example`·
-`.dev.vars.example` 의 관련 키 — #109)과 **순수 도메인 계층**(`src/domain/sync/` — 서버 규칙
-`updatedAt` LWW·클라이언트 병합·아웃박스·와이어 포맷, #114). 화면(로그인·상태 표시)도 아직 없다. Worker 가 붙은 뒤에는 아래 절차로 로컬에서 로그인·동기화를
+`.dev.vars.example` 의 관련 키 — #109), **순수 도메인 계층**(`src/domain/sync/` — 서버 규칙
+`updatedAt` LWW·클라이언트 병합·아웃박스·와이어 포맷, #114·#121), 그리고 **저장소 계층**
+(`src/repositories/sync-*`·`memory/sync-*` 의 가짜 서버·`src/infra/sync/http-transport.ts` — #123).
+화면(로그인·상태 표시)은 아직 없다. Worker 가 붙은 뒤에는 아래 절차로 로컬에서 로그인·동기화를
 확인한다(SYNC_CREDENTIALS_GUIDE.md §2·§9-7).
 
 ```bash
