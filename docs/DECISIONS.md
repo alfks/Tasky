@@ -28,5 +28,5 @@
 
 ## 예정(초안 필요 시 번호 예약 없이 작성)
 
-- **ADR-0018 동기화 구조**(아웃박스·슬롯 id·서버 규칙·세션·격리·GC. ADR-0009 규칙 1 의 `adopt` 호출처를 넓히고 ADR-0017 을 부분 supersede) — 설계는 [SYNC_DESIGN.md](./SYNC_DESIGN.md) §T-90 에 끝나 있고 ADR 파일만 아직 없다.
+- **툼스톤 GC(`users.gc_floor`)** — `gc_floor` 계산과 `entities` 물리 삭제를 한 커밋에 넣는 후속(T-101, [PHASE2_TICKET_BACKLOG.md](./PHASE2_TICKET_BACKLOG.md) 후속 백로그). 구현할 때 ADR-0019 를 개정하거나 새 ADR 로 결정(세션·기기 행 정리 시점 포함)을 남긴다. ADR-0018·ADR-0019 는 위 표대로 이미 accepted 다 — 예전에 여기 있던 "ADR-0018 파일만 아직 없다" 는 #121 로 해소됐다.
 - SNS 데이터 모델(Phase 3).
