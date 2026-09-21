@@ -7,7 +7,7 @@
 Playwright E2E(`tests/e2e/`). **합격/불합격을 내는** 유일한 브라우저 테스트다. 값을 찍어 보고서에
 옮기는 계측 도구는 `tests/feel/`(별도 AGENTS.md) — 성격이 다르니 섞지 않는다.
 
-## 여기 있는 것 (11개 스펙 · 35건 — `9402724` 기준)
+## 여기 있는 것 (11개 스펙 · 35건 — `becf8ae` 기준)
 
 `selection-ring` 9 · `hover-and-focus` 6 · `smoke` 3 · `cross-category-drag` 3 · `category-reorder` 3 ·
 `pomodoro` 3 · `emoji-picker` 3 · `month-view` 2 · `narrow-viewport` 1 · `reports-overflow` 1 ·
