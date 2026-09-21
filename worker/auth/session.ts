@@ -142,3 +142,15 @@ export async function requireSession(
 export async function destroySession(env: Env, sid: string): Promise<void> {
   await env.DB.prepare('DELETE FROM sessions WHERE sid = ?').bind(sid).run();
 }
+
+/**
+ * "다른 기기 모두 로그아웃"(`POST /auth/logout-others`, ADR-0020 §결정 5) — 호출자의 `sid` 는
+ * 남기고 그 `sub` 의 나머지 `sessions` 행을 전부 지운다. **`sessions` 를 `sub` 단위로 지우는
+ * 문장은 이 함수와 `signIn` 두 곳뿐이어야 한다**(ADR-0020 "지켜야 할 규칙" 1) — `sid <> ?` 조건이
+ * 호출자 자신을 로그아웃시키는 것을 막는 유일한 장치이므로, 다른 곳에 비슷한 삭제문을 새로 두지
+ * 않는다. 탈취된 세션이 슬라이딩 갱신으로 무기한 사는 문제(ADR-0020 §결과 "감수하는 점")에 대해
+ * 사용자가 계정 삭제 없이 쓸 수 있는 명시적 취소 수단이다.
+ */
+export async function destroyOtherSessions(env: Env, sub: string, sid: string): Promise<void> {
+  await env.DB.prepare('DELETE FROM sessions WHERE sub = ? AND sid <> ?').bind(sub, sid).run();
+}

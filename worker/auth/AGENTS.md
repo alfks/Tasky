@@ -7,7 +7,7 @@
 구글 OAuth·세션 쿠키(SYNC_DESIGN.md §②-4). `cookies.ts`·`hmac.ts`·`pkce.ts`(원시함수) ·
 `provider.ts`(인터페이스) · `google.ts`·`stub.ts`(구현) · `session.ts`(발급·검증 — **`sessions`
 테이블 조회는 이 파일에만** 있다, 아래 규칙 2) · `handlers.ts`(`/auth/login`·`/auth/callback`·
-`/auth/logout`·`/api/me`).
+`/auth/logout`·`/auth/logout-others`·`/api/me`).
 
 ## 규칙 (이 디렉토리에만 적용)
 
@@ -25,6 +25,10 @@
    건드리지 않는다 — 재가입일 때만 그 sub 의 세션 전량을 지워, 삭제 창 동안 요청을 한 번도 안
    보낸 세션(탈취된 쿠키 포함)이 되살아나는 것을 막는다(`session.ts#signIn` jsdoc, 실 D1 재현됨).
    `sessions` 를 sub 단위로 지우는 문장을 이 함수 밖에 새로 두지 않는다.
+   **다른 기기 모두 로그아웃**(`POST /auth/logout-others`, ADR-0020 §결정 5)은
+   `session.ts#destroyOtherSessions(sub, sid)`(`DELETE … WHERE sub = ? AND sid <> ?`) 하나다 —
+   `sid <> ?` 가 호출자 자신의 세션을 지우지 않게 막는다. `sessions` 를 sub 단위로 지우는 문장은
+   이제 `signIn`(재가입)과 `destroyOtherSessions`(이 경로) 두 곳뿐이다.
 4. **세션 서명 검증(`hmac.ts#verifySignedValue`)이 D1 조회보다 먼저** — 위조 쿠키로 D1 을 두드리게
    하지 않는다(`session.ts#requireSession`).
 

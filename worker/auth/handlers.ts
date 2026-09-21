@@ -11,7 +11,7 @@ import {
 import { createGoogleProvider } from './google';
 import { randomToken, signValue, verifySignedValue } from './hmac';
 import { codeChallengeS256 } from './pkce';
-import { destroySession, requireSession, signIn } from './session';
+import { destroyOtherSessions, destroySession, requireSession, signIn } from './session';
 
 import type { Env } from '../env';
 
@@ -141,6 +141,22 @@ export async function handleLogout(request: Request, env: Env, now: string): Pro
   }
   await destroySession(env, result.sid);
   return new Response(null, { status: 204, headers: { 'Set-Cookie': clearSessionCookie() } });
+}
+
+/**
+ * "다른 기기 모두 로그아웃"(ADR-0020 §결정 5) — 호출자의 세션은 그대로 두고 그 `sub` 의 나머지
+ * `sessions` 행만 지운다. 슬라이딩 갱신을 그대로 적용한다(`/api/sync` 와 같은 이유 — 호출자
+ * 세션은 이 요청 뒤에도 계속 쓰이므로 갱신 기회를 놓치지 않는다).
+ */
+export async function handleLogoutOthers(request: Request, env: Env, now: string): Promise<Response> {
+  const result = await requireSession(request, env, now);
+  if (!result.ok) {
+    return new Response(null, { status: result.status === 410 ? 410 : 401 });
+  }
+  await destroyOtherSessions(env, result.sub, result.sid);
+  const headers: Record<string, string> = {};
+  if (result.refreshedCookie) headers['Set-Cookie'] = setSessionCookie(result.refreshedCookie);
+  return new Response(null, { status: 204, headers });
 }
 
 export async function handleMe(request: Request, env: Env, now: string): Promise<Response> {

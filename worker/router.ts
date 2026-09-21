@@ -3,7 +3,13 @@
 // (`run_worker_first`) — 이 파일은 `/api/*`·`/auth/*` 만 안다.
 import { handleAccountDelete } from './account/delete';
 import { clearSessionCookie, setSessionCookie } from './auth/cookies';
-import { handleCallback, handleLogin, handleLogout, handleMe } from './auth/handlers';
+import {
+  handleCallback,
+  handleLogin,
+  handleLogout,
+  handleLogoutOthers,
+  handleMe,
+} from './auth/handlers';
 import { requireSession, type SessionResult } from './auth/session';
 import { handleStubLogin } from './auth/stub';
 import { forUser } from './db/user-db';
@@ -86,6 +92,11 @@ export async function handleRequest(request: Request, env: Env, now: string): Pr
   if (method === 'POST' && pathname === '/auth/logout') {
     if (!hasCsrfHeader(request)) return csrfRejected();
     return handleLogout(request, env, now);
+  }
+
+  if (method === 'POST' && pathname === '/auth/logout-others') {
+    if (!hasCsrfHeader(request)) return csrfRejected();
+    return handleLogoutOthers(request, env, now);
   }
 
   if (method === 'GET' && pathname === '/api/me') return handleMe(request, env, now);

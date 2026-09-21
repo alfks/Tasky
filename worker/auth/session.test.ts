@@ -2,7 +2,7 @@
 // **돌연변이 4**(HMAC 비교 삭제)의 목표 테스트: `위조 쿠키는 401` 이 이 파일에서 빨개져야 한다.
 import { describe, expect, it } from 'vitest';
 
-import { createSession, requireSession, signIn } from './session';
+import { createSession, destroyOtherSessions, requireSession, signIn } from './session';
 import { createD1Fixture, type D1Fixture } from '../test/d1-harness';
 
 import type { Env } from '../env';
@@ -276,6 +276,137 @@ describe('signIn', () => {
         .bind('sub-upsert')
         .first<{ email: string }>();
       expect(row?.email).toBe('new@x.com');
+    } finally {
+      await fx.dispose();
+    }
+  });
+});
+
+// destroyOtherSessions — "다른 기기 모두 로그아웃"(ADR-0020 §결정 5). 호출자 자신의 세션은
+// `sid <> ?` 로 살아남고, 같은 sub 의 나머지·다른 sub 의 세션은 손대지 않아야 하는 대칭도 함께 본다.
+describe('destroyOtherSessions', () => {
+  it('A·B·C 세 세션 중 A 호출 → B·C 는 지워지고 A 는 살아 있다', async () => {
+    const fx = await createD1Fixture();
+    try {
+      const now = '2026-01-01T00:00:00.000Z';
+      const env = envOf(fx);
+      const a = await signIn(env, { sub: 'sub-multi', email: 'm@x.com' }, now);
+      const b = await createSession(env, 'sub-multi', now);
+      const c = await createSession(env, 'sub-multi', now);
+      const [sidA] = a.signedSid.split('.');
+      const [sidB] = b.signedSid.split('.');
+      const [sidC] = c.signedSid.split('.');
+
+      await destroyOtherSessions(env, 'sub-multi', sidA ?? '');
+
+      const rowA = await fx.db.prepare('SELECT 1 FROM sessions WHERE sid = ?').bind(sidA).first();
+      const rowB = await fx.db.prepare('SELECT 1 FROM sessions WHERE sid = ?').bind(sidB).first();
+      const rowC = await fx.db.prepare('SELECT 1 FROM sessions WHERE sid = ?').bind(sidC).first();
+      expect(rowA).not.toBeNull(); // 호출자 자신은 살아 있다
+      expect(rowB).toBeNull();
+      expect(rowC).toBeNull();
+    } finally {
+      await fx.dispose();
+    }
+  });
+
+  it('다른 sub 의 세션은 건드리지 않는다', async () => {
+    const fx = await createD1Fixture();
+    try {
+      const now = '2026-01-01T00:00:00.000Z';
+      const env = envOf(fx);
+      const mine = await signIn(env, { sub: 'sub-mine', email: 'mine@x.com' }, now);
+      const other = await signIn(env, { sub: 'sub-other', email: 'other@x.com' }, now);
+      const [sidMine] = mine.signedSid.split('.');
+      const [sidOther] = other.signedSid.split('.');
+
+      await destroyOtherSessions(env, 'sub-mine', sidMine ?? '');
+
+      const rowOther = await fx.db
+        .prepare('SELECT 1 FROM sessions WHERE sid = ?')
+        .bind(sidOther)
+        .first();
+      expect(rowOther).not.toBeNull();
+    } finally {
+      await fx.dispose();
+    }
+  });
+});
+
+// handleLogoutOthers — 라우터를 통해 CSRF·인증·자기 세션 보존을 끝까지 검증한다.
+describe('POST /auth/logout-others', () => {
+  it('인증되지 않은 호출은 401', async () => {
+    const fx = await createD1Fixture();
+    try {
+      const { handleRequest } = await import('../router');
+      const req = new Request('https://tasky.example.workers.dev/auth/logout-others', {
+        method: 'POST',
+        headers: { 'X-Tasky': '1' },
+      });
+      const res = await handleRequest(req, envOf(fx), '2026-01-01T00:00:00.000Z');
+      expect(res.status).toBe(401);
+    } finally {
+      await fx.dispose();
+    }
+  });
+
+  it('CSRF 헤더가 없으면 403(인증 여부와 무관)', async () => {
+    const fx = await createD1Fixture();
+    try {
+      const now = '2026-01-01T00:00:00.000Z';
+      const env = envOf(fx);
+      const { signedSid } = await signIn(env, { sub: 'sub-csrf', email: 'c@x.com' }, now);
+      const { handleRequest } = await import('../router');
+      const req = new Request('https://tasky.example.workers.dev/auth/logout-others', {
+        method: 'POST',
+        headers: { Cookie: `tasky_session=${encodeURIComponent(signedSid)}` },
+      });
+      const res = await handleRequest(req, env, now);
+      expect(res.status).toBe(403);
+    } finally {
+      await fx.dispose();
+    }
+  });
+
+  it('호출자 세션은 유지하고 나머지만 지운다 — /api/me 로 끝까지 확인', async () => {
+    const fx = await createD1Fixture();
+    try {
+      const now = '2026-01-01T00:00:00.000Z';
+      const env = envOf(fx);
+      const a = await signIn(env, { sub: 'sub-e2e', email: 'e@x.com' }, now);
+      const b = await createSession(env, 'sub-e2e', now);
+      const { handleRequest } = await import('../router');
+
+      const logoutOthersReq = new Request(
+        'https://tasky.example.workers.dev/auth/logout-others',
+        {
+          method: 'POST',
+          headers: {
+            'X-Tasky': '1',
+            Cookie: `tasky_session=${encodeURIComponent(a.signedSid)}`,
+          },
+        },
+      );
+      const res = await handleRequest(logoutOthersReq, env, now);
+      expect(res.status).toBe(204);
+
+      const meAsA = await handleRequest(
+        new Request('https://tasky.example.workers.dev/api/me', {
+          headers: { Cookie: `tasky_session=${encodeURIComponent(a.signedSid)}` },
+        }),
+        env,
+        now,
+      );
+      expect(meAsA.status).toBe(200);
+
+      const meAsB = await handleRequest(
+        new Request('https://tasky.example.workers.dev/api/me', {
+          headers: { Cookie: `tasky_session=${encodeURIComponent(b.signedSid)}` },
+        }),
+        env,
+        now,
+      );
+      expect(meAsB.status).toBe(401);
     } finally {
       await fx.dispose();
     }
