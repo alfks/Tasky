@@ -24,6 +24,7 @@
 | [ADR-0016](./decisions/ADR-0016-schema-v3-dday-diary-routine.md)               | 스키마 v3 — `ddays`·`diaryEntries`·`routines` 테이블 신설(ADR-0011 과 같은 모양, 세 테이블을 한 버전에 묶음)                     | accepted                             | 2026-09-20 | `src/infra/indexeddb/db.ts`, 마이그레이션 테스트, `src/repositories/{dday,diary,routine}-repository.*`                                     |
 | [ADR-0017](./decisions/ADR-0017-routine-watermark-materialization.md)          | 무기한 루틴 지연 생성은 조회가 아니라 워터마크(`materializedThrough`)로 멱등성을 지킨다(routine.md §4 정정)                      | **partially superseded by ADR-0018** | 2026-09-20 | `src/domain/routine/**`, `src/domain/dataset.ts`, `src/repositories/write-plan.ts`, `src/repositories/memory/**`, `src/infra/indexeddb/**` |
 | [ADR-0018](./decisions/ADR-0018-sync-local-schema-and-ports.md)                | 동기화 로컬 스키마(v4) — 아웃박스·슬롯 id·`fillFloor`·포트 분리(ADR-0017 워터마크 구조를 부분 대체)                              | accepted                             | 2026-09-21 | `src/infra/indexeddb/db.ts`, `src/domain/routine/**`, `src/domain/sync/**`, `src/domain/backup/**`, `src/repositories/*.contract.ts`       |
+| [ADR-0019](./decisions/ADR-0019-worker-d1-auth.md)                             | Cloudflare Worker + D1 — 구글 OAuth·세션 쿠키·`/api/sync`·계정 삭제 타이밍(다른 기기는 401 이 아니라 410 으로 구분)              | accepted                             | 2026-09-21 | `worker/**`, `wrangler.jsonc`, `tsconfig.worker.json`, `vitest.config.ts`, `vite.config.ts`, `scripts/deploy.sh`                           |
 
 ## 예정(초안 필요 시 번호 예약 없이 작성)
 
