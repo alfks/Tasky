@@ -16,10 +16,11 @@ import type { Todo } from '@/domain/todo/todo';
 /**
  * 저장할 로우 한 건 + 그 테이블. 전부 `Persistable` 이라 도메인을 거치지 않은 값은 실릴 수 없다.
  *
- * `routines` 가 있는 이유: 무기한 루틴의 지연 생성이 그 구간에서 만든 투두들과 루틴의 워터마크
- * (`Routine.materializedThrough`)를 **한 트랜잭션**으로 커밋해야 한다(routine.md §4, ADR-0017) —
- * `write()` 가 이미 "여러 테이블에 걸친 upsert 를 단일 트랜잭션으로" 처리하는 유일한 통로다(category
- * R13·R15 의 `planCategoryRemoval` 과 같은 자리).
+ * `routines` 가 있는 이유: 루틴 관리 조작(등록·중지·재개·삭제)이 그 구간에서 만든 투두들과 루틴
+ * 레코드 자체를 **한 트랜잭션**으로 커밋해야 하기 때문이다(routine.md §4, ADR-0018 — 지연 생성
+ * 자체는 더 이상 루틴 로우를 쓰지 않는다, `Routine.fillFloor` 필드 주석) — `write()` 가 이미 "여러
+ * 테이블에 걸친 upsert 를 단일 트랜잭션으로" 처리하는 유일한 통로다(category R13·R15 의
+ * `planCategoryRemoval` 과 같은 자리).
  */
 export type DatasetWrite =
   | { table: 'todos'; entity: Persistable<Todo> }

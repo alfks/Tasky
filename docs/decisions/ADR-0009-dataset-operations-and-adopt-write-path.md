@@ -36,7 +36,7 @@
 
 ## 지켜야 할 규칙 (검증 가능한 문장 — 리뷰 판정 근거)
 
-1. `Persistable`를 만드는 함수는 `src/domain/meta.ts`의 **넷**뿐이다(`createMeta`·`touch`·`markDeleted`·`adopt`). `adopt`의 호출처는 `src/domain/backup/**` 하나 — 다른 곳에서 부르면 리뷰 Blocker. 엔티티 레포지토리에는 여전히 `remove`·`delete`·`replaceAll`이 없다(결정 1의 한정은 `DatasetRepository` 하나에만 적용되며, 여섯째 레포지토리를 더하는 것은 새 ADR 사안이다).
+1. `Persistable`를 만드는 함수는 `src/domain/meta.ts`의 **넷**뿐이다(`createMeta`·`touch`·`markDeleted`·`adopt`). `adopt`의 호출처는 **`src/domain/backup/**`·`src/domain/sync/remote-rows.ts` 둘**(ADR-0018 이 개정 — 원격 풀 로우를 저장 직전 봉인하는 자리) — 다른 곳에서 부르면 리뷰 Blocker. 엔티티 레포지토리에는 여전히 `remove`·`delete`·`replaceAll`이 없다(결정 1의 한정은 `DatasetRepository` 하나에만 적용되며, 여섯째 레포지토리를 더하는 것은 새 ADR 사안이다).
 2. `DatasetRepository.restore`의 인자 타입은 `PersistableSnapshot`이다. `readAll()`이 돌려준 plain `DatasetSnapshot`을 그대로 넘기면 컴파일 에러 — 데이터셋 계약 테스트에 `// @ts-expect-error` 고정 케이스를 둔다(ADR-0007 규칙 3 (d)와 같은 방식).
 3. 병합 가져오기의 `planMerge(local, incoming)`에서 `local`은 `readAll()` 결과다. 계약 테스트 필수 케이스: 로컬 툼스톤 + 파일의 더 오래된 비삭제 같은 `id` → 적용 후에도 툼스톤이 남고(부활 0) 그 툼스톤이 스냅샷에 실린다.
 4. `readAll()`의 호출처는 셋이다 — 내보내기(backup R2), 병합 가져오기의 현재 스냅샷(backup R6), "삭제됨" 그룹(category R17). 넷째가 생기면 이 ADR을 다시 본다.

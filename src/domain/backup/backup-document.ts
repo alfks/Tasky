@@ -18,23 +18,11 @@ export const BACKUP_APP = 'tasky';
  * (ARCHITECTURE §1). 대신 `backup-document.test.ts` 가 두 값을 대조한다(테스트 계층은 경계가 없다).
  * 한쪽만 올리면 그 테스트가 실패하므로, 두 값이 갈라진 채로 머지되지 않는다.
  *
- * **T-86 에서도 3에 그대로 둔다 — 올리지 않는다.** `ddays`·`diaryEntries`·`routines` 를 payload 에
- * 싣는 지금 변경은 `DB_VERSION`(IndexedDB 스키마)을 전혀 건드리지 않는다 — 세 테이블은 이미
- * ADR-0016(v3)에서 신설됐고, 이번 티켓은 그 테이블에 담긴 **값을 옮기는 통로**를 추가할 뿐 저장소
- * 스키마 자체는 바뀌지 않는다. 이 상수를 `DB_VERSION` 과 별개로 4로 올리면 위 대조 테스트가 깨지고,
- * `DB_VERSION` 까지 같이 올리는 것은 "새 스키마 버전을 만들지 않는다"(T-86 범위 밖)를 어긴다.
- * 그리고 버전을 올려도 모호함은 풀리지 않는다 — 아래 문단이 그 이유다.
- *
- * **"같은 3인데 모양이 둘"인 문제는 버전 번호가 아니라 방어적 파싱으로 푼다.** 이 값이 3인 채로
- * 이미 배포된 파일 중에는 세 배열이 아예 없는 것(T-86 이전 내보내기)과 있는 것(T-86 이후)이 둘 다
- * 존재한다 — 지금 와서 4로 올려도 "이미 나가 있는 3짜리 파일들"의 모호함은 사라지지 않고, 그 파일을
- * 새 버전 검사기가 읽을 수 있어야 한다는 요구만 그대로 남는다(정정 2, ADR-0016). 그래서
- * `validate-backup.ts#readDocument` 가 세 배열을 **필드가 아예 없을 때만** 빈 배열로 읽는다(`null`
- * 처럼 명시적으로 잘못된 값까지 묻지 않는다 — `=== undefined` 로만 판정한다) — 마이그레이션
- * 단계(`migrate-backup.ts`)가 아니라 읽기 시점의 방어로 처리한다(3→3 변환 단계는 만들 수 없다, 같은
- * ADR).
+ * **T-92 에서 4로 올린다(ADR-0018).** `DB_VERSION` 도 같은 PR 에서 4 로 올라간다 — `routines` 테이블의
+ * `materializedThrough` 필드가 `fillFloor` 로 이름이 바뀌어(값은 그대로) 로컬 스키마·백업 파일 둘
+ * 다 새 키 이름을 쓴다. `migrate-backup.ts` 의 3→4 단계가 옛 파일의 키 이름만 변환한다(값 불변).
  */
-export const BACKUP_SCHEMA_VERSION = 3;
+export const BACKUP_SCHEMA_VERSION = 4;
 
 /** 가져오기가 읽는 최대 파일 크기 (R9). 초과하면 **읽지 않고** 거부한다. */
 export const BACKUP_MAX_BYTES = 20 * 1024 * 1024;
@@ -50,9 +38,9 @@ export const BACKUP_JSON_INDENT = 2;
  *
  * `ddays`·`diaryEntries`·`routines`(T-86): 툼스톤 제외 원칙은 `todos`·`focusSessions` 와 같지만,
  * `routines` 만 예외로 **다른 투두가 가리키는 tombstone 을 더** 싣는다 — `categories` 와 같은 이유다
- * (`export-backup.ts#buildBackupDocument` 참고). `Routine.materializedThrough`(루틴 워터마크)도
+ * (`export-backup.ts#buildBackupDocument` 참고). `Routine.fillFloor`(구 `materializedThrough`)도
  * **그대로 싣는다** — 제외하면 복원 뒤 재계산할 안전한 방법이 없다(`validate-rows.ts` 의
- * `ROUTINE_KEYS` 주석, ADR-0017 정정).
+ * `ROUTINE_KEYS` 주석, ADR-0018).
  */
 export type BackupDocument = {
   app: typeof BACKUP_APP;

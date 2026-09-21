@@ -52,7 +52,9 @@ describe('createRoutine — 무기한 등록(routine.md R2~R5)', () => {
     const saved = await getRepositories().routines.list({ includeInactive: true });
     expect(saved).toHaveLength(1);
     expect(saved[0]?.active).toBe(true);
-    expect(saved[0]?.materializedThrough).toBe(mondayStart); // 시작일 하루만 즉시 채우기 대상이었다
+    // 즉시 채우기 구간이 시작일 하루뿐이라(방문 전) fillFloor 는 그 하루까지만 전진한다(PR #121
+    // 리뷰 Blocker 이후 임시 복원 — routine-fill.ts 상단 주석).
+    expect(saved[0]?.fillFloor).toBe(mondayStart);
   });
 
   it('보이는 범위 끝까지 즉시 채운다(R3) — 시작일이 그 끝보다 뒤면 시작일 하루만(구간 보정)', async () => {
@@ -71,8 +73,10 @@ describe('createRoutine — 무기한 등록(routine.md R2~R5)', () => {
     expect(ids).not.toBe(false);
     expect(ids).toHaveLength(3); // 1/15·1/22·1/29 세 목요일
 
+    // 즉시 채운 구간 끝(보이는 범위 끝, 1/29)까지 fillFloor 가 전진한다(임시 복원, PR #121 리뷰
+    // Blocker).
     const saved = await getRepositories().routines.list();
-    expect(saved[0]?.materializedThrough).toBe('2026-01-29');
+    expect(saved[0]?.fillFloor).toBe('2026-01-29');
   });
 });
 
@@ -206,6 +210,54 @@ describe('materializeRoutines — 지연 생성 배선(routine.md R6·R7·R11)',
     expect(routine?.active).toBe(true); // 레코드는 그대로 — categoryId 도 비지 않는다
   });
 
+  it('소프트 삭제한 인스턴스는 더 넓은 범위를 재방문해도 부활하지 않는다(PR #121 리뷰 Blocker)', async () => {
+    // 좁은 범위를 먼저 방문해 1/15·1/22·1/29 세 목요일을 채운다(1/15 는 등록 즉시 채우기).
+    await state().createRoutine({
+      categoryId: FIXTURE_CATEGORY_ID,
+      title: '아침 명상',
+      startDate: FIXTURE_DATE,
+      recurrence: WEEKLY_RECURRENCE,
+    });
+    await state().materializeRoutines({
+      from: FIXTURE_DATE,
+      to: '2026-01-29' as DateKey,
+      today: FIXTURE_DATE,
+    });
+    const before = await getRepositories().todos.listByDateRange(
+      FIXTURE_DATE,
+      '2026-01-29' as DateKey,
+    );
+    expect(before.map((t) => t.date).sort()).toEqual(['2026-01-15', '2026-01-22', '2026-01-29']);
+
+    // 1/22 인스턴스 한 건을 소프트 삭제한다(사용자가 지움).
+    const target = before.find((t) => t.date === '2026-01-22')!;
+    await getRepositories().todos.upsert(markDeleted(target, fixedDeps().now()));
+
+    // 더 넓은 범위(2/28 까지)를 재방문한다 — fillFloor 가 고정이면 1/15~1/29 구간을 다시 훑어
+    // 1/22 가 같은 슬롯 id 로 되살아난다(회귀 재현 지점).
+    await state().materializeRoutines({
+      from: FIXTURE_DATE,
+      to: '2026-02-28' as DateKey,
+      today: FIXTURE_DATE,
+    });
+
+    const after = await getRepositories().todos.listByDateRange(
+      FIXTURE_DATE,
+      '2026-02-28' as DateKey,
+    );
+    const thursdayDates = after.filter((t) => t.title === '아침 명상').map((t) => t.date);
+    expect(thursdayDates).not.toContain('2026-01-22'); // 부활 0건
+    // 1/15·1/29·2/5·2/12·2/19·2/26 여섯 개(지운 1/22 는 제외) — 일곱이면 부활한 것이다.
+    expect(thursdayDates.sort()).toEqual([
+      '2026-01-15',
+      '2026-01-29',
+      '2026-02-05',
+      '2026-02-12',
+      '2026-02-19',
+      '2026-02-26',
+    ]);
+  });
+
   it('오늘부터 366일을 넘는 구간은 채우지 않는다(지평선)', async () => {
     await state().createRoutine({
       categoryId: FIXTURE_CATEGORY_ID,
@@ -217,8 +269,15 @@ describe('materializeRoutines — 지연 생성 배선(routine.md R6·R7·R11)',
     const farFuture = addCivilDays(FIXTURE_DATE, 400) as DateKey;
     await state().materializeRoutines({ from: FIXTURE_DATE, to: farFuture, today: FIXTURE_DATE });
 
+    const horizon = addCivilDays(FIXTURE_DATE, MATERIALIZE_HORIZON_DAYS) as DateKey;
+    const created = await getRepositories().todos.listByDateRange(FIXTURE_DATE, farFuture);
+    expect(created.length).toBeGreaterThan(0);
+    expect(created.every((todo) => todo.date <= horizon)).toBe(true); // 지평선을 넘는 날짜는 없다
+
+    // fillFloor 는 실제로 채운 구간 끝(지평선)까지만 전진한다 — 지평선 너머는 다음 방문이 마저
+    // 채운다(임시 복원, PR #121 리뷰 Blocker).
     const [routine] = await getRepositories().routines.list();
-    expect(routine?.materializedThrough).toBe(addCivilDays(FIXTURE_DATE, MATERIALIZE_HORIZON_DAYS));
+    expect(routine?.fillFloor).toBe(horizon);
   });
 });
 

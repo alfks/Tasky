@@ -109,6 +109,8 @@ export type SyncState = {
   deviceId: string;
   /** 로그인된 구글 계정의 `sub`. 없으면 로그인 전(R8) 또는 로그아웃 후. */
   userSub?: string;
+  /** 로그인된 계정의 이메일(스펙 R1 "표식 … 이메일 포함") — 계정 블록이 오프라인에서도 보여준다. */
+  userEmail?: string;
   /** 마지막으로 받은 seq(풀 커서). */
   cursor: number;
   lastSyncedAt?: string;

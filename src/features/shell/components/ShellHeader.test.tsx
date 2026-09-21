@@ -256,7 +256,7 @@ describe('ShellHeader — 무기한 루틴 지연 생성 배선 (routine.md R6)'
       recurrence: { type: 'weekly', daysOfWeek: [dayOfWeekOf(TODAY)] },
       startDate: TODAY,
       active: true,
-      materializedThrough: addCivilDays(TODAY, -1),
+      fillFloor: addCivilDays(TODAY, -1),
       ...overrides,
     };
   }

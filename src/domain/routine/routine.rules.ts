@@ -31,7 +31,7 @@ export function shouldMaterialize(routine: Routine, date: DateKey): boolean {
 }
 
 /**
- * 새 루틴 레코드 (routine.md R5). `endDate` 가 없으면 무기한이고 `materializedThrough` 는
+ * 새 루틴 레코드 (routine.md R5). `endDate` 가 없으면 무기한이고 `fillFloor` 는
  * `startDate` 전날로 시작한다 — 그래야 R6 지연 생성이 `startDate` 당일부터 채운다. 즉시 채우기
  * (R3·R4) 자체는 이 함수가 하지 않는다 — 호출부(`routine-fill.ts#planRoutineFill`)가 이 레코드를
  * 입력으로 받아 투두를 계획한다.
@@ -66,7 +66,7 @@ export function createRoutine(
     startDate: input.startDate,
     ...(input.endDate === undefined ? {} : { endDate: input.endDate }),
     active: true,
-    materializedThrough: addCivilDays(input.startDate, -1),
+    fillFloor: addCivilDays(input.startDate, -1),
   });
 }
 
@@ -85,7 +85,11 @@ export function pauseRoutine(routine: Routine, deps: MetaDeps): Persistable<Rout
 
 /**
  * 재개 (R7): 다시 지연 생성을 켠다. **소급하지 않는다** — 멈춰 있던 구간은 채우지 않도록
- * `materializedThrough` 를 `max(기존 값, today 전날)` 로 옮긴다(과거로 되돌아가지 않는다).
+ * `fillFloor` 를 `max(기존 값, today 전날)` 로 옮긴다(과거로 되돌아가지 않는다). 최종 설계에서
+ * `fillFloor` 를 바꾸는 곳은 이 함수와 생성(`createRoutine`) 둘뿐이다(ADR-0018) — 둘 다 사용자가
+ * 직접 누른 조작이라 아웃박스에 실려도 안전하다. **지금은 `planRoutineFill`(배경 채우기)도 이 값을
+ * 전진시킨다** — `routine.ts` 의 `fillFloor` 필드 주석과 ADR-0018 재검토 트리거를 본다(임시,
+ * PR #121 리뷰 Blocker, `SyncRepository.existingIds` 가 배선되면 없앤다).
  */
 export function resumeRoutine(
   routine: Routine,
@@ -94,9 +98,8 @@ export function resumeRoutine(
 ): Persistable<Routine> {
   assertIndefinite(routine);
   const yesterday = addCivilDays(today, -1);
-  const materializedThrough =
-    routine.materializedThrough > yesterday ? routine.materializedThrough : yesterday;
-  return touch({ ...routine, active: true, materializedThrough }, deps.now());
+  const fillFloor = routine.fillFloor > yesterday ? routine.fillFloor : yesterday;
+  return touch({ ...routine, active: true, fillFloor }, deps.now());
 }
 
 /**

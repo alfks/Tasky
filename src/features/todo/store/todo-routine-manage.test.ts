@@ -88,7 +88,7 @@ describe('pauseRoutine · resumeRoutine (R7)', () => {
     expect(ok).toBe(true);
     const saved = await getRepositories().routines.getById(routine.id);
     expect(saved?.active).toBe(true);
-    expect(saved?.materializedThrough).toBe('2026-02-28');
+    expect(saved?.fillFloor).toBe('2026-02-28');
   });
 
   it('종료일이 있는 루틴은 중지할 수 없다(R7-a) — 문구가 뜨고 저장소는 안 바뀐다', async () => {

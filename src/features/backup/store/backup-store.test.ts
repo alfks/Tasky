@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { BACKUP_MAX_BYTES } from '@/domain/backup/backup-document';
+import { BACKUP_MAX_BYTES, BACKUP_SCHEMA_VERSION } from '@/domain/backup/backup-document';
 import { serializeBackup } from '@/domain/backup/export-backup';
 import { BACKUP_WARN_MIN_TODOS } from '@/domain/backup/stale-backup';
 import type { DatasetSnapshot } from '@/domain/dataset';
@@ -164,7 +164,11 @@ describe('exportBackup (R1·R2·R10)', () => {
     expect(downloads[0].fileName).toBe('tasky-backup-2026-09-15.json');
 
     const parsed: unknown = JSON.parse(downloads[0].text);
-    expect(parsed).toMatchObject({ app: 'tasky', schemaVersion: 3, exportedAt: NOW });
+    expect(parsed).toMatchObject({
+      app: 'tasky',
+      schemaVersion: BACKUP_SCHEMA_VERSION,
+      exportedAt: NOW,
+    });
 
     const settings = await repositories.settings.get();
     expect(settings?.lastBackupAt).toBe(NOW);

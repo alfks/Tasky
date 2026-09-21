@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
+import { addCivilDays } from '@/domain/date/civil';
 import type { DateKey } from '@/domain/date/date-key';
 import type { Routine } from '@/domain/routine/routine';
-import { planRoutineFill, resolveImmediateFillThrough } from '@/domain/routine/routine-fill';
-import type { Todo } from '@/domain/todo/todo';
+import {
+  FILL_BACKFILL_HORIZON_DAYS,
+  planRoutineFill,
+  resolveImmediateFillThrough,
+} from '@/domain/routine/routine-fill';
+import { routineInstanceSlotId } from '@/domain/routine/slot-id';
 
 import { FIXTURE_INSTANT, fixedDeps, fixtureId } from '@/test/fixtures/deps';
-import { FIXTURE_CATEGORY_ID, makeTodo } from '@/test/fixtures/todo';
+import { FIXTURE_CATEGORY_ID } from '@/test/fixtures/todo';
 
 const deps = fixedDeps();
 
@@ -21,76 +26,164 @@ function makeRoutine(overrides: Partial<Routine> = {}): Routine {
     recurrence: { type: 'weekly', daysOfWeek: [4] }, // 목요일
     startDate: '2026-01-15' as DateKey,
     active: true,
-    materializedThrough: '2026-01-14' as DateKey, // 시작일 전날
+    fillFloor: '2026-01-14' as DateKey, // 시작일 전날
     ...overrides,
   };
 }
 
-describe('planRoutineFill — 워터마크 구간 채우기 (routine.md R3·R4·R6, ADR-0017)', () => {
-  it('구간 안의 반복 날짜마다 투두를 만들고 워터마크를 구간 끝으로 옮긴다', () => {
+describe('planRoutineFill — 슬롯 id 로 채우기 (routine.md R3·R4·R6, ADR-0018)', () => {
+  it('구간 안의 반복 날짜마다 투두를 만든다', () => {
     const routine = makeRoutine();
-    const plan = planRoutineFill({ routine, through: '2026-01-29' as DateKey, existing: [] }, deps);
+    const plan = planRoutineFill(
+      { routine, through: '2026-01-29' as DateKey, existingIds: new Set() },
+      deps,
+    );
 
     expect(plan).not.toBeNull();
     expect(plan?.todos.map((t) => t.date)).toEqual(['2026-01-15', '2026-01-22', '2026-01-29']);
     expect(plan?.todos.every((t) => t.routineId === routine.id)).toBe(true);
-    expect(plan?.routine.materializedThrough).toBe('2026-01-29');
   });
 
-  it('결과가 0건이어도(패턴 자체는 유효) 오류가 아니고 워터마크는 움직인다 (R4 회귀 — 이전 라운드 버그)', () => {
+  it('결과의 routine 은 fillFloor 가 through 까지 전진한 새 값이다(임시 복원, PR #121 리뷰 Blocker)', () => {
+    const routine = makeRoutine();
+    const plan = planRoutineFill(
+      { routine, through: '2026-01-29' as DateKey, existingIds: new Set() },
+      deps,
+    );
+    expect(plan?.routine.fillFloor).toBe('2026-01-29');
+    expect(plan?.routine.rev).toBe(routine.rev + 1);
+  });
+
+  it('만든 투두의 id 는 routineInstanceSlotId(routine.id, date) 다(F1 방어)', () => {
+    const routine = makeRoutine();
+    const plan = planRoutineFill(
+      { routine, through: '2026-01-15' as DateKey, existingIds: new Set() },
+      deps,
+    );
+    expect(plan?.todos.map((t) => t.id)).toEqual([routineInstanceSlotId(routine.id, '2026-01-15')]);
+  });
+
+  it('결과가 0건이어도(패턴 자체는 유효) 오류가 아니다 (R4)', () => {
     // 구간(1/15~1/16) 안에 목요일이 없다 — 1/15 은 목요일이지만 아래에서 월요일(요일1)만 요구한다.
     const routine = makeRoutine({ recurrence: { type: 'weekly', daysOfWeek: [1] } });
-    const plan = planRoutineFill({ routine, through: '2026-01-16' as DateKey, existing: [] }, deps);
+    const plan = planRoutineFill(
+      { routine, through: '2026-01-16' as DateKey, existingIds: new Set() },
+      deps,
+    );
 
     expect(plan).not.toBeNull();
     expect(plan?.todos).toEqual([]);
-    expect(plan?.routine.materializedThrough).toBe('2026-01-16'); // 워터마크는 그래도 옮겨진다
   });
 
-  it('시작일이 through 보다 뒤면(구간이 뒤집히면) null — 워터마크도 움직이지 않는다', () => {
+  it('시작일이 through 보다 뒤면(구간이 뒤집히면) null', () => {
     const routine = makeRoutine({
       startDate: '2026-02-01' as DateKey,
-      materializedThrough: '2026-01-31' as DateKey,
+      fillFloor: '2026-01-31' as DateKey,
     });
-    const plan = planRoutineFill({ routine, through: '2026-01-20' as DateKey, existing: [] }, deps);
+    const plan = planRoutineFill(
+      { routine, through: '2026-01-20' as DateKey, existingIds: new Set() },
+      deps,
+    );
     expect(plan).toBeNull();
   });
 
   it('비활성 루틴은 null (R7 중지)', () => {
     const routine = makeRoutine({ active: false });
-    const plan = planRoutineFill({ routine, through: '2026-01-29' as DateKey, existing: [] }, deps);
+    const plan = planRoutineFill(
+      { routine, through: '2026-01-29' as DateKey, existingIds: new Set() },
+      deps,
+    );
     expect(plan).toBeNull();
   });
 
-  it('같은 날짜·카테고리에 정규화된 제목이 같은 투두가 이미 있으면 건너뛴다(dedup, R4)', () => {
+  it('existingIds 에 이미 있는 슬롯 id 는 건너뛴다(슬롯 id dedup, 돌연변이 표적)', () => {
     const routine = makeRoutine();
-    const existing: Todo[] = [makeTodo({ date: '2026-01-22' as DateKey, title: ' 운동 ' })];
-    const plan = planRoutineFill({ routine, through: '2026-01-29' as DateKey, existing }, deps);
+    const existingIds = new Set([routineInstanceSlotId(routine.id, '2026-01-22' as DateKey)]);
+    const plan = planRoutineFill({ routine, through: '2026-01-29' as DateKey, existingIds }, deps);
     expect(plan?.todos.map((t) => t.date)).toEqual(['2026-01-15', '2026-01-29']);
+  });
+
+  it('existingIds 는 살아 있는 로우든 툼스톤이든(호출부가 판정) 그대로 존중한다 — 이 함수는 멤버십만 본다', () => {
+    // 이 함수는 existingIds 의 출처를 묻지 않는다 — 툼스톤을 포함해 넘기면 그 슬롯도 건너뛴다는
+    // 뜻으로, 삭제된 인스턴스가 부활하지 않는 F2/F3 방어의 전제가 이것이다.
+    const routine = makeRoutine();
+    const tombstoneSlot = routineInstanceSlotId(routine.id, '2026-01-15' as DateKey);
+    const plan = planRoutineFill(
+      { routine, through: '2026-01-15' as DateKey, existingIds: new Set([tombstoneSlot]) },
+      deps,
+    );
+    expect(plan?.todos).toEqual([]);
   });
 
   it('종료일이 있으면 through 를 넘지 않는다', () => {
     const routine = makeRoutine({ endDate: '2026-01-22' as DateKey });
-    const plan = planRoutineFill({ routine, through: '2026-02-28' as DateKey, existing: [] }, deps);
+    const plan = planRoutineFill(
+      { routine, through: '2026-02-28' as DateKey, existingIds: new Set() },
+      deps,
+    );
     expect(plan?.todos.map((t) => t.date)).toEqual(['2026-01-15', '2026-01-22']);
-    expect(plan?.routine.materializedThrough).toBe('2026-01-22');
   });
 
-  it('두 번째 호출(같은 워터마크에서 더 먼 through)은 이미 채운 구간을 다시 만들지 않는다(멱등성 핵심)', () => {
+  it('호출부가 이전 plan.routine 을 넘기면 fillFloor 전진으로 지난 구간을 다시 훑지 않는다(부활 방지)', () => {
     const routine = makeRoutine();
     const first = planRoutineFill(
-      { routine, through: '2026-01-15' as DateKey, existing: [] },
+      { routine, through: '2026-01-15' as DateKey, existingIds: new Set() },
       deps,
     );
     expect(first?.todos.map((t) => t.date)).toEqual(['2026-01-15']);
+    expect(first?.routine.fillFloor).toBe('2026-01-15');
 
-    const advanced = first!.routine;
+    // 호출부가 first.routine(fillFloor 전진한 값)을 다음 호출에 넘긴다 — 실제 스토어 배선과 같다.
+    // 1/15 슬롯이 그 사이 소프트 삭제돼 existingIds(살아 있는 로우만)에 없어도, from 이 이미
+    // 1/16 이라 1/15 는 애초에 재계획 대상이 아니다.
     const second = planRoutineFill(
-      { routine: advanced, through: '2026-01-22' as DateKey, existing: [] },
+      { routine: first!.routine, through: '2026-01-22' as DateKey, existingIds: new Set() },
       deps,
     );
-    // 1/15 는 다시 나오지 않는다 — from 이 materializedThrough+1(=1/16)부터다.
     expect(second?.todos.map((t) => t.date)).toEqual(['2026-01-22']);
+  });
+
+  it('여전히 existingIds 멤버십만으로도 멱등이다(같은 구간을 fillFloor 고정인 채 두 번 계획해도 중복 없음)', () => {
+    const routine = makeRoutine();
+    const first = planRoutineFill(
+      { routine, through: '2026-01-15' as DateKey, existingIds: new Set() },
+      deps,
+    );
+    const existingIds = new Set((first?.todos ?? []).map((t) => t.id));
+    const second = planRoutineFill(
+      { routine, through: '2026-01-22' as DateKey, existingIds },
+      deps,
+    );
+    expect(second?.todos.map((t) => t.date)).toEqual(['2026-01-22']);
+  });
+
+  it('today 가 있으면 from 이 today - FILL_BACKFILL_HORIZON_DAYS 아래로 안 내려간다(Major 3)', () => {
+    // fillFloor 가 today 로부터 4년(1,460일) 전에 멈춰 있는 한 번도 안 열린 매일(요일 전부) 루틴.
+    const today = '2026-09-21' as DateKey;
+    const ancientFloor = addCivilDays(today, -1460) as DateKey;
+    const routine = makeRoutine({
+      recurrence: { type: 'weekly', daysOfWeek: [0, 1, 2, 3, 4, 5, 6] },
+      startDate: addCivilDays(ancientFloor, -1000) as DateKey,
+      fillFloor: ancientFloor,
+    });
+
+    const plan = planRoutineFill({ routine, through: today, existingIds: new Set(), today }, deps);
+
+    expect(plan).not.toBeNull();
+    const horizonFloor = addCivilDays(today, -FILL_BACKFILL_HORIZON_DAYS);
+    expect(plan?.todos[0]?.date).toBe(horizonFloor); // 지평선보다 오래된 날짜는 후보에서 빠진다
+    expect(plan?.todos.every((t) => t.date >= horizonFloor)).toBe(true);
+    // 훑지 않은 과거 구간도 fillFloor 는 through 까지 전진한다 — 다시는 훑지 않는다(설계가 감수).
+    expect(plan?.routine.fillFloor).toBe(today);
+  });
+
+  it('today 를 안 넘기면(즉시 등록 경로) 지평선 없이 fillFloor 그대로부터 훑는다', () => {
+    const routine = makeRoutine({ fillFloor: '2026-01-14' as DateKey });
+    const plan = planRoutineFill(
+      { routine, through: '2026-01-15' as DateKey, existingIds: new Set() },
+      deps,
+    );
+    expect(plan?.todos.map((t) => t.date)).toEqual(['2026-01-15']);
   });
 });
 
@@ -125,10 +218,10 @@ describe('resolveImmediateFillThrough (R3 구간 보정)', () => {
     // 그 through 로 planRoutineFill 을 돌리면 실제로 시작일 하루만 채운다.
     const routine = makeRoutine({
       startDate: '2026-01-20' as DateKey,
-      materializedThrough: '2026-01-19' as DateKey,
+      fillFloor: '2026-01-19' as DateKey,
       recurrence: { type: 'weekly', daysOfWeek: [2] }, // 화요일(1/20)
     });
-    const plan = planRoutineFill({ routine, through, existing: [] }, deps);
+    const plan = planRoutineFill({ routine, through, existingIds: new Set() }, deps);
     expect(plan?.todos.map((t) => t.date)).toEqual(['2026-01-20']);
   });
 });

@@ -28,6 +28,32 @@ describe('migrateBackup (R3)', () => {
     expect(migrateBackup(body, 2)).toBe(body);
   });
 
+  it('v3 → v4 는 routines 의 materializedThrough 를 fillFloor 로 이름만 바꾼다 (ADR-0018)', () => {
+    const body = {
+      todos: [],
+      routines: [
+        { id: 'r-1', materializedThrough: '2026-01-14', active: true },
+        { id: 'r-2', materializedThrough: '2026-03-01', active: false },
+      ],
+    };
+    const migrated = migrateBackup(body, 3);
+    expect(migrated['routines']).toEqual([
+      { id: 'r-1', fillFloor: '2026-01-14', active: true },
+      { id: 'r-2', fillFloor: '2026-03-01', active: false },
+    ]);
+  });
+
+  it('v3 → v4 는 routines 가 없으면 손대지 않는다', () => {
+    const body = { todos: [] };
+    expect(migrateBackup(body, 3)).toBe(body);
+  });
+
+  it('v3 → v4 는 다른 여섯 테이블을 값째로 그대로 둔다', () => {
+    const todos = [{ id: 't-1', title: '그대로' }];
+    const migrated = migrateBackup({ todos, routines: [] }, 3);
+    expect(migrated['todos']).toBe(todos);
+  });
+
   it('v1 파일에 이미 focusSessions 가 있으면 덮어쓰지 않는다', () => {
     const sessions = [{ id: 'keep' }];
     expect(migrateBackup({ focusSessions: sessions }, 1)['focusSessions']).toBe(sessions);

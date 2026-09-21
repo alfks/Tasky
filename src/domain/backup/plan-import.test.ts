@@ -180,22 +180,18 @@ describe('planImport — 병합 (R6·ADR-0009 결정 4)', () => {
   });
 });
 
-// T-86, ADR-0017 §재검토 트리거. 병합에서만 워터마크를 max 로 고르는 안전장치.
-// 리뷰 #108 Major 1 은 원래 "위험 없음 증명"이라던 제목을 "중복/영구공백 트레이드오프"로 고쳤으나,
-// 그 뒤 재판정으로 "영구공백"(옛 S5) 자체가 오진임이 드러났다 — max 에는 대칭되는 손상이 없고
-// min 쪽에만 실제 손상(부활·중복)이 있다(plan-import.ts#planMergeRoutines 문서 참고).
-describe('planImport — 루틴 병합의 materializedThrough (max 트레이드오프, ADR-0017)', () => {
-  it('파일 쪽 다른 필드가 이겨도(newer updatedAt) 워터마크는 두 값 중 더 늦은 쪽을 쓴다', () => {
-    // 로컬이 더 최근(updatedAt)이라 title 등은 로컬이 이기지만, 로컬의 워터마크가 파일보다 이르다.
-    const local = makeRoutine({
-      title: '로컬 제목',
-      updatedAt: LATER,
-      materializedThrough: '2026-02-01',
-    });
+// ADR-0018: 루틴은 이제 다른 테이블과 같은 일반 newer-wins(`planMerge`) 병합을 쓴다 — 전용 병합
+// (구 `planMergeRoutines`, `fillFloor`만 max 로 고정)은 삭제했다. `fillFloor` 는 오직 사용자
+// 조작(생성·재개)으로만 바뀌는 필드라, "더 최근에 손댄 쪽이 이긴다"가 다른 필드와 다를 이유가
+// 없어졌다(채우기 자체가 이 값을 더 이상 건드리지 않으므로, 예전에 max 를 따로 골랐던 이유였던
+// "제목만 고친 기기의 옛 워터마크가 newer-wins 로 이겨 구간이 후퇴"할 경로 자체가 사라졌다).
+describe('planImport — 루틴 병합은 다른 테이블과 같은 newer-wins 를 쓴다 (ADR-0018)', () => {
+  it('updatedAt 이 더 최근인 쪽(필드 전체, fillFloor 포함)이 이긴다', () => {
+    const local = makeRoutine({ title: '로컬 제목', updatedAt: LATER, fillFloor: '2026-02-01' });
     const incoming = makeRoutine({
       title: '파일 제목',
       updatedAt: EARLIER,
-      materializedThrough: '2026-06-01',
+      fillFloor: '2026-06-01',
     });
     const plan = planImport({
       mode: 'merge',
@@ -204,69 +200,35 @@ describe('planImport — 루틴 병합의 materializedThrough (max 트레이드�
     });
     const [saved] = plan.snapshot.routines;
     expect(saved.title).toBe('로컬 제목');
-    // 더 이른 값(로컬)을 그대로 뒀다면 이미 파일 쪽이 만든 구간을 지연 생성이 중복 생성한다.
-    expect(saved.materializedThrough).toBe('2026-06-01');
+    expect(saved.fillFloor).toBe('2026-02-01'); // 로컬 전체가 이긴다 — fillFloor 만 따로 안 고른다
   });
 
-  it('로컬 쪽 워터마크가 더 늦으면 그대로 유지한다(뒤로 가지 않는다)', () => {
-    const local = makeRoutine({ updatedAt: EARLIER, materializedThrough: '2026-06-01' });
-    const incoming = makeRoutine({ updatedAt: LATER, materializedThrough: '2026-02-01' });
-    const plan = planImport({
-      mode: 'merge',
-      local: snapshot({ routines: [local] }),
-      document: documentOf({ routines: [incoming] }),
-    });
-    expect(plan.snapshot.routines[0].materializedThrough).toBe('2026-06-01');
-  });
-
-  it('한쪽에만 있는 루틴은 그 쪽 워터마크를 그대로 쓴다', () => {
-    const fileOnly = makeRoutine({ materializedThrough: '2026-04-01' });
+  it('한쪽에만 있는 루틴은 그 쪽 값을 그대로 쓴다', () => {
+    const fileOnly = makeRoutine({ fillFloor: '2026-04-01' });
     const plan = planImport({
       mode: 'merge',
       local: snapshot(),
       document: documentOf({ routines: [fileOnly] }),
     });
-    expect(plan.snapshot.routines[0].materializedThrough).toBe('2026-04-01');
+    expect(plan.snapshot.routines[0].fillFloor).toBe('2026-04-01');
   });
 
-  it('교체(R7)는 파일 쪽 워터마크를 그대로 쓴다 — max 규칙을 적용하지 않는다', () => {
-    const local = makeRoutine({ materializedThrough: '2026-06-01' });
-    const incoming = makeRoutine({ materializedThrough: '2026-02-01' });
+  it('교체(R7)는 파일 쪽을 그대로 쓴다', () => {
+    const local = makeRoutine({ fillFloor: '2026-06-01' });
+    const incoming = makeRoutine({ fillFloor: '2026-02-01' });
     const plan = planImport({
       mode: 'replace',
       local: snapshot({ routines: [local] }),
       document: documentOf({ routines: [incoming] }),
     });
-    expect(plan.snapshot.routines[0].materializedThrough).toBe('2026-02-01');
+    expect(plan.snapshot.routines[0].fillFloor).toBe('2026-02-01');
   });
 
-  /**
-   * **정정(재판정, 원래 "반례(S5)"였다 — 리뷰 #108 Major 1 은 오진이었다).** 이 구간이 "영구 소실"
-   * 이라는 원래 주장은 실행으로 반증됐다: `planRoutineFill` 은 `!routine.active` 면 계획 자체를
-   * `null` 로 낸다(`routine-fill.ts:39`) — 즉 **중지 중엔 애초에 "채웠어야 할" 구간이 없다.**
-   * 아래 첫 대조(병합 없음)가 보여주듯, 로컬이 병합을 안 받고 그대로 뒀다면 채워지는 날짜는 `[]`다.
-   * 병합은 그 `[]`를 `['2026-03-05']`로 **늘렸을 뿐**, 무엇도 잃지 않는다. 다섯 목요일은 병합
-   * 여부와 무관하게 **어떤 경로로도 생기지 않는 날짜**다(R7 "소급 없음" 이 의도한 그대로 — 1/29 에
-   * 재개했다면 다섯 다 나온다, 차이는 병합이 아니라 재개일이다).
-   */
-  it('중지→재개 구간은 R7 대로 채우지 않는다 — 병합이 잃는 것이 아니다(정정, 옛 S5)', () => {
-    // 매주 목요일 루틴(기본값). 1/22(목)까지 채운 뒤 중지됐다 — 다음은 1/29 부터였어야 한다.
-    const paused = makeRoutine({
-      active: false,
-      materializedThrough: '2026-01-22',
-      updatedAt: EARLIER,
-    });
-
-    // 대조군: 병합을 전혀 안 하고 로컬이 중지된 채로 남아 있으면 — 계획은 null, 채울 날짜는 없다.
-    // "병합이 이 구간을 없앴다" 가 성립하려면 병합 없이는 이 구간이 채워졌어야 하는데, 그렇지 않다.
-    const noMergeFillPlan = planRoutineFill(
-      { routine: paused, through: '2026-03-05', existing: [] },
-      fixedDeps(),
-    );
-    expect(noMergeFillPlan).toBeNull();
-
-    // 파일(다른 기기): 같은 루틴을 3/1 에 재개했다 — 그 사이(1/29~2/26) 인스턴스는 하나도 안 만들고
-    // 워터마크만 재개일 전날(2/28)로 점프한다(R7 "소급 없음").
+  it('재개(resumeRoutine)로 fillFloor 가 옮겨진 쪽이 updatedAt 도 더 최근이면 그 값이 병합에도 반영된다', () => {
+    // 매주 목요일 루틴(기본값). 1/22(목)까지 채운 뒤 중지됐다.
+    const paused = makeRoutine({ active: false, fillFloor: '2026-01-22', updatedAt: EARLIER });
+    // 파일(다른 기기): 같은 루틴을 3/1 에 재개했다 — fillFloor 가 재개일 전날(2/28)로 옮겨진다(R7
+    // "소급 없음", 사용자 조작이라 updatedAt 도 함께 오른다).
     const resumed = resumeRoutine(paused, '2026-03-01', fixedDeps({ now: LATER }));
 
     const plan = planImport({
@@ -275,26 +237,17 @@ describe('planImport — 루틴 병합의 materializedThrough (max 트레이드�
       document: documentOf({ routines: [resumed] }),
     });
     const merged = plan.snapshot.routines[0];
-    expect(merged.materializedThrough).toBe('2026-02-28');
+    expect(merged.active).toBe(true);
+    expect(merged.fillFloor).toBe('2026-02-28');
 
-    // 병합 뒤 지연 생성을 계획하면 1/29~2/26 다섯 목요일은 나오지 않는다 — 이것들이 "사라진" 것이
-    // 아니라, 병합 없이도(위 대조군) 애초에 생기지 않았을 날짜라는 뜻이다. 실제로 새로 채워지는 것은
-    // 병합이 `[]`에서 늘린 `2026-03-05` 하나뿐이다.
+    // 병합 뒤 지연 생성을 계획하면(existingIds 는 비어 있다고 가정) 재개일 이후 첫 목요일만 나온다 —
+    // 1/29~2/26 은 R7 "소급 없음"대로 어떤 경로로도 생기지 않는다.
     const fillPlan = planRoutineFill(
-      { routine: merged, through: '2026-03-05', existing: [] },
+      { routine: merged, through: '2026-03-05', existingIds: new Set() },
       fixedDeps(),
     );
     const filledDates = (fillPlan?.todos ?? []).map((todo) => todo.date);
     expect(filledDates).toEqual(['2026-03-05']);
-    for (const neverExisted of [
-      '2026-01-29',
-      '2026-02-05',
-      '2026-02-12',
-      '2026-02-19',
-      '2026-02-26',
-    ]) {
-      expect(filledDates).not.toContain(neverExisted);
-    }
   });
 });
 
@@ -417,12 +370,12 @@ describe('왕복 — 내보내기 → 파일 → 교체 가져오기 (R2·완료
     const deletedDday = makeDday({ seq: 2, deletedAt: EARLIER, updatedAt: EARLIER, rev: 4 });
     const liveDiary = makeDiaryEntry({ seq: 1, emoji: '😄' });
     const deletedDiary = makeDiaryEntry({ seq: 2, deletedAt: EARLIER, updatedAt: EARLIER });
-    const liveRoutine = makeRoutine({ seq: 1, materializedThrough: '2026-05-01' });
+    const liveRoutine = makeRoutine({ seq: 1, fillFloor: '2026-05-01' });
     const deletedRoutine = makeRoutine({
       seq: 2,
       deletedAt: EARLIER,
       updatedAt: EARLIER,
-      materializedThrough: '2026-03-01',
+      fillFloor: '2026-03-01',
     });
     const linkingTodo = makeTodo({ seq: 3, routineId: deletedRoutine.id });
 
@@ -451,9 +404,9 @@ describe('왕복 — 내보내기 → 파일 → 교체 가져오기 (R2·완료
     );
     // 삭제된 루틴도 투두가 routineId 로 가리키는 한 실린다(routine.md R10 "기록 보존").
     expect(plan.snapshot.routines.map((routine) => routine.id)).toContain(deletedRoutine.id);
-    // 워터마크(materializedThrough)도 한 글자도 안 바뀐다.
+    // fillFloor 도 한 글자도 안 바뀐다.
     const restoredLive = plan.snapshot.routines.find((routine) => routine.id === liveRoutine.id);
-    expect(restoredLive?.materializedThrough).toBe('2026-05-01');
+    expect(restoredLive?.fillFloor).toBe('2026-05-01');
   });
 
   it('왕복한 파일을 다시 내보내면 문자열이 같다', () => {

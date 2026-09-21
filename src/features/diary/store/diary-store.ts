@@ -108,9 +108,9 @@ export function createDiaryStore(deps: MetaDeps = defaultDeps) {
      * 묶어야 하는데, 그러면 `DiaryRepository` 가 지금의 `upsert` 하나 계약(ADR-0007)을 벗어난다 —
      * 다이어리는 하루 한 번 쓰는 개인 기록이라 그 비용을 들일 만큼 동시 편집이 흔하지 않다고 판단했다.
      *
-     * **루틴의 `(routineId, date)` 워터마크(ADR-0017)와 다른 선택인 이유**: 루틴 지연 생성은
+     * **루틴의 `(routineId, date)` 슬롯 id(ADR-0018)와 다른 선택인 이유**: 루틴 지연 생성은
      * 같은 슬롯을 **여러 날짜 스트립 조회가 반복해서** 겹쳐 채울 수 있는 배경 작업이라 조회 없이도
-     * 원장(`materializedThrough`)으로 멱등을 보장해야 했다. 다이어리는 **사람이 버튼을 눌러야만**
+     * 결정적 id 로 멱등을 보장해야 했다. 다이어리는 **사람이 버튼을 눌러야만**
      * 일어나는 전면 조작이라 발생 빈도·파급이 다르고, `saving` 가드가 실질적으로 이미 닫는다.
      */
     save: async (input) => {

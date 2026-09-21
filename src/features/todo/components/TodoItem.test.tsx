@@ -33,7 +33,7 @@ const 루틴: Routine = {
   recurrence: { type: 'weekly', daysOfWeek: [4] },
   startDate: FIXTURE_DATE,
   active: true,
-  materializedThrough: FIXTURE_DATE,
+  fillFloor: FIXTURE_DATE,
 };
 
 const 루틴투두 = makeTodo({
