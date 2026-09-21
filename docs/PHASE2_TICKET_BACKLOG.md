@@ -2,27 +2,44 @@
 
 # Phase 2 구현 티켓 백로그 (스냅샷)
 
+> **이 문서의 기준 시점**: `origin/main` **a62da2b**(2026-09-21 확인, `git log --oneline origin/main` 기준). 아래 표의 status 열은 이 커밋 시점까지 `git log`/`git show --stat`로 실제 대조한 값이다 — main 이 더 움직이면 다시 대조하고 고친다. **로컬 `main` 브랜치는 무관한 커밋을 가리키므로 비교 기준으로 쓰지 않는다 — 항상 `origin/main`.**
+
 이 문서는 **기록용 스냅샷**이다. 실제 오케스트레이션의 단일 소스는 언제나 `.worktrees/tickets/T-<n>.md` + `.worktrees/BOARD.md`([.worktrees/AGENTS.md](.worktrees/AGENTS.md), [docs/conventions/agent-collaboration.md](docs/conventions/agent-collaboration.md) §1~§2) — 그 디렉토리는 로컬 전용이라 커밋되지 않는다. 이 파일은 컨테이너 세션이 끝나면 그 로컬 파일들이 사라지는 문제를 메우려고, 2026-09-20에 만들어진 티켓 8개를 그대로 옮겨 적어 git에 남겨 둔다.
 
 **사용법**: 새 세션에서 이 작업을 이어받으면, 아래 각 티켓 블록을 그대로 `.worktrees/tickets/T-<n>.md`로 복사하고 BOARD 표를 `.worktrees/BOARD.md`에 붙여넣은 뒤(`bash scripts/wt.sh init`으로 헤더가 없으면 먼저 만든다) 평소대로 오케스트레이터 역할을 계속한다. 구현이 시작되면 이 스냅샷은 낡아진다 — 그때부터는 `.worktrees/BOARD.md`가 다시 단일 소스다.
 
 **진행 현황(2026-09-20 갱신)**: 아래 보드 표는 최초 스냅샷이 아니라 이 시점까지의 실측이다 — 티켓 원문(체크리스트)은 그대로 두고 status 열과 의존 그래프만 고쳤다. 상세는 각 행 status 열 참고.
 
-**전제**: 관련 스펙 5개(`docs/specs/calendar.md`·`stats.md`·`routine.md`·`diary.md`·`sync.md`)는 전부 `상태: approved`. `docs/decisions/ADR-0016-schema-v3-dday-diary-routine.md`도 `accepted`. `sync.md` 구현만 별도로 구글 OAuth·Cloudflare D1 자격증명 발급이 선행돼야 한다(sync.md §6) — 그래서 아래 티켓에는 sync.md 구현 티켓이 없다.
+**진행 현황(2026-09-21 재갱신)**: 2026-09-20 갱신 시점엔 T-78~T-86 status 열이 대부분 `todo`/`진행 중`으로 남아 있었는데, `git log --oneline origin/main` 대조 결과 **T-78~T-86 전부 머지 완료**다(커밋 해시·PR head 커밋 제목까지 대조). 티켓 원문(체크리스트)은 그대로 두고 status·pr 열만 고쳤다. 그 뒤 추가된 동기화 티켓(T-90~T-95)도 새 절로 더했다. (이 id 들이 문서 하단 "후속 백로그" 절의 기존 T-90~T-92 와 한때 겹쳤으나, 동기화 번호가 이미 레포 밖(PR #114 본문·브랜치 커밋 메시지 등)으로 퍼져 있어 후속 백로그 쪽을 T-96~T-98 로 재번호해 해소했다 — 해당 절 참고.)
+
+**전제**: 관련 스펙 5개(`docs/specs/calendar.md`·`stats.md`·`routine.md`·`diary.md`·`sync.md`)는 전부 `상태: approved`. `docs/decisions/ADR-0016-schema-v3-dday-diary-routine.md`도 `accepted`. `sync.md` 구현만 별도로 구글 OAuth·Cloudflare D1 자격증명 발급이 선행돼야 한다(sync.md §6). **2026-09-21 정정**: 아래 문장은 2026-09-20 시점엔 맞았지만 지금은 낡았다 — sync.md 구현 티켓(T-90~T-95)이 실제로 생겼다. 아래 표에 추가했다.
 
 ## 작업 보드 스냅샷
 
 | id   | title                       | branch                     | owner(model) | status                                                                                                                  | owns                                                                                                                                                     | pr  | round |
 | ---- | --------------------------- | -------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | ----- |
-| T-78 | IndexedDB 스키마 v3 ADR     | docs/adr-schema-v3         | opus         | **완료**(ADR-0016 accepted, 리뷰로 `routines: 'id, active'` → `'id'` 정정 — 불리언 색인 불가. db.ts 적용은 T-79 가 함)  | docs/decisions/\*\*, docs/DECISIONS.md, src/infra/indexeddb/db.ts, migration.test.ts                                                                     | #95 | 1     |
-| T-79 | D-day 카드(캘린더)          | feature/calendar-dday      | sonnet       | **완료**(db.ts 적용 포함, 라운드1 완료 — 라운드2 반영 중)                                                               | src/features/calendar/\*\*, src/domain/dday/\*\*, dday-repository.\*, memory/repositories.ts, container.ts, indexeddb/repositories.ts, ShellInsights.tsx | #99 | 2     |
-| T-80 | 다이어리                    | feature/diary              | sonnet       | todo(착수 전)                                                                                                           | src/features/diary/\*\*, src/domain/diary/\*\*, diary-repository.\*, memory/repositories.ts, container.ts, indexeddb/repositories.ts, ShellMain.tsx      | -   | 0     |
-| T-81 | 루틴 도메인+저장소          | feature/routine-domain     | sonnet       | **진행 중**(범위 확장: 관리 액션 pause/resume/remove 를 T-83 에서 이관, ADR-0017 지연 생성 워터마크 추가)               | routine.rules.ts, routine-repository.\*, memory/repositories.ts, container.ts, indexeddb/repositories.ts, todo.ts                                        | -   | 0     |
-| T-82 | 루틴 다이얼로그+지연생성    | feature/routine-indefinite | sonnet       | todo(착수 전)                                                                                                           | RoutineDialog.tsx, useRoutineForm.ts, todo-actions.ts, TodoItem.tsx, useWeekSummaries.ts                                                                 | -   | 0     |
-| T-83 | 루틴 관리 화면              | feature/routine-manager    | sonnet       | todo(착수 전, 관리 액션이 T-81 로 옮겨가 **이제 순수 UI**)                                                              | RoutineManager.tsx(신규), ShellSidebar.tsx                                                                                                               | -   | 0     |
-| T-84 | chore: 히트맵 토큰          | chore/theme-heatmap-tokens | sonnet       | **완료**(라운드1 완료 — 히트맵을 파란 램프에서 무채색 잉크 램프로 교체, 카테고리 `sky` 와 충돌 회피)                    | theme.md, tokens.css                                                                                                                                     | #97 | 1     |
-| T-85 | 통계 화면                   | feature/reports            | sonnet       | **완료**(`feature/reports` 푸시됨, PR 대기)                                                                             | src/features/reports/\*\*, streak.ts, focus-summary.ts, focus-session-repository.\*, CommandPaletteCommands.tsx                                          | -   | 0     |
-| T-86 | chore: 백업 v3 payload 확장 | chore/backup-v3-payload    | sonnet       | **신규**(미착수, 티켓 미작성) — Dday·DiaryEntry·Routine 세 테이블을 백업에 직렬화. 지금은 D-day 가 백업에 담기지 않는다 | src/domain/backup/\*\*, src/features/backup/\*\*                                                                                                         | -   | -     |
+| T-78 | IndexedDB 스키마 v3 ADR     | docs/adr-schema-v3         | opus         | **merged**(origin/main 6d1b8d3. PR #95 — refs/pull/95/head=3be4410, 제목 일치로 대조 확인. ADR-0016 accepted, 리뷰로 `routines: 'id, active'` → `'id'` 정정 — 불리언 색인 불가. db.ts 실제 적용은 T-79 커밋에서 완료됨)  | docs/decisions/\*\*, docs/DECISIONS.md, src/infra/indexeddb/db.ts, migration.test.ts                                                                     | #95 | 1     |
+| T-79 | D-day 카드(캘린더)          | feature/calendar-dday      | sonnet       | **merged**(origin/main 24452a8, 38 files changed — db.ts 스키마 v3 적용 포함)                                           | src/features/calendar/\*\*, src/domain/dday/\*\*, dday-repository.\*, memory/repositories.ts, container.ts, indexeddb/repositories.ts, ShellInsights.tsx | #99 | 2     |
+| T-80 | 다이어리                    | feature/diary              | sonnet       | **merged**(origin/main 94b0269, 30 files changed)                                                                       | src/features/diary/\*\*, src/domain/diary/\*\*, diary-repository.\*, memory/repositories.ts, container.ts, indexeddb/repositories.ts, ShellMain.tsx      | #105 | 미확인 |
+| T-81 | 루틴 도메인+저장소          | feature/routine-domain     | sonnet       | **merged**(origin/main 399e425, 41 files changed — ADR-0017 지연 생성 워터마크 포함)                                    | routine.rules.ts, routine-repository.\*, memory/repositories.ts, container.ts, indexeddb/repositories.ts, todo.ts                                        | #102 | 미확인 |
+| T-82 | 루틴 다이얼로그+지연생성    | feature/routine-indefinite | sonnet       | **merged**(origin/main 28f0ed7, 19 files changed — ADR-0017 신규 포함)                                                  | RoutineDialog.tsx, useRoutineForm.ts, todo-actions.ts, TodoItem.tsx, useWeekSummaries.ts                                                                 | #103 | 미확인 |
+| T-83 | 루틴 관리 화면              | feature/routine-manager    | sonnet       | **merged**(origin/main dcd812a, 23 files changed)                                                                       | RoutineManager.tsx(신규), ShellSidebar.tsx                                                                                                               | #104 | 미확인 |
+| T-84 | chore: 히트맵 토큰          | chore/theme-heatmap-tokens | sonnet       | **merged**(origin/main 3eecb1e, 5 files changed — 히트맵을 파란 램프에서 무채색 잉크 램프로 교체, 카테고리 `sky` 와 충돌 회피)                    | theme.md, tokens.css                                                                                                                                     | #97 | 1     |
+| T-85 | 통계 화면                   | feature/reports            | sonnet       | **merged**(origin/main 30d58e9, 47 files changed)                                                                       | src/features/reports/\*\*, streak.ts, focus-summary.ts, focus-session-repository.\*, CommandPaletteCommands.tsx                                          | #101 | 미확인 |
+| T-86 | chore: 백업 v3 payload 확장 | chore/backup-v3-payload    | sonnet       | **merged**(origin/main 5af72c1, 36 files changed) — Dday·DiaryEntry·Routine 세 테이블이 이제 백업에 직렬화된다          | src/domain/backup/\*\*, src/features/backup/\*\*                                                                                                         | #108 | 미확인 |
+
+### 동기화(sync.md) 구현 티켓
+
+이 표의 id는 2026-09-21 인수인계 메시지가 그대로 준 번호다. 한때 문서 하단 "후속 백로그" 절의 T-90~T-92(코드리뷰에서 나온 별개 항목)와 겹쳤으나, 그쪽을 T-96~T-98 로 재번호해 해소했다(이력은 해당 절 참고) — 아래 T-90~T-95 는 전부 동기화 트랙만 가리킨다.
+
+| id       | title                                                  | branch                | 확인 근거                                                                                                                                                              | status                                    | pr    |
+| -------- | ------------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ----- |
+| T-90(동기화) | ADR-0018(adopt/브랜드 관련)                              | 미확인                | `git log --all`·`docs/decisions/` 어디에도 `ADR-0018` 파일 또는 커밋이 없음(전체 ref 검색으로 확인) — 미착수로 보임(브랜치조차 없음)                                                       | **미완**(확인: ADR 파일 없음)             | -     |
+| T-91(동기화) | 동기화 도메인 계층                                       | feature/sync-domain   | `origin/feature/sync-domain` 이 `origin/main` 대비 8 커밋 앞섬(2bdab82~6cd26e9, 와이어 프로토콜 타입·서버 판정 규칙·클라이언트 병합 표·아웃박스·워터마크 병합 등). `refs/pull/114/head` = `6cd26e9`(HEAD 커밋 제목 일치) — **PR #114 확인됨**, `origin/main`엔 미병합 | **리뷰 중으로 추정**(병합 안 됨, PR #114 오픈 확인) | #114  |
+| T-92(동기화) | 저장소 포트+메모리 가짜 서버+IndexedDB v4+공용 마운트 배선  | 미확인                | `chore/sync-scaffolding`(PR #109, `8d44347`)는 이미 origin/main 에 머지됐으나 그 커밋은 "설정·의존성 기초 배선"(devDependency·wrangler.jsonc·.env.example)뿐 — repository 포트·IndexedDB v4·마운트 배선은 커밋 이력에서 확인 안 됨 | **todo로 추정**(#109 는 이 티켓과 범위가 다름, 미확인) | -     |
+| T-93(동기화) | Cloudflare Worker + D1(OAuth·세션 쿠키·/sync·계정 삭제)  | 미확인                | 관련 커밋·브랜치 없음                                                                                                                                                  | **todo**(확인: 관련 커밋 없음)             | -     |
+| T-94(동기화) | 클라이언트 UI + e2e(지연 로드·폴링 30초)                 | 미확인                | 관련 커밋·브랜치 없음                                                                                                                                                  | **todo**(확인: 관련 커밋 없음)             | -     |
+| T-95(동기화) | 문서                                                    | 미확인                | 관련 커밋·브랜치 없음(단 `docs(sync): 동기화 스펙의 모순과 미정 사항을 정정한다 #112`·`docs(sync): 동기화 구현을 위한 설정·의존성 기초 배선 #109` 등은 이미 T-86 이전에 별도로 머지됨 — 이게 T-95 인지는 미확인)   | **todo로 추정**(미확인)                   | -     |
 
 **의존 관계**:
 
@@ -37,6 +54,19 @@ T-84(chore: 히트맵 토큰, 독립) → T-85(통계 화면)
 **갱신(2026-09-20)**: 이후 의존 관계 권고가 스키마 → **T-81 먼저** → (T-82 ∥ T-83 ∥ T-79) → T-80 으로 바뀌었다(임계 경로 5→3). T-86(백업 v3 payload 확장, 신규·독립)은 세 테이블이 모두 존재해야 하므로 T-79·T-80·T-81 이후 아무 때나.
 
 T-79·T-80·T-81이 `src/repositories/container.ts`·`src/repositories/memory/repositories.ts`·`src/infra/indexeddb/repositories.ts`(공용 파일)를 같이 건드려서 순서대로 직렬화했다(agent-collaboration.md §1.1 owns 교집합 검사). T-82·T-83은 서로 다른 파일만 건드려 T-81 이후 병렬 가능.
+
+**갱신(2026-09-21) — 동기화 티켓 추가**: T-78~T-86(위 8+1개)은 전부 머지돼 임계 경로에서 빠졌다. 그 위에 동기화 트랙이 새로 생겼다(id 번호 충돌 주의는 위 표 참고):
+
+```
+T-90(동기화, ADR-0018) ── 미완, 미착수로 보임(확인: ADR 파일 없음)
+ └→ T-91(동기화, 동기화 도메인) ── PR #114, 리뷰 중으로 추정(origin/main 미병합, 확인: 브랜치가 8커밋 앞섬)
+     └→ T-92(동기화, 저장소 포트+IndexedDB v4+마운트 배선) ── todo로 추정(미확인)
+         └→ T-93(동기화, Worker+D1) ── todo(확인: 관련 커밋 없음)
+             └→ T-94(동기화, 클라이언트 UI+e2e) ── todo(확인: 관련 커밋 없음)
+                 └→ T-95(동기화, 문서) ── todo로 추정(미확인)
+```
+
+이 사슬은 인수인계 메시지가 준 순서를 그대로 옮긴 것이고 **git 증거로 직접 확인한 것은 T-90(ADR 없음)과 T-91(PR #114 오픈)뿐이다** — T-92~T-95 의 선후관계 자체는 미확인이다. `chore/sync-scaffolding`(PR #109, 머지됨)은 "설정·의존성 기초 배선"만 했고 이 사슬의 어느 티켓과도 owns 가 명시적으로 대조되지 않았다.
 
 ## 티켓 원문
 
@@ -467,6 +497,8 @@ completion-rate.md의 "오늘" 한 장을 기간(지난 7일/30일/올해/지정
 
 ## 후속 백로그 (T-79 리뷰 라운드 2 검증에서 나옴, 아직 티켓 원문 없음)
 
+> **2026-09-21**: 이 절의 T-90~T-92 를 동기화 트랙과의 id 충돌로 T-96~T-98 로 옮김(동기화 번호는 PR #114 본문·브랜치 커밋 메시지·ADR-0017·다른 세션의 작업 지시에 이미 퍼져 있어, 이 문서 한 곳에만 있는 쪽을 옮겼다).
+
 - **T-87**: `focus-fallback.ts`(`src/features/shell/lib`)와 `calendar/lib/removal-focus.ts` 의 R14 로직
   중복을 `src/lib/`(`FEATURE_ALLOW` 에 이미 있는, 순환 없는 레이어 — `a11y.ts`·`ime.ts` 와 같은 성격)
   로 통합한다. 지금은 `shell` 이 `AppShell`→`ShellInsights` 를 거쳐 `calendar` 를 조립하므로 원본을
@@ -499,7 +531,7 @@ lib 판은 뷰포트를`reverse()`해 **마지막**(가장 최근) 토스트의 
   `RoutineManager` export·`ShellSidebar.tsx` 의 import 경로·`routine-schedule-label.ts` 동반 이동도
   같이 정리한다.
 
-- **T-90**(T-83 PR #104 리뷰 라운드2에서 나옴, 아직 티켓 원문 없음): **삭제 후 포커스 이동 패턴
+- **T-96**(T-83 PR #104 리뷰 라운드2에서 나옴, 아직 티켓 원문 없음): **삭제 후 포커스 이동 패턴
   통일.** `src/lib/AGENTS.md`(§ "삭제 뒤 포커스 이동 타이밍")가 방금 표준(effect 의존성, 깃발은
   쓰기 전에)을 명문화했지만, main 에는 그 규칙 확립 전에 짜인 타이밍 추측 코드가 그대로 남아
   있다 — `DiaryCard.tsx` 의 `queueMicrotask`, `useTodoItemFocus`·`useFlipRows`·
@@ -508,13 +540,13 @@ lib 판은 뷰포트를`reverse()`해 **마지막**(가장 최근) 토스트의 
   기다리는 것)"인지 하나하나 판정해 규칙의 예외로 명시하거나 같이 옮긴다. 세 번째 사람이 또
   `DiaryCard` 를 보고 rAF/microtask 를 고르지 않도록, 규칙이 남기는 것과 옮기는 것을 갈라 적는다.
 
-- **T-91**(e2e 흔들림 수정 리뷰 라운드에서 나옴, 아직 티켓 원문 없음): `CategoryList.tsx:68-71` 의
+- **T-97**(e2e 흔들림 수정 리뷰 라운드에서 나옴, 아직 티켓 원문 없음): `CategoryList.tsx:68-71` 의
   `empty` 판정이 `status === 'ready'` 만 보고 `idle`/`loading`/`error` 를 걸러내지 않아, 주석("아직
   안 읽힌 목록 위에서 만들기를 열면 R2·R6 이 빈 모집단으로 돈다")과 달리 `idle` 프레임에서도
   "+ 카테고리 추가" 버튼이 그려질 수 있다. 실해는 작다(`useCategoryForm.ts:79` 가 제출 시점에
   `byId` 를 다시 읽으므로 빈 모집단으로 저장되진 않는다) — 이번 라운드는 고치지 않는다.
 
-- **T-92**(같은 리뷰 라운드에서 나옴, 아직 티켓 원문 없음): `todo` 스토어가 같은 패턴이다 —
+- **T-98**(같은 리뷰 라운드에서 나옴, 아직 티켓 원문 없음): `todo` 스토어가 같은 패턴이다 —
   `loadDate` 는 조회만으로 `ready` 를 찍고, 루틴 지연 생성(`materializeRoutines`)은
   `ShellHeader.tsx:194`·`DateStrip` 효과로 별도로 돈다. 날짜를 방문할 때 같은 종류의 뒤늦은
   삽입(그려진 뒤 항목이 끼어드는 것)이 가능하다 — #103 이 방금 머지돼 범위가 커지므로 이번
