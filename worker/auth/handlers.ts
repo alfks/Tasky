@@ -148,7 +148,11 @@ export async function handleLogout(request: Request, env: Env, now: string): Pro
  * `sessions` 행만 지운다. 슬라이딩 갱신을 그대로 적용한다(`/api/sync` 와 같은 이유 — 호출자
  * 세션은 이 요청 뒤에도 계속 쓰이므로 갱신 기회를 놓치지 않는다).
  */
-export async function handleLogoutOthers(request: Request, env: Env, now: string): Promise<Response> {
+export async function handleLogoutOthers(
+  request: Request,
+  env: Env,
+  now: string,
+): Promise<Response> {
   const result = await requireSession(request, env, now);
   if (!result.ok) {
     return new Response(null, { status: result.status === 410 ? 410 : 401 });

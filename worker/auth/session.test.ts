@@ -377,16 +377,13 @@ describe('POST /auth/logout-others', () => {
       const b = await createSession(env, 'sub-e2e', now);
       const { handleRequest } = await import('../router');
 
-      const logoutOthersReq = new Request(
-        'https://tasky.example.workers.dev/auth/logout-others',
-        {
-          method: 'POST',
-          headers: {
-            'X-Tasky': '1',
-            Cookie: `tasky_session=${encodeURIComponent(a.signedSid)}`,
-          },
+      const logoutOthersReq = new Request('https://tasky.example.workers.dev/auth/logout-others', {
+        method: 'POST',
+        headers: {
+          'X-Tasky': '1',
+          Cookie: `tasky_session=${encodeURIComponent(a.signedSid)}`,
         },
-      );
+      });
       const res = await handleRequest(logoutOthersReq, env, now);
       expect(res.status).toBe(204);
 
