@@ -29,6 +29,17 @@ function googleFor(request: Request, env: Env) {
   return createGoogleProvider(env.GOOGLE_CLIENT_ID, env.GOOGLE_CLIENT_SECRET, redirectUri);
 }
 
+/**
+ * `handleCallback` 의 실패 분기 로그(#132 후속) — 클라이언트는 항상 `?auth=error` 만 보고 원인은
+ * 절대 모른다(#126 보안 리뷰: 에러 응답은 고정 문자열). 대신 `wrangler tail` 로 서버에서만 보이는
+ * 분기 이름을 남긴다. `detail` 에는 구글이 돌려준 `error`/`error_description`·HTTP 상태처럼
+ * `google.ts` 가 이미 다듬어 놓은 값만 싣는다 — `code`·`code_verifier`·비밀·세션 토큰은 절대 넣지
+ * 않는다(같은 파일 jsdoc, CLAUDE.md 로그 제약).
+ */
+function logCallbackFailure(reason: string, detail?: string): void {
+  console.error(detail ? `[auth/callback] ${reason}: ${detail}` : `[auth/callback] ${reason}`);
+}
+
 export async function handleLogin(request: Request, env: Env): Promise<Response> {
   const state = randomToken(16);
   const verifier = randomToken();
@@ -62,20 +73,33 @@ export async function handleCallback(request: Request, env: Env, now: string): P
     });
 
   if (errorParam) return redirect('?auth=denied');
-  if (!code || !state) return redirect('?auth=error');
+  if (!code || !state) {
+    logCallbackFailure('code/state 없음');
+    return redirect('?auth=error');
+  }
 
   const cookies = parseCookies(request.headers.get('Cookie'));
   const raw = cookies[OAUTH_STATE_COOKIE];
-  if (!raw) return redirect('?auth=error');
+  if (!raw) {
+    logCallbackFailure('state 쿠키 없음');
+    return redirect('?auth=error');
+  }
   const payload = await verifySignedValue(raw, env.SESSION_SECRET);
-  if (!payload) return redirect('?auth=error');
+  if (!payload) {
+    logCallbackFailure('쿠키 서명 불일치');
+    return redirect('?auth=error');
+  }
   const [savedState, verifier] = payload.split(':');
-  if (!savedState || !verifier || savedState !== state) return redirect('?auth=error');
+  if (!savedState || !verifier || savedState !== state) {
+    logCallbackFailure('state 불일치');
+    return redirect('?auth=error');
+  }
 
   let identity: { sub: string; email: string };
   try {
     identity = await googleFor(request, env).exchange(code, verifier);
-  } catch {
+  } catch (err) {
+    logCallbackFailure('구글 교환 실패', err instanceof Error ? err.message : String(err));
     return redirect('?auth=error');
   }
 
