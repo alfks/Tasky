@@ -222,16 +222,45 @@ if (doc !== '') {
 // 그 트리거가 예정대로 울렸다 — 카테고리 + CommandLayer 만으로 120,955 B.
 // **여기서 한 번 의도적으로 올린다.** 기준은 `docs/TECH_PLAN.md` §8 의 제품 계약 "첫 로드 JS ≤ 200KB" 다.
 // 다시 올려야 할 상황이 오면 그건 또 한 번의 명시적 결정이어야 한다 — 조용히 늘리지 마라.
-const ENTRY_BUDGET = 150_000; // gzip. 진입 청크만. 지연 청크는 NETWORK_BUDGET 이 본다.
-// --- NETWORK_BUDGET 상향 정책(사용자 결정, 2026-09-21) ---------------------
-// 지금 200,000 을 그대로 둔다 — 동기화가 아직 안 붙어서 예산이 아직 안 깨졌다. 지금 올리면
-// 쓰이지도 않은 여유를 다른 코드가 조용히 먹어치울 수 있다. 상향은 **T-94(동기화 클라이언트 UI가
-// 진입 번들에 실제로 영향을 주는 티켓)의 PR 안에서만** 한다 — 그때 이 줄 옆에 이유·날짜를 주석으로
-// 남기고(예: "// 2026-09-21: 동기화 지연 청크 도입으로 200,000 → 220,000. 근거: …"), 그 PR 본문에
-// 이 스크립트의 PASS 줄과 청크 표를 실측으로 붙인다. **이 예산은 요금과 무관하다** — Cloudflare
-// 정적 자산은 용량 과금이 없다. 이건 우리가 정한 **성능 가드레일**(TECH_PLAN §8)이지 비용 한도가
-// 아니다. 조용히 늘리지 마라(ENTRY_BUDGET 과 같은 규율, 위 187행 참고).
-const NETWORK_BUDGET = 200_000; // gzip. = TECH_PLAN §8 제품 계약값.
+//
+// --- 2026-09-21: 계측을 "진입 청크 단독"에서 "진입 폐포"로 바꾼다(T-94, T94_LAZY_BOUNDARY.md §1
+// 사실 1·§B-5 (a), 사용자 결정) ---------------------------------------------------------------
+// **왜**: rolldown 은 정적 위성 청크(진입이 `import{...}from"./x.js"` 로 직접 끌어오는 것, 예:
+// `meta-*.js`·`routine.rules-*.js`)를 만들지 흡수할지를 청크 배치 휴리스틱으로 정한다 — 코드가
+// 한 바이트도 안 바뀌어도 그 배치가 바뀌면 `index-*.js` 단독 수치가 ±3 kB 씩 흔들린다(실측: UI
+// 컴포넌트를 `lazy` 로 몇 개 떼느냐에 따라 index-*.js 가 135,708~150,530 사이를 오갔다). "첫 페인트가
+// 실제로 기다리는 바이트" 는 진입 스크립트 자신이 아니라 **그 스크립트가 평가되기 위해 정적으로
+// 먼저 받아야 하는 모든 것**이므로, 그 합을 잰다 — 청크 배치가 바뀌어도 이 합은 코드 무게와만
+// 움직인다.
+// **어떻게 재는가**: 진입 파일에서 `from"./chunk.js"`(ES 모듈 정적 import — 이 빌드의 동적
+// import()는 항상 백틱 템플릿 리터럴을 쓰므로 겹치지 않는다, 실측)로 참조된 청크를 모으고,
+// 그 청크들도 재귀적으로 같은 방식으로 훑어 정적 의존 전체(폐포)를 구한다.
+function staticImportTargets(source) {
+  return [...source.matchAll(/\bfrom"\.\/([\w.-]+\.js)"/g)].map((m) => `/assets/${m[1]}`);
+}
+function entryClosure(entryFile, allFiles) {
+  const byUrl = new Map(allFiles.map((f) => [f.url, f]));
+  const seen = new Set([entryFile.url]);
+  const queue = [entryFile];
+  while (queue.length > 0) {
+    const file = queue.shift();
+    for (const url of staticImportTargets(readFileSync(file.path, 'utf-8'))) {
+      if (seen.has(url)) continue;
+      seen.add(url);
+      const next = byUrl.get(url);
+      if (next !== undefined) queue.push(next);
+    }
+  }
+  return [...seen].map((url) => byUrl.get(url)).filter((f) => f !== undefined);
+}
+// ENTRY_BUDGET 160,000: 기준 154,686(T-94 착수 시점 진입 폐포 실측, T92b 머지 직후) + 이 티켓이
+// 더하는 게이트·스토어·계정 블록·업로드 다이얼로그(진입 고정, 실측 근거는 PR 본문) — 여유를
+// 다음 재검토 트리거로 남겨 둔다(전부 쓰지 않는다).
+const ENTRY_BUDGET = 160_000; // gzip. 진입 폐포(진입 + 정적 위성 청크) 합.
+// NETWORK_BUDGET 210,000: 기준 193,486(T92b) + 동기화 지연 청크(엔진·auth-actions·http-transport·
+// 공유 조각) 실측 증가분. 계측 정의는 그대로 — `/assets/*.js` 전부의 합(사실 4의 프리로드 필터
+// 수정으로 전부 `<head>` 프리로드되므로 "첫 로드 네트워크" 라는 이름이 정확히 참이 된다).
+const NETWORK_BUDGET = 210_000; // gzip. = TECH_PLAN §8 제품 계약값(2026-09-21 갱신).
 const entryUrl = /<script[^>]+type="module"[^>]+src="([^"]+)"/.exec(doc)?.[1];
 const entryFile = distFiles.find((f) => f.url === entryUrl);
 if (doc !== '' && entryFile === undefined) {
@@ -239,15 +268,19 @@ if (doc !== '' && entryFile === undefined) {
 } else if (entryFile !== undefined) {
   const gz = (file) => gzipSync(readFileSync(file.path), { level: 9 }).length;
   const entryGzip = gz(entryFile);
-  if (/\bIDBKeyRange\b|\bDexie\b/.test(readFileSync(entryFile.path, 'utf-8')))
+  const entryText = readFileSync(entryFile.path, 'utf-8');
+  if (/\bIDBKeyRange\b|\bDexie\b/.test(entryText))
     note(
       `진입 청크(${entryFile.url})에 Dexie 가 들어 있습니다 — ` +
         'providers.tsx 의 infra import 가 동적이어야 합니다(ADR-0013 규칙 7).',
     );
-  if (entryGzip > ENTRY_BUDGET)
+  const closure = entryClosure(entryFile, distFiles);
+  const closureGzip = closure.reduce((sum, f) => sum + gz(f), 0);
+  if (closureGzip > ENTRY_BUDGET)
     note(
-      `진입 청크 gzip ${entryGzip} B 가 예산 ${ENTRY_BUDGET} B 를 넘었습니다 ` +
-        '— 청크 분해를 다시 재고 무엇이 늘었는지부터 보세요(ADR-0013 재검토 트리거).',
+      `진입 폐포(index + 정적 위성 청크 ${closure.length}개) gzip ${closureGzip} B 가 ` +
+        `예산 ${ENTRY_BUDGET} B 를 넘었습니다 — 청크 분해를 다시 재고 무엇이 늘었는지부터 보세요` +
+        '(ADR-0013 재검토 트리거).',
     );
   const networkGzip = distFiles
     .filter((f) => /^\/assets\/.*\.js$/.test(f.url))
@@ -257,7 +290,39 @@ if (doc !== '' && entryFile === undefined) {
       `첫 로드 네트워크 JS gzip 합 ${networkGzip} B 가 예산 ${NETWORK_BUDGET} B 를 넘었습니다 ` +
         '— ADR-0013 재검토 트리거에 도달했습니다.',
     );
-  summary = `진입 청크 gzip ${entryGzip} B / 예산 ${ENTRY_BUDGET} B`;
+
+  // --- 동기화 가짜 서버·검증 벡터 마커(T94_LAZY_BOUNDARY.md §C-8②) ---------------------------
+  // 문자열 리터럴만 본다(식별자는 minify 로 사라진다, 사실 11). 진입에 없어야 하는 것들은 각각
+  // **다른 어떤 청크에는 있어야** 한다 — 마커 자체가 죽었으면(오탈자·리터럴이 바뀜) 이 대조가
+  // 드러낸다(빈 배열 기대값을 두지 않는다는 §C-8 원칙).
+  const allText = distFiles
+    .filter((f) => /\.js$/.test(f.url))
+    .map((f) => [f.url, readFileSync(f.path, 'utf-8')]);
+  const countAcross = (needle) => allText.filter(([, text]) => text.includes(needle)).length;
+  // `resync` 는 따옴표 없이 찾는다 — 미니파이어가 `'resync' in response` 를 백틱 템플릿 리터럴
+  // (`` `resync` ``)로 바꿔 낼 수도 있어(실측) 인용부호까지 고정하면 마커가 조용히 깨진다.
+  const ENTRY_ABSENT_ELSEWHERE_PRESENT = ['X-Tasky', 'protocol:', 'resync'];
+  for (const needle of ENTRY_ABSENT_ELSEWHERE_PRESENT) {
+    if (entryText.includes(needle))
+      note(`진입 청크에 "${needle}" 이 있습니다 — 동기화 엔진/트랜스포트가 진입에 흡수됐습니다.`);
+    if (countAcross(needle) === 0)
+      note(
+        `"${needle}" 이 dist 어디에도 없습니다 — 마커가 죽었을 수 있습니다(빌드가 조용히 무력화됨).`,
+      );
+  }
+  if (!entryText.includes('Google로 계속하기'))
+    note('진입 청크에 "Google로 계속하기" 가 없습니다 — 로그인 화면이 진입에서 빠졌습니다(R2).');
+  const NEVER_IN_DIST = ['reject-stale', '[vectors]'];
+  for (const needle of NEVER_IN_DIST) {
+    if (countAcross(needle) > 0)
+      note(`dist 에 "${needle}" 이 있습니다 — 가짜 서버/검증 벡터가 번들에 샜습니다.`);
+  }
+  if (!distFiles.some((f) => /^\/assets\/sync-engine-.*\.js$/.test(f.url)))
+    note('sync-engine-*.js 청크가 없습니다 — 동기화 엔진이 지연 청크로 분리되지 않았습니다.');
+
+  summary =
+    `진입 폐포 gzip ${closureGzip} B / 예산 ${ENTRY_BUDGET} B · ` +
+    `index.js 단독 ${entryGzip} B · 네트워크 합 ${networkGzip} B / 예산 ${NETWORK_BUDGET} B`;
 }
 
 if (errors.length > 0) {
