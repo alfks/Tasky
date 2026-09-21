@@ -209,6 +209,56 @@ test.describe('동기화: 다기기 로그인(ADR-0020)', () => {
   });
 });
 
+test.describe('동기화: 다른 기기 모두 로그아웃(ADR-0020 §결정 5, 리뷰 Minor 4)', () => {
+  test('A 가 누르면 A 는 로그인 상태를 유지하고, B 는 다음 확인에서 로그인 화면으로 돌아간다', async ({
+    browser,
+  }) => {
+    const account = randomAccount();
+    const ctxA = await browser.newContext();
+    const ctxB = await browser.newContext();
+    const pageA = await ctxA.newPage();
+    const pageB = await ctxB.newPage();
+
+    // 진짜 두 번째 로그인(ADR-0020) — A·B 가 서로 다른, 둘 다 유효한 세션 행을 갖는다.
+    await stubLogin(pageA, account);
+    await stubLogin(pageB, account);
+    await waitForShell(pageA);
+    await waitForShell(pageB);
+
+    await pageA.getByRole('button', { name: '다른 기기 모두 로그아웃' }).click();
+    await pageA
+      .getByRole('alertdialog', { name: '다른 기기를 모두 로그아웃할까요?' })
+      .getByRole('button', { name: '로그아웃' })
+      .click();
+    await expect(pageA.getByText('다른 기기를 로그아웃했어요.')).toBeVisible();
+
+    // A: 이 기기 자신은 로그인 상태를 유지한다 — 새로고침해도 셸이 그대로 보인다.
+    await pageA.reload();
+    await waitForShell(pageA);
+
+    // B: 다음 확인(visibilitychange 트리거)에서 401 을 받아 로그인 화면으로 돌아간다. `sync-engine.ts`
+    // 의 확인 사이클(`verifySession`)이 `/api/me` 를 부르고, 세션이 없어졌으니 `AuthGate` 가
+    // `phase: 'login'` 으로 바뀌어 `main#shell-main` 이 사라진다(리뷰 Major 3, user — 로그인 화면이
+    // "왜" 인지 한 줄을 남긴다).
+    const [response] = await Promise.all([
+      pageB.waitForResponse((res) => res.url().includes('/api/me'), { timeout: 10_000 }),
+      pageB.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))),
+    ]);
+    expect(response.status()).toBe(401);
+    await expect(pageB.getByRole('link', { name: 'Google로 계속하기' })).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(
+      pageB.getByText(
+        '로그인이 풀렸어요. 세션이 만료되었거나 다른 기기에서 로그아웃했을 수 있어요.',
+      ),
+    ).toBeVisible();
+
+    await ctxA.close();
+    await ctxB.close();
+  });
+});
+
 test.describe('동기화: 인증 엔드포인트', () => {
   test('무쿠키 GET /api/me 는 401 JSON 이다(HTML 아님)', async ({ request }) => {
     const response = await request.get('/api/me');
