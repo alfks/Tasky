@@ -2,7 +2,7 @@
 
 # 날짜 스트립 스펙
 
-- 상태: approved · 관련 ADR: - · 리서치 참조: reference-app-research.md §2.1(헤더·날짜 이동), §2.2(캘린더 점 표시), §9 기회 3
+- 상태: implemented · 관련 ADR: - · 리서치 참조: reference-app-research.md §2.1(헤더·날짜 이동), §2.2(캘린더 점 표시), §9 기회 3
 
 ## 1. 목표
 

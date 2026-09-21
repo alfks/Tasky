@@ -2,7 +2,7 @@
 
 # 루틴 스펙
 
-- 상태: approved · 관련 ADR: - · 리서치 참조: reference-app-research.md §2.4(루틴 관리), §3-4, §7 데이터 모델(Routine)
+- 상태: implemented · 관련 ADR: - · 리서치 참조: reference-app-research.md §2.4(루틴 관리), §3-4, §7 데이터 모델(Routine)
 
 ## 1. 목표
 

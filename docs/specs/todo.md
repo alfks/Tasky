@@ -2,7 +2,7 @@
 
 # 투두 스펙
 
-- 상태: approved · 관련 ADR: ADR-0002, ADR-0003 · 리서치 참조: reference-app-research.md §2.1, §3-1, §3-5, §6(완료 스타일·체크 애니메이션), §7 Todo
+- 상태: implemented · 관련 ADR: ADR-0002, ADR-0003 · 리서치 참조: reference-app-research.md §2.1, §3-1, §3-5, §6(완료 스타일·체크 애니메이션), §7 Todo
 
 ## 1. 목표
 

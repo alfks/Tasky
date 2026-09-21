@@ -3,7 +3,7 @@
 # 디렉토리 맵 (단일 소스)
 
 규칙: 각 디렉토리의 규칙·맥락은 **그 디렉토리의 `AGENTS.md`에만** 있다. 여기서는 위치와 "언제 읽는가"만 답한다.
-`(예정)` 표시는 스캐폴딩 티켓에서 생성된다. 그 전에는 존재하지 않으므로 Read 시도하지 않는다.
+이 표의 경로는 **전부 실재한다** — `(예정)` 표시는 스캐폴딩이 끝나면서 없앴다(예전 문서를 기억하고 있다면 그 표시를 더 찾지 마라).
 
 ## 루트
 
@@ -23,7 +23,7 @@
 | `serwist.config.js` · `src/sw.ts`              | 서비스워커 프리캐시 설정 · 서비스워커 소스                            | —                                               | 프리캐시 대상·상한·오프라인 동작을 바꿀 때       |
 | `assets/`                                      | 브라우저로 나가지 않는 **원본 소재**(캐릭터 그림). `public/`과 반대   | `assets/AGENTS.md`                              | 아이콘 원본 그림을 교체할 때                     |
 | `public/`                                      | PWA 아이콘 · `_headers`(캐시 헤더) 등 정적 자산                       | `public/AGENTS.md`                              | PWA 아이콘·캐시 헤더 교체 시                     |
-| `tests/e2e/` (예정)                            | Playwright 스모크                                                     | `tests/AGENTS.md`                               | E2E 작성 시                                      |
+| `tests/e2e/`                                   | Playwright 스모크(11개 스펙 35건)                                     | `tests/AGENTS.md`                               | E2E 작성 시                                      |
 | `tests/feel/`                                  | 사용감 계측 도구(`.mjs`, 러너 없음) — 결과는 `docs/FEEL_REPORT.md`    | [tests/feel/AGENTS.md](../tests/feel/AGENTS.md) | 모션·여백·시각을 수치로 다시 잴 때               |
 
 ## docs/
@@ -41,20 +41,20 @@
 | `docs/specs/`           | 기능별 스펙(티켓의 근거)                                                                                                                                         | [docs/specs/AGENTS.md](./specs/AGENTS.md)             | 기능 티켓 시작 시 해당 스펙만                                       |
 | `docs/decisions/`       | ADR 본문                                                                                                                                                         | [docs/decisions/AGENTS.md](./decisions/AGENTS.md)     | ADR을 쓰거나 인용할 때                                              |
 
-## src/ (예정 — 스캐폴딩 티켓에서 AGENTS.md와 함께 생성)
+## src/
 
-| 경로                | 한 줄                                                                    | AGENTS.md                           | 언제 읽어야 하는가                                                                                                                                           |
-| ------------------- | ------------------------------------------------------------------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `src/`              | 소스 루트                                                                | `src/AGENTS.md`                     | 새 최상위 디렉토리를 만들 때만                                                                                                                               |
-| `src/app/`          | SPA 진입점(`main.tsx`)·providers(조립 지점)·단일 라우트 화면(`page.tsx`) | `src/app/AGENTS.md`                 | 진입점/조립/화면 수정 시 (`<head>`는 루트 `index.html`, manifest 는 `public/`)                                                                               |
-| `src/components/`   | 공용 무상태 UI 프리미티브(`ui/`)                                         | `src/components/AGENTS.md`          | 새 프리미티브 추가, 기존 프리미티브 수정 시                                                                                                                  |
-| `src/features/`     | 기능 슬라이스: `todo` `category` `date-strip` `stats` `theme`            | `src/features/AGENTS.md`(규칙 본문) | feature 코드 작성 시. 하위 `<f>/AGENTS.md`는 `components/hooks/store` 관할 선언 전용 최소 파일(관할은 직계 자식만 면제하므로 손자 디렉토리엔 별도 선언 필요) |
-| `src/domain/`       | 엔티티·규칙·순수 함수, 프레임워크 의존 0                                 | `src/domain/AGENTS.md`              | 도메인 타입/규칙 추가·수정 시                                                                                                                                |
-| `src/repositories/` | 레포지토리 인터페이스, memory 구현, 컨테이너                             | `src/repositories/AGENTS.md`        | 저장소 계약 변경 시                                                                                                                                          |
-| `src/infra/`        | `indexeddb/`(Dexie), 후일 `sync/`                                        | `src/infra/AGENTS.md`               | 스키마/마이그레이션/구현 수정 시                                                                                                                             |
-| `src/lib/`          | `cn.ts` `date.ts` `id.ts` 등 순수 유틸                                   | `src/lib/AGENTS.md`                 | 유틸 추가 시(중복 방지)                                                                                                                                      |
-| `src/styles/`       | `tokens.css` `globals.css`(.css 만)                                      | `src/styles/AGENTS.md`              | 토큰/테마 변경 시                                                                                                                                            |
-| `src/test/`         | Vitest setup, fixtures 팩토리                                            | `src/test/AGENTS.md`                | 테스트 작성 시 픽스처 확인                                                                                                                                   |
+| 경로                | 한 줄                                                                                                                                                                          | AGENTS.md                           | 언제 읽어야 하는가                                                                                                                                           |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/`              | 소스 루트                                                                                                                                                                      | `src/AGENTS.md`                     | 새 최상위 디렉토리를 만들 때만                                                                                                                               |
+| `src/app/`          | SPA 진입점(`main.tsx`)·providers(조립 지점)·단일 라우트 화면(`page.tsx`)                                                                                                       | `src/app/AGENTS.md`                 | 진입점/조립/화면 수정 시 (`<head>`는 루트 `index.html`, manifest 는 `public/`)                                                                               |
+| `src/components/`   | 공용 무상태 UI 프리미티브(`ui/`)                                                                                                                                               | `src/components/AGENTS.md`          | 새 프리미티브 추가, 기존 프리미티브 수정 시                                                                                                                  |
+| `src/features/`     | 기능 슬라이스 13개: `todo` `category` `date-strip` `stats`(달성률) `theme` `timer` `backup` `pwa` `command` `calendar`(D-day) `diary` `reports`(기간 통계) + 조립 지점 `shell` | `src/features/AGENTS.md`(규칙 본문) | feature 코드 작성 시. 하위 `<f>/AGENTS.md`는 `components/hooks/store` 관할 선언 전용 최소 파일(관할은 직계 자식만 면제하므로 손자 디렉토리엔 별도 선언 필요) |
+| `src/domain/`       | 엔티티·규칙·순수 함수, 프레임워크 의존 0. `todo` `category` `date` `theme` `focus` `backup` `dday` `diary` `routine` `sync`                                                    | `src/domain/AGENTS.md`              | 도메인 타입/규칙 추가·수정 시                                                                                                                                |
+| `src/repositories/` | 레포지토리 인터페이스, memory 구현, 컨테이너                                                                                                                                   | `src/repositories/AGENTS.md`        | 저장소 계약 변경 시                                                                                                                                          |
+| `src/infra/`        | `indexeddb/`(Dexie). 동기화의 **순수 규칙**은 `src/domain/sync/` 에 있고, `infra/sync/`(Worker 왕복)는 아직 없다                                                               | `src/infra/AGENTS.md`               | 스키마/마이그레이션/구현 수정 시                                                                                                                             |
+| `src/lib/`          | `cn` `date` `id` `a11y` `ime` `korean` `focus-fallback` `drag-order` 순수 유틸                                                                                                 | `src/lib/AGENTS.md`                 | 유틸 추가 시(중복 방지)                                                                                                                                      |
+| `src/styles/`       | `tokens.css` `globals.css`(.css 만)                                                                                                                                            | `src/styles/AGENTS.md`              | 토큰/테마 변경 시                                                                                                                                            |
+| `src/test/`         | Vitest setup, fixtures 팩토리                                                                                                                                                  | `src/test/AGENTS.md`                | 테스트 작성 시 픽스처 확인                                                                                                                                   |
 
 ## 빠른 질문표
 

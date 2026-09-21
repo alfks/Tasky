@@ -26,4 +26,5 @@
 
 ## 예정(초안 필요 시 번호 예약 없이 작성)
 
-- 동기화 어댑터 설계(Phase 2, ADR-0005·0007·0009를 supersede) · SNS 데이터 모델(Phase 2) · E2E 도입 범위
+- **ADR-0018 동기화 구조**(아웃박스·슬롯 id·서버 규칙·세션·격리·GC. ADR-0009 규칙 1 의 `adopt` 호출처를 넓히고 ADR-0017 을 부분 supersede) — 설계는 [SYNC_DESIGN.md](./SYNC_DESIGN.md) §T-90 에 끝나 있고 ADR 파일만 아직 없다.
+- SNS 데이터 모델(Phase 3).

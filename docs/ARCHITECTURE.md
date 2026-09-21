@@ -84,27 +84,37 @@ Tasky/
 │   ├── specs/          → docs/specs/AGENTS.md
 │   └── decisions/      → docs/decisions/AGENTS.md
 ├── public/             → public/AGENTS.md              아이콘·manifest.webmanifest·fonts/·_headers
-├── tests/e2e/          → tests/AGENTS.md              (스캐폴딩 후)
-└── src/                → src/AGENTS.md                (스캐폴딩 후, 아래 전부 동일)
+├── tests/e2e/          → tests/AGENTS.md              Playwright 스모크(11 스펙 35건)
+├── tests/feel/         → tests/feel/AGENTS.md         사용감 계측 도구(러너 없음 — docs/FEEL_REPORT.md)
+└── src/                → src/AGENTS.md
     ├── app/            → src/app/AGENTS.md            SPA 진입점(main.tsx)·providers·단일 라우트 화면
     ├── components/     → src/components/AGENTS.md     ui/ 프리미티브(Button, Checkbox, Popover…)
     ├── features/       → src/features/AGENTS.md       (각 feature 에 index.ts — src/ 에서 유일한 배럴)
-    │   ├── todo/         투두 목록·아이템·입력, todo-store
-    │   ├── category/     카테고리 관리·색상 선택, category-store
+    │   ├── todo/         투두 목록·아이템·입력·루틴(반복), todo-store
+    │   ├── category/     카테고리 관리·색상 선택·순서 드래그, category-store
     │   ├── date-strip/   날짜 스트립·선택 날짜, date-store
     │   ├── stats/        달성률 표시(도메인 계산 결과 렌더)
-    │   └── theme/        테마 토글·강조색, theme-store
+    │   ├── theme/        테마 토글·강조색, theme-store
+    │   ├── timer/        포커스 타이머·세션 기록
+    │   ├── backup/       내보내기·가져오기(지연 로드 다이얼로그)
+    │   ├── pwa/          설치·업데이트 토스트·저장소 지속성
+    │   ├── command/      단축키 레지스트리·커맨드 팔레트
+    │   ├── calendar/     D-day 카드
+    │   ├── diary/        하루 기록 카드·모달
+    │   ├── reports/      기간 통계(달성률·스트릭·히트맵)
+    │   └── shell/        앱 셸·레이아웃·토스트 스택 — **조립 지점이지 feature 가 아니다**
     ├── domain/         → src/domain/AGENTS.md         (배럴 없음)
-    │   ├── todo/  category/  date/  theme/  focus/  meta.ts(Meta, Persistable, createMeta/touch/markDeleted/adopt)  ids.ts  dataset.ts  errors.ts
+    │   ├── todo/  category/  date/  theme/  focus/  backup/  dday/  diary/  routine/  sync/(순수 규칙만 — 서버 LWW·클라이언트 병합·아웃박스·와이어)
+    │   └── meta.ts(Meta, Persistable, createMeta/touch/markDeleted/adopt)  ids.ts  dataset.ts  errors.ts
     ├── repositories/   → src/repositories/AGENTS.md
-    │   ├── todo-repository.ts  category-repository.ts  settings-repository.ts  focus-session-repository.ts  dataset-repository.ts
+    │   ├── todo-repository.ts  category-repository.ts  settings-repository.ts  focus-session-repository.ts  dataset-repository.ts  dday-repository.ts  diary-repository.ts  routine-repository.ts
     │   ├── memory/           in-memory 구현(테스트) + live.ts(툼스톤 필터 헬퍼)
     │   ├── container.ts      컨테이너(get/setRepositories)
     │   └── write-plan.ts     데이터셋 쓰기 1단계(해석·검증) — memory·indexeddb 두 구현이 공용
     ├── infra/          → src/infra/AGENTS.md
     │   ├── indexeddb/        db.ts(Dexie 스키마·버전) · query.ts(조회 liveAll/liveOne/liveBy/liveBetween/liveOrderBy · 툼스톤만 deletedByIds · 쓰기 put · DatasetRepository 전용 allRows/clear/bulkPut/store.transaction · 스키마 열기 store.open · 묶음 Store/tables/createStore/storeOn) · *-indexeddb-repository.ts · repositories.ts(조립)
-    │   └── sync/             (Phase 2 — 지금은 만들지 않음)
-    ├── lib/            → src/lib/AGENTS.md            cn.ts, date.ts(nowIso), id.ts(newId)
+    │   └── sync/             (아직 없음 — Worker 왕복이 붙을 자리. 순수 규칙은 domain/sync/ 에 이미 있다)
+    ├── lib/            → src/lib/AGENTS.md            cn.ts, date.ts(nowIso), id.ts(newId), a11y.ts, ime.ts, korean.ts, focus-fallback.ts, drag-order.ts
     ├── styles/         → src/styles/AGENTS.md         tokens.css, globals.css (.css 만)
     └── test/           → src/test/AGENTS.md           setup.ts, fixtures/
 ```

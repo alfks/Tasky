@@ -2,7 +2,7 @@
 
 # 앱 셸 / 레이아웃 스펙
 
-- 상태: approved · 관련 ADR: ADR-0001, ADR-0003 · 리서치 참조: reference-app-research.md §2.1, §9 기회 1, 과제 3·5
+- 상태: implemented · 관련 ADR: ADR-0001, ADR-0003 · 리서치 참조: reference-app-research.md §2.1, §9 기회 1, 과제 3·5
 
 ## 1. 목표
 
