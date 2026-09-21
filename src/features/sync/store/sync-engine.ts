@@ -100,7 +100,12 @@ async function applyResponse(
   const result = remoteWrites.length > 0 ? await repo.applyRemote(remoteWrites) : null;
 
   const pendingCount = await repo.countOutbox();
-  await repo.setState({ ...state, cursor: response.cursor, lastSyncedAt: nowIso() });
+  // `handleRejections` 가 격리를 확정하며 `quarantined` 를 이미 저장소에 썼을 수 있다 — 여기서
+  // 인자로 받은(함수 진입 시점의) `state` 를 그대로 스프레드하면 그 최신 `quarantined` 를 덮어써
+  // `undefined` 로 되돌린다(실측: "3회 격리" 테스트가 이 순서 문제로 깨졌다). 커서만 갱신하려면
+  // 저장소의 **지금** 값을 다시 읽어 그 위에 얹어야 한다.
+  const latest = (await repo.getState()) ?? state;
+  await repo.setState({ ...latest, cursor: response.cursor, lastSyncedAt: nowIso() });
 
   const adoptedAny = result !== null && Object.values(result.adopted).some((n) => n > 0);
   if (adoptedAny && result !== null) {
@@ -113,10 +118,16 @@ async function applyResponse(
 }
 
 /** `ackOutbox` 는 rev 를 다시 읽어 대조하므로(§B-4 T-92 완료 조건), 여기서는 실제 큐 항목을 다시
- * 끌어와 정확한 rev 로 부른다 — `applied` 응답에는 서버 seq 만 있고 rev 는 없다. */
+ * 끌어와 정확한 rev 로 부른다 — `applied` 응답에는 서버 seq 만 있고 rev 는 없다.
+ *
+ * **격리 카운터도 여기서 리셋한다.** `consecutiveInvalid` 는 "연속" invalid 거절만 세야 한다 —
+ * 리셋 없이 두면 두 번 invalid 로 실패한 로우가 그사이 한 번 성공(applied)해도 카운트가 2로
+ * 남아, 나중에 무관한 한 번의 invalid 거절만으로 "3회 연속"이 아닌데 격리된다(돌연변이 (6)
+ * 대상 — `sync-engine.test.ts` 의 "연속 아니면 격리하지 않는다"가 이 리셋이 빠지면 빨개진다). */
 async function ackApplied(repo: SyncRepository, applied: SyncOkResponse['applied']): Promise<void> {
   if (applied.length === 0) return;
   const keys = new Set(applied.map((a) => keyOf(a.tbl, a.id)));
+  for (const key of keys) consecutiveInvalid.delete(key);
   const queued = await repo.listOutbox(PAGE_SIZE);
   const pushed = queued.filter((entry) => keys.has(keyOf(entry.tbl, entry.id)));
   await repo.ackOutbox(pushed);
@@ -216,6 +227,7 @@ async function cycleOnce(): Promise<void> {
     return;
   }
   if (verify === 'offline') return;
+  if (verify === 'account-deleted') return; // 안내가 떴다 — 사용자가 확인할 때까지 아무것도 안 한다
   const repo = getRepositories().sync;
   if (verify === 'switched') {
     await pullAll(repo);

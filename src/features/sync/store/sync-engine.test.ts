@@ -136,6 +136,105 @@ describe('sync-engine: more 응답이면 즉시 재실행한다(돌연변이 1 �
   });
 });
 
+describe('sync-engine: 연속 invalid 3회 격리(돌연변이 6 대상)', () => {
+  let visibility: DocumentVisibilityState = 'visible';
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    resetEngineForTest();
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => visibility,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+  });
+
+  it('같은 (tbl,id) 가 3회 연속 invalid 로 거절되면 격리하고 아웃박스에서 지운다', async () => {
+    visibility = 'visible';
+    await getRepositories().sync.wipeLocal();
+    const category = createCategory(
+      { name: '격리 대상', color: '#CFEB8F', existing: [] },
+      { now: () => '2026-09-21T00:00:00.000Z', id: () => crypto.randomUUID() },
+    );
+    await getRepositories().categories.upsert(category);
+    await getRepositories().sync.enqueueAll();
+    await getRepositories().sync.setState({ deviceId: 'd1', userSub: 's', cursor: 0 });
+
+    const rejected = { tbl: 'categories' as const, id: category.id, reason: 'invalid' as const };
+    const { transport, calls } = fakeTransport(
+      [
+        { cursor: 0, applied: [], rejected: [rejected], pulled: [], more: false, gcFloor: 0 },
+        { cursor: 0, applied: [], rejected: [rejected], pulled: [], more: false, gcFloor: 0 },
+        { cursor: 0, applied: [], rejected: [rejected], pulled: [], more: false, gcFloor: 0 },
+      ],
+      { sub: 's', email: 'e', expiresAt: '' },
+    );
+    setSyncTransport(transport);
+
+    const { rt } = fakeRuntime();
+    startEngine(rt);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(1));
+
+    // 2번째·3번째 사이클 — 30초 폴링으로 자연스럽게 돈다(엔진 트리거를 직접 흉내내지 않는다).
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(2));
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(3));
+
+    await vi.waitFor(async () => {
+      const outbox = await getRepositories().sync.countOutbox();
+      expect(outbox).toBe(0); // 3회째 격리되며 아웃박스에서도 지워진다
+    });
+    const state = await getRepositories().sync.getState();
+    expect(state?.quarantined).toEqual([{ tbl: 'categories', id: category.id }]);
+  });
+
+  it('연속이 아니면(중간에 성공) 격리하지 않는다 — ackApplied 의 카운터 리셋 대상', async () => {
+    visibility = 'visible';
+    await getRepositories().sync.wipeLocal();
+    const category = createCategory(
+      { name: '연속 아님', color: '#CFEB8F', existing: [] },
+      { now: () => '2026-09-21T00:00:00.000Z', id: () => crypto.randomUUID() },
+    );
+    await getRepositories().categories.upsert(category);
+    await getRepositories().sync.enqueueAll();
+    await getRepositories().sync.setState({ deviceId: 'd1', userSub: 's', cursor: 0 });
+
+    const invalid = { tbl: 'categories' as const, id: category.id, reason: 'invalid' as const };
+    const applied = { tbl: 'categories' as const, id: category.id, seq: 1 };
+    const { transport, calls } = fakeTransport(
+      [
+        { cursor: 0, applied: [], rejected: [invalid], pulled: [], more: false, gcFloor: 0 }, // 1회
+        { cursor: 0, applied: [], rejected: [invalid], pulled: [], more: false, gcFloor: 0 }, // 2회
+        { cursor: 1, applied: [applied], rejected: [], pulled: [], more: false, gcFloor: 0 }, // 성공 — 리셋
+        { cursor: 1, applied: [], rejected: [invalid], pulled: [], more: false, gcFloor: 0 }, // 다시 1회
+      ],
+      { sub: 's', email: 'e', expiresAt: '' },
+    );
+    setSyncTransport(transport);
+
+    const { rt } = fakeRuntime();
+    startEngine(rt);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(1));
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(2));
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(async () => {
+      // 3번째 사이클(성공)이 반영돼 아웃박스가 비어야 다음 단언이 의미 있다.
+      expect(await getRepositories().sync.countOutbox()).toBe(0);
+    });
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(4));
+
+    const state = await getRepositories().sync.getState();
+    expect(state?.quarantined ?? []).toEqual([]); // 연속 3회가 아니므로 격리되지 않는다
+  });
+});
+
 describe('sync-engine: dataRevision (돌연변이 2 대상)', () => {
   beforeEach(() => {
     resetEngineForTest();
