@@ -68,6 +68,10 @@ pnpm build && pnpm start                                      # wrangler dev, **
   Vite HMR 을 유지한 채 로그인을 탄다. 실제 로그인 왕복을 확인할 때는 `pnpm start`(8787)를 쓴다.
 - **`.env` 와 `.dev.vars` 는 별개 파일이다.** 배포 자격증명(`scripts/deploy.sh`·CI 가 읽음)은 `.env`,
   로컬 `wrangler dev` 가 읽는 시크릿은 `.dev.vars` — 값이 같아도 두 파일에 각각 채운다.
+- **`.dev.vars` 의 `GOOGLE_CLIENT_ID` 를 빈 값으로 남겨 두지 마라.** `wrangler dev` 는 키가 "존재"하기만
+  해도 그 값을 쓴다 — `GOOGLE_CLIENT_ID=`(빈 값)도 존재로 쳐서 `wrangler.jsonc` 의 진짜 값을 빈
+  문자열로 **덮어써 로그인이 원인 불명으로 깨진다**(직접 재현 확인, `.dev.vars.example` 주석 참고).
+  `wrangler.jsonc` 의 값을 그대로 쓰려면 값만 비우지 말고 **그 줄 자체를 지운다**.
 - **로컬 스텁 로그인**: `.dev.vars` 의 `AUTH_STUB=1`(호스트가 localhost/127.0.0.1 일 때만 적용)이면
   구글 왕복 없이 로그인 플로우를 확인할 수 있다. 배포된 Worker 의 vars 에는 이 키 자체가 없어야
   한다.
@@ -82,6 +86,27 @@ tasky --remote` 와 시크릿(`GOOGLE_CLIENT_SECRET`·`SESSION_SECRET`) 존재 �
   돈다 — 시크릿이 하나라도 없으면 `rc=1` 로 멈춘다(`wrangler secret put <이름>` 으로 먼저 올려야 한다).
   `--dry-run` 은 이 둘을 건너뛴다.** 배포 자체(수동 여부·지금 배포본 내용)는 [README.md](../README.md)
   [지금 상태](../README.md#지금-상태)가 단일 소스다.
+
+### 배포 확인 (실환경에서 사용자가 확인한 방법, 2026-09-21)
+
+```bash
+curl -s https://tasky.millie020524.workers.dev/api/me
+# 401 JSON({"error":"unauthorized"})이면 Worker 가 붙은 것, SPA index.html(200, HTML)이면 정적 자산만
+
+curl -s https://tasky.millie020524.workers.dev/auth/stub-login?sub=x&email=x@y.z
+# 반드시 404(not found) — AUTH_STUB 이 닫혀 있다는 뜻. 200/302 가 오면 즉시 롤백한다.
+
+pnpm exec wrangler d1 execute tasky --remote \
+  --command "SELECT name FROM sqlite_master WHERE type='table'"
+# 기대: users · sessions · devices · entities · deleted_users · d1_migrations
+```
+
+**`wrangler` 는 전역 설치가 아니다 — 반드시 `pnpm exec wrangler` 로 부른다**(사용자가 실제로
+`command not found` 를 밟았다). 2026-09-21 확인 결과: `/api/me` → 401 JSON(Worker 붙음, 배포본은
+#126 이후), `/auth/stub-login` → 404(AUTH_STUB 프로덕션에서 닫혀 있음). **D1 테이블 존재 여부·구글
+로그인 실왕복·배포본이 정확히 어느 커밋인지(#129 클라이언트 포함 여부)는 여전히 미확인**이다 —
+[README.md](../README.md) [지금 상태](../README.md#지금-상태)·[CLAUDE.md](../CLAUDE.md) "현재 상태"
+블록이 단일 소스다.
 
 ### 운영 주의 — D1 을 손으로 만지기 전에
 
