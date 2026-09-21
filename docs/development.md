@@ -77,8 +77,11 @@ pnpm build && pnpm start                                      # wrangler dev, **
   벡터를 복사하지 마라(CLAUDE.md "현재 상태").
 - 자격증명 발급(구글 OAuth·Cloudflare D1)은 `SYNC_CREDENTIALS_GUIDE.md`(로컬 스크래치패드, 레포
   미포함 — 오케스트레이터/프로젝트 소유자가 보관)를 따른다.
-- 실제 배포(`pnpm run deploy`)는 `wrangler deploy` 직전에 `wrangler d1 migrations apply tasky --remote` 와
-  시크릿(`GOOGLE_CLIENT_SECRET`·`SESSION_SECRET`) 존재 검사를 돈다 — `--dry-run` 은 이 둘을 건너뛴다.
+- **실제 배포(`pnpm run deploy`, `--dry-run` 아님)는 `wrangler deploy` 직전에 `wrangler d1 migrations apply
+tasky --remote` 와 시크릿(`GOOGLE_CLIENT_SECRET`·`SESSION_SECRET`) 존재 검사(`wrangler secret list`)를
+  돈다 — 시크릿이 하나라도 없으면 `rc=1` 로 멈춘다(`wrangler secret put <이름>` 으로 먼저 올려야 한다).
+  `--dry-run` 은 이 둘을 건너뛴다.** 배포 자체(수동 여부·지금 배포본 내용)는 [README.md](../README.md)
+  [지금 상태](../README.md#지금-상태)가 단일 소스다.
 
 ### 운영 주의 — D1 을 손으로 만지기 전에
 
@@ -105,7 +108,8 @@ pnpm build && pnpm start                                      # wrangler dev, **
 
 - Phase 1 (MVP): 날짜 스트립, 카테고리별 할 일 CRUD, 체크·달성률, 테마/색상 — **구현됨**
 - Phase 2: D-day·다이어리·루틴·기간 통계 — **구현됨**. 구글 로그인 필수 + 서버 동기화 — **서버·저장
-  계층·화면 전부 구현됨(#114·#121·#123·#126·#129), 구글 실왕복·Worker 실배포는 미검증**
+  계층·화면 전부 구현됨(#114·#121·#123·#126·#129). 배포는 사용자가 로컬에서 수동으로 계속하지만, 지금
+  배포본에 이 버전이 올라가 있는지·구글 실왕복·Worker 가 실제로 동작하는지는 미검증**
 - Phase 3: 친구·피드·반응
 
 서드파티 고지는 [README.md](../README.md) 에 있다.
