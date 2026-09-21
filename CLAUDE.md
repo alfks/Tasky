@@ -11,12 +11,12 @@
 >
 > - **앱이 동작한다.** Phase 1 의 9개(투두·카테고리·날짜 스트립·달성률·테마·포커스 타이머·백업/복원·PWA·커맨드 팔레트)에 Phase 2(캘린더=D-day·다이어리·기간 통계; 루틴은 투두 feature 안에 통합)가 더해져 **12개 feature**가 앱 셸에 조립돼 있고 `src/app/page.tsx` 가 실제 앱을 그린다. `pnpm dev` 로 바로 쓸 수 있다. Dexie+repository 지연 로드 청크는 32.8 kB gzip.
 > - **번들 예산이 빠듯하다(#109에서 드러남).** 진입 청크 gzip 147,203 B / 예산 150,000 B — Phase 2 로 여기까지 찼다. 의존성 추가 자체는 늘리지 않았다(전후 동일, devDependency만). **동기화 로그인 화면(설계상 +2.5kB)을 그대로 붙이면 예산을 넘긴다** — 예산 상향, 추가 지연 로드, 로그인 화면 분리 청크 중 하나를 동기화 구현 전에 정해야 한다.
-> - **E2E 스모크가 있다**(`tests/e2e/`, `pnpm test:e2e` — 31건, 통과 시 20~30초). 카테고리 생성 → 한글 투두 → 체크 → 편집 → 삭제 → 날짜 이동 → 새로고침 유지 외에 선택 링·강제 색 모드·루틴 관리 메뉴도 커버한다. 셀렉터는 **역할·접근 이름만** 쓴다(클래스·색 0건). `pnpm test`(vitest)는 `tests/**` 를 집지 않는다.
+> - **E2E 스모크가 있다**(`tests/e2e/`, `pnpm test:e2e` — 32건, 통과 시 20~30초). 카테고리 생성 → 한글 투두 → 체크 → 편집 → 삭제 → 날짜 이동 → 새로고침 유지 외에 선택 링·강제 색 모드·루틴 관리 메뉴·휴대폰 폭(360·375·390) 가로 스크롤도 커버한다. 셀렉터는 **역할·접근 이름만** 쓴다(클래스·색 0건). `pnpm test`(vitest)는 `tests/**` 를 집지 않는다.
 > - **Phase 1·2 기능 티켓은 전부 닫혔다.** 위 12개 feature 가 다 붙었고, 백업은 이제 카테고리·투두에 더해 **D-day·다이어리·루틴 세 테이블**을 함께 담는다(#108). **동기화(sync.md)는 설계만 끝났고 구현은 착수됐다** — 기초 배선(devDependency·`wrangler.jsonc`·`.env.example`) PR #109 가 열려 있다(미머지, Worker/D1 로직은 아직 없다). 다음 일감은 보드(`.worktrees/BOARD.md`)가 아니라 **동기화 구현과 실제 사용**에서 나온다.
 > - **문서 구조**: 루트 `README.md` 는 **제품 소개·배포 안내(외부용)** 이고, 개발자용 명령어·문서 지도는 **`docs/development.md`** 에 있다(#78 에서 갈랐다). 이 파일(`CLAUDE.md`)은 여전히 **프로젝트 규칙의 단일 소스**다.
 > - **사용감(감성) 실측은 `docs/FEEL_REPORT.md`** 하나에 모인다 — §1~§8 은 T-25 의 기록, §9 는 T-60 의 재측정, §9-5·§9-6 은 그 뒤 후속이다. **측정값은 덮어쓰지 않고 절을 더한다.** 지금 판정: 셋 중 "상태의 언어" 와 "면" 은 닫혔고 **밀도는 스펙이 의도한 여백**이다(app-shell.md §2-A-2 — 채우지 않기로 한 결정이지 미완이 아니다).
 > - **배포는 아직 실행되지 않았다.** 자격증명은 **`.env`**(git 제외, `cp .env.example .env` 후 채움)에서 읽는다 — `CLOUDFLARE_ACCOUNT_ID`·`CLOUDFLARE_API_TOKEN`, 선택 `DEPLOY_URL`. 발급 방법은 `.env.example` 주석에 있다. CI 는 같은 이름의 레포 Secrets/Variables 를 쓴다. 없으면 `scripts/deploy.sh` 가 실제 배포를 `rc=1` 로 멈춘다(조용히 건너뛰지 않는다 — `--dry-run` 은 자격증명 없이 돈다). 배선은 `pnpm run deploy:dry-run` 까지 확인됨. **`pnpm deploy` 는 pnpm 내장 명령이라 우리 스크립트가 돌지 않는다 — 반드시 `pnpm run deploy`.**
-> - 문서 `<head>`(메타·`theme-color`·폰트 preload·첫 페인트 테마 스크립트)의 단일 소스는 **루트 `index.html`** 이다. PWA manifest 는 **`public/manifest.webmanifest` 정적 파일**이고 프리캐시(15 URL)에 들어간다.
+> - 문서 `<head>`(메타·`theme-color`·폰트 preload·첫 페인트 테마 스크립트)의 단일 소스는 **루트 `index.html`** 이다. PWA manifest 는 **`public/manifest.webmanifest` 정적 파일**이고 프리캐시(16 URL)에 들어간다. iOS 홈 화면 아이콘만은 manifest 밖이다 — `<link rel="apple-touch-icon">` + 불투명 `public/icon-apple-touch-180.png`(pwa.md R1-a).
 > - **검사 도구가 한동안 꺼져 있었다(T-43, PR #42).** `eslint-config-next` 프리셋이 `next` 패키지를 요구하는데 그것이 Vite 전환(#25)에서 빠져, **깨끗한 설치에서는 lint 와 아키텍처 2차 패스가 계속 죽어 있었다** — 통과하던 것은 워크트리 `node_modules` 의 `next` 잔재 덕분이었다. 지금은 플러그인을 직접 등록해 고쳤고 `import/no-unresolved` 를 카나리로 켜 두었다. → **린트 결과가 의심스러우면 `rm -rf node_modules && pnpm install --frozen-lockfile` 로 다시 확인해라.** 워크트리를 오래 쓰면 잔재로 속을 수 있다.
 > - **`check.sh` 가 부하에서 거짓 빨간불을 내던 것은 고쳤다(T-62, #79).** 같은 워크트리에서 `check-arch.sh` 둘이 겹치면 서로의 픽스처를 지워 한쪽이 죽었다(2초 차 4쌍 → 8개 중 7개 실패). 이제 mkdir 스핀락으로 직렬화하고, 요약이 **실패한 검사 이름**을 찍는다. 예전에는 `__arch__ 잔여물…` 안내가 **어떤 실패에나 무조건** 붙어 원인을 오도했다 — 옛 로그를 근거로 arch 를 의심하지 마라.
 > - **CI 임시 미작동(여전함, #99~#108 재확인)**: guard·e2e 잡이 매번 수 초 만에 `failure`로 끝나고(`runner_id: 0` — 러너 배정 자체가 안 됨), build·perf 는 `skipped`다. 계정/레포 차원의 Actions 실행 불가가 맞다(워크플로 자체는 정상 — PR의 빨간 X는 코드 문제가 아니다). **`bash scripts/check.sh` 통과가 PR 전 실질 게이트**이며, CI 초록불을 머지 조건으로 삼지 않는다. 복구되면 이 항목을 지운다.
@@ -77,6 +77,7 @@ bash scripts/check-env-secrets.sh         # .env 계열이 추적/스테이징�
 bash scripts/check-author.sh main         # main 이후 커밋 author 검증
 bash scripts/check-agents-md.sh           # AGENTS.md 누락 검사
 bash scripts/check-arch.sh                # 레이어 경계 린트 + 아키텍처 2차 패스(스캐폴딩 후)
+node scripts/make-icons.mjs               # PWA 아이콘 4종 재생성(그림 원본은 assets/seal-sheet.png — 코드로 다시 그리지 않는다, pwa.md R2-a)
 pnpm dev | pnpm build | pnpm test -- <pattern>
 pnpm start                                # 빌드 산출물(dist/client)을 wrangler dev 로 로컬 서빙(서비스워커 확인용)
 pnpm build && pnpm run deploy:dry-run     # CI 배포와 **같은 명령**을 --dry-run 으로(업로드 파일 목록 확인). 자격증명 불필요 — `--dry-run` 은 네트워크를 타지 않아 스크립트가 자격증명 검사를 건너뛴다. 단 빌드 산출물은 있어야 한다

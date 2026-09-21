@@ -11,8 +11,8 @@ Playwright E2E(`tests/e2e/`). **합격/불합격을 내는** 유일한 브라우
 
 - `e2e/smoke.spec.ts` — 3개: 셸 뜨기 · 한글 조합 중 Enter 가 항목을 만들지 않기(todo R4) ·
   핵심 흐름(카테고리 생성 → 한글 투두 → 체크 → 편집 → 삭제(확인창) → 날짜 이동 → 새로고침 유지).
-- `e2e/selection-ring.spec.ts` — 8개. "선택됨" 표시(theme.md §3-G R17~R20) 회귀 가드: 잉크 링의
-  존재·색·굵기, 링 vs 채움 3:1, 선택 링 ≠ 오늘 링, 강제 색 모드 생존을 계산된 스타일로 잰다.
+- `e2e/selection-ring.spec.ts` — 8개. "선택됨" 표시(theme.md §3-G R17~R20) 회귀 가드: 잉크 링의 존재·색·굵기, 링 vs 채움 3:1, 선택 링 ≠ 오늘 링, 강제 색 모드 생존을 계산된 스타일로 잰다.
+- `e2e/narrow-viewport.spec.ts` — 1개. 휴대폰 폭 360·375·390 에서 가로 스크롤이 없는지(app-shell.md R11)를 문서 폭과 헤더 양 끝 버튼의 **실제 박스**로 잰다(헤더는 타이머 칩까지 띄운 가장 빡빡한 상태).
 - `e2e/routine-manager-menu.spec.ts` — 1개. 대화상자 안 팝오버(행 `⋯`)가 실제로 눌리는지 `elementFromPoint` 로 재는 z-index 회귀 가드. 러너 설정은 루트 `playwright.config.ts`, CI 잡은 `.github/workflows/e2e.yml`.
 
 ## 규칙

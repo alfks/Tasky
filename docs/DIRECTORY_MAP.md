@@ -21,24 +21,25 @@
 | `vite.config.ts`                               | Vite 빌드 파이프라인                                                  | —                                               | 빌드 설정을 바꿀 때 (ADR-0013)                   |
 | `wrangler.jsonc`                               | Cloudflare Workers 배포 대상(정적 자산 전용)                          | —                                               | 배포 대상·자산 경로를 바꿀 때 (ADR-0013)         |
 | `serwist.config.js` · `src/sw.ts`              | 서비스워커 프리캐시 설정 · 서비스워커 소스                            | —                                               | 프리캐시 대상·상한·오프라인 동작을 바꿀 때       |
+| `assets/`                                      | 브라우저로 나가지 않는 **원본 소재**(캐릭터 그림). `public/`과 반대   | `assets/AGENTS.md`                              | 아이콘 원본 그림을 교체할 때                     |
 | `public/`                                      | PWA 아이콘 · `_headers`(캐시 헤더) 등 정적 자산                       | `public/AGENTS.md`                              | PWA 아이콘·캐시 헤더 교체 시                     |
 | `tests/e2e/` (예정)                            | Playwright 스모크                                                     | `tests/AGENTS.md`                               | E2E 작성 시                                      |
 | `tests/feel/`                                  | 사용감 계측 도구(`.mjs`, 러너 없음) — 결과는 `docs/FEEL_REPORT.md`    | [tests/feel/AGENTS.md](../tests/feel/AGENTS.md) | 모션·여백·시각을 수치로 다시 잴 때               |
 
 ## docs/
 
-| 경로                    | 한 줄                                                                       | AGENTS.md                                             | 언제 읽어야 하는가            |
-| ----------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------- | ----------------------------- |
-| `docs/`                 | 문서 루트                                                                   | [docs/AGENTS.md](./AGENTS.md)                         | 문서를 새로 만들 때           |
-| `docs/ARCHITECTURE.md`  | 레이어·의존 방향·데이터 모델·확장 지점                                      | —                                                     | 레이어 경계 넘는 변경 전      |
-| `docs/DIRECTORY_MAP.md` | 이 문서                                                                     | —                                                     | 위치를 모를 때                |
-| `docs/DECISIONS.md`     | ADR 인덱스                                                                  | —                                                     | "왜 이렇게 했지?"가 궁금할 때 |
-| `docs/development.md`   | 개발 안내(명령어·문서 지도). 예전 루트 README                               | —                                                     | 개발을 시작할 때              |
+| 경로                    | 한 줄                                                                                                                                                            | AGENTS.md                                             | 언제 읽어야 하는가                                                  |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------- |
+| `docs/`                 | 문서 루트                                                                                                                                                        | [docs/AGENTS.md](./AGENTS.md)                         | 문서를 새로 만들 때                                                 |
+| `docs/ARCHITECTURE.md`  | 레이어·의존 방향·데이터 모델·확장 지점                                                                                                                           | —                                                     | 레이어 경계 넘는 변경 전                                            |
+| `docs/DIRECTORY_MAP.md` | 이 문서                                                                                                                                                          | —                                                     | 위치를 모를 때                                                      |
+| `docs/DECISIONS.md`     | ADR 인덱스                                                                                                                                                       | —                                                     | "왜 이렇게 했지?"가 궁금할 때                                       |
+| `docs/development.md`   | 개발 안내(명령어·문서 지도). 예전 루트 README                                                                                                                    | —                                                     | 개발을 시작할 때                                                    |
 | `docs/SYNC_DESIGN.md`   | 동기화 구현 설계(자료구조·SQL·티켓 분해) — 결정은 ADR-0015/0005, 화면 규칙은 `docs/specs/sync.md`가 갖고 이 문서는 코드로 옮기는 설계일 뿐, 충돌 시 ADR이 이긴다 | —                                                     | `src/domain/sync/**`·`worker/**` 구현 전, 코드의 § 인용을 따라갈 때 |
-| `docs/conventions/`     | code-style, git-workflow, agent-collaboration, token-efficiency, templates/ | [docs/conventions/AGENTS.md](./conventions/AGENTS.md) | 각 문서의 읽기 조건 참조      |
-| `docs/research/`        | 레퍼런스 앱 리서치(읽기 전용, 긴 문서)                                      | [docs/research/AGENTS.md](./research/AGENTS.md)       | 스펙을 쓸 때 **섹션 단위로**  |
-| `docs/specs/`           | 기능별 스펙(티켓의 근거)                                                    | [docs/specs/AGENTS.md](./specs/AGENTS.md)             | 기능 티켓 시작 시 해당 스펙만 |
-| `docs/decisions/`       | ADR 본문                                                                    | [docs/decisions/AGENTS.md](./decisions/AGENTS.md)     | ADR을 쓰거나 인용할 때        |
+| `docs/conventions/`     | code-style, git-workflow, agent-collaboration, token-efficiency, templates/                                                                                      | [docs/conventions/AGENTS.md](./conventions/AGENTS.md) | 각 문서의 읽기 조건 참조                                            |
+| `docs/research/`        | 레퍼런스 앱 리서치(읽기 전용, 긴 문서)                                                                                                                           | [docs/research/AGENTS.md](./research/AGENTS.md)       | 스펙을 쓸 때 **섹션 단위로**                                        |
+| `docs/specs/`           | 기능별 스펙(티켓의 근거)                                                                                                                                         | [docs/specs/AGENTS.md](./specs/AGENTS.md)             | 기능 티켓 시작 시 해당 스펙만                                       |
+| `docs/decisions/`       | ADR 본문                                                                                                                                                         | [docs/decisions/AGENTS.md](./decisions/AGENTS.md)     | ADR을 쓰거나 인용할 때                                              |
 
 ## src/ (예정 — 스캐폴딩 티켓에서 AGENTS.md와 함께 생성)
 
