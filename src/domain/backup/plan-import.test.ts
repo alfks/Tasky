@@ -180,9 +180,10 @@ describe('planImport — 병합 (R6·ADR-0009 결정 4)', () => {
   });
 });
 
-// T-86, ADR-0017 §재검토 트리거. 병합에서만 워터마크를 max 로 고르는 안전장치 — 함정 노트의 핵심.
-// 리뷰 #108 Major 1: 원래 제목 "위험 없음 증명"은 거짓이었다 — max 도 안전을 보장하지 않고
-// 중복/영구공백 사이의 트레이드오프일 뿐이다(plan-import.ts#planMergeRoutines 문서 참고).
+// T-86, ADR-0017 §재검토 트리거. 병합에서만 워터마크를 max 로 고르는 안전장치.
+// 리뷰 #108 Major 1 은 원래 "위험 없음 증명"이라던 제목을 "중복/영구공백 트레이드오프"로 고쳤으나,
+// 그 뒤 재판정으로 "영구공백"(옛 S5) 자체가 오진임이 드러났다 — max 에는 대칭되는 손상이 없고
+// min 쪽에만 실제 손상(부활·중복)이 있다(plan-import.ts#planMergeRoutines 문서 참고).
 describe('planImport — 루틴 병합의 materializedThrough (max 트레이드오프, ADR-0017)', () => {
   it('파일 쪽 다른 필드가 이겨도(newer updatedAt) 워터마크는 두 값 중 더 늦은 쪽을 쓴다', () => {
     // 로컬이 더 최근(updatedAt)이라 title 등은 로컬이 이기지만, 로컬의 워터마크가 파일보다 이르다.
@@ -240,22 +241,32 @@ describe('planImport — 루틴 병합의 materializedThrough (max 트레이드�
   });
 
   /**
-   * **반례(리뷰 #108 Major 1, S5).** `resumeRoutine`(routine.rules.ts)은 인스턴스를 하나도 만들지
-   * 않고 워터마크만 `today` 전날로 점프시킨다(R7 "소급 없음"). 로컬이 중지된 채 뒤처져 있는 동안
-   * 파일 쪽이 먼저 재개하면, 병합의 max 가 그 앞선 워터마크를 택하는 순간 로컬이 원래 채웠어야 할
-   * 구간이 **영구히** 사라진다 — 재방문해도 복구되지 않는다(다음 지연 생성은 새 워터마크 다음부터만
-   * 본다). 이 테스트는 그 손실을 실제로 재현한다 — "그 구간 몫은 합집합에 이미 있다"는 낡은 주장이
-   * 거짓임을 보여준다.
+   * **정정(재판정, 원래 "반례(S5)"였다 — 리뷰 #108 Major 1 은 오진이었다).** 이 구간이 "영구 소실"
+   * 이라는 원래 주장은 실행으로 반증됐다: `planRoutineFill` 은 `!routine.active` 면 계획 자체를
+   * `null` 로 낸다(`routine-fill.ts:39`) — 즉 **중지 중엔 애초에 "채웠어야 할" 구간이 없다.**
+   * 아래 첫 대조(병합 없음)가 보여주듯, 로컬이 병합을 안 받고 그대로 뒀다면 채워지는 날짜는 `[]`다.
+   * 병합은 그 `[]`를 `['2026-03-05']`로 **늘렸을 뿐**, 무엇도 잃지 않는다. 다섯 목요일은 병합
+   * 여부와 무관하게 **어떤 경로로도 생기지 않는 날짜**다(R7 "소급 없음" 이 의도한 그대로 — 1/29 에
+   * 재개했다면 다섯 다 나온다, 차이는 병합이 아니라 재개일이다).
    */
-  it('반례(S5): 중지 후 재개는 인스턴스 없이 워터마크만 점프해 — max 가 그 구간을 영구히 건너뛴다', () => {
+  it('중지→재개 구간은 R7 대로 채우지 않는다 — 병합이 잃는 것이 아니다(정정, 옛 S5)', () => {
     // 매주 목요일 루틴(기본값). 1/22(목)까지 채운 뒤 중지됐다 — 다음은 1/29 부터였어야 한다.
     const paused = makeRoutine({
       active: false,
       materializedThrough: '2026-01-22',
       updatedAt: EARLIER,
     });
+
+    // 대조군: 병합을 전혀 안 하고 로컬이 중지된 채로 남아 있으면 — 계획은 null, 채울 날짜는 없다.
+    // "병합이 이 구간을 없앴다" 가 성립하려면 병합 없이는 이 구간이 채워졌어야 하는데, 그렇지 않다.
+    const noMergeFillPlan = planRoutineFill(
+      { routine: paused, through: '2026-03-05', existing: [] },
+      fixedDeps(),
+    );
+    expect(noMergeFillPlan).toBeNull();
+
     // 파일(다른 기기): 같은 루틴을 3/1 에 재개했다 — 그 사이(1/29~2/26) 인스턴스는 하나도 안 만들고
-    // 워터마크만 재개일 전날(2/28)로 점프한다.
+    // 워터마크만 재개일 전날(2/28)로 점프한다(R7 "소급 없음").
     const resumed = resumeRoutine(paused, '2026-03-01', fixedDeps({ now: LATER }));
 
     const plan = planImport({
@@ -266,16 +277,23 @@ describe('planImport — 루틴 병합의 materializedThrough (max 트레이드�
     const merged = plan.snapshot.routines[0];
     expect(merged.materializedThrough).toBe('2026-02-28');
 
-    // 병합 직후 지연 생성을 다시 계획해도 1/29·2/5·2/12·2/19·2/26(원래 채웠어야 할 다섯 목요일)은
-    // 다시는 나오지 않는다 — `from` 이 이미 2/28 다음부터라 그 구간은 아예 훑지 않는다.
+    // 병합 뒤 지연 생성을 계획하면 1/29~2/26 다섯 목요일은 나오지 않는다 — 이것들이 "사라진" 것이
+    // 아니라, 병합 없이도(위 대조군) 애초에 생기지 않았을 날짜라는 뜻이다. 실제로 새로 채워지는 것은
+    // 병합이 `[]`에서 늘린 `2026-03-05` 하나뿐이다.
     const fillPlan = planRoutineFill(
       { routine: merged, through: '2026-03-05', existing: [] },
       fixedDeps(),
     );
     const filledDates = (fillPlan?.todos ?? []).map((todo) => todo.date);
     expect(filledDates).toEqual(['2026-03-05']);
-    for (const lost of ['2026-01-29', '2026-02-05', '2026-02-12', '2026-02-19', '2026-02-26']) {
-      expect(filledDates).not.toContain(lost);
+    for (const neverExisted of [
+      '2026-01-29',
+      '2026-02-05',
+      '2026-02-12',
+      '2026-02-19',
+      '2026-02-26',
+    ]) {
+      expect(filledDates).not.toContain(neverExisted);
     }
   });
 });
