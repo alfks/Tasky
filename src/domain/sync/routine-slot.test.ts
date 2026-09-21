@@ -49,20 +49,45 @@ describe('routineInstanceSlotId — 입력 민감도 (돌연변이 표적: date 
   });
 });
 
-describe('routineInstanceSlotId — 10만 쌍 무충돌', () => {
-  it('서로 다른 (routineId, date) 10만 쌍이 서로 다른 id 를 낸다', () => {
-    const seen = new Set<string>();
-    let collisions = 0;
-    for (let r = 0; r < 100; r += 1) {
-      for (let d = 0; d < 1000; d += 1) {
-        const id = routineInstanceSlotId(`routine-${r}`, `2026-01-01+${d}`);
-        if (seen.has(id)) {
-          collisions += 1;
-        }
-        seen.add(id);
-      }
+// "10만 쌍 무충돌" 카운트는 삭제했다 — 시드 넷을 전부 0 으로 뭉개(실효 32비트로 퇴화) 돌연변이를
+// 넣어도 100,000 개의 서로 다른 (routineId, date) 입력에서는 우연히 충돌이 안 나 통과했다(routine-
+// slot.ts 헤더 코멘트에 실측 경위를 적었다). 그 테스트는 "id 가 입력마다 달라진다"만 증명했지,
+// "네 시드가 서로 다른 32비트를 낸다"는 전혀 증명하지 못했다. 아래는 그 자리를 대신하는 시드
+// 독립성 검사다 — 시드를 뭉개는 돌연변이를 직접 잡는다.
+describe('routineInstanceSlotId — 시드 독립성(mutation guard)', () => {
+  /** 소스와 동일한 FNV-1a 32비트 — `fnv1a32` 는 export 되지 않아 로컬로 재구현한다. */
+  function localFnv1a32(input: string, seed: number): number {
+    let hash = (2166136261 ^ seed) >>> 0;
+    for (let i = 0; i < input.length; i += 1) {
+      hash ^= input.charCodeAt(i);
+      hash = Math.imul(hash, 16777619) >>> 0;
     }
-    expect(seen.size).toBe(100 * 1000);
-    expect(collisions).toBe(0);
+    return hash >>> 0;
+  }
+
+  it('같은 입력에 대해 시드 0~3 의 32비트 조각이 전부 같지는 않다(시드가 실제로 쓰인다는 최소 증거)', () => {
+    const input = 'r-shared|2026-02-05';
+    const hashes = [0, 1, 2, 3].map((seed) => localFnv1a32(input, seed));
+    expect(new Set(hashes).size).toBeGreaterThan(1);
+  });
+
+  it('시드 넷을 전부 0으로 뭉갠 퇴역 구현은 실제 구현과 다른 id 를 낸다(회귀 고정)', () => {
+    function degenerateSlotId(routineId: string, date: string): string {
+      const input = `${routineId}|${date}`;
+      const single = localFnv1a32(input, 0);
+      const hex = (single >>> 0).toString(16).padStart(8, '0').repeat(4);
+      const variantNibble = ((parseInt(hex[16] as string, 16) & 0x3) | 0x8).toString(16);
+      return [
+        hex.slice(0, 8),
+        hex.slice(8, 12),
+        `4${hex.slice(13, 16)}`,
+        `${variantNibble}${hex.slice(17, 20)}`,
+        hex.slice(20, 32),
+      ].join('-');
+    }
+
+    const real = routineInstanceSlotId('r-shared', '2026-02-05');
+    const degenerate = degenerateSlotId('r-shared', '2026-02-05');
+    expect(real).not.toBe(degenerate);
   });
 });

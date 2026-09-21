@@ -71,6 +71,10 @@ export type ServerRuleResult = 'insert' | 'update' | 'reject-exists' | 'reject-s
  * `applyServerRules` 는 이미 클램프됐다고 가정하고 다시 클램프하지 않는다.
  *
  * ISO 8601 UTC 문자열(`toISOString()` 형식, ADR-0005)은 사전순 비교가 시간순 비교와 같다.
+ *
+ * **호출 자리(SYNC_DESIGN.md §②-2, 아직 구현 없음)**: 요청 로우 검증 뒤·upsert 전, `worker/sync/
+ * handler.ts`(T-93)가 `Date.now()`(Worker 의 수신 시각)를 `receivedAt` 으로 넣어 이 함수를 부른다 —
+ * `Date` 호출은 그 경계 파일에만 있고, 이 함수 자체는 여전히 순수하다.
  */
 export function clampFutureUpdatedAt(updatedAt: string, receivedAt: string): string {
   return updatedAt > receivedAt ? receivedAt : updatedAt;

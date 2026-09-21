@@ -61,7 +61,13 @@ export type SyncRequest = {
   changes: readonly SyncChange[];
 };
 
-export type SyncRejectReason = 'exists' | 'invalid' | 'unknown-table';
+/**
+ * `'stale'`(정정 2026-09-21): 갱신 시도가 `updatedAt` LWW 로 졌다(`server-rules.ts#applyServerRules`
+ * 의 `'reject-stale'`) — 형식은 멀쩡하지만 서버가 더 최신 로우를 갖고 있어 적용하지 않았다는 뜻.
+ * `'invalid'`(형식 오류, 격리 카운터 대상)와 달리 정상 흐름이다: 클라이언트는 특별 처리 없이 다음
+ * 풀에서 이긴 값을 받아 정착한다(사용자에게 보이지 않는다, docs/specs/sync.md R4).
+ */
+export type SyncRejectReason = 'exists' | 'invalid' | 'unknown-table' | 'stale';
 
 export type SyncApplied = { tbl: SyncTable; id: string; seq: number };
 export type SyncRejected = { tbl: SyncTable; id: string; reason: SyncRejectReason };

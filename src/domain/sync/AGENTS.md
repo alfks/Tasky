@@ -11,8 +11,12 @@
 
 - 있음: `wire.ts`(프로토콜 타입, Worker 와 공유), `server-rules.ts`+`.vectors.ts`(서버 판정 — Worker·
   메모리 가짜 서버가 같은 벡터를 돈다), `client-merge.ts`+`.vectors.ts`(풀 병합 표), `remote-rows.ts`
-  (원격 로우 검증), `outbox.ts`(아웃박스 순수 로직), `routine-slot.ts`(루틴 인스턴스 결정적 id),
-  `watermark-merge.ts`(워터마크 단조 병합), `risk-scenarios.test.ts`(ADR-0017 위험 세 개의 조합 시험).
+  (원격 로우 검증), `outbox.ts`(아웃박스 순수 로직), `routine-slot.ts`(루틴 인스턴스 결정적 id — **함수
+  수준**, `src/domain/routine/` 에서 참조 0건이라 앱 채우기 경로는 아직 안 쓴다), `watermark-merge.ts`
+  (워터마크 단조 병합 — 역시 **함수 수준**, `Routine` 병합 경로에 배선되지 않았다),
+  `risk-scenarios.test.ts`(ADR-0017 위험 중 F1·F3 을 **함수 수준**에서 시험 — 앱 경로 배선은 아니다.
+  F2 는 시험이 아니라 실제 코드가 그 전제를 깨고 있음을 `it.fails` 로 드러내는 것이다. 셋 다 실제
+  배선은 T-92).
 - 없음(다른 곳): `SyncRepository`/`SyncTransport` **인터페이스**는 `src/repositories/`, 실제
   IndexedDB·HTTP 왕복은 `src/infra/**`, D1·OAuth·세션은 `worker/**`, 로그인 화면·상태 UI는
   `src/features/sync/**`. `Routine.materializedThrough` 를 "사용자 조작으로만 바뀌는 하한"으로

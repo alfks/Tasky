@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import type { DateKey } from '@/domain/date/date-key';
 import { mergeRoutineWatermark } from '@/domain/sync/watermark-merge';
 
 describe('mergeRoutineWatermark — 단조 증가(max)', () => {
@@ -22,8 +23,8 @@ describe('mergeRoutineWatermark — 단조 증가(max)', () => {
   });
 
   it('절대 후퇴하지 않는다 — 어떤 순서로 여러 번 합쳐도 최댓값보다 앞으로 가지 않는다(위험 3 방지)', () => {
-    const values = ['2026-01-22', '2026-03-05', '2026-02-01', '2026-02-28'];
-    let acc = values[0] as string;
+    const values: readonly DateKey[] = ['2026-01-22', '2026-03-05', '2026-02-01', '2026-02-28'];
+    let acc = values[0] as DateKey;
     for (const v of values.slice(1)) {
       const before = acc;
       acc = mergeRoutineWatermark(acc, v);

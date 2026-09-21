@@ -14,10 +14,16 @@
 // (조회 대조는 살아 있는 것만 보므로, `routine-fill.ts` 주석) 옮기거나 제목을 고친 인스턴스가
 // 중복 생성된다. 워터마크만 **max 로 따로** 합치면 이 후퇴가 원천적으로 없다.
 //
+// **실측: 이 함수는 아직 함수 수준에서만 위험 3 을 닫는다.** `Routine` 실제 병합 경로에는 배선돼
+// 있지 않다 — 앱에서는 `materializedThrough` 가 여전히 행 전체 LWW 를 타므로, 위에서 설명한 후퇴가
+// 오늘 시점 앱에서 그대로 일어날 수 있다.
+//
 // **이 티켓 owns 밖의 일**: 이 함수를 실제 `Routine` 병합 경로에 끼워 넣는 배선(행 병합에서
 // `materializedThrough` 필드만 이 함수로 바꿔치기)은 `src/domain/routine/**`(또는 그 필드를
 // `fillFloor` 로 재정의하는 리네임)을 건드려야 해서 owns 밖이다 — `risk-scenarios.test.ts` 가
-// "이 함수를 썼다면 후퇴가 없다"를 이 파일 수준에서 고정하고, 실제 배선은 후속 티켓이 맡는다.
-export function mergeRoutineWatermark(local: string, remote: string): string {
+// "이 함수를 썼다면 후퇴가 없다"를 이 파일 수준에서 고정하고, 실제 배선은 후속 티켓(T-92)이 맡는다.
+import type { DateKey } from '@/domain/date/date-key';
+
+export function mergeRoutineWatermark(local: DateKey, remote: DateKey): DateKey {
   return remote > local ? remote : local;
 }
