@@ -85,12 +85,15 @@ describe('빌드 스택: Dexie 지연 로드와 정적 자산 전용 배포(ADR-
     expect(source).not.toMatch(/^\s*import\s[^(]*from\s*['"]@\/infra\//m);
   });
 
-  it('wrangler.jsonc 는 Worker 코드 없이 SPA fallback 으로 서빙한다', () => {
-    // 주석이 있는 JSONC 라 파싱 대신 표기를 본다. `main` 이 돌아오면 "서버 기능이 생겼다"는 뜻이고
-    // 그때는 ADR 이 필요하다(ADR-0013 규칙 4).
+  it('wrangler.jsonc 는 정적 자산 + Worker(main) 두 패턴을 함께 쓴다(T-93, ADR-0019)', () => {
+    // 주석이 있는 JSONC 라 파싱 대신 표기를 본다. SPA 정적 자산 서빙 자체는 그대로 남아 있고
+    // (`not_found_handling`), 이제 `main`(Worker 스크립트)과 `run_worker_first`(그 두 경로만
+    // Worker 로 먼저 보낸다) 가 함께 있어야 한다 — "main 없음" 이던 예전 단언(ADR-0013 규칙 4,
+    // "서버 기능이 생기면 ADR 이 필요하다")은 ADR-0019 로 그 ADR 자체가 이미 채워졌으므로 뒤집는다.
     const source = readFileSync('wrangler.jsonc', 'utf-8').replace(/^\s*\/\/.*$/gm, '');
     expect(source).toMatch(/"not_found_handling"\s*:\s*"single-page-application"/);
-    expect(source).not.toMatch(/^\s*"main"\s*:/m);
+    expect(source).toMatch(/"main"\s*:\s*"worker\/index\.ts"/);
+    expect(source).toMatch(/"run_worker_first"\s*:\s*\[\s*"\/api\/\*"\s*,\s*"\/auth\/\*"\s*\]/);
   });
 });
 

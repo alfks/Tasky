@@ -95,7 +95,12 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: pnpm run deploy:dry-run
 
-      - name: Cloudflare Workers 배포 (package.json 의 `deploy` — dry-run 과 같은 명령)
+      - name: Cloudflare Workers 배포 (D1 마이그레이션 적용 → Worker 시크릿 확인 → 배포, 전부 scripts/deploy.sh 안)
+        # T-93: `wrangler d1 migrations apply tasky --remote` 와 `wrangler secret list` 확인은
+        # scripts/deploy.sh 안에 있다(package.json 의 `deploy` 스크립트가 그 파일을 부른다) —
+        # 이 파일 머리말의 원칙("배포 명령을 여기서 다시 적지 않는다")대로 워크플로에 같은 명령을
+        # 중복해 적지 않는다. GOOGLE_CLIENT_SECRET·SESSION_SECRET 은 `wrangler secret put` 으로
+        # 이미 올라가 있어야 한다(사용자 로컬에서, 이 리포에는 없다).
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
