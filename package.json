@@ -61,7 +61,7 @@
     "eslint-plugin-react-hooks": "5.2.0",
     "fake-indexeddb": "^6",
     "jsdom": "^26",
-    "prettier": "^3",
+    "prettier": "3.9.6",
     "prettier-plugin-tailwindcss": "^0.6",
     "serwist": "^9.5.12",
     "tailwindcss": "^4",

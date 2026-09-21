@@ -4,7 +4,7 @@
 
 - 상태: accepted
 - 날짜: 2026-09-15
-- 관련: CLAUDE.md, AGENTS.md, docs/conventions/*
+- 관련: CLAUDE.md, AGENTS.md, docs/conventions/\*
 
 ## 맥락
 

@@ -15,7 +15,7 @@
 | `.github/`                                     | CI, PR/이슈 템플릿, CODEOWNERS, 라벨                                  | [.github/AGENTS.md](../.github/AGENTS.md)       | CI가 실패했을 때, 템플릿/라벨을 바꿀 때          |
 | `.githooks/`                                   | pre-commit(금지어·author), commit-msg(트레일러)                       | [.githooks/AGENTS.md](../.githooks/AGENTS.md)   | 커밋이 훅에 막혔을 때                            |
 | `.worktrees/`                                  | 워크트리 + 로컬 BOARD/tickets/handoffs/reviews                        | [.worktrees/AGENTS.md](../.worktrees/AGENTS.md) | 워크트리 만들기 전, 티켓/핸드오프 쓰기 전        |
-| `scripts/`                                     | setup, wt, check-*, arch-layers.mjs                                   | [scripts/AGENTS.md](../scripts/AGENTS.md)       | 스크립트가 실패했거나 수정할 때                  |
+| `scripts/`                                     | setup, wt, check-\*, arch-layers.mjs                                  | [scripts/AGENTS.md](../scripts/AGENTS.md)       | 스크립트가 실패했거나 수정할 때                  |
 | `eslint.config.mjs` · `eslint.arch.config.mjs` | 린트 설정(1차) · 아키텍처 규칙만 남긴 2차 패스 설정                   | —                                               | 린트·레이어 경계 규칙을 바꿀 때 (ADR-0006·0008)  |
 | `index.html`                                   | SPA 진입점 · 문서 `<head>`(메타·테마 첫 페인트 스크립트·폰트 preload) | —                                               | `<head>`·진입점을 바꿀 때 (ADR-0013)             |
 | `vite.config.ts`                               | Vite 빌드 파이프라인                                                  | —                                               | 빌드 설정을 바꿀 때 (ADR-0013)                   |

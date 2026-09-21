@@ -13,7 +13,7 @@
 
 ## 결정
 
-**금지 목록을 허용 목록(allow-list)으로 뒤집고 `src/**` 를 전수 분류한다. 추가 의존성 없음.**
+**금지 목록을 허용 목록(allow-list)으로 뒤집고 `src/**` 를 전수 분류한다. 추가 의존성 없음.\*\*
 
 1. 허용 목록: 레이어마다 "import 해도 되는 src/ 하위 경로"만 적는다(`scripts/arch-layers.mjs` 의 `ALLOW` = ARCHITECTURE.md §1 표). ESLint 표현은 `import/no-restricted-paths` 의 `from: './src'` + `except: 허용 목록` — 그 외 `src/**` 는 열거하지 않아도 금지된다.
 2. 전수 분류: `src/**` 의 모든 **코드** 파일은 `LAYERS` 중 정확히 하나에 속한다. 밖의 파일(`src/` 직속, 미등록 디렉토리, `src/features/` 직속, `src/styles/*.ts`)은 **파일 자체가 린트 에러**(`no-restricted-syntax` `Program` 셀렉터). `scripts/check-arch.sh` 가 트래킹 파일 전체를 셸에서 한 번 더 검사한다. 예외는 둘이다: Next.js 가 위치를 강제하는 `src/middleware.ts`·`src/instrumentation.ts`(`lib` 만 import), 그리고 디렉토리 규칙 문서인 `AGENTS.md`(ESLint 는 `.md` 를 린트하지 않고, 루트 헌법 §1-4 가 트래킹 파일이 있는 모든 디렉토리에 요구한다 — `src/` 직속 포함. `src/` 안의 `.md` 는 그 이름만 허용한다).
