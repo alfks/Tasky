@@ -30,6 +30,10 @@ pnpm check              # PR 전 필수 게이트 (10개 검사)
 
 `pnpm deploy` 는 **pnpm 내장 명령**이라 이 레포의 스크립트가 돌지 않는다 — 반드시 `pnpm run deploy`.
 
+`pnpm build`가 재는 번들 예산(값은 [TECH_PLAN.md](./TECH_PLAN.md) §8, 검사는 `pnpm check`에 포함)을
+올릴 때의 정책(언제·어디서·왜 올리는지)은 `scripts/check-dist.mjs`의 `NETWORK_BUDGET` 주석이 단일
+소스다 — 여기서 다시 적지 않는다.
+
 E2E 브라우저는 설치돼 있다(`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`). `playwright install` 은 쓰지 않는다.
 
 ## 동기화(로그인) 로컬 개발
