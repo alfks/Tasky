@@ -1,6 +1,6 @@
 <!-- 읽기 조건: src/ 스캐폴딩 티켓(chore/scaffold-nextjs)을 수행할 때만 읽는다. -->
 
-# src/** AGENTS.md 초안 모음
+# src/\*\* AGENTS.md 초안 모음
 
 #### 3.12-h `src/**` AGENTS.md 초안 (스캐폴딩 티켓에서 디렉토리 생성과 동시에 작성)
 

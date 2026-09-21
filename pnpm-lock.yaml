@@ -97,7 +97,7 @@ importers:
         specifier: ^26
         version: 26.1.0
       prettier:
-        specifier: ^3
+        specifier: 3.9.6
         version: 3.9.6
       prettier-plugin-tailwindcss:
         specifier: ^0.6
