@@ -11,7 +11,7 @@ import {
 import { createGoogleProvider } from './google';
 import { randomToken, signValue, verifySignedValue } from './hmac';
 import { codeChallengeS256 } from './pkce';
-import { createSession, destroySession, requireSession } from './session';
+import { destroySession, requireSession, signIn } from './session';
 
 import type { Env } from '../env';
 
@@ -103,28 +103,28 @@ export async function handleCallback(request: Request, env: Env, now: string): P
     return redirect('?auth=error');
   }
 
-  await env.DB.prepare(
-    'INSERT INTO users (sub, email, created_at) VALUES (?, ?, ?) ON CONFLICT(sub) DO UPDATE SET email = excluded.email',
-  )
-    .bind(identity.sub, identity.email, now)
-    .run();
-  // 삭제된 계정 기록이 있으면 재로그인 시점에 지운다 — 본인이 같은 구글 계정으로 다시 가입하는
-  // 정상 흐름을 영구히 막지 않는다(docs/specs/sync.md §6 "함정" 각주, ADR-0019 §계정 삭제).
+  // `users` upsert · 세션 전량 폐기 판정 · `deleted_users` 표식 삭제 · 새 세션 발급은
+  // `session.ts#signIn` 한 곳으로 합쳐져 있다(ADR-0020) — 로컬 스텁(`stub.ts#handleStubLogin`)도
+  // 같은 함수를 부른다.
   //
-  // **정정(이전 판은 틀렸다)**: 예전 주석은 "이 시점의 부활 위험은 여기서 발생하지 않는다 — 다른
-  // 기기의 다음 요청은 자신의 세션으로 인증하고, 그 세션은 삭제 시점에 이미 deleted_users 로
-  // 걸러졌을 것"이라고 단언했는데, 그 전제가 틀렸다 — **걸러지는 것은 "다음 요청을 보낸" 세션뿐**
-  // 이다(session.ts#requireSession 의 410 판정은 요청이 와야 발동하는 지연 정리다). 삭제 창 동안
-  // 그 기기가 요청을 한 번도 안 보내면 `sessions` 행은 손대지 않은 채 그대로 남는다. 세션 쿠키를
-  // 탈취당한 사용자가 계정을 지워 그 세션을 무력화하려 해도, 걸러지지 않은 그 세션 행이 남아있는
-  // 채로 같은 구글 계정으로 재가입하면 아래 `DELETE FROM deleted_users` 가 "삭제됨" 표식을 지우는
-  // 순간 그 탈취된 쿠키가 다시 유효해진다(실 D1 재현됨). 그래서 `deleted_users` 를 지우기 **전에**
-  // 이 sub 의 `sessions` 를 전부 지운다 — 재가입으로 방금 만든 새 세션(아래 `createSession`)은 이
-  // 문장 **뒤에** 발급되므로 영향받지 않는다.
-  await env.DB.prepare('DELETE FROM sessions WHERE sub = ?').bind(identity.sub).run();
-  await env.DB.prepare('DELETE FROM deleted_users WHERE sub = ?').bind(identity.sub).run();
-
-  const { signedSid } = await createSession(env, identity.sub, now);
+  // **정정(이전 판은 무조건 폐기했다)**: 예전엔 로그인마다 무조건 `DELETE FROM sessions WHERE
+  // sub = ?` 를 돌렸다. 그 이유였던 공격은 그대로 실재한다 — 삭제된 계정 기록(`deleted_users`)이
+  // 있으면 재가입 시점에 지워야 본인이 같은 구글 계정으로 다시 가입하는 정상 흐름을 영구히 막지
+  // 않는데(docs/specs/sync.md §6 "함정" 각주, ADR-0019 §계정 삭제), **걸러지는 것은 "다음 요청을
+  // 보낸" 세션뿐**이다(`session.ts#requireSession` 의 410 판정은 요청이 와야 발동하는 지연 정리다).
+  // 삭제 창 동안 요청을 한 번도 안 보낸 세션(탈취된 쿠키 포함)은 `sessions` 행이 손대지 않은 채
+  // 남고, `deleted_users` 표식을 지우는 순간 되살아난다(실 D1 재현됨). 그런데 **무조건 폐기는 이
+  // 방어와 무관한 대가를 치렀다** — 같은 계정으로 이미 로그인해 있던 다른 기기의 세션까지 매
+  // 로그인마다 같이 죽였다(사용자 보고 버그). SYNC_DESIGN.md §②-3 은 `/auth/logout` 을 "자기
+  // `sid` 행만 삭제(다른 기기 유지)" 로 이미 적어 두었었다 — 세션이 기기마다 따로 사는 것이 원래
+  // 설계였고, 로그인 시점의 전량 폐기만 그 설계와 어긋나 있었다.
+  //
+  // **그래서 폐기를 없애는 대신 조건을 건다**: `deleted_users` 에 이 sub 행이 있을 때만 지운다
+  // (`signIn` 내부의 `EXISTS` 판정, 판정과 삭제를 한 문장에 둔다 — ADR-0020 §3). 재가입이 아닌
+  // 평범한 로그인은 `deleted_users` 행이 없으므로 그 문장이 0행에 맞아 다른 기기를 살려 두고,
+  // 재가입일 때만 옛 코드와 같은 결과(그 sub 의 세션 전량 삭제 후 새 세션 발급)를 낸다 — 옛
+  // 코드의 순서 보장(폐기 → 표식 삭제 → 새 세션 발급)은 그대로다.
+  const { signedSid } = await signIn(env, identity, now);
   return new Response(null, {
     status: 302,
     headers: {

@@ -6,7 +6,7 @@
 // localhost/127.0.0.1. 하나라도 거짓이면 404(로그인 경로가 있다는 사실 자체를 숨긴다 — 403 은
 // "있지만 막혔다"를 알려줘 배포된 Worker 를 정찰하는 신호가 된다).
 import { setSessionCookie } from './cookies';
-import { createSession } from './session';
+import { signIn } from './session';
 
 import type { Env } from '../env';
 
@@ -27,17 +27,11 @@ export async function handleStubLogin(request: Request, env: Env, now: string): 
   if (!sub || !email) {
     return new Response('sub, email 쿼리 파라미터가 필요합니다', { status: 400 });
   }
-  await env.DB.prepare(
-    'INSERT INTO users (sub, email, created_at) VALUES (?, ?, ?) ON CONFLICT(sub) DO UPDATE SET email = excluded.email',
-  )
-    .bind(sub, email, now)
-    .run();
-  // `auth/handlers.ts#handleCallback` 과 같은 이유로 같은 순서다 — 재가입이 탈취된 옛 세션을
-  // 되살리지 않도록 `deleted_users` 를 지우기 전에 이 sub 의 `sessions` 를 먼저 비운다(그 파일의
-  // jsdoc 참고, 실 D1 재현됨). 스텁도 실제 계정 재활성화 경로라 같은 취약점을 그대로 갖는다.
-  await env.DB.prepare('DELETE FROM sessions WHERE sub = ?').bind(sub).run();
-  await env.DB.prepare('DELETE FROM deleted_users WHERE sub = ?').bind(sub).run();
-  const { signedSid } = await createSession(env, sub, now);
+  // `auth/handlers.ts#handleCallback` 과 같은 이유로 같은 함수(`session.ts#signIn`, ADR-0020)를
+  // 부른다 — 두 로그인 경로가 재가입 순서(조건부 세션 폐기 → 만료 청소 → 표식 삭제 → upsert →
+  // 발급)를 각자 구현하면 하나만 고치는 사고가 구조적으로 가능해진다. 스텁도 실제 계정 재활성화
+  // 경로라 콜백과 같은 취약점·같은 방어를 그대로 갖는다.
+  const { signedSid } = await signIn(env, { sub, email }, now);
   return new Response(null, {
     status: 302,
     headers: { Location: '/', 'Set-Cookie': setSessionCookie(signedSid) },
