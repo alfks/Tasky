@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import type { DragEvent as ReactDragEvent } from 'react';
 
 import type { Category } from '@/domain/category/category';
 import type { CategoryId } from '@/domain/ids';
 
+import { movedAnnouncement } from '@/features/category/components/category-drag';
 import { CategoryClosedSection } from '@/features/category/components/CategoryClosedSection';
 import { CategoryFormDialog } from '@/features/category/components/CategoryFormDialog';
 import { CategoryListItem } from '@/features/category/components/CategoryListItem';
@@ -19,6 +21,8 @@ import type { CategoryFormMode } from '@/features/category/hooks/useCategoryForm
 
 import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
+
+import { isAfterMidpoint, moveTargetIndex } from '@/lib/drag-order';
 
 type CategoryListProps = {
   /** 행을 눌렀을 때. 본문 그룹으로 스크롤·하이라이트(§2-A)는 셸(T-20)이 넘긴다. */
@@ -44,10 +48,11 @@ export function CategoryList({ onSelect, onRemove }: CategoryListProps) {
   const active = useActiveCategories();
   const closed = useClosedCategories();
   const { status, error } = useCategoryLoadState();
-  const { load } = useCategoryActions();
+  const { load, reorder } = useCategoryActions();
   const addRef = useRef<HTMLButtonElement>(null);
   const [form, setForm] = useState<FormRequest | null>(null);
   const [announcement, setAnnouncement] = useState('');
+  const [draggingId, setDraggingId] = useState<CategoryId | null>(null);
 
   useEffect(() => {
     if (status === 'idle') {
@@ -63,6 +68,34 @@ export function CategoryList({ onSelect, onRemove }: CategoryListProps) {
 
   const openEdit = (category: Category): void => {
     setForm((previous) => ({ mode: { kind: 'edit', category }, key: (previous?.key ?? 0) + 1 }));
+  };
+
+  /**
+   * 행 위에 놓았을 때 (R5). 좌표계는 **활성 목록 하나**이고, 목표 인덱스는 끌던 항목을 빼낸 뒤의
+   * 자리다(`@/lib/drag-order`). 드롭을 받지 않는 자리는 `null` 로 돌아오고 그때는 아무것도
+   * 저장하지 않는다 — 거절한 드롭에 대고 할 말이 없다.
+   */
+  const handleDropOn = (overId: CategoryId, event: ReactDragEvent<HTMLElement>): void => {
+    const dragged = draggingId;
+    const rect = event.currentTarget.getBoundingClientRect();
+    setDraggingId(null);
+    if (dragged === null) {
+      return;
+    }
+    const index = moveTargetIndex(
+      active.map((category) => category.id),
+      dragged,
+      overId,
+      isAfterMidpoint(rect, event.clientY),
+    );
+    const name = active.find((category) => category.id === dragged)?.name;
+    if (index === null || name === undefined) {
+      return;
+    }
+    // 낭독은 **저장이 실제로 일어났을 때만** 한다 — `reorder` 가 `false` 면 목록이 그대로다.
+    void reorder(dragged, index).then((moved) => {
+      if (moved) setAnnouncement(movedAnnouncement(name, index));
+    });
   };
 
   const empty = status === 'ready' && active.length === 0 && closed.length === 0;
@@ -92,6 +125,7 @@ export function CategoryList({ onSelect, onRemove }: CategoryListProps) {
               onEdit={openEdit}
               onRemove={onRemove}
               onAnnounce={setAnnouncement}
+              drag={{ draggingId, onDragChange: setDraggingId, onDropOn: handleDropOn }}
             />
           ))}
         </ul>
@@ -138,7 +172,7 @@ export function CategoryList({ onSelect, onRemove }: CategoryListProps) {
         </p>
       )}
 
-      {/* 순서 변경 결과 낭독 (R5 드래그 대안). 화면에는 보이지 않는다. */}
+      {/* 순서 변경 결과 낭독 (R5). 드래그·`Alt+↑/↓` 가 같은 자리에 같은 문면을 낸다. 화면에는 보이지 않는다. */}
       <p role="status" aria-live="polite" className="sr-only">
         {announcement}
       </p>

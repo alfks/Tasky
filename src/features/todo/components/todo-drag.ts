@@ -3,14 +3,15 @@
 //
 // 좌표계는 `TodoGroup.sequence`(완료 포함, order 오름차순) 하나다. `reorder(id, targetIndex)` 가
 // 그 수열에서 항목을 빼고 `targetIndex` 에 다시 꽂으므로, **빼낸 뒤의** 인덱스를 줘야 한다.
+//
+// 인덱스 계산 자체와 중간점 판정은 카테고리 사이드바도 쓰므로 `@/lib/drag-order` 에 있다
+// (`features/AGENTS.md` 규칙 5). 여기 남는 것은 **완료 항목 규칙**(todo 어휘)뿐이다.
+import { moveTargetIndex } from '@/lib/drag-order';
+
+export { isAfterMidpoint } from '@/lib/drag-order';
 
 /** 수열 계산에 필요한 최소 모양. 테스트가 `Todo` 전체를 만들지 않아도 되게 좁혀 둔다. */
 export type DragSlot = { readonly id: string; readonly done: boolean };
-
-/** 행의 세로 중간을 넘겼는가 — 넘겼으면 그 행 **뒤**로 넣는다. */
-export function isAfterMidpoint(rect: { top: number; height: number }, clientY: number): boolean {
-  return clientY > rect.top + rect.height / 2;
-}
 
 /**
  * `overId` 행의 앞/뒤로 `draggedId` 를 넣을 때의 `targetIndex` (R11).
@@ -26,14 +27,15 @@ export function dropTargetIndex(
   overId: string,
   after: boolean,
 ): number | null {
-  if (draggedId === overId) return null;
-  const from = sequence.findIndex((slot) => slot.id === draggedId);
-  const over = sequence.findIndex((slot) => slot.id === overId);
-  if (from === -1 || over === -1) return null;
-  if (sequence[from].done || sequence[over].done) return null;
-  // 끌고 있는 항목을 먼저 빼면 그 뒤의 인덱스가 하나씩 당겨진다.
-  const shifted = over > from ? over - 1 : over;
-  return shifted + (after ? 1 : 0);
+  const from = sequence.find((slot) => slot.id === draggedId);
+  const over = sequence.find((slot) => slot.id === overId);
+  if (from === undefined || over === undefined || from.done || over.done) return null;
+  return moveTargetIndex(
+    sequence.map((slot) => slot.id),
+    draggedId,
+    overId,
+    after,
+  );
 }
 
 /** 순서 변경 뒤 낭독할 **미완료 블록 기준** 위치(1부터). 완료 항목은 세지 않는다 — 화면에 그 블록이 따로다. */
