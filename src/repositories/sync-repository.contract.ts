@@ -261,11 +261,13 @@ export function runSyncRepositoryContract(target: ContractTarget): void {
         if (vector.expected.action === 'keep-local') {
           expect(result.kept, vector.name).toBe(1);
           expect(stored?.rev, vector.name).toBe(vector.input.local?.rev);
+          // 유지된 로컬은 여전히 푸시 대상이다 — 아웃박스에 그대로 남아 있어야 한다.
+          expect(stillQueued, vector.name).toBe(true);
         } else {
           expect(result.adopted.todos, vector.name).toBe(1);
           expect(stored?.id, vector.name).toBe(localId);
-        }
-        if (vector.expected.action === 'adopt-remote-and-drop-outbox') {
+          // adopt 계열(드롭 여부와 무관하게) 뒤에는 큐에 없다 — `putRemote` 가 적재하면 여기서 드러난다
+          // (원래 큐에 없던 vector 1·2 도 포함: putRemote 가 새로 적재하면 여기서 true 로 깨진다).
           expect(stillQueued, vector.name).toBe(false);
         }
       }
