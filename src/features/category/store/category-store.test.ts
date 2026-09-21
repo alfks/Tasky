@@ -116,6 +116,40 @@ describe('첫 실행 시드 (R18)', () => {
 
     expect(Object.values(state().byId)).toHaveLength(0);
   });
+
+  /**
+   * 회귀 가드(e2e 리뷰 라운드 #111 Major): `load()` 가 시드 쓰기를 기다리지 않고 먼저
+   * `status: 'ready'` 를 찍으면, 사이드바가 잠깐 "카테고리 없음" 으로 그려졌다가 시드된
+   * 카테고리로 바뀌는 깜빡임이 생긴다 — 그 창에서 사용자가 카테고리를 만들면 시드분과 합쳐져
+   * 개수가 어긋난다(실측: 핵심 흐름 e2e 가 간헐적으로 "기대 1개·실제 2개"로 깨졌다). 이
+   * 테스트는 브라우저·타이밍 추측 없이, `dataset.write` 를 수동으로 막아 시드 쓰기가 아직
+   * 끝나지 않은 순간의 `status` 를 직접 잰다.
+   */
+  it('시드 쓰기가 끝나기 전까지는 status 가 loading 이다(빈 상태 깜빡임 회귀)', async () => {
+    const repos = getRepositories();
+    let releaseWrite: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const write = vi.fn((writes: Parameters<Repositories['dataset']['write']>[0]) =>
+      gate.then(() => repos.dataset.write(writes)),
+    );
+    setRepositories({ ...repos, dataset: { ...repos.dataset, write } } satisfies Repositories);
+
+    const loading = state().load();
+    // `write` 가 불릴 때까지만 기다린다(값이 아니라 "시드 쓰기가 시작됐다" 는 사실을 기다리는
+    // 것이라 시간 추측이 아니다) — 그 시점에도 `gate` 가 안 풀렸으니 시드는 아직 끝나지 않았다.
+    await vi.waitFor(() => expect(write).toHaveBeenCalled());
+
+    expect(state().status).toBe('loading');
+    expect(state().byId).toEqual({});
+
+    releaseWrite();
+    await loading;
+
+    expect(state().status).toBe('ready');
+    expect(Object.values(state().byId)).toHaveLength(1);
+  });
 });
 
 describe('이름 유일성·개수 제한 (R1·R2·R6)', () => {

@@ -96,6 +96,10 @@ function createLoadAction(
         // 기대 1개·실제 2개로 결정적으로 깨졌다 — 이 재배열로 고정됨).
         ctx.set({ byId: indexCategories(categories) });
         if (categories.length === 0) {
+          // 시드가 매달리면(예: IndexedDB 가 blocked 상태로 멈춤) 셸 전체가 로딩(스켈레톤)에
+          // 머문다 — 이전에는 'ready' 를 먼저 찍어 최소한 빈 목록은 보였다. 저장소 쓰기가
+          // 영영 끝나지 않는 경우는 이 구현에서 재현하기 어렵고(리뷰 실측), 여기서 막지는
+          // 않는다 — 그런 경우가 생기면 타임아웃/재시도는 별도 티켓으로 다룬다.
           await seed();
         }
         // 시드가 끝난 뒤에도 여전히 이 호출이 최신이어야 'ready' 로 올린다 — 시드가 도는 동안

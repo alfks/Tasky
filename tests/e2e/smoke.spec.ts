@@ -140,9 +140,12 @@ test('핵심 흐름: 카테고리 생성 → 한글 투두 → 체크 → 편집
   // 별도의 비동기 단계라 사이드바가 잠깐 "아직 카테고리가 없어요" 로 그려졌다가 시드된 카테고리로
   // 바뀐다 — 그 사이에 `before` 를 읽으면 0을 얻고, 시드는 이미 반영된 뒤 `createCategory` 가 도니
   // 최종 개수는 2(시드 1 + 방금 만든 것)라 `before + 1`(=1) 과 어긋난다(실측: 시드에 지연을 주면
-  // 결정적으로 "Expected: 1 Received: 2"). "+ 카테고리 추가" 버튼은 적재(+ 시드)가 끝나야만
-  // 뜨는 이름이므로 그것을 기다린 뒤에야 `before` 가 안정적이다 — 역할·접근 이름 기반 대기다.
-  await expect(categorySection.getByRole('button', { name: '+ 카테고리 추가' })).toBeVisible();
+  // 결정적으로 "Expected: 1 Received: 2"). 시드가 항상 최소 1개를 만들므로(R18) **listitem 이
+  // 하나라도 뜨는 것**을 기다린 뒤에야 `before` 가 안정적이다 — "+ 카테고리 추가" 라는 특정
+  // 문구가 아니라 실제로 의미 있는 조건(시드 완료)에만 참이 되는 신호를 쓴다(역할 기반 대기,
+  // `CategoryList.tsx` 는 `status === 'idle'` 프레임에서도 같은 문구의 버튼을 그릴 수 있어
+  // 버튼 존재만으로는 "시드 완료" 를 보장하지 않는다).
+  await expect(categorySection.getByRole('listitem')).not.toHaveCount(0);
   const before = await categorySection.getByRole('listitem').count();
   await createCategory(page, CATEGORY);
   await expect(categorySection.getByRole('listitem')).toHaveCount(before + 1);
