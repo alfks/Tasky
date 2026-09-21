@@ -48,6 +48,13 @@ export type ThemeActions = {
   setAccentColor: (hex: string) => Promise<boolean>;
   /** OS 테마 변경 알림 (R7). 저장하지 않는다 — OS 상태는 우리 값이 아니다. */
   setSystemDark: (dark: boolean) => void;
+  /**
+   * 저장소의 `settings` 로우를 다시 읽어 화면에 반영한다(T94_LAZY_BOUNDARY.md §D-10, 동기화가
+   * 다른 기기의 강조색·모드 변경을 채택했을 때). `init` 과 달리 `status` 가드가 없다 — 이미
+   * `ready` 인 상태에서 **원격이 로컬을 덮어쓴** 뒤에 부르는 재조회라 `init` 의 "한 번만" 규칙이
+   * 적용되지 않는다. 못 읽으면 화면은 그대로 두고 에러만 남긴다(낙관적 반영과 같은 원칙).
+   */
+  reloadFromStorage: () => Promise<void>;
 };
 
 export type ThemeStore = ThemeState & ThemeActions;
@@ -151,6 +158,18 @@ export function createThemeStore(deps: MetaDeps = defaultDeps) {
         set({ systemDark: dark });
         // `system` 이 아니면 보이는 결과가 바뀌지 않지만, 다시 `system` 으로 돌아갈 때를 위해 값은 둔다.
         if (get().mode === 'system') applyCurrent();
+      },
+
+      reloadFromStorage: async () => {
+        try {
+          const settings = await getRepositories().settings.get();
+          if (settings === undefined) return;
+          set({ mode: settings.theme, accentColor: settings.accentColor, error: null });
+          applyCurrent();
+          writeMirror(toMirror(settings.theme, settings.accentColor));
+        } catch {
+          set({ error: LOAD_FAILED });
+        }
       },
     };
   });
