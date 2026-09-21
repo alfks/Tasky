@@ -12,13 +12,14 @@ import { TODO_DRAG_MIME } from '@/features/date-strip';
 import { RoutineDialog } from '@/features/todo/components/RoutineDialog';
 import { FLIP_ATTR } from '@/features/todo/components/todo-focus';
 import { TodoEditPanel } from '@/features/todo/components/TodoEditPanel';
-import { DatePickRow, DragHandle } from '@/features/todo/components/TodoItemControls';
+import { DatePickRow } from '@/features/todo/components/TodoItemControls';
 import { TodoItemMenu } from '@/features/todo/components/TodoItemMenu';
 import { useTodoItemActions } from '@/features/todo/components/useTodoItemActions';
 import { describeRoutineRecurrence, TODO_MESSAGES as M } from '@/features/todo/messages';
 import { useTodoStore } from '@/features/todo/store/todo-store';
 
 import { Checkbox } from '@/components/ui/Checkbox';
+import { DragHandle } from '@/components/ui/DragHandle';
 
 import { cn } from '@/lib/cn';
 import { addDays } from '@/lib/date';
@@ -180,7 +181,7 @@ export function TodoItem({
       <div className="flex min-h-[var(--control-hit-min)] items-center gap-[var(--space-1)]">
         {canReorder ? (
           <DragHandle
-            title={todo.title}
+            item={todo.title}
             onDragStart={handleDragStart}
             onDragEnd={() => onDragChange(null)}
             onMove={move}

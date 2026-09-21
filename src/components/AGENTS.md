@@ -4,7 +4,7 @@
 
 ## 목적
 
-무상태·도메인 무관 UI 프리미티브(`ui/`): `Button`, `Checkbox`, `IconButton`, `Popover`, `Dialog`, `ColorSwatch`, `ProgressRing` 등.
+무상태·도메인 무관 UI 프리미티브(`ui/`): `Button`, `Checkbox`, `IconButton`, `DragHandle`, `Popover`, `Dialog`, `ColorSwatch`, `ProgressRing` 등.
 
 ## 규칙
 
@@ -25,7 +25,7 @@
 
    IME·접근 이름처럼 **기능 코드도 쓰는** 판정은 `src/lib/`(`ime.ts`·`a11y.ts`)에 두고 가져다 쓴다.
 
-4. 세 번째 사용처가 생길 때 여기로 승격. 그 전엔 feature 안에 둔다. **이 문턱은 React 컴포넌트용이다 — feature 간에 공유할 순수 함수(React 를 모르는 것)는 이 문턱이 아니라 `features/AGENTS.md` 규칙 5(`src/lib/`, 두 feature 째부터)를 따른다.**
+4. 세 번째 사용처가 생길 때 여기로 승격. 그 전엔 feature 안에 둔다. **예외: 두 번째 사용처에서 사본밖에 길이 없을 때.** `DragHandle`(순서 변경 손잡이)이 그 경우였다 — 투두 본문과 카테고리 사이드바 둘뿐이지만, 조립 방향 때문에 상대 feature 의 파일을 직접 import 할 수 없고 React 컴포넌트라 `src/lib/` 에도 갈 수 없어(`features/AGENTS.md` 규칙 5-(4)) 남는 선택지가 복제뿐이었다. 복제는 같은 규칙이 Blocker 로 막으므로 승격이 유일하게 열린 길이다. **이 예외는 "두 번째면 올린다" 가 아니다** — 세 길(배럴 공유·`src/lib` 이동·그대로 두기)이 전부 막힌 것을 먼저 보여야 한다. **이 문턱은 React 컴포넌트용이다 — feature 간에 공유할 순수 함수(React 를 모르는 것)는 이 문턱이 아니라 `features/AGENTS.md` 규칙 5(`src/lib/`, 두 feature 째부터)를 따른다.**
 5. 출처: `docs/ARCHITECTURE.md` §1, `docs/conventions/code-style.md` §3·§6·§10.
 
 ## 관할: ui/

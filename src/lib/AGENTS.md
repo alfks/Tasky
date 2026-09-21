@@ -4,7 +4,7 @@
 
 ## 목적
 
-프레임워크·도메인 무관 순수 유틸. 현재 `cn.ts`(clsx + tailwind-merge), `a11y.ts`(접근 이름 가드 — 공백 리터럴 차단 타입 `NonBlank` + 개발 모드 `assertAccessibleName`), `ime.ts`(`isImeKey` — 조합 중 키 판정, 오버레이와 기능 전용 대화상자가 함께 쓴다), `focus-fallback.ts`(행 삭제 뒤 포커스 착지 R14 순서 — shell·calendar 가 함께 쓴다, T-87), `korean.ts`(`objectParticle` — 을/를 조사, category·todo 문구가 함께 쓴다, T-87), `date.ts`(DateKey ↔ Date, 주 계산, `nowIso()`), `id.ts`(`newId()` = `crypto.randomUUID()` 래퍼).
+프레임워크·도메인 무관 순수 유틸. 현재 `cn.ts`(clsx + tailwind-merge), `a11y.ts`(접근 이름 가드 — 공백 리터럴 차단 타입 `NonBlank` + 개발 모드 `assertAccessibleName`), `ime.ts`(`isImeKey` — 조합 중 키 판정, 오버레이와 기능 전용 대화상자가 함께 쓴다), `focus-fallback.ts`(행 삭제 뒤 포커스 착지 R14 순서 — shell·calendar 가 함께 쓴다, T-87), `korean.ts`(`objectParticle` — 을/를 조사, category·todo 문구가 함께 쓴다, T-87), `date.ts`(DateKey ↔ Date, 주 계산, `nowIso()`), `id.ts`(`newId()` = `crypto.randomUUID()` 래퍼), `drag-order.ts`(드래그 순서 변경의 좌표 계산 — 중간점 판정 + 목표 인덱스, todo 본문 목록과 category 사이드바가 함께 쓴다).
 
 ## 무엇이 여기 올라오는가
 

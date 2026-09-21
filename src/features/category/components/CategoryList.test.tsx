@@ -55,11 +55,20 @@ beforeEach(() => {
   });
 });
 
+/**
+ * 행 본체 버튼 — 손잡이(`⠿ … 순서 변경`)도 메뉴(`… 메뉴`)도 아닌 버튼 하나. **인덱스로 집지
+ * 않는다**: 활성 행은 손잡이가 앞에 붙고 종료 행은 같은 크기의 빈 칸이 붙어서 자리가 다르다.
+ */
+function rowBody(item: HTMLElement): HTMLElement {
+  const buttons = within(item)
+    .getAllByRole('button')
+    .filter((button) => !/순서 변경|메뉴$/u.test(button.getAttribute('aria-label') ?? ''));
+  return buttons[0];
+}
+
 /** 행 본체 버튼의 이름들 — 접힌 종료 섹션은 여기 나오지 않는다. */
 function rowNames(): string[] {
-  return screen
-    .getAllByRole('listitem')
-    .map((item) => within(item).getAllByRole('button')[0].textContent ?? '');
+  return screen.getAllByRole('listitem').map((item) => rowBody(item).textContent ?? '');
 }
 
 describe('목록 (R5·R8·R19)', () => {
@@ -80,9 +89,9 @@ describe('목록 (R5·R8·R19)', () => {
     render(<CategoryList />);
     const [운동행, 독서행, 공부행] = screen.getAllByRole('listitem');
 
-    expect(within(운동행).getAllByRole('button')[0]).toHaveTextContent(/^운동$/u);
-    expect(within(독서행).getAllByRole('button')[0]).toHaveTextContent('0/1');
-    expect(within(공부행).getAllByRole('button')[0]).toHaveTextContent('1/2');
+    expect(rowBody(운동행)).toHaveTextContent(/^운동$/u);
+    expect(rowBody(독서행)).toHaveTextContent('0/1');
+    expect(rowBody(공부행)).toHaveTextContent('1/2');
   });
 
   it('종료됨 섹션을 펼치면 완료·중단 배지가 각각 보인다 (R8)', async () => {
@@ -100,7 +109,7 @@ describe('순서 변경 (R5)', () => {
   it('`Alt+↓` 로 한 칸 내리고 결과를 낭독한다', async () => {
     const user = userEvent.setup();
     render(<CategoryList />);
-    const 운동행 = within(screen.getAllByRole('listitem')[0]).getAllByRole('button')[0];
+    const 운동행 = rowBody(screen.getAllByRole('listitem')[0]);
 
     운동행.focus();
     await user.keyboard('{Alt>}{ArrowDown}{/Alt}');
@@ -113,7 +122,7 @@ describe('순서 변경 (R5)', () => {
   it('`Alt` 없는 ↑/↓ 는 순서를 건드리지 않는다', async () => {
     const user = userEvent.setup();
     render(<CategoryList />);
-    const 운동행 = within(screen.getAllByRole('listitem')[0]).getAllByRole('button')[0];
+    const 운동행 = rowBody(screen.getAllByRole('listitem')[0]);
 
     // 목록 방향키는 나중에 셸이 "선택 이동" 으로 쓸 자리다 — 가드가 조용히 빠지면 방향키마다 순서가 뒤집힌다.
     운동행.focus();
@@ -127,7 +136,7 @@ describe('순서 변경 (R5)', () => {
   it('맨 위에서 `Alt+↑` 는 아무것도 바꾸지 않는다', async () => {
     const user = userEvent.setup();
     render(<CategoryList />);
-    const 운동행 = within(screen.getAllByRole('listitem')[0]).getAllByRole('button')[0];
+    const 운동행 = rowBody(screen.getAllByRole('listitem')[0]);
 
     운동행.focus();
     await user.keyboard('{Alt>}{ArrowUp}{/Alt}');
