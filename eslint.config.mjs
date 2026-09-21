@@ -698,7 +698,10 @@ const config = [
     // 테스트는 경계를 넘어도 된다(계약 테스트가 infra 구현을 직접 돌린다). src/test 는 조립 지점(setup.ts)이자 픽스처.
     // 표기 규칙(RELATIVE·CANONICAL)만 유지. Meta 필드 리터럴·'as Persistable'·Object.assign 은 픽스처와
     // 위조 시도 테스트(meta.test.ts)에 필요하므로 허용 — 브랜드 위조는 그 테스트에서 tsc 가 판정한다.
-    files: ['**/*.test.{ts,tsx}', 'src/test/**'],
+    // `*.contract.ts` 는 테스트 전용 헬퍼다 — `.test.ts` 들이 공유해 부르는 계약 묶음이고
+    // 프로덕션에서 import 하는 곳이 0건이다(계약끼리만 서로 부른다). T-93 이 TEST_FILE 에
+    // `.vectors` 를 더하면서 계약 파일이 그 벡터를 못 읽게 됐으므로 여기 예외에 같이 넣는다.
+    files: ['**/*.test.{ts,tsx}', '**/*.contract.ts', 'src/test/**'],
     rules: {
       'max-lines': 'off',
       'no-restricted-globals': 'off',
