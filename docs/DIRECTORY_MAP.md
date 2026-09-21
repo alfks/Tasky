@@ -21,6 +21,7 @@
 | `vite.config.ts`                               | Vite 빌드 파이프라인                                                  | —                                               | 빌드 설정을 바꿀 때 (ADR-0013)                   |
 | `wrangler.jsonc`                               | Cloudflare Workers 배포 대상(정적 자산 전용)                          | —                                               | 배포 대상·자산 경로를 바꿀 때 (ADR-0013)         |
 | `serwist.config.js` · `src/sw.ts`              | 서비스워커 프리캐시 설정 · 서비스워커 소스                            | —                                               | 프리캐시 대상·상한·오프라인 동작을 바꿀 때       |
+| `assets/`                                      | 브라우저로 나가지 않는 **원본 소재**(캐릭터 그림). `public/`과 반대   | `assets/AGENTS.md`                              | 아이콘 원본 그림을 교체할 때                     |
 | `public/`                                      | PWA 아이콘 · `_headers`(캐시 헤더) 등 정적 자산                       | `public/AGENTS.md`                              | PWA 아이콘·캐시 헤더 교체 시                     |
 | `tests/e2e/` (예정)                            | Playwright 스모크                                                     | `tests/AGENTS.md`                               | E2E 작성 시                                      |
 | `tests/feel/`                                  | 사용감 계측 도구(`.mjs`, 러너 없음) — 결과는 `docs/FEEL_REPORT.md`    | [tests/feel/AGENTS.md](../tests/feel/AGENTS.md) | 모션·여백·시각을 수치로 다시 잴 때               |
