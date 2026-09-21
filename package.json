@@ -16,7 +16,7 @@
     "deploy:dry-run": "bash scripts/deploy.sh --dry-run",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.sw.json",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.sw.json && tsc -p tsconfig.worker.json",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
@@ -27,7 +27,9 @@
     "check": "bash scripts/check.sh",
     "check:arch": "bash scripts/check-arch.sh",
     "setup": "bash scripts/setup.sh",
-    "wt": "bash scripts/wt.sh"
+    "wt": "bash scripts/wt.sh",
+    "db:migrate:local": "wrangler d1 migrations apply tasky --local",
+    "db:migrate:remote": "wrangler d1 migrations apply tasky --remote"
   },
   "dependencies": {
     "clsx": "^2",

@@ -180,4 +180,26 @@ export const SERVER_RULE_VECTORS: readonly ServerRuleVector[] = [
     receivedAt: '2026-01-01T00:00:00.000Z',
     expected: 'reject-stale',
   },
+  {
+    // id 를 일부러 'a'(첫 벡터와 동일)로 재사용한다 — `server-rules.test.ts` 의 id 회귀 검사가
+    // `todos` 테이블 id 집합을 'a'~'n' 리터럴로 고정해 두고 있어(그 파일은 이 티켓 owns 밖) 새
+    // 글자를 쓰면 그 파일도 고쳐야 한다. `applyServerRules` 자체는 id 유일성에 의존하지 않고
+    // (순수 함수, 매 호출 독립), D1 계층(`apply.test.ts`)은 이미 `v${index}-${id}` 로 벡터별
+    // 이름공간을 나누므로 재사용해도 두 계층 모두 안전하다.
+    //
+    // **이 벡터가 잡는 버그(Blocker, §0 상태 블록 1번)**: `baseSeq: 0`(생성 시도) + 미래
+    // `updatedAt`. `applyServerRules` 자체의 판정(`existing` 없음 → `insert`)은 클램프와 무관해
+    // 늘 'insert' 이므로 이 파일만으로는 저장 버그를 드러내지 못한다 — **저장 클램프는 도메인이
+    // 아니라 호출부(`worker/db/entities.ts#pushOne`)의 책임**이기 때문이다(그래서 클램프가 여기
+    // 없다고 domain 벡터가 실패하지는 않는다). 이 벡터가 실제로 지키는 것은 Worker 계층
+    // (`worker/sync/apply.test.ts`)이 이 벡터를 D1 위에서 돌리며 **저장된 `updated_at` 컬럼**이
+    // `clampFutureUpdatedAt(change.updatedAt, receivedAt)` 와 같은지 직접 확인하는 부분이다 — 생성
+    // 경로에서 클램프를 다시 빼면(`pushOne` 의 `isCreateAttempt ? input.updatedAt : clamp(...)`)
+    // 그 Worker 단 assertion 만 빨개진다(도메인 단 `expected: 'insert'` 는 여전히 통과).
+    name: '생성 클램프(저장 계층 전용 — 이 파일의 expected 자체는 baseSeq 0 이라 클램프와 무관하게 insert): baseSeq 0 으로 미래 시각을 보내도 판정은 insert, 저장 시 receivedAt 으로 클램프되는지는 Worker 계층(apply.test.ts)이 확인한다',
+    existing: undefined,
+    change: { ...updatedAtAt('2099-01-01T00:00:00.000Z'), tbl: TBL, id: 'a', baseSeq: 0 },
+    receivedAt: '2026-01-01T00:00:00.000Z',
+    expected: 'insert',
+  },
 ];

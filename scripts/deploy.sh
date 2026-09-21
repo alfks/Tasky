@@ -45,9 +45,9 @@ done
 # wrangler.jsonc 에 값이 이미 커밋돼 있어 이 스크립트가 넘겨줄 필요가 없고,
 # GOOGLE_CLIENT_SECRET·SESSION_SECRET 은 `wrangler secret put` 으로 한 번 올리면
 # Cloudflare 가 보관하는 값이라 배포마다 이 스크립트가 읽어 넘길 대상이 아니다
-# (.env.example 의 같은 키 주석 참고). Worker 배포가 실제로 그 두 시크릿을 요구하게
-# 되면(worker/index.ts 가 생기는 시점, T-93) 이 자리에 "시크릿 존재 확인 없으면 rc=1"
-# 검사를 추가한다 — 지금은 검사할 Worker 자체가 없어 추가하지 않았다.
+# (.env.example 의 같은 키 주석 참고). **T-93 부터 Worker(worker/index.ts)가 실제로 그 두
+# 시크릿을 요구한다** — 아래 "Worker 시크릿 검사" 절이 `wrangler secret list` 로 존재만 확인한다
+# (값은 절대 읽지 않는다 — 존재 여부만).
 #
 # D1 마이그레이션도 이 스크립트가 아직 적용하지 않는다 — `wrangler deploy` 는 D1 스키마를
 # 건드리지 않는다. 지금은 D1 에 테이블이 없어도 Worker 가 없으니 해가 없지만, Worker 코드가
@@ -109,6 +109,37 @@ MSG
   fi
 fi
 
+# --- Worker 시크릿 검사(T-93) ------------------------------------------------
+# GOOGLE_CLIENT_SECRET·SESSION_SECRET 은 `wrangler secret put` 으로 한 번 올리면 Cloudflare 가 보관하는
+# 값이라(.env.example 참고) 이 스크립트가 넘기지 않는다 — 대신 **존재만** 확인한다. 없으면 첫 요청에서
+# `env.GOOGLE_CLIENT_SECRET`/`env.SESSION_SECRET` 이 undefined 인 채로 배포가 "성공"해 버리고, 로그인·
+# 세션 검증이 배포 뒤에야 원인 불명으로 깨진다 — 조용히 건너뛰지 않는다(CLAUDE.md §5 원칙).
+# `--dry-run` 은 네트워크를 타지 않으므로 이 검사도 건너뛴다(자격증명 검사와 같은 이유).
+if [ "$DRY_RUN" -eq 0 ]; then
+  secrets_json="$(pnpm exec wrangler secret list --config wrangler.jsonc --format json 2>/dev/null)" || {
+    printf 'ERROR: wrangler secret list 를 실행하지 못했습니다 — CLOUDFLARE_API_TOKEN 권한(Workers Scripts:Edit)을 확인하세요.\n' >&2
+    exit 1
+  }
+  secrets_missing=0
+  for name in GOOGLE_CLIENT_SECRET SESSION_SECRET; do
+    # JSON 파싱은 node 로 한다 — grep 의 공백 유무 가정(`"name":"x"` vs `"name": "x"`)에 기대지 않는다.
+    if ! printf '%s' "$secrets_json" | node -e '
+let s = "";
+process.stdin.on("data", (d) => (s += d));
+process.stdin.on("end", () => {
+  let list;
+  try { list = JSON.parse(s); } catch { process.exit(1); }
+  process.exit(Array.isArray(list) && list.some((x) => x && x.name === process.argv[1]) ? 0 : 1);
+});
+' "$name"; then
+      printf 'ERROR: Cloudflare Worker 시크릿 %s 가 없습니다.\n' "$name" >&2
+      printf '       wrangler secret put %s\n' "$name" >&2
+      secrets_missing=1
+    fi
+  done
+  [ "$secrets_missing" -eq 0 ] || exit 1
+fi
+
 # --- 산출물 검사 ------------------------------------------------------------
 # "빌드가 없는데 배포 성공" 을 막는다. **비어 있는 파일도 없는 것으로 친다** — 빈 index.html 이
 # 그대로 올라가면 배포는 성공하고 사이트만 빈다(CI deploy.yml 의 `-s` 와 같은 기준).
@@ -123,4 +154,14 @@ done
 if [ "$DRY_RUN" -eq 1 ]; then
   exec pnpm exec wrangler deploy --config wrangler.jsonc --dry-run --outdir dist/dry-run
 fi
+
+# D1 마이그레이션은 Worker 코드보다 **먼저** 적용한다 — 마이그레이션 없이 새 Worker 코드부터
+# 나가면 그 사이의 첫 요청들이 `no such table` 로 죽는다(worker/db/migrations/0001_init.sql,
+# T-93). `wrangler d1 migrations apply` 는 이미 적용된 마이그레이션을 다시 적용하지 않는다
+# (자체 `d1_migrations` 추적 테이블) — 안전하게 매 배포마다 부른다.
+pnpm exec wrangler d1 migrations apply tasky --config wrangler.jsonc --remote || {
+  printf 'ERROR: D1 마이그레이션 적용에 실패했습니다(worker/db/migrations/*.sql) — 배포를 멈춥니다.\n' >&2
+  exit 1
+}
+
 exec pnpm exec wrangler deploy --config wrangler.jsonc

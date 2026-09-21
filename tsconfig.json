@@ -18,5 +18,5 @@
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules", ".worktrees", "coverage", "dist", "src/sw.ts"]
+  "exclude": ["node_modules", ".worktrees", "coverage", "dist", "src/sw.ts", "worker"]
 }

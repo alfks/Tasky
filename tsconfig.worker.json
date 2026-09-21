@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ESNext"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "allowJs": false,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "incremental": true,
+    "types": ["@cloudflare/workers-types"],
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["worker/**/*.ts", "src/domain/**/*.ts"],
+  "exclude": ["**/*.test.ts", "**/*.vectors.ts", "node_modules", ".worktrees", "coverage", "dist"]
+}

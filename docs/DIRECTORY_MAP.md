@@ -56,6 +56,12 @@
 | `src/styles/`       | `tokens.css` `globals.css`(.css 만)                                                                                                                                            | `src/styles/AGENTS.md`              | 토큰/테마 변경 시                                                                                                                                            |
 | `src/test/`         | Vitest setup, fixtures 팩토리                                                                                                                                                  | `src/test/AGENTS.md`                | 테스트 작성 시 픽스처 확인                                                                                                                                   |
 
+## worker/ (T-93 — `src/` 밖의 두 번째 진입점, ADR-0019)
+
+| 경로      | 한 줄                                                                                                                                 | AGENTS.md          | 언제 읽어야 하는가                            |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------------- |
+| `worker/` | Cloudflare Worker(구글 OAuth·세션 쿠키·`/api/sync`·D1·계정 삭제). `worker/AGENTS.md` 가 `auth/`·`sync/`·`account/`·`db/` 를 관할 선언 | `worker/AGENTS.md` | `worker/**` 의 어떤 파일이든 읽거나 고치기 전 |
+
 ## 빠른 질문표
 
 | 질문                            | 답                                                                                                                                                                               |
