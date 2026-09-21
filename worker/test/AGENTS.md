@@ -5,8 +5,10 @@
 ## 목적
 
 실 D1 테스트 하네스(`d1-harness.ts` — `getPlatformProxy`(wrangler)로 로컬 Miniflare D1 을 띄우고
-`0001_init.sql` 을 적용한다). `src/test/` 와 같은 원칙: 픽스처·하네스 디렉토리라 `worker/**` 의
-경계 제한(`eslint.config.mjs` worker 블록) 밖이다.
+`db/migrations/*.sql` **전부를 파일명 정렬 순서로** 적용한다 — 리뷰에서 `0001_init.sql` 하드코딩이
+지적됐다: `0002_*.sql` 이 생겨도 자동으로 같이 적용돼야 새 마이그레이션이 테스트 스키마에서 조용히
+누락되는 일이 없다). `src/test/` 와 같은 원칙: 픽스처·하네스 디렉토리라 `worker/**` 의 경계
+제한(`eslint.config.mjs` worker 블록) 밖이다.
 
 ## 규칙 (이 디렉토리에만 적용)
 
