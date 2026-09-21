@@ -68,6 +68,10 @@ pnpm build && pnpm start                                      # wrangler dev, **
   Vite HMR 을 유지한 채 로그인을 탄다. 실제 로그인 왕복을 확인할 때는 `pnpm start`(8787)를 쓴다.
 - **`.env` 와 `.dev.vars` 는 별개 파일이다.** 배포 자격증명(`scripts/deploy.sh`·CI 가 읽음)은 `.env`,
   로컬 `wrangler dev` 가 읽는 시크릿은 `.dev.vars` — 값이 같아도 두 파일에 각각 채운다.
+- **`.dev.vars` 의 `GOOGLE_CLIENT_ID` 를 빈 값으로 남겨 두지 마라.** `wrangler dev` 는 키가 "존재"하기만
+  해도 그 값을 쓴다 — `GOOGLE_CLIENT_ID=`(빈 값)도 존재로 쳐서 `wrangler.jsonc` 의 진짜 값을 빈
+  문자열로 **덮어써 로그인이 원인 불명으로 깨진다**(직접 재현 확인, `.dev.vars.example` 주석 참고).
+  `wrangler.jsonc` 의 값을 그대로 쓰려면 값만 비우지 말고 **그 줄 자체를 지운다**.
 - **로컬 스텁 로그인**: `.dev.vars` 의 `AUTH_STUB=1`(호스트가 localhost/127.0.0.1 일 때만 적용)이면
   구글 왕복 없이 로그인 플로우를 확인할 수 있다. 배포된 Worker 의 vars 에는 이 키 자체가 없어야
   한다.
@@ -82,6 +86,40 @@ tasky --remote` 와 시크릿(`GOOGLE_CLIENT_SECRET`·`SESSION_SECRET`) 존재 �
   돈다 — 시크릿이 하나라도 없으면 `rc=1` 로 멈춘다(`wrangler secret put <이름>` 으로 먼저 올려야 한다).
   `--dry-run` 은 이 둘을 건너뛴다.** 배포 자체(수동 여부·지금 배포본 내용)는 [README.md](../README.md)
   [지금 상태](../README.md#지금-상태)가 단일 소스다.
+
+### 배포 확인 (실환경에서 사용자가 확인한 방법, 2026-09-21)
+
+```bash
+curl -s https://tasky.millie020524.workers.dev/api/me
+# 401 JSON({"error":"unauthorized"})이면 Worker 가 붙은 것, SPA index.html(200, HTML)이면 정적 자산만
+
+curl -s https://tasky.millie020524.workers.dev/auth/stub-login?sub=x&email=x@y.z
+# 반드시 404(not found) — AUTH_STUB 이 닫혀 있다는 뜻. 200/302 가 오면 즉시 롤백한다.
+
+pnpm exec wrangler d1 execute tasky --remote \
+  --command "SELECT name FROM sqlite_master WHERE type='table'"
+# 기대: users · sessions · devices · entities · deleted_users · d1_migrations
+```
+
+**`wrangler` 는 전역 설치가 아니다 — 반드시 `pnpm exec wrangler` 로 부른다**(사용자가 실제로
+`command not found` 를 밟았다). 2026-09-21 확인 결과: `/api/me` → 401 JSON(Worker 붙음, 배포본은
+#126 이후), `/auth/stub-login` → 404(AUTH_STUB 프로덕션에서 닫혀 있음), **D1 테이블도 원격에 생성돼
+있는 것이 확인됐다**(사용자 확인). **구글 로그인 실왕복·배포본이 정확히 어느 커밋인지(#129 클라이언트
+포함 여부)는 여전히 미확인**이다 — [README.md](../README.md) [지금 상태](../README.md#지금-상태)·
+[CLAUDE.md](../CLAUDE.md) "현재 상태" 블록이 단일 소스다.
+
+**증상: Worker 는 새것(`/api/me` 401)인데 로그인 화면이 안 뜬다면 `dist/client` 가 낡은 것부터 의심한다.**
+`scripts/deploy.sh` 의 산출물 검사는 `dist/client` 의 파일이 **존재하고 비어 있지 않은지만** 보고
+**최신인지는 보지 않는다** — pull 이전에 만든 낡은 `dist/client` 가 남아 있으면 `pnpm run deploy` 를
+그대로 돌려도 검사를 통과해, Worker·D1 마이그레이션은 새로 나가고 **정적 자산만 옛것**으로 배포될 수
+있다(추적 중 발견 — 이것이 실제 원인인지는 `pnpm build` 후 재배포해 봐야 확정된다, 후속 티켓
+[PHASE2_TICKET_BACKLOG.md](./PHASE2_TICKET_BACKLOG.md) T-106). **먼저 `pnpm build` 를 돌린 뒤 재배포한다**
+(`scripts/deploy.sh` 자체는 고치지 않는다 — owns 밖이고 고치는 방식은 T-106 에서 정한다).
+
+**두 번째 용의자: 서비스 워커 캐시.** PWA 라 23개 URL 을 프리캐시하므로, 배포본이 실제로 새것이어도 브라우저에
+남은 옛 서비스 워커가 캐시된 옛 화면을 계속 내줄 수 있다. **구분법**: 시크릿(사생활 보호) 창에서 배포
+주소를 열어 본다 — 거기서 새 화면이 뜨면 캐시 문제고, 개발자도구 → Application → Service Workers →
+Unregister 로 푼다. 시크릿 창에서도 옛 화면이면 위의 낡은 `dist/client` 쪽을 본다.
 
 ### 운영 주의 — D1 을 손으로 만지기 전에
 
