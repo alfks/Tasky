@@ -49,11 +49,11 @@ done
 # 시크릿을 요구한다** — 아래 "Worker 시크릿 검사" 절이 `wrangler secret list` 로 존재만 확인한다
 # (값은 절대 읽지 않는다 — 존재 여부만).
 #
-# D1 마이그레이션도 이 스크립트가 아직 적용하지 않는다 — `wrangler deploy` 는 D1 스키마를
-# 건드리지 않는다. 지금은 D1 에 테이블이 없어도 Worker 가 없으니 해가 없지만, Worker 코드가
-# 붙는 순간(T-93) 마이그레이션 없이 배포하면 첫 요청에서 `no such table` 로 죽는다. T-93 은
-# 이 자리에 `wrangler d1 migrations apply tasky --remote` 를 실제 배포 직전 스텝으로 넣어야
-# 한다(마이그레이션 파일 `worker/db/migrations/0001_init.sql` 이 그때 생긴다 — 지금은 없다).
+# D1 마이그레이션은 `wrangler deploy` 가 건드리지 않으므로 이 스크립트가 실제 배포 직전에
+# `wrangler d1 migrations apply tasky --remote` 로 직접 적용한다(아래 실제 배포 절, T-93/#126 —
+# 마이그레이션 파일은 `worker/db/migrations/0001_init.sql`). Worker 가 붙은 뒤로 마이그레이션 없이
+# 배포하면 첫 요청이 `no such table` 로 죽기 때문이다. `--dry-run` 은 이 스텝과 위 시크릿 검사를
+# 둘 다 건너뛴다(네트워크를 타지 않는다) — 그래서 dry-run 초록은 D1·시크릿 상태를 보증하지 않는다.
 if [ -f .env ]; then
   while IFS= read -r line || [ -n "$line" ]; do
     line=${line%$'\r'} # CRLF 파일의 줄 끝 \r
