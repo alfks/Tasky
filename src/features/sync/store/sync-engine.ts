@@ -1,6 +1,7 @@
 // 지연 청크(`sync-engine-*.js`, T94_LAZY_BOUNDARY.md §D-9). 동기화 사이클·트리거·격리·재수신을
 // 전부 여기서 다룬다. `sync-store.ts`(진입)가 `await import(...)` 로 딱 한 번 가져와 `startEngine()`
 // 을 부른다.
+import type { OutboxEntry } from '@/domain/sync/outbox';
 import { planOutboxAfterReject, shouldQuarantine, toSyncChange } from '@/domain/sync/outbox';
 import { readRemoteRow } from '@/domain/sync/remote-rows';
 import { isResyncResponse } from '@/domain/sync/wire';
@@ -117,19 +118,29 @@ async function applyResponse(
   }));
 }
 
-/** `ackOutbox` 는 rev 를 다시 읽어 대조하므로(§B-4 T-92 완료 조건), 여기서는 실제 큐 항목을 다시
- * 끌어와 정확한 rev 로 부른다 — `applied` 응답에는 서버 seq 만 있고 rev 는 없다.
+/** `ackOutbox` 는 큐에 남은(다시 읽은) rev 와 **인자로 받은** rev 를 `reconcileAck` 로 대조해
+ * 일치할 때만 지운다(§B-4 T-92 완료 조건) — 그러니 인자로 넘기는 rev 는 **실제로 이번 왕복에서
+ * 푸시한** rev 여야 한다. `pushAndPull` 이 왕복 전에 읽어 둔 `pushedEntries`(요청을 만든 바로 그
+ * 스냅샷)를 그대로 받아 `applied` 키로 걸러 넘긴다 — 왕복 끝난 뒤 큐를 다시 읽으면 안 된다: 그
+ * 사이(요청을 보낸 뒤 응답이 오기 전) 사용자가 같은 로우를 다시 고쳐 rev 가 올랐을 때, 다시 읽은
+ * 값은 이미 그 새 rev 라 "방금 푸시한 rev" 와 항상 같아져 `reconcileAck` 가 절대 `'keep'` 을 내지
+ * 못한다 — 그 편집이 아직 서버에 가지도 않았는데 아웃박스에서 조용히 지워진다(회귀, `sync-engine.
+ * test.ts` "왕복 중 편집은 ack 가 지우지 않는다"). `applied` 응답에는 서버 seq 만 있고 rev 는 없어서
+ * rev 출처는 항상 이 스냅샷이어야 한다.
  *
  * **격리 카운터도 여기서 리셋한다.** `consecutiveInvalid` 는 "연속" invalid 거절만 세야 한다 —
  * 리셋 없이 두면 두 번 invalid 로 실패한 로우가 그사이 한 번 성공(applied)해도 카운트가 2로
  * 남아, 나중에 무관한 한 번의 invalid 거절만으로 "3회 연속"이 아닌데 격리된다(돌연변이 (6)
  * 대상 — `sync-engine.test.ts` 의 "연속 아니면 격리하지 않는다"가 이 리셋이 빠지면 빨개진다). */
-async function ackApplied(repo: SyncRepository, applied: SyncOkResponse['applied']): Promise<void> {
+async function ackApplied(
+  repo: SyncRepository,
+  pushedEntries: readonly OutboxEntry[],
+  applied: SyncOkResponse['applied'],
+): Promise<void> {
   if (applied.length === 0) return;
   const keys = new Set(applied.map((a) => keyOf(a.tbl, a.id)));
   for (const key of keys) consecutiveInvalid.delete(key);
-  const queued = await repo.listOutbox(PAGE_SIZE);
-  const pushed = queued.filter((entry) => keys.has(keyOf(entry.tbl, entry.id)));
+  const pushed = pushedEntries.filter((entry) => keys.has(keyOf(entry.tbl, entry.id)));
   await repo.ackOutbox(pushed);
 }
 
@@ -214,7 +225,7 @@ async function pushAndPull(repo: SyncRepository, state: SyncState): Promise<bool
     await pullAll(repo);
     return false;
   }
-  await ackApplied(repo, response.applied);
+  await ackApplied(repo, entries, response.applied);
   await applyResponse(repo, state, response);
   return response.more;
 }

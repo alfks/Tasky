@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createCategory } from '@/domain/category/category.rules';
+import { createCategory, updateCategory } from '@/domain/category/category.rules';
 import type { SyncRequest, SyncResponse } from '@/domain/sync/wire';
 
 import { getRepositories, setRepositories, setSyncTransport } from '@/repositories/container';
@@ -233,6 +233,70 @@ describe('sync-engine: 연속 invalid 3회 격리(돌연변이 6 대상)', () =>
 
     const state = await getRepositories().sync.getState();
     expect(state?.quarantined ?? []).toEqual([]); // 연속 3회가 아니므로 격리되지 않는다
+  });
+});
+
+describe('sync-engine: ackApplied 는 실제로 푸시한 rev 로 대조한다(회귀 방지)', () => {
+  beforeEach(() => {
+    resetEngineForTest();
+  });
+
+  it('푸시 왕복 중 같은 로우를 다시 고치면 ack 가 그 편집을 아웃박스에서 지우지 않는다', async () => {
+    await getRepositories().sync.wipeLocal();
+    const category = createCategory(
+      { name: '원래 이름', color: '#CFEB8F', existing: [] },
+      { now: () => '2026-09-21T00:00:00.000Z', id: () => crypto.randomUUID() },
+    );
+    await getRepositories().categories.upsert(category);
+    await getRepositories().sync.enqueueAll(); // rev 1 로 큐 적재
+    await getRepositories().sync.setState({ deviceId: 'd1', userSub: 's', cursor: 0 });
+
+    // sync() 를 호출부가 원할 때 풀어줄 수 있도록 응답을 보류한다 — "왕복이 아직 안 끝남"을 흉내낸다.
+    let resolveSync: ((response: SyncResponse) => void) | undefined;
+    const calls: SyncRequest[] = [];
+    setSyncTransport({
+      me: async () => ({ sub: 's', email: 'e', expiresAt: '' }),
+      sync: async (request) => {
+        calls.push(request);
+        return new Promise<SyncResponse>((resolve) => {
+          resolveSync = resolve;
+        });
+      },
+      logout: async () => {},
+      deleteAccount: async () => {},
+      logoutOthers: async () => {},
+    });
+
+    const { rt } = fakeRuntime();
+    startEngine(rt);
+    await vi.waitFor(() => expect(calls.length).toBe(1)); // rev=1 을 실었고 응답 대기 중
+
+    // 응답이 오기 전에 같은 로우를 다시 고친다 — 아웃박스 rev 가 2로 오른다.
+    const edited = updateCategory(category, { name: '고친 이름' }, [], {
+      now: () => '2026-09-21T00:00:01.000Z',
+      id: () => crypto.randomUUID(),
+    });
+    await getRepositories().categories.upsert(edited);
+    expect(await getRepositories().sync.countOutbox()).toBe(1);
+
+    // 서버가 이제야 rev=1 시점 push 를 applied 로 확인해 준다.
+    resolveSync?.({
+      cursor: 1,
+      applied: [{ tbl: 'categories', id: category.id, seq: 1 }],
+      rejected: [],
+      pulled: [],
+      more: false,
+      gcFloor: 0,
+    });
+
+    await vi.waitFor(async () => {
+      const state = await getRepositories().sync.getState();
+      expect(state?.cursor).toBe(1); // 이 사이클이 끝났음을 기다린다
+    });
+    // rev=2 편집은 아직 서버에 보내지 못했으니 아웃박스에 남아 있어야 한다.
+    expect(await getRepositories().sync.countOutbox()).toBe(1);
+    const stored = await getRepositories().categories.getById(category.id);
+    expect(stored?.name).toBe('고친 이름'); // 편집이 사라지지 않았다
   });
 });
 
