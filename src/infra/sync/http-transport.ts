@@ -22,10 +22,15 @@ async function safeFetch(path: string, init: RequestInit): Promise<Response> {
   }
 }
 
+/**
+ * 상태 코드만으로 갈래를 정한다 — 410 은 worker 가 이 앱에서 오직 계정 삭제(ADR-0019)에만 쓰는
+ * 코드라 본문을 파싱할 필요가 없다(`worker/router.ts#sessionErrorResponse`,
+ * `worker/auth/handlers.ts#handleMe` 실측: `/api/me`·`/api/sync`·`/auth/logout` 셋 다 같은 뜻).
+ */
 function failureFor(status: number): TransportError {
-  return status === 401
-    ? new TransportError('unauthorized', status)
-    : new TransportError('server', status);
+  if (status === 401) return new TransportError('unauthorized', status);
+  if (status === 410) return new TransportError('account-deleted', status);
+  return new TransportError('server', status);
 }
 
 async function parseJson(response: Response): Promise<unknown> {

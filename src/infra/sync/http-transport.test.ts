@@ -41,6 +41,14 @@ describe('createHttpSyncTransport', () => {
     expect(await createHttpSyncTransport().me()).toBeNull();
   });
 
+  it('me(): 410 이면 TransportError(account-deleted) — 401 과 구분한다(ADR-0019)', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(410, { error: 'account-deleted' }));
+
+    await expect(createHttpSyncTransport().me()).rejects.toSatisfy(
+      (error: unknown) => isTransportError(error) && error.kind === 'account-deleted',
+    );
+  });
+
   it('me(): fetch 가 던지면 TransportError(offline)', async () => {
     vi.mocked(fetch).mockRejectedValue(new TypeError('network'));
 
@@ -56,6 +64,16 @@ describe('createHttpSyncTransport', () => {
       createHttpSyncTransport().sync({ protocol: 1, deviceId: 'd', cursor: 0, changes: [] }),
     ).rejects.toSatisfy(
       (error: unknown) => isTransportError(error) && error.kind === 'unauthorized',
+    );
+  });
+
+  it('sync(): 410 이면 TransportError(account-deleted)', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(410, { error: 'account-deleted' }));
+
+    await expect(
+      createHttpSyncTransport().sync({ protocol: 1, deviceId: 'd', cursor: 0, changes: [] }),
+    ).rejects.toSatisfy(
+      (error: unknown) => isTransportError(error) && error.kind === 'account-deleted',
     );
   });
 
