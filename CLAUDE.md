@@ -77,6 +77,7 @@ bash scripts/check-env-secrets.sh         # .env 계열이 추적/스테이징�
 bash scripts/check-author.sh main         # main 이후 커밋 author 검증
 bash scripts/check-agents-md.sh           # AGENTS.md 누락 검사
 bash scripts/check-arch.sh                # 레이어 경계 린트 + 아키텍처 2차 패스(스캐폴딩 후)
+node scripts/make-icons.mjs               # PWA 아이콘 4종 재생성(그림의 단일 소스는 이 스크립트 안의 SVG)
 pnpm dev | pnpm build | pnpm test -- <pattern>
 pnpm start                                # 빌드 산출물(dist/client)을 wrangler dev 로 로컬 서빙(서비스워커 확인용)
 pnpm build && pnpm run deploy:dry-run     # CI 배포와 **같은 명령**을 --dry-run 으로(업로드 파일 목록 확인). 자격증명 불필요 — `--dry-run` 은 네트워크를 타지 않아 스크립트가 자격증명 검사를 건너뛴다. 단 빌드 산출물은 있어야 한다
