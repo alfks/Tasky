@@ -67,6 +67,7 @@ const SEMANTIC: [string, string, string][] = [
   ['color-bg', '#fafafc', '#141418'],
   ['color-surface', '#ffffff', '#1c1c22'],
   ['color-surface-2', '#f3f3f7', '#26262e'],
+  ['color-surface-3', '#e9e9f0', '#31313a'],
   ['color-text', '#2b2b33', '#ededf2'],
   ['color-muted', '#6f6f7a', '#a0a0aa'],
   ['color-faint', '#b8b8c0', '#5a5a66'],

@@ -51,7 +51,9 @@ export function DragHandle<N extends string>({
       aria-label={label}
       className={cn(
         'inline-flex size-[var(--control-hit-min)] shrink-0 cursor-grab items-center justify-center',
-        'rounded-[var(--radius-sm)] text-faint hover:bg-surface-2',
+        // `text-faint` 는 흰 면에서 1.97:1 이라 손잡이를 못 찾는다는 실사용 보고가 있었다 —
+        // 아이콘이 "여기를 잡는다" 는 정보를 나르므로 `--color-muted`(4.96:1)가 맞는 자리다(theme R9).
+        'rounded-[var(--radius-sm)] text-muted hover:bg-surface-2',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
         className,
       )}

@@ -140,6 +140,84 @@ test.describe('호버 면은 앱의 언어를 따른다 (theme.md §3 `--color-s
   });
 });
 
+// 사이드바 행은 투두 행보다 **한 단계 진한** 면을 쓴다(theme R29). 배경만 진해지면 그 행의
+// `--color-muted` 글자가 4.48 → 4.11 로 R9 의 4.5:1 아래로 떨어지므로, 글자가 함께 올라가는지도
+// 같이 잰다 — 둘은 한 덩어리라 따로 재면 반쪽이 조용히 빠져도 초록불이다.
+test.describe('사이드바 카테고리 행 호버 (theme.md R29)', () => {
+  test.use({ colorScheme: 'light' });
+
+  /** 사이드바 행(`li`). 행 자체에 역할 이름이 없어 손잡이 버튼에서 한 칸 올라간다. */
+  function sidebarRow(page: Page): Locator {
+    return page
+      .getByRole('listitem')
+      .filter({ has: page.getByRole('button', { name: `${CATEGORY} 순서 변경 (Alt+위/아래)` }) });
+  }
+
+  test('행 전체가 `--color-surface-3` 으로 칠해지고, 그 색은 투두 행의 면보다 진하다', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await waitForShell(page);
+    await seedTodo(page);
+
+    const surface3 = await resolveColor(page, '--color-surface-3');
+    const surface2 = await resolveColor(page, '--color-surface-2');
+    // 두 토큰이 같은 값이면 "한 단계 진하다" 는 단언이 아무것도 재지 않는다.
+    expect(surface3).not.toBe(surface2);
+
+    const row = sidebarRow(page);
+    expect(await backgroundOf(row)).not.toBe(surface3);
+
+    await row.hover();
+    await expect.poll(async () => backgroundOf(row)).toBe(surface3);
+  });
+
+  test('호버하면 그 행의 보조 글자(`n/m`)가 `--color-text` 로 같이 진해진다', async ({ page }) => {
+    await page.goto('/');
+    await waitForShell(page);
+    await seedTodo(page);
+    // `seedTodo` 의 할 일은 **첫 그룹**(첫 실행 시드 카테고리)에 들어간다 — `n/m` 을 보려면
+    // 이 행의 카테고리에도 한 건 넣어야 한다(category R19 는 선택 날짜 기준 완료/전체다).
+    // 먼저 열려 있는 입력 행을 닫는다 — 열린 채로 다른 그룹의 `+ 할 일 추가` 를 누르면
+    // 포커스가 그 입력에 붙잡혀 새 입력이 뜨지 않는다.
+    await page.keyboard.press('Escape');
+    const group = page.getByRole('region', { name: CATEGORY });
+    await group.getByRole('button', { name: '+ 할 일 추가' }).click();
+    const input = page.getByRole('textbox', { name: `${CATEGORY}에 할 일 추가` });
+    await input.fill('물 마시기');
+    await input.press('Enter');
+    await expect(group.getByRole('checkbox', { name: '물 마시기' })).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    const row = sidebarRow(page);
+    // `0/1` 은 사용자에게 보이는 글자 그대로다(category R19) — 역할이 없는 자리라 글자로 잡는다.
+    const counts = row.getByText('0/1');
+    const muted = await resolveColor(page, '--color-muted');
+    const text = await resolveColor(page, '--color-text');
+    expect(muted).not.toBe(text);
+    expect(await counts.evaluate((el) => getComputedStyle(el).color)).toBe(muted);
+
+    await row.hover();
+    await expect.poll(async () => counts.evaluate((el) => getComputedStyle(el).color)).toBe(text);
+  });
+
+  test('드래그 손잡이는 `--color-muted` 다 — `--color-faint` 로 되돌아가면 못 찾는다', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await waitForShell(page);
+    await seedTodo(page);
+
+    const handle = page.getByRole('button', { name: `${CATEGORY} 순서 변경 (Alt+위/아래)` });
+    const faint = await resolveColor(page, '--color-faint');
+    const muted = await resolveColor(page, '--color-muted');
+    expect(faint).not.toBe(muted);
+
+    // 손잡이 글리프(⠿)는 `aria-hidden` 이라 버튼 자신의 색을 잰다 — 자식 span 은 상속만 한다.
+    expect(await handle.evaluate((el) => getComputedStyle(el).color)).toBe(muted);
+  });
+});
+
 test.describe('다크에서도 같은 토큰을 쓴다', () => {
   test.use({ colorScheme: 'dark' });
 
