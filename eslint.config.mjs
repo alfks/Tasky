@@ -626,7 +626,9 @@ const config = [
 
   // worker/** 안의 상대 경로(`./`·`../`)는 이 블록에서 허용한다(RELATIVE 규칙 미적용 — 위 주석).
   // 외부 패키지는 'cloudflare:workers' 만(현재 실제로 쓰지 않지만 Durable Objects 류를 붙일 때를
-  // 대비해 열어 둔다, SYNC_T92_T94_DECOMPOSITION §A-2). '@/' 는 아래 allowPattern 이 domain 으로 좁힌다.
+  // 대비해 열어 둔다 — ADR-0015 §3 "상시 연결(WebSocket·Durable Objects)을 두지 않는다"의 재검토
+  // 트리거: "다른 기기가 따라오는 지연이 실제로 거슬리면 이 설계 위에 푸시 계층을 얹는다(Durable
+  // Objects)"). '@/' 는 아래 allowPattern 이 domain 으로 좁힌다.
   // --- worker/** (T-93, ADR-0019) ---
   // `src/` 레이어 체계(ADR-0006) 밖의 두 번째 진입점이라 `layerRules()`(RELATIVE·CANONICAL 을
   // 강제하는 helper, '@/*' 별칭 한 벌 전제)를 그대로 쓰지 않는다 — worker/** 자기 참조는 상대
