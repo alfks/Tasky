@@ -27,6 +27,14 @@
     <title>Tasky</title>
     <meta name="description" content="감성 투두·일정 관리 웹앱" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <!--
+      iOS 는 홈 화면 아이콘으로 manifest 의 아이콘 대신 이 링크를 먼저 본다. 이 줄이 없으면
+      Safari 가 페이지 스크린샷을 아이콘으로 쓴다. 파일이 따로 있는 이유는 크기가 아니라
+      **알파**다 — iOS 는 apple-touch-icon 의 투명 픽셀을 검정으로 합성하므로, 모서리가 투명한
+      icon-192/512 를 그대로 가리키면 둥근 모서리 자리에 검은 삼각형이 남는다.
+      `icon-apple-touch-180.png` 는 같은 그림을 배경색 위에 합성한 불투명 사본이다(public/AGENTS.md).
+    -->
+    <link rel="apple-touch-icon" href="/icon-apple-touch-180.png" />
     <meta name="theme-color" content="#FAFAFC" />
     <link
       rel="preload"

@@ -34,6 +34,7 @@ const required = [
   ['/icon-192.png', 'specs/pwa.md R1'],
   ['/icon-512.png', 'specs/pwa.md R1'],
   ['/icon-maskable-512.png', 'specs/pwa.md R1'],
+  ['/icon-apple-touch-180.png', 'specs/pwa.md R1-a — iOS 홈 화면 아이콘'],
 ];
 for (const [url, why] of required) {
   if (!urls.includes(url)) note(`프리캐시 목록에 ${url} 이 없습니다 (${why}).`);
@@ -69,6 +70,27 @@ try {
   if (!has('512x512', 'maskable')) note('manifest 에 512x512 maskable 아이콘이 없습니다 (R1).');
 } catch (error) {
   note(`${DIST}/manifest.webmanifest 를 읽지 못했습니다: ${String(error)}`);
+}
+
+// --- iOS 홈 화면 아이콘(specs/pwa.md R1-a) -------------------------------------
+// 이 파일이 따로 있는 이유는 크기가 아니라 **알파**다 — iOS 는 apple-touch-icon 의 투명 픽셀을
+// 검정으로 합성하므로, 알파가 있는 사본으로 교체되면 둥근 모서리 자리에 검은 삼각형이 남는다.
+// 화면에서만 드러나는 회귀라 여기서 PNG 헤더(IHDR 의 색 타입)를 직접 본다. 4·6 = 알파 있음.
+try {
+  const icon = readFileSync(`${DIST}/icon-apple-touch-180.png`);
+  const size = { width: icon.readUInt32BE(16), height: icon.readUInt32BE(20) };
+  const colorType = icon[25];
+  if (colorType === 4 || colorType === 6)
+    note(
+      'icon-apple-touch-180.png 에 알파 채널이 있습니다 (pwa.md R1-a) — ' +
+        'iOS 가 투명 픽셀을 검정으로 합성해 모서리가 검게 남습니다. 배경색 위에 합성해 다시 만드세요(public/AGENTS.md).',
+    );
+  if (size.width !== 180 || size.height !== 180)
+    note(
+      `icon-apple-touch-180.png 이 ${size.width}×${size.height} 입니다 — 180×180 이어야 합니다.`,
+    );
+} catch (error) {
+  note(`${DIST}/icon-apple-touch-180.png 를 읽지 못했습니다: ${String(error)}`);
 }
 
 // --- 정적 자산 헤더(public/_headers) ------------------------------------------
@@ -163,6 +185,12 @@ if (doc !== '') {
   if (!/<link[^>]+rel="manifest"[^>]+href="\/manifest\.webmanifest"/.test(doc))
     note(
       'index.html 에 <link rel="manifest" href="/manifest.webmanifest"> 가 없습니다 (pwa.md R1).',
+    );
+  // R1-a: iOS 는 manifest 의 아이콘보다 이 링크를 먼저 본다. 없으면 홈 화면 아이콘이
+  // **페이지 스크린샷**이 된다 — 설치는 되는데 아이콘만 조용히 망가지는 경로라 여기서 잡는다.
+  if (!/<link[^>]+rel="apple-touch-icon"[^>]+href="\/icon-apple-touch-180\.png"/.test(doc))
+    note(
+      'index.html 에 <link rel="apple-touch-icon" href="/icon-apple-touch-180.png"> 가 없습니다 (pwa.md R1-a).',
     );
   // 이게 없으면 빌드·테스트는 전부 초록인데 사이트만 빈 화면이 된다(main.tsx 의 마운트 지점).
   if (!/<div id="root">/.test(doc))
