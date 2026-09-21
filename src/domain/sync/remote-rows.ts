@@ -46,11 +46,19 @@ export type RemoteRowResult = { ok: true; entity: Meta } | { ok: false; reason: 
  * 원격 로우 한 건을 검증한다. 형식 오류는 그 로우만 `invalid` 로 돌아오고(§②-3 "그 로우만
  * invalid"), 호출부는 나머지 로우 처리를 계속한다 — `BackupShapeError` 가 아닌 예외(프로그래밍
  * 오류)는 그대로 던진다.
+ *
+ * `id` 는 `PulledRow.id`(wire.ts, 응답 봉투의 id) — 로우 본문(`value`) 의 `entity.id` 와 **대조**한다.
+ * 대조 없이 본문만 검증하면 서버가 응답 봉투의 id 와 다른 본문을 실어 보내도(또는 전송 버그로 둘이
+ * 어긋나도) `ok:true` 가 나 저장 계층이 엉뚱한 id 로 upsert 할 수 있었다 — 실측: 본문의 `id` 를 다른
+ * UUID 로 바꿔도 이전 시그니처(`readRemoteRow(tbl, value)`)는 `ok:true` 를 돌려줬다.
  */
-export function readRemoteRow(tbl: SyncTable, value: unknown): RemoteRowResult {
+export function readRemoteRow(tbl: SyncTable, id: string, value: unknown): RemoteRowResult {
   try {
     const reader = READERS[tbl];
     const entity = reader(value, tbl);
+    if (entity.id !== id) {
+      return { ok: false, reason: 'invalid' };
+    }
     return { ok: true, entity };
   } catch (error) {
     if (isBackupShapeError(error)) {
