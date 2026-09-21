@@ -37,13 +37,12 @@ import type { DiaryEntry } from '@/domain/diary/diary-entry';
 import type { FocusSession } from '@/domain/focus/focus-session';
 import { isTombstone, type Meta, type Persistable } from '@/domain/meta';
 import type { Routine } from '@/domain/routine/routine';
-import type { OutboxEntry } from '@/domain/sync/outbox';
 import type { SyncTable } from '@/domain/sync/wire';
 import type { Settings } from '@/domain/theme/settings';
 import type { Todo } from '@/domain/todo/todo';
 
 import { RepositoryError } from '@/repositories/repository-error';
-import { shapeOf } from '@/repositories/sync-repository';
+import { pick } from '@/repositories/sync-repository';
 
 import { createDb, db, STORES, type TaskyDb } from '@/infra/indexeddb/db';
 import { createSyncStore, type SyncStore } from '@/infra/indexeddb/sync-store';
@@ -315,13 +314,7 @@ export async function put<T extends Meta>(
   const outbox = t.db.table('syncOutbox');
   await t.db.transaction('rw', [t, outbox], async () => {
     await t.put(entity);
-    await outbox.put(
-      shapeOf<OutboxEntry>([
-        ['tbl', tbl],
-        ['id', entity.id],
-        ['rev', entity.rev],
-      ]),
-    );
+    await outbox.put({ tbl, ...pick(entity, ['id', 'rev']) });
   });
   notifyLocalWrite();
 }
@@ -376,15 +369,7 @@ export async function bulkPut<T extends Meta>(
   const outbox = t.db.table('syncOutbox');
   await t.db.transaction('rw', [t, outbox], async () => {
     await t.bulkPut([...entities]);
-    await outbox.bulkPut(
-      entities.map((entity) =>
-        shapeOf<OutboxEntry>([
-          ['tbl', tbl],
-          ['id', entity.id],
-          ['rev', entity.rev],
-        ]),
-      ),
-    );
+    await outbox.bulkPut(entities.map((entity) => ({ tbl, ...pick(entity, ['id', 'rev']) })));
   });
   notifyLocalWrite();
 }

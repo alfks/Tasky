@@ -23,7 +23,7 @@ import type { SyncState, SyncTable } from '@/domain/sync/wire';
 import type { Settings } from '@/domain/theme/settings';
 import type { Todo } from '@/domain/todo/todo';
 
-import { shapeOf } from '@/repositories/sync-repository';
+import { pick } from '@/repositories/sync-repository';
 
 import { notifyLocalWrite } from '@/lib/write-signal';
 
@@ -164,14 +164,10 @@ export async function put<T extends Meta>(
   entity: Persistable<T>,
 ): Promise<void> {
   table.rows.set(entity.id, { ...entity });
-  table.outbox.set(
-    outboxKey(table.name, entity.id),
-    shapeOf<OutboxEntry>([
-      ['tbl', table.name],
-      ['id', entity.id],
-      ['rev', entity.rev],
-    ]),
-  );
+  table.outbox.set(outboxKey(table.name, entity.id), {
+    tbl: table.name,
+    ...pick(entity, ['id', 'rev']),
+  });
   notifyLocalWrite();
 }
 
@@ -226,14 +222,10 @@ export function replaceRows<T extends Meta>(
   table.rows.clear();
   for (const row of rows) {
     table.rows.set(row.id, { ...row });
-    table.outbox.set(
-      outboxKey(table.name, row.id),
-      shapeOf<OutboxEntry>([
-        ['tbl', table.name],
-        ['id', row.id],
-        ['rev', row.rev],
-      ]),
-    );
+    table.outbox.set(outboxKey(table.name, row.id), {
+      tbl: table.name,
+      ...pick(row, ['id', 'rev']),
+    });
   }
   notifyLocalWrite();
 }

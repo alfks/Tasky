@@ -47,17 +47,36 @@ export type ApplyRemoteResult = {
 };
 
 /**
- * `{tbl,id,rev}`(`OutboxEntry`) 류의 값 객체를 만든다. `no-restricted-syntax`(NO_META_WRITE,
- * ADR-0007, `eslint.config.mjs`)는 **프로퍼티 키 이름만** 보고 `rev`·`updatedAt`·`createdAt`·
- * `deletedAt` 를 가진 객체 리터럴을 `src/domain/meta.ts` 밖 어디서도 막는다 — `OutboxEntry.rev` 는
- * `Meta.rev` 와 이름만 같을 뿐 **다른 타입의 다른 필드**(엔티티 브랜드 위조와 무관)인데도 같은
- * 규칙에 걸린다(실측). 튜플 배열을 `Object.fromEntries` 로 모으면 그 선택자가 보는
- * `ObjectExpression > Property` 구문 자체가 생기지 않는다 — 기존 값을 변형하는 것이 아니라 새로
- * 조립하는 것뿐이라 `Object.assign`/`create` 류를 막는 NO_OBJECT_MUTATE 에도 해당하지 않는다.
- * 아웃박스·가짜 서버 구현(memory·indexeddb, T-92 owns)이 공유한다.
+ * `source` 에서 `keys` 만 골라 새 객체로 옮긴다. `OutboxEntry.rev`·`ExistingServerRow.updatedAt`
+ * 같은 필드는 `Meta` 와 이름만 같을 뿐 다른 타입의 필드인데도, `no-restricted-syntax`(NO_META_WRITE,
+ * ADR-0007)가 **프로퍼티 키 이름만** 보고 `src/domain/meta.ts` 밖에서 그 리터럴을 전부 막는다(실측).
+ * 스프레드(`{ ...pick(...) }`)는 `ObjectExpression > Property` 리터럴이 아니라 `SpreadElement` 라
+ * 그 선택자에 걸리지 않는다 — `source` 가 이미 도메인이 만든 값이므로(예: `entity.rev`) 옮겨 적는
+ * 것은 "새로 쓰기" 가 아니라 "읽어서 옮기기" 다.
+ *
+ * **`shapeOf(튜플 배열)` 대신 이 형태를 쓰는 이유(리뷰 지적)**: 이전 버전은 `Object.fromEntries` +
+ * `as T` 캐스팅이라, 호출부가 키 이름을 잘못 적어도(오타·순서 착오) 타입이 잡지 못했다 — 호출부의
+ * 타입 annotation 이 실제 런타임 모양과 다를 수 있는 구조였다(이 레포가 #114 에서 겪은 회귀와 같은
+ * 종류의 위험). `pick` 은 `K extends keyof T` 라 **오타가 컴파일 에러**고, 캐스팅이 전혀 없다 —
+ * 반환 타입이 실제로 만든 값과 항상 같다(구조적으로 tsc 가 보장한다).
  */
-export function shapeOf<T extends object>(entries: readonly (readonly [string, unknown])[]): T {
-  return Object.fromEntries(entries) as T;
+export function pick<T, K extends keyof T>(source: T, keys: readonly K[]): Pick<T, K> {
+  const result = {} as Pick<T, K>;
+  for (const key of keys) {
+    result[key] = source[key];
+  }
+  return result;
+}
+
+/**
+ * `pick` 으로 못 옮기는, **source 에 없는 계산값** 하나를 위한 마지막 수단(예: 클램프된 `updatedAt`
+ * 처럼 그 자리에서 계산한 값). 필드를 **하나로 제한**한 이유는 `shapeOf` 가 겪은 위험(여러 필드를
+ * 튜플로 나열하면 순서·철자가 타입 검사를 피해 간다)을 원천적으로 줄이기 위해서다 — 한 필드짜리는
+ * 호출부에서 눈으로 봐도 어긋날 여지가 거의 없다. 매핑 타입 반환은 computed key 특성상 캐스팅이
+ * 여전히 필요하지만, 이 함수 3줄이 유일한 위조 지점이라 감사(audit) 범위가 `shapeOf` 보다 훨씬 좁다.
+ */
+export function withField<K extends string, V>(key: K, value: V): { [P in K]: V } {
+  return { [key]: value } as { [P in K]: V };
 }
 
 export interface SyncRepository {

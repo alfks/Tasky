@@ -3,11 +3,11 @@
 // 적용한다 — memory `sync-repository.ts` 와 같은 자리다. 이 파일은 지연 청크(`repositories-*.js`)
 // 안에 있으므로 `wire.ts` 값(`SYNC_TABLES`)을 자유롭게 쓴다(§C-6, memory 쪽의 진입 청크 제약이 없다).
 import { planClientMerge } from '@/domain/sync/client-merge';
-import { reconcileAck, type OutboxEntry } from '@/domain/sync/outbox';
+import { reconcileAck } from '@/domain/sync/outbox';
 import { SYNC_TABLES, type SyncTable } from '@/domain/sync/wire';
 
 import {
-  shapeOf,
+  pick,
   type ApplyRemoteResult,
   type OutboxRow,
   type RemoteWrite,
@@ -63,13 +63,7 @@ export function createIndexedDbSyncRepository(store: Store): SyncRepository {
         for (const tbl of SYNC_TABLES) {
           const rows = await sync.allRows(tbl);
           for (const row of rows) {
-            await sync.outboxPut(
-              shapeOf<OutboxEntry>([
-                ['tbl', tbl],
-                ['id', row.id],
-                ['rev', row.rev],
-              ]),
-            );
+            await sync.outboxPut({ tbl, ...pick(row, ['id', 'rev']) });
             count += 1;
           }
         }

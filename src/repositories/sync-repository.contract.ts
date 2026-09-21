@@ -18,7 +18,6 @@ import {
 } from '@/domain/meta';
 import type { Routine } from '@/domain/routine/routine';
 import { CLIENT_MERGE_VECTORS } from '@/domain/sync/client-merge.vectors';
-import type { OutboxEntry } from '@/domain/sync/outbox';
 import type { SyncTable } from '@/domain/sync/wire';
 
 import type { Repositories } from '@/repositories/container';
@@ -32,7 +31,7 @@ import {
   type ContractTarget,
 } from '@/repositories/contract';
 import { isRepositoryError } from '@/repositories/repository-error';
-import { shapeOf, type RemoteWrite } from '@/repositories/sync-repository';
+import { pick, type RemoteWrite } from '@/repositories/sync-repository';
 
 const START = '2026-01-15' as DateKey;
 
@@ -198,25 +197,15 @@ export function runSyncRepositoryContract(target: ContractTarget): void {
       const todo = contractTodo(deps);
       await repos.todos.upsert(todo);
 
-      await repos.sync.ackOutbox([
-        shapeOf<OutboxEntry>([
-          ['tbl', 'todos'],
-          ['id', todo.id],
-          ['rev', 1],
-        ]),
-      ]);
+      // 이 시점의 todo.rev 는 1(방금 생성) — pick 으로 그대로 옮긴다(리터럴 rev: 를 쓰지 않는다).
+      await repos.sync.ackOutbox([{ tbl: 'todos', ...pick(todo, ['id', 'rev']) }]);
       expect(await repos.sync.listOutbox(100)).toEqual([]);
 
       const touched = touch(todo, '2026-01-16T00:00:00.000Z');
       await repos.todos.upsert(touched);
-      // 응답이 오는 사이 사용자가 다시 고쳤다(rev 2) — 방금 푸시에 실은 rev(1) 로 ack 하면 남아야 한다.
-      await repos.sync.ackOutbox([
-        shapeOf<OutboxEntry>([
-          ['tbl', 'todos'],
-          ['id', todo.id],
-          ['rev', 1],
-        ]),
-      ]);
+      // 응답이 오는 사이 사용자가 다시 고쳤다(rev 2) — 방금 푸시에 실은 rev(1, `todo` 그대로) 로
+      // ack 하면 남아야 한다.
+      await repos.sync.ackOutbox([{ tbl: 'todos', ...pick(todo, ['id', 'rev']) }]);
 
       const remaining = await repos.sync.listOutbox(100);
       expect(remaining).toHaveLength(1);

@@ -23,7 +23,7 @@ import {
   type SyncTable,
 } from '@/domain/sync/wire';
 
-import { shapeOf } from '@/repositories/sync-repository';
+import { pick, withField } from '@/repositories/sync-repository';
 
 /** 요청 배치·풀 배치 공통 상한(SYNC_DESIGN §②-3). */
 const MAX_BATCH = 500;
@@ -127,41 +127,36 @@ export function createMemorySyncServer(options: { gcFloor?: number } = {}): Memo
         }
         const key = rowKey(change.tbl, change.id);
         const existingRow = state.rows.get(key);
-        // shapeOf(): `updatedAt` 키를 리터럴로 쓰면 NO_META_WRITE(ADR-0007, eslint.config.mjs)에
-        // 걸린다 — `ExistingServerRow.updatedAt` 은 `Meta.updatedAt` 과 이름만 같은 별개 필드다
-        // (`sync-repository.ts#shapeOf` jsdoc).
+        // pick(): `updatedAt` 키를 리터럴로 쓰면 NO_META_WRITE(ADR-0007, eslint.config.mjs)에 걸린다
+        // — `ExistingServerRow.updatedAt` 은 `Meta.updatedAt` 과 이름만 같은 별개 필드다
+        // (`sync-repository.ts#pick` jsdoc). `existingRow` 가 이미 필요한 네 필드를 그대로 갖고
+        // 있어(`StoredRow`) 캐스팅 없이 그대로 옮긴다.
         const existing: ExistingServerRow | undefined =
           existingRow === undefined
             ? undefined
-            : shapeOf<ExistingServerRow>([
-                ['tbl', existingRow.tbl],
-                ['id', existingRow.id],
-                ['deleted', existingRow.deleted],
-                ['updatedAt', existingRow.updatedAt],
-              ]);
-        const serverChange: ServerChange = shapeOf<ServerChange>([
-          ['tbl', change.tbl],
-          ['id', change.id],
-          ['baseSeq', change.baseSeq],
-          ['updatedAt', readUpdatedAt(change.row)],
-        ]);
+            : pick(existingRow, ['tbl', 'id', 'deleted', 'updatedAt']);
+        // `change`(SyncChange) 에는 `updatedAt` 이 없다(본문 안에 있다) — `pick` 으로 나머지 셋을
+        // 옮기고 계산값(`readUpdatedAt`)만 `withField` 로 더한다.
+        const serverChange: ServerChange = {
+          ...pick(change, ['tbl', 'id', 'baseSeq']),
+          ...withField('updatedAt', readUpdatedAt(change.row)),
+        };
         const result = applyServerRules(existing, serverChange, receivedAt);
 
         if (result === 'insert' || result === 'update') {
           const seq = state.nextSeq;
           state.nextSeq += 1;
-          state.rows.set(
-            key,
-            shapeOf<StoredRow>([
-              ['tbl', change.tbl],
-              ['id', change.id],
-              ['seq', seq],
-              ['deleted', readDeleted(change.row)],
-              ['updatedAt', clampFutureUpdatedAt(serverChange.updatedAt, receivedAt)],
-              ['deviceId', deviceId],
-              ['body', change.row],
-            ]),
-          );
+          // `tbl`·`id`·`seq`·`deleted`·`deviceId`·`body` 는 제한 대상이 아니라 리터럴로 바로 쓴다 —
+          // `updatedAt` 하나만 `withField` 를 거친다.
+          state.rows.set(key, {
+            tbl: change.tbl,
+            id: change.id,
+            seq,
+            deleted: readDeleted(change.row),
+            deviceId,
+            body: change.row,
+            ...withField('updatedAt', clampFutureUpdatedAt(serverChange.updatedAt, receivedAt)),
+          });
           applied.push({ tbl: change.tbl, id: change.id, seq });
         } else {
           rejected.push({ tbl: change.tbl, id: change.id, reason: rejectReasonFor(result) });

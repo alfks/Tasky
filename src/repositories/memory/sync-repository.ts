@@ -6,12 +6,12 @@
 // 와 같은 모양을 재선언한 것뿐이다, `src/lib/AGENTS.md` 의 "동형 재선언은 복제로 보지 않는다"와 같은 판단).
 import type { Meta } from '@/domain/meta';
 import { planClientMerge } from '@/domain/sync/client-merge';
-import { reconcileAck, type OutboxEntry } from '@/domain/sync/outbox';
+import { reconcileAck } from '@/domain/sync/outbox';
 import type { SyncTable } from '@/domain/sync/wire';
 
 import { putRemote, type MemoryTable, type MemoryTables } from '@/repositories/memory/live';
 import {
-  shapeOf,
+  pick,
   type ApplyRemoteResult,
   type EntityOf,
   type OutboxRow,
@@ -95,14 +95,7 @@ export function createMemorySyncRepository(tables: MemoryTables): SyncRepository
       for (const tbl of ENTITY_TABLES) {
         const table = tableFor(tables, tbl);
         for (const row of table.rows.values()) {
-          table.outbox.set(
-            outboxKey(tbl, row.id),
-            shapeOf<OutboxEntry>([
-              ['tbl', tbl],
-              ['id', row.id],
-              ['rev', row.rev],
-            ]),
-          );
+          table.outbox.set(outboxKey(tbl, row.id), { tbl, ...pick(row, ['id', 'rev']) });
           count += 1;
         }
       }
