@@ -173,14 +173,15 @@ export async function handleLogout(request: Request, env: Env, now: string): Pro
  * `sessions` 행만 지운다. 슬라이딩 갱신을 그대로 적용한다(`/api/sync` 와 같은 이유 — 호출자
  * 세션은 이 요청 뒤에도 계속 쓰이므로 갱신 기회를 놓치지 않는다).
  *
- * **리뷰 Finding 1 수정**: `requireSession` 의 410 은 그 세션 행을 지우는 **유일한 기회**다(지연
- * 정리) — 몸 없는 bare 410 을 돌려주면 그 뜻("계정이 삭제됐다")이 이 요청 하나로 영영 사라지고,
- * 다음 `/api/me` 는 이미 행이 없어 401 만 본다. `sessionErrorResponse` 로 `handleMe` 와 같은 몸
- * (`{error:'account-deleted'}`)과 `Set-Cookie` 클리어를 함께 보낸다 — 클라이언트 쪽 후속(별도
- * 담당 에이전트 몫): `src/infra/sync/http-transport.ts#logoutOthers` 는 지금 실패를 상태 코드로만
- * 구분하고(`failureFor`), `performLogoutOthers`(`src/features/sync/store/auth-actions.ts`)는 그
- * 구분을 보지 않고 모든 실패를 `false`(범용 토스트)로 뭉갠다 — 410 이면 `verifySession` 이 하듯
- * `accountDeletedNotice` 를 띄우도록 호출부를 고쳐야 이 수정이 화면까지 이어진다.
+ * **리뷰 Finding 1 수정**: `requireSession` 의 410 은 그 세션 행을 지우는 **유일한 기회**이자
+ * **1회성 신호**다(지연 정리) — 이 응답에서 `sessionErrorResponse` 가 같은 몸으로 쿠키까지
+ * 지우므로, 클라이언트가 이 410 을 그 자리에서 쓰지 않으면 다음 `/api/me` 는 행도 쿠키도 이미
+ * 없어 평범한 401 만 보고 그 뜻("계정이 삭제됐다")은 영영 사라진다. 그래서 `sessionErrorResponse`
+ * 로 `handleMe` 와 같은 몸(`{error:'account-deleted'}`)과 `Set-Cookie` 클리어를 함께 보낸다 —
+ * 클라이언트(`performLogoutOthers`, `src/features/sync/store/auth-actions.ts`)는 `isTransportError`
+ * 로 실패를 갈래별로 나누고(9b6b2a3), `account-deleted` 갈래에서는 `verifySession` 을 다시 불러
+ * `/api/me` 를 재확인하지 않고 `accountDeletedNotice` 를 그 자리에서 직접 켠다(646defb) — 재확인
+ * 왕복 한 번이 이 1회성 신호를 평범한 401 로 바꿔 안내를 띄울 기회를 날려버리기 때문이다.
  */
 export async function handleLogoutOthers(
   request: Request,
