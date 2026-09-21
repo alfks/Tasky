@@ -19,10 +19,12 @@
    (`session.ts`).
 3. **재가입 순서는 `session.ts#signIn` 한 곳** — `handleCallback`·`stub.ts#handleStubLogin` 은
    그 함수만 부른다(구조로 강제, ADR-0020). **세션 전량 폐기는 `deleted_users` 에 그 sub 행이 있을
-   때만** 실행된다(`DELETE … WHERE sub = ? AND EXISTS (SELECT 1 FROM deleted_users WHERE sub = ?)`
-   — 판정과 삭제를 한 문장에 두고, `deleted_users` 삭제·`users` upsert 와 함께 `db.batch()` 한
-   트랜잭션에 넣는다). 평범한 로그인(재가입이 아닌)은 이 문장이 0행에 맞아 다른 기기의 세션을
-   건드리지 않는다 — 재가입일 때만 그 sub 의 세션 전량을 지워, 삭제 창 동안 요청을 한 번도 안
+   때만** 실행된다(`DELETE … WHERE sub = ? AND EXISTS (SELECT 1 FROM deleted_users WHERE
+deleted_users.sub = ?)` — 안쪽 `sub` 를 반드시 `deleted_users.sub` 로 한정한다, 한정하지 않으면
+   SQLite 가 바깥 스코프(`sessions.sub`)로 되묶을 수 있다(리뷰에서 실제로 재현됨) — 판정과 삭제를
+   한 문장에 두고, `deleted_users` 삭제·`users` upsert 와 함께 `db.batch()` 한 트랜잭션에 넣는다).
+   평범한 로그인(재가입이 아닌)은 이 문장이 0행에 맞아 다른 기기의 세션을 건드리지 않는다 —
+   재가입일 때만 그 sub 의 세션 전량을 지워, 삭제 창 동안 요청을 한 번도 안
    보낸 세션(탈취된 쿠키 포함)이 되살아나는 것을 막는다(`session.ts#signIn` jsdoc, 실 D1 재현됨).
    `sessions` 를 sub 단위로 지우는 문장을 이 함수 밖에 새로 두지 않는다.
    **다른 기기 모두 로그아웃**(`POST /auth/logout-others`, ADR-0020 §결정 5)은

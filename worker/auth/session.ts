@@ -56,8 +56,12 @@ export async function createSession(
  * 두 곳뿐이어야 한다** — 다른 곳에 새로 생기면 ADR-0020 "지켜야 할 규칙" 위반이다.
  *
  * **세션 전량 폐기는 무조건이 아니다.** `DELETE FROM sessions WHERE sub = ? AND EXISTS (SELECT 1
- * FROM deleted_users WHERE sub = ?)` — 판정(`EXISTS`)과 삭제를 **한 문장**에 둔다. `deleted_users`
- * 에 이 `sub` 행이 없으면(평범한 재로그인) 이 문장은 0행에 맞아 다른 기기의 세션을 건드리지
+ * FROM deleted_users WHERE deleted_users.sub = ?)` — 판정(`EXISTS`)과 삭제를 **한 문장**에 둔다.
+ * **안쪽 `sub` 를 반드시 `deleted_users.sub` 로 한정한다**(리뷰 Finding 2) — SQLite 는 이름 해석을
+ * 안쪽 스코프부터 찾는데, 안쪽에 한정 없는 `sub` 를 두면 오늘은 `deleted_users.sub` 로 풀려도
+ * 그 컬럼명이 바뀌는 순간 조용히 바깥(`sessions.sub`)으로 다시 묶여 "이 sub 에 `deleted_users`
+ * 행이 하나라도 있으면 무조건 전량 폐기"로 되돌아간다 — 정확히 이 함수가 고치러 온 버그다.
+ * `deleted_users` 에 이 `sub` 행이 없으면(평범한 재로그인) 이 문장은 0행에 맞아 다른 기기의 세션을 건드리지
  * 않는다 — SYNC_DESIGN.md §②-3 이 원래 적어 둔 "세션은 기기마다 따로 산다" 는 설계 그대로다.
  * 폐기가 실제로 실행되는 유일한 경우는 "계정을 삭제했다가 같은 구글 계정으로 재가입"하는
  * 순간이다: 그 경우엔 여전히 **삭제 창 동안 요청을 한 번도 안 보낸 세션(탈취된 쿠키 포함)이
@@ -81,7 +85,7 @@ export async function signIn(
 ): Promise<{ signedSid: string }> {
   await env.DB.batch([
     env.DB.prepare(
-      'DELETE FROM sessions WHERE sub = ? AND EXISTS (SELECT 1 FROM deleted_users WHERE sub = ?)',
+      'DELETE FROM sessions WHERE sub = ? AND EXISTS (SELECT 1 FROM deleted_users WHERE deleted_users.sub = ?)',
     ).bind(identity.sub, identity.sub),
     env.DB.prepare('DELETE FROM sessions WHERE sub = ? AND expires_at <= ?').bind(
       identity.sub,
@@ -108,19 +112,25 @@ export async function requireSession(
   const sid = await verifySignedValue(raw, env.SESSION_SECRET);
   if (!sid) return { ok: false, status: 401 };
 
-  const row = await env.DB.prepare('SELECT sub, expires_at FROM sessions WHERE sid = ?')
+  // **리뷰 Finding 3**: `sub`·`expires_at`·"삭제된 계정인가" 를 한 문장으로 합쳤다(옛 판은 두
+  // `SELECT` 로 나뉘어 있어, `signIn` 의 batch 커밋 도중 — 세션 행은 아직 있고 `deleted_users`
+  // 표식은 이미 지워진 그 찰나 — 두 조회가 걸치면 재가입 직후 딱 한 요청이 `ok: true` 를 보는
+  // 좁은 창이 있었다). 한 문장이면 D1 이 그 순간의 스냅샷 하나로 두 값을 함께 읽어 그 창이
+  // 없어지고, 왕복도 하나 준다. `EXISTS` 서브쿼리 안쪽은 `d.sub` 로 한정해 Finding 2 와 같은
+  // 함정(안쪽 미한정 컬럼이 바깥 스코프로 되묶이는 것)을 처음부터 만들지 않는다.
+  const row = await env.DB.prepare(
+    'SELECT s.sub, s.expires_at, EXISTS(SELECT 1 FROM deleted_users d WHERE d.sub = s.sub) AS deleted FROM sessions s WHERE s.sid = ?',
+  )
     .bind(sid)
-    .first<{ sub: string; expires_at: string }>();
+    .first<{ sub: string; expires_at: string; deleted: number }>();
   if (!row) return { ok: false, status: 401 };
   if (row.expires_at <= now) {
     await env.DB.prepare('DELETE FROM sessions WHERE sid = ?').bind(sid).run();
     return { ok: false, status: 401 };
   }
-
-  const deleted = await env.DB.prepare('SELECT 1 FROM deleted_users WHERE sub = ?')
-    .bind(row.sub)
-    .first();
-  if (deleted) {
+  if (row.deleted) {
+    // 지연 정리 — 이 세션 행을 지우는 것은 이 요청이 유일한 기회다(handlers.ts#sessionErrorResponse
+    // jsdoc, 리뷰 Finding 1 참고).
     await env.DB.prepare('DELETE FROM sessions WHERE sid = ?').bind(sid).run();
     return { ok: false, status: 410, reason: 'account-deleted' };
   }
