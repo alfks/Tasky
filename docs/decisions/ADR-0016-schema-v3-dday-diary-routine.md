@@ -84,8 +84,12 @@ boolean 값을 색인 키로 쓸 수 없다(`Routine.active: boolean`) — 그 �
 검토했으나 대안(초기값 재설정·투두에서 역산)이 모두 "복원했더니 투두가 중복되거나 지운 인스턴스가
 부활한다"는 더 큰 위험을 낳아 기각했다(근거는 `validate-rows.ts` `ROUTINE_KEYS` 주석). 병합(R6)이
 루틴 레코드와 투두를 따로 합치며 생기는 위험(ADR-0017 "감수하는 점")은 `plan-import.ts` 의
-`planMergeRoutines` 가 병합에서만 워터마크를 "두 값 중 더 늦은 쪽"으로 고정해 막는다. 상세는
-`docs/decisions/ADR-0017-routine-watermark-materialization.md` 재검토 트리거 항목을 본다.
+`planMergeRoutines` 가 병합에서만 워터마크를 "두 값 중 더 늦은 쪽"으로 고정해 막는다 — **역사적 기록
+(더는 유효하지 않음, Nit, PR #121 리뷰): `planMergeRoutines` 는 ADR-0018 에서 필드가
+`materializedThrough` → `fillFloor`(일반 필드)로 바뀌며 삭제됐다. 지금은 일반 `planMerge`
+(newer-wins)가 이 필드도 병합한다.** 상세는
+`docs/decisions/ADR-0017-routine-watermark-materialization.md` 재검토 트리거 항목과
+`docs/decisions/ADR-0018-sync-local-schema-and-ports.md` §결정 4 를 본다.
 
 ## 재검토 트리거
 
