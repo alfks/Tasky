@@ -8,11 +8,20 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { Category } from '@/domain/category/category';
 import { createMeta, type MetaDeps } from '@/domain/meta';
+import { SYNC_TABLES } from '@/domain/sync/wire';
 import type { Todo } from '@/domain/todo/todo';
 
 import { isRepositoryError, type RepositoryError } from '@/repositories/repository-error';
 
-import { db, DB_VERSION, STORES, STORES_V1, STORES_V2, type TaskyDb } from '@/infra/indexeddb/db';
+import {
+  db,
+  DB_VERSION,
+  STORES,
+  STORES_V1,
+  STORES_V2,
+  STORES_V3,
+  type TaskyDb,
+} from '@/infra/indexeddb/db';
 import { storeOn } from '@/infra/indexeddb/query';
 
 let seq = 0;
@@ -165,6 +174,136 @@ describe('스키마 v2 → v3 업그레이드 (ADR-0016)', () => {
 
   it('열린 스키마의 인덱스가 STORES 선언과 정확히 일치한다 (선언된 모든 테이블)', async () => {
     await seedV2();
+
+    await db.open();
+
+    assertIndexesMatchStores();
+  });
+});
+
+/** v3 시절의 루틴 로우 모양(구 `materializedThrough`) — `Routine` 타입은 이미 `fillFloor` 로
+ * 바뀌었으므로 여기서는 평범한 객체로 직접 적는다(레거시 저장 형태를 그대로 재현하는 게 목적). */
+type LegacyRoutineRow = {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  rev: number;
+  deletedAt?: string;
+  title: string;
+  categoryId: string;
+  recurrence: { type: 'weekly'; daysOfWeek: number[] };
+  startDate: string;
+  active: boolean;
+  materializedThrough: string;
+};
+
+function legacyRoutine(overrides: Partial<LegacyRoutineRow> & { id: string }): LegacyRoutineRow {
+  return {
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    rev: 1,
+    title: '운동',
+    categoryId: 'c-1',
+    recurrence: { type: 'weekly', daysOfWeek: [4] },
+    startDate: '2026-01-15',
+    active: true,
+    materializedThrough: '2026-01-14',
+    ...overrides,
+  };
+}
+
+/** v3 스키마로만 아는 별도 Dexie 인스턴스(v1·v2 블록도 함께 선언해 실제 업그레이드 경로를 밟는다). */
+async function seedV3(): Promise<{
+  todo: Todo;
+  category: Category;
+  routines: LegacyRoutineRow[];
+}> {
+  const legacy = new Dexie('tasky');
+  legacy.version(1).stores(STORES_V1);
+  legacy.version(2).stores(STORES_V2);
+  legacy.version(3).stores(STORES_V3);
+  await legacy.open();
+  expect(legacy.verno, 'v3 DB 로 시작하지 않았다 — 이 테스트는 v4 업그레이드를 밟지 않는다').toBe(
+    3,
+  );
+  const todo = V1_TODO();
+  const category = V1_CATEGORY();
+  const routines = [
+    legacyRoutine({ id: 'r0000000-0000-4000-8000-000000000001', active: true }), // 활성
+    legacyRoutine({
+      id: 'r0000000-0000-4000-8000-000000000002',
+      active: false,
+      materializedThrough: '2026-02-28',
+    }), // 중지
+    legacyRoutine({
+      id: 'r0000000-0000-4000-8000-000000000003',
+      deletedAt: '2026-03-01T00:00:00.000Z',
+    }), // 툼스톤
+  ];
+  await legacy.table('todos').put(todo);
+  await legacy.table('categories').put(category);
+  for (const routine of routines) {
+    await legacy.table('routines').put(routine);
+  }
+  legacy.close();
+  return { todo, category, routines };
+}
+
+describe('스키마 v3 → v4 업그레이드 (ADR-0018)', () => {
+  beforeEach(async () => {
+    db.close();
+    await Dexie.delete('tasky');
+    seq = 0;
+  });
+
+  it('v3 로 넣은 루틴(활성·중지·툼스톤) → v4 에서 fillFloor 값은 그대로, materializedThrough 키는 없다', async () => {
+    const { routines } = await seedV3();
+
+    await db.open();
+
+    expect(db.verno).toBe(DB_VERSION);
+    for (const original of routines) {
+      const upgraded = (await db.routines.get(original.id)) as unknown as Record<string, unknown>;
+      expect(upgraded, `${original.id} 가 사라졌다`).toBeDefined();
+      expect(upgraded['fillFloor'], `${original.id} 의 fillFloor 값이 다르다`).toBe(
+        original.materializedThrough,
+      );
+      expect(upgraded, `${original.id} 에 옛 키가 남아 있다`).not.toHaveProperty(
+        'materializedThrough',
+      );
+      // 이름 바뀐 필드 말고는 전부 그대로다.
+      const { materializedThrough: _old, ...rest } = original;
+      expect(upgraded).toEqual({ ...rest, fillFloor: original.materializedThrough });
+    }
+  });
+
+  it('v3 → v4 는 routines 말고 다른 6테이블 로우를 값째로 그대로 둔다', async () => {
+    const { todo, category } = await seedV3();
+
+    await db.open();
+
+    expect(await db.todos.get(todo.id)).toEqual({ ...todo });
+    expect(await db.categories.get(category.id)).toEqual({ ...category });
+  });
+
+  it('v4 에서 신설된 syncOutbox·syncState 테이블은 비어 있고 곧바로 쓸 수 있다', async () => {
+    await seedV3();
+
+    await db.open();
+
+    expect(await db.syncOutbox.count()).toBe(0);
+    expect(await db.syncState.count()).toBe(0);
+  });
+
+  it('STORES 키는 SYNC_TABLES(와이어 테이블 = IDB 스토어 이름) 를 전부 포함한다', () => {
+    const storeNames = new Set(Object.keys(STORES));
+    for (const table of SYNC_TABLES) {
+      expect(storeNames.has(table), `STORES 에 ${table} 스토어가 없다`).toBe(true);
+    }
+  });
+
+  it('열린 스키마의 인덱스가 STORES 선언과 정확히 일치한다 (선언된 모든 테이블)', async () => {
+    await seedV3();
 
     await db.open();
 

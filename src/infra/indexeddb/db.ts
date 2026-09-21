@@ -4,22 +4,27 @@
 // 테스트 파일(`**/*.test.ts`)은 같은 파일의 테스트 블록이 그 규칙을 리셋하므로 **예외다**(`migration.test.ts`
 // 가 스키마 문자열을 직접 읽어 v1→v2 를 재현하는 것이 그 예외를 쓰는 유일한 자리다 — 실측: 그 파일에
 // eslint 를 돌리면 rc=0).
-import Dexie, { type EntityTable } from 'dexie';
+import Dexie, { type EntityTable, type Table } from 'dexie';
 
 import type { Category } from '@/domain/category/category';
 import type { Dday } from '@/domain/dday/dday';
 import type { DiaryEntry } from '@/domain/diary/diary-entry';
 import type { FocusSession } from '@/domain/focus/focus-session';
 import type { Routine } from '@/domain/routine/routine';
+import type { OutboxEntry } from '@/domain/sync/outbox';
+import type { SyncState } from '@/domain/sync/wire';
 import type { Settings } from '@/domain/theme/settings';
 import type { Todo } from '@/domain/todo/todo';
 
 /**
  * 앱 데이터베이스. 추가·인덱스 변경은 ADR + version(n+1).
  *
- * `diaryEntries` 는 v3(ADR-0016)에서 스토어 문자열(`STORES`)로 이미 열려 있었고, T-80 이 도메인 타입
+ * `diaryEntries` 는 v3(ADR-0016)에서 스토어 문자열(`STORES_V3`)로 이미 열려 있었고, T-80 이 도메인 타입
  * (`DiaryEntry`)을 만들며 여기 `EntityTable` 필드를 더했다. `routines` 는 T-81 이 `Routine` 타입을
- * 만들며 여기 더했다.
+ * 만들며 여기 더했다. `syncOutbox`·`syncState` 는 v4(ADR-0018)에서 신설됐다 — 둘 다 `Meta` 가 아니라
+ * 각자의 값 타입이라 `EntityTable`(브랜드·툼스톤 규칙이 얹힌 `LiveTable`)이 아니라 평범한 `Table` 로
+ * 둔다(그 규칙이 이 두 스토어에는 적용되지 않는다 — 아웃박스·동기화 표식은 소프트 삭제 대상이
+ * 아니다). 실제 읽기·쓰기 헬퍼(`SyncStore`)는 이 티켓 owns 밖(T-92 후속)이 `sync-store.ts` 에 둔다.
  */
 export type TaskyDb = Dexie & {
   todos: EntityTable<Todo, 'id'>;
@@ -29,6 +34,8 @@ export type TaskyDb = Dexie & {
   ddays: EntityTable<Dday, 'id'>;
   diaryEntries: EntityTable<DiaryEntry, 'id'>;
   routines: EntityTable<Routine, 'id'>;
+  syncOutbox: Table<OutboxEntry, [string, string]>;
+  syncState: Table<SyncState & { id: 'default' }, string>;
 };
 
 /**
@@ -55,9 +62,7 @@ export const STORES_V2 = {
 } as const;
 
 /**
- * 현재(v3) 스토어 선언 (ADR-0016). 인덱스 이름의 단일 소스다 — query.ts 의 `IndexOf<>` 가 이 문자열에서
- * 조회 가능한 인덱스 이름을 뽑아 타입으로 만든다. 여기 없는 이름으로 조회하면 컴파일 에러이고, Dexie 가
- * 전수 스캔으로 조용히 떨어지는 일이 없다(TECH_PLAN §8 성능 예산).
+ * v3 스토어 선언(ADR-0016). **수정 금지**(v1·v2 와 같은 이유 — 이미 v3 로 열린 브라우저가 있다).
  * 형식: 항목 구분자는 ', ' 고정(첫 항목은 기본 키). 인덱스에 없는 필드(rev, deletedAt)는 버전업 없이 추가·변경할 수 있다.
  *
  * `ddays`·`diaryEntries`·`routines` 세 테이블을 **한 번에** 신설한다(ADR-0016 §결정 4 규칙 2) — calendar·
@@ -72,15 +77,39 @@ export const STORES_V2 = {
  * 지금 바로잡는다(ADR-0016 "정정" 절). `list({ includeInactive })` 는 전량을 읽고 메모리에서 거른다
  * (루틴은 수십 건 규모라 예산 안, ADR-0016 §결정 1과 같은 판단).
  */
-export const STORES = {
+export const STORES_V3 = {
   ...STORES_V2,
   ddays: 'id',
   diaryEntries: 'id, date',
   routines: 'id',
 } as const;
 
+/**
+ * 현재(v4) 스토어 선언(ADR-0018). 인덱스 이름의 단일 소스다 — query.ts 의 `IndexOf<>` 가 이 문자열에서
+ * 조회 가능한 인덱스 이름을 뽑아 타입으로 만든다. 여기 없는 이름으로 조회하면 컴파일 에러이고, Dexie 가
+ * 전수 스캔으로 조용히 떨어지는 일이 없다(TECH_PLAN §8 성능 예산).
+ *
+ * `syncOutbox`·`syncState` 를 신설한다 — 인덱스는 **쓰는 쿼리가 있는 것만**
+ * 넣는다(과설계 방지, ADR-0016 §결정 1과 같은 판단):
+ *
+ * - `syncOutbox: '[tbl+id]'`(복합 **기본 키**, 인덱스 0개). 쓰는 쿼리는 전부 기본 키로 충분하다 —
+ *   `listOutbox(limit)` 는 `toArray()` 앞 `limit` 건(기본 키 순, FIFO 가 필요 없다: 서버 판정은
+ *   (tbl,id) 단위라 로우 간 순서에 의미가 없다), `applyRemote` 의 `inOutbox` 조회·`ackOutbox`·
+ *   `dropOutbox` 는 `get`/`delete([tbl,id])`, `countOutbox` 는 `count()`. `seq` 인덱스(초안에
+ *   있었다)는 쓰는 쿼리가 없어 만들지 않는다.
+ * - `syncState: 'id'`(단일 행 `'default'`). `get('default')`·`put` 뿐이다. `userSub`·`quarantined`
+ *   등은 비인덱스 필드 — 로그인 여부는 `userSub` 유무로 판정하고 별도 boolean 필드를 두지 않는다.
+ *
+ * 둘 다 boolean 필드가 없다(위 `routines` 정정과 같은 이유로 애초에 만들지 않는다).
+ */
+export const STORES = {
+  ...STORES_V3,
+  syncOutbox: '[tbl+id]',
+  syncState: 'id',
+} as const;
+
 /** 현재 스키마 버전. 백업 파일의 `schemaVersion` 은 이 상수에서 파생한다(TECH_PLAN §5 규칙 6). */
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 
 /** 앱 DB 이름. 브라우저에는 이 이름의 DB 하나만 생긴다. */
 export const DB_NAME = 'tasky';
@@ -95,18 +124,37 @@ export const DB_NAME = 'tasky';
  *
  * `v2` (ADR-0011): `focusSessions` 테이블 신설 + `categories` 에 `status`·`updatedAt` 인덱스 추가.
  * `v3` (ADR-0016): `ddays`·`diaryEntries`·`routines` 테이블 신설.
- * `.upgrade(tx => …)` 를 달지 않는다: 두 버전업 모두 **기존 로우의 값을 바꾸지 않는다**. 테이블 신설은
- * 빈 스토어를 만들 뿐이고, 인덱스 추가는 Dexie/IndexedDB 가 기존 로우를 자동으로 재색인한다
- * (`migration.test.ts` 가 v1 로 넣은 카테고리가 v2 의 `status` 인덱스로 조회되는지, v2 로 넣은 로우가
- * v3 에서도 그대로인지를 단언한다).
- * 값 변환이 필요한 다음 버전업은 규칙대로 `.upgrade()` 를 단다(TECH_PLAN §5 규칙 1·4).
+ * `.upgrade(tx => …)` 를 v1→v2·v2→v3 에는 달지 않는다: 두 버전업 모두 **기존 로우의 값을 바꾸지
+ * 않는다**. 테이블 신설은 빈 스토어를 만들 뿐이고, 인덱스 추가는 Dexie/IndexedDB 가 기존 로우를
+ * 자동으로 재색인한다(`migration.test.ts` 가 v1 로 넣은 카테고리가 v2 의 `status` 인덱스로 조회되는지,
+ * v2 로 넣은 로우가 v3 에서도 그대로인지를 단언한다).
+ *
+ * `v4` (ADR-0018): `syncOutbox`·`syncState` 테이블 신설(빈 스토어, 값 변환 없음) + `routines` 의
+ * `materializedThrough` 필드를 `fillFloor` 로 **이름만** 바꾼다(값은 손대지 않는다) — 그래서 이번에는
+ * `.upgrade()` 가 필요하다. **이 콜백은 머지되는 순간 다시는 못 고친다**(v4 로 이미 열린 기기에서는
+ * 두 번 다시 돌지 않는다, TECH_PLAN §5 규칙 1) — 키 이름만 옮기고 값 자체·다른 6 테이블은 절대
+ * 건드리지 않는다(`migration.test.ts` 가 v3 로 넣은 루틴 3건(활성·중지·툼스톤)으로 이를 고정한다).
  */
 export function createDb(name: string): TaskyDb {
   // Dexie 는 스토어 선언 후 테이블을 동적으로 붙이므로 타입 단언이 필요하다(역직렬화 경계 — code-style.md §9).
   const database = new Dexie(name) as TaskyDb;
   database.version(1).stores(STORES_V1);
   database.version(2).stores(STORES_V2);
-  database.version(DB_VERSION).stores(STORES);
+  database.version(3).stores(STORES_V3);
+  database
+    .version(DB_VERSION)
+    .stores(STORES)
+    .upgrade((tx) =>
+      tx
+        .table('routines')
+        .toCollection()
+        .modify((routine: Record<string, unknown>) => {
+          if ('materializedThrough' in routine) {
+            routine['fillFloor'] = routine['materializedThrough'];
+            delete routine['materializedThrough'];
+          }
+        }),
+    );
   return database;
 }
 
