@@ -34,22 +34,28 @@ pnpm check              # PR 전 필수 게이트 (11개 검사)
 `pnpm deploy` 는 **pnpm 내장 명령**이라 이 레포의 스크립트가 돌지 않는다 — 반드시 `pnpm run deploy`.
 
 `pnpm build`가 재는 번들 예산(값은 [TECH_PLAN.md](./TECH_PLAN.md) §8, 검사는 `pnpm check`에 포함)을
-올릴 때의 정책(언제·어디서·왜 올리는지)은 `scripts/check-dist.mjs`의 `NETWORK_BUDGET` 주석이 단일
-소스다 — 여기서 다시 적지 않는다.
+올릴 때의 정책(언제·어디서·왜 올리는지)은 `scripts/check-dist.mjs`의 `ENTRY_BUDGET`·`NETWORK_BUDGET`
+주석이 단일 소스다 — 여기서 다시 적지 않는다. **계측 이름이 T-94(#129)에서 바뀌었다** — "진입 청크
+단독"이 아니라 **"진입 폐포(진입 + 정적 위성 청크) 합"** 이 `ENTRY_BUDGET`(예산 160,000)과 비교된다.
 
 E2E 브라우저는 설치돼 있다(`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`). `playwright install` 은 쓰지 않는다.
 
 ## 동기화(로그인) 로컬 개발
 
-동기화는 **#126 기준으로 서버까지 main 에 있다**: 배선(`wrangler.jsonc` 의 `main: worker/index.ts`·D1
+동기화는 **#129 기준으로 화면까지 main 에 있다**: 배선(`wrangler.jsonc` 의 `main: worker/index.ts`·D1
 바인딩 `DB`/`tasky`·`GOOGLE_CLIENT_ID` vars, `.env.example`·`.dev.vars.example` — #109), **순수 도메인
 계층**(`src/domain/sync/`, #114·#121), **저장소 계층**(`src/repositories/sync-*`·`memory/sync-*` 의 가짜
-서버·`src/infra/sync/http-transport.ts`, #123), 그리고 **Cloudflare Worker + D1**(`worker/` — 구글 OAuth
+서버·`src/infra/sync/http-transport.ts`, #123), **Cloudflare Worker + D1**(`worker/` — 구글 OAuth
 PKCE·세션·`/api/sync`·`/api/account/delete`, 마이그레이션 `worker/db/migrations/0001_init.sql`, #126,
-ADR-0019). **화면(로그인·사이드바 계정 블록·폴링)은 T-94 가 `origin/feature/sync-client` 에서 작업 중이라
-main 에 없다** — 그래서 `pnpm dev` 로 띄운 앱에는 로그인 화면이 없고, Worker 를 직접 두드려야 동기화를
-볼 수 있다. **구글 실왕복은 검증되지 않았다**(자격증명이 사용자 로컬에만 있다). 아래 절차로 로컬에서
-Worker 를 띄운다(SYNC_CREDENTIALS_GUIDE.md §2·§9-7).
+ADR-0019), 그리고 **클라이언트 화면**(로그인 화면·`AuthGate`·사이드바 계정 블록·30초 폴링 동기화 엔진,
+`src/features/sync/`, #129) — `main` 을 빌드하면 로그인 화면부터 뜬다(`syncState.userSub` 가 없으면
+그 외 어떤 화면도 그리지 않는다, `AuthGate`). **구글 실왕복은 여전히 검증되지 않았다**(자격증명이 사용자
+로컬에만 있다). 로그인 화면 자체는 `pnpm dev`(Vite 단독)에서도 뜨지만, 그 뒤 실제 왕복·`/api/*` 호출을
+보려면 Worker 가 필요하다 — 아래 절차로 로컬에서 Worker 를 띄운다(SYNC_CREDENTIALS_GUIDE.md §2·§9-7).
+**로그인 왕복(구글 없이)은 `pnpm test:e2e` 하나로 된다** — `playwright.config.ts`의 `webServer`가
+`AUTH_STUB=1`로 `pnpm build && pnpm start`(실제 Worker + 로컬 D1)를 직접 띄우고, `tests/e2e/sync.spec.ts`가
+`tests/e2e/fixtures/stub-login.ts`의 `/auth/stub-login` 경로로 실제 세션 쿠키·D1 행을 만들어 왕복한다 —
+구글만 빠지고 Worker·D1 은 목이 아니다.
 
 ```bash
 cp .dev.vars.example .dev.vars                              # 로컬 전용 — .env 와 별개, 직접 채운다
@@ -98,8 +104,8 @@ pnpm build && pnpm start                                      # wrangler dev, **
 ## 로드맵
 
 - Phase 1 (MVP): 날짜 스트립, 카테고리별 할 일 CRUD, 체크·달성률, 테마/색상 — **구현됨**
-- Phase 2: D-day·다이어리·루틴·기간 통계 — **구현됨**. 구글 로그인 필수 + 서버 동기화 — **서버·저장 계층
-  구현됨(#114·#121·#123·#126), 화면은 T-94 작업 중, 실왕복 미검증**
+- Phase 2: D-day·다이어리·루틴·기간 통계 — **구현됨**. 구글 로그인 필수 + 서버 동기화 — **서버·저장
+  계층·화면 전부 구현됨(#114·#121·#123·#126·#129), 구글 실왕복·Worker 실배포는 미검증**
 - Phase 3: 친구·피드·반응
 
 서드파티 고지는 [README.md](../README.md) 에 있다.
