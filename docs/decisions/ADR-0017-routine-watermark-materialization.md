@@ -2,7 +2,11 @@
 
 # ADR-0017: 무기한 루틴 지연 생성은 조회가 아니라 워터마크로 멱등성을 지킨다
 
-- 상태: accepted
+- 상태: **partially superseded by [ADR-0018](./ADR-0018-sync-local-schema-and-ports.md)** — 워터마크
+  구조·원자성 결정은 T-92(ADR-0018)에서 갈렸다: `materializedThrough` → `fillFloor`(사용자 조작으로만
+  바뀌는 하한), 채우기는 더 이상 루틴 로우를 쓰지 않는다(§재검토 트리거의 세 위험이 그 뒤 실제로
+  닫혔다). 아래 본문은 **왜 워터마크가 필요했는지**(조회로 판정하면 부활·중복이 실측된다)의 기록으로
+  남긴다 — 그 결론은 지금도 유효하다.
 - 날짜: 2026-09-20
 - 관련: 티켓 T-81, ADR-0016(스키마 v3), ADR-0007(툼스톤 조회), ADR-0009(`DatasetRepository`), docs/specs/routine.md §4
 
