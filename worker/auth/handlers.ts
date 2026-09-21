@@ -14,6 +14,7 @@ import { codeChallengeS256 } from './pkce';
 import { destroyOtherSessions, destroySession, requireSession, signIn } from './session';
 
 import type { Env } from '../env';
+import type { SessionResult } from './session';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -22,6 +23,24 @@ function json(body: unknown, init: ResponseInit = {}): Response {
     ...init,
     headers: { ...JSON_HEADERS, ...init.headers },
   });
+}
+
+/**
+ * `requireSession` 실패를 한 형태로 돌린다 — 401 은 몸 없는 JSON 에러, 410 은 `account-deleted`
+ * 본문 + `Set-Cookie` 로 쿠키를 지운다(`worker/router.ts` 의 `/api/sync`·`/api/account/delete` 와
+ * 동일 규약, `handleMe` 도 이 함수를 쓴다). **410 은 이 세션 행이 지워지는 유일한 순간이다** —
+ * `requireSession` 이 지연 정리로 그 자리에서 행을 지우므로, 그 요청에 몸과 쿠키 클리어를 함께
+ * 실어 보내지 않으면 그 정보(왜 로그아웃됐는지)는 영영 사라진다(리뷰 Finding 1). 이 함수를 거치지
+ * 않고 `requireSession` 의 실패를 직접 응답으로 바꾸는 핸들러를 새로 만들지 않는다.
+ */
+export function sessionErrorResponse(session: Extract<SessionResult, { ok: false }>): Response {
+  if (session.status === 410) {
+    return json(
+      { error: 'account-deleted' },
+      { status: 410, headers: { 'Set-Cookie': clearSessionCookie() } },
+    );
+  }
+  return json({ error: 'unauthorized' }, { status: 401 });
 }
 
 function googleFor(request: Request, env: Env) {
@@ -134,11 +153,17 @@ export async function handleCallback(request: Request, env: Env, now: string): P
   });
 }
 
+/**
+ * **리뷰 Finding 1 판단**: 실패 분기(만료/위조/이미 삭제된 세션)에도 `sessionErrorResponse` 를
+ * 쓴다. 이 핸들러는 클라이언트가 "어차피 로그아웃할 생각"으로 부르는 경로라(`performLogout` 이
+ * 서버 실패를 그냥 삼키고 로컬 정리를 진행한다) `handleLogoutOthers` 만큼 몸의 내용 자체가
+ * 절박하지는 않지만, 쿠키를 지우지 않으면 이미 서버에서 지워진 세션의 쿠키가 브라우저에 계속
+ * 남는다(무해하지만 불필요하다) — `sessionErrorResponse` 를 쓰는 데 비용이 없으므로 핸들러마다
+ * 응답 모양을 다르게 두지 않고 같은 경로로 통일한다.
+ */
 export async function handleLogout(request: Request, env: Env, now: string): Promise<Response> {
   const result = await requireSession(request, env, now);
-  if (!result.ok) {
-    return new Response(null, { status: result.status === 410 ? 410 : 401 });
-  }
+  if (!result.ok) return sessionErrorResponse(result);
   await destroySession(env, result.sid);
   return new Response(null, { status: 204, headers: { 'Set-Cookie': clearSessionCookie() } });
 }
@@ -147,6 +172,15 @@ export async function handleLogout(request: Request, env: Env, now: string): Pro
  * "다른 기기 모두 로그아웃"(ADR-0020 §결정 5) — 호출자의 세션은 그대로 두고 그 `sub` 의 나머지
  * `sessions` 행만 지운다. 슬라이딩 갱신을 그대로 적용한다(`/api/sync` 와 같은 이유 — 호출자
  * 세션은 이 요청 뒤에도 계속 쓰이므로 갱신 기회를 놓치지 않는다).
+ *
+ * **리뷰 Finding 1 수정**: `requireSession` 의 410 은 그 세션 행을 지우는 **유일한 기회**다(지연
+ * 정리) — 몸 없는 bare 410 을 돌려주면 그 뜻("계정이 삭제됐다")이 이 요청 하나로 영영 사라지고,
+ * 다음 `/api/me` 는 이미 행이 없어 401 만 본다. `sessionErrorResponse` 로 `handleMe` 와 같은 몸
+ * (`{error:'account-deleted'}`)과 `Set-Cookie` 클리어를 함께 보낸다 — 클라이언트 쪽 후속(별도
+ * 담당 에이전트 몫): `src/infra/sync/http-transport.ts#logoutOthers` 는 지금 실패를 상태 코드로만
+ * 구분하고(`failureFor`), `performLogoutOthers`(`src/features/sync/store/auth-actions.ts`)는 그
+ * 구분을 보지 않고 모든 실패를 `false`(범용 토스트)로 뭉갠다 — 410 이면 `verifySession` 이 하듯
+ * `accountDeletedNotice` 를 띄우도록 호출부를 고쳐야 이 수정이 화면까지 이어진다.
  */
 export async function handleLogoutOthers(
   request: Request,
@@ -154,9 +188,7 @@ export async function handleLogoutOthers(
   now: string,
 ): Promise<Response> {
   const result = await requireSession(request, env, now);
-  if (!result.ok) {
-    return new Response(null, { status: result.status === 410 ? 410 : 401 });
-  }
+  if (!result.ok) return sessionErrorResponse(result);
   await destroyOtherSessions(env, result.sub, result.sid);
   const headers: Record<string, string> = {};
   if (result.refreshedCookie) headers['Set-Cookie'] = setSessionCookie(result.refreshedCookie);
@@ -165,15 +197,7 @@ export async function handleLogoutOthers(
 
 export async function handleMe(request: Request, env: Env, now: string): Promise<Response> {
   const result = await requireSession(request, env, now);
-  if (!result.ok) {
-    if (result.status === 410) {
-      return json(
-        { error: 'account-deleted' },
-        { status: 410, headers: { 'Set-Cookie': clearSessionCookie() } },
-      );
-    }
-    return json({ error: 'unauthorized' }, { status: 401 });
-  }
+  if (!result.ok) return sessionErrorResponse(result);
   const row = await env.DB.prepare('SELECT email FROM users WHERE sub = ?')
     .bind(result.sub)
     .first<{ email: string }>();
