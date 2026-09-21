@@ -13,7 +13,7 @@
 > `docs/specs/sync.md` §8 에도 올렸다(아래 참고).
 
 - 기준 커밋: `origin/main` `5af72c1`(#108 백업 v3 확장까지). **로컬 체크아웃(`3aed4c0`)은 12 커밋 뒤라 이 문서는 전부 `origin/main` 을 읽고 썼다** — 구현 착수 전 `git pull` 먼저.
-- 입력: `docs/specs/sync.md`(approved) · ADR-0015(DO 정정 #98 반영) · ADR-0017 §재검토(S5) · `plan-import.ts` · `meta.ts` · `validate-rows.ts` · `repositories/**` · `infra/indexeddb/**` · `wrangler.jsonc` · `scripts/deploy.sh` · `deploy.yml` · `SYNC_CREDENTIALS_GUIDE.md` · `SYNC_CONFIG_VALUES.md`.
+- 입력: `docs/specs/sync.md`(approved) · ADR-0015(DO 정정 #98 반영) · ADR-0017 §재검토(S5) · `plan-import.ts` · `meta.ts` · `validate-rows.ts` · `repositories/**` · `infra/indexeddb/**` · `wrangler.jsonc` · `scripts/deploy.sh` · `deploy.yml` · `SYNC_CREDENTIALS_GUIDE.md`. (이 세션이 남겼던 `SYNC_CONFIG_VALUES.md` 스크래치패드 메모는 레포에 넣지 않는다 — 비밀 없는 확정값뿐이라 `wrangler.jsonc`에 이미 커밋돼 있고, 나머지 확정 사항은 바로 아래 줄과 `docs/SYNC_CREDENTIALS_GUIDE.md` §9·`ADR-0019`에 반영돼 있다. CLAUDE.md §7.12.)
 - 확정값은 그대로 반영했다: `GOOGLE_CLIENT_ID`(vars 커밋) · `D1_DATABASE_ID=b5bcb45e-…` · `/auth/callback` · `wrangler dev` 8787 · 스코프 `openid email` · 바인딩 `DB`/DB명 `tasky` · `SESSION_SECRET` · `.env`+`.dev.vars` 병행. 시크릿 2개는 이 세션에 없다 → **자격증명 없이 도는 검증 범위를 티켓마다 적었다(④)**.
 
 ## 0. 결론 요약 (열 줄)
