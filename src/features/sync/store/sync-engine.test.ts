@@ -39,6 +39,7 @@ function fakeTransport(
     },
     logout: async () => {},
     deleteAccount: async () => {},
+    logoutOthers: async () => {},
   };
   return { transport, calls };
 }
@@ -315,6 +316,7 @@ describe('sync-engine: 오프라인 중에도 pendingCount 가 정직하다(R6, 
       },
       logout: async () => {},
       deleteAccount: async () => {},
+      logoutOthers: async () => {},
     });
     const originalOnLine = Object.getOwnPropertyDescriptor(navigator, 'onLine');
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
@@ -344,6 +346,7 @@ describe('sync-engine: pendingCount 는 엔진 사이클을 기다리지 않는�
       sync: () => new Promise<never>(() => {}),
       logout: async () => {},
       deleteAccount: async () => {},
+      logoutOthers: async () => {},
     });
 
     const { rt, state } = fakeRuntime();

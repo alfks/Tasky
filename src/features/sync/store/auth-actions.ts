@@ -159,6 +159,21 @@ export async function performDeleteAccount(
 }
 
 /**
+ * "다른 기기 모두 로그아웃"(ADR-0020 §결정 5) — 이 기기의 로그인 상태·로컬 데이터는 그대로 두고,
+ * 서버에 남은 이 계정의 나머지 세션만 지운다. 로그아웃·계정 삭제와 달리 `exportBackup` 이 필요
+ * 없다(이 기기 자신의 데이터는 손대지 않는다). 실패하면 false — 호출부(`AccountBlock`)가 토스트로
+ * 알린다.
+ */
+export async function performLogoutOthers(): Promise<boolean> {
+  try {
+    await getSyncTransport().logoutOthers();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * 계정 삭제 안내를 확인했을 때(sync.md §6, ADR-0019) — [내보내고 지우기] 하나뿐이다. 서버가 이미
  * 410 응답에 `Set-Cookie` 로 세션 쿠키를 지웠으므로(`worker/auth/handlers.ts#handleMe`) 여기서
  * 따로 `transport.logout()` 을 부르지 않는다(이미 무효한 세션에 로그아웃을 또 요청할 이유가 없다).

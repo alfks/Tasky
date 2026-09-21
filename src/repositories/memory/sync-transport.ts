@@ -60,5 +60,17 @@ export function createMemorySyncTransport(
       }
       server.deleteUser(session.sub);
     },
+
+    // 가짜 서버·트랜스포트는 세션을 모델링하지 않는다(머리주석, 설계 문서 §6 "벡터 장치와의
+    // 관계") — "이 트랜스포트가 든 세션 하나" 이상의 다기기 상태가 없으므로 지울 "다른 세션"도
+    // 없다. 오프라인·미인증 갈래만 실 트랜스포트와 같게 맞춘다.
+    logoutOthers: async () => {
+      if (isOffline()) {
+        throw new TransportError('offline');
+      }
+      if (session === null) {
+        throw new TransportError('unauthorized');
+      }
+    },
   };
 }

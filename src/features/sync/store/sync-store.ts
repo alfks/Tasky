@@ -81,6 +81,9 @@ export type SyncStoreActions = {
   logout: (exportBackup: () => Promise<boolean>) => Promise<boolean>;
   /** 성공하면 true. */
   deleteAccount: (exportBackup: () => Promise<boolean>) => Promise<boolean>;
+  /** "다른 기기 모두 로그아웃"(ADR-0020 §결정 5) — 이 기기의 로그인·로컬은 그대로다. 성공하면
+   * true(호출부가 "다른 기기를 로그아웃했어요" 토스트를 띄운다), 실패하면 false. */
+  logoutOthers: () => Promise<boolean>;
 };
 
 export type SyncStore = SyncStoreState & SyncStoreActions;
@@ -237,6 +240,11 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
   deleteAccount: async (exportBackup) => {
     const { performDeleteAccount } = await import('@/features/sync/store/auth-actions');
     return performDeleteAccount(runtime(), exportBackup);
+  },
+
+  logoutOthers: async () => {
+    const { performLogoutOthers } = await import('@/features/sync/store/auth-actions');
+    return performLogoutOthers();
   },
 }));
 

@@ -15,6 +15,7 @@ import {
   deferUpload,
   performDeleteAccount,
   performLogout,
+  performLogoutOthers,
   probeSession,
   resolveUploadChoice,
   resumeIfDeferred,
@@ -339,5 +340,34 @@ describe('auth-actions: probeSession', () => {
     const { rt, state } = fakeRuntime();
     await probeSession(rt);
     expect(state.phase).toBeUndefined();
+  });
+});
+
+describe('auth-actions: performLogoutOthers(ADR-0020 §결정 5)', () => {
+  it('로그인 상태면 true — exportBackup 을 요구하지 않는다(이 기기 데이터는 그대로)', async () => {
+    setSyncTransport(
+      createMemorySyncTransport(createMemorySyncServer(), {
+        sub: 's',
+        email: 'a@example.com',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      }),
+    );
+    expect(await performLogoutOthers()).toBe(true);
+  });
+
+  it('세션이 없으면(트랜스포트 unauthorized) false', async () => {
+    setSyncTransport(createMemorySyncTransport(createMemorySyncServer(), null));
+    expect(await performLogoutOthers()).toBe(false);
+  });
+
+  it('오프라인이면 false', async () => {
+    setSyncTransport(
+      createMemorySyncTransport(
+        createMemorySyncServer(),
+        { sub: 's', email: 'a@example.com', expiresAt: '2099-01-01T00:00:00.000Z' },
+        { offline: true },
+      ),
+    );
+    expect(await performLogoutOthers()).toBe(false);
   });
 });

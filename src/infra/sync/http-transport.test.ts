@@ -125,4 +125,30 @@ describe('createHttpSyncTransport', () => {
       (error: unknown) => isTransportError(error) && error.kind === 'unauthorized',
     );
   });
+
+  it('logoutOthers(): 204 면 성공, CSRF 헤더를 싣는다', async () => {
+    // 204(No Content) 는 본문을 가질 수 없다(Response 생성자 제약) — jsonResponse 헬퍼를 안 쓴다.
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 204 }));
+
+    await expect(createHttpSyncTransport().logoutOthers()).resolves.toBeUndefined();
+    expect(fetch).toHaveBeenCalledWith(
+      '/auth/logout-others',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'X-Tasky': '1' }),
+      }),
+    );
+  });
+
+  it('logoutOthers(): 401 이면 unauthorized, 5xx 면 server', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(401));
+    await expect(createHttpSyncTransport().logoutOthers()).rejects.toSatisfy(
+      (error: unknown) => isTransportError(error) && error.kind === 'unauthorized',
+    );
+
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(500));
+    await expect(createHttpSyncTransport().logoutOthers()).rejects.toSatisfy(
+      (error: unknown) => isTransportError(error) && error.kind === 'server',
+    );
+  });
 });

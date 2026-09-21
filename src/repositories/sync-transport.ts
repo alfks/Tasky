@@ -51,4 +51,9 @@ export interface SyncTransport {
   sync(request: SyncRequest): Promise<SyncResponse>;
   logout(): Promise<void>;
   deleteAccount(): Promise<void>;
+  /** "다른 기기 모두 로그아웃"(ADR-0020 §결정 5) — 이 트랜스포트가 든 세션은 그대로 두고, 서버에
+   * 남은 그 계정의 나머지 세션을 전부 지운다. 로컬 데이터·표식은 건드리지 않는다(로그아웃과
+   * 다르다 — 이 기기 자신은 로그인 상태를 유지한다). 401 → `TransportError('unauthorized')`,
+   * 5xx → `'server'`, fetch 실패 → `'offline'`. */
+  logoutOthers(): Promise<void>;
 }

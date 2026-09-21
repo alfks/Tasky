@@ -47,8 +47,9 @@ export function AccountBlock({ exportBackup }: AccountBlockProps) {
   const uploadPending = useSyncStore((state) => state.uploadPending);
   const logout = useSyncStore((state) => state.logout);
   const deleteAccount = useSyncStore((state) => state.deleteAccount);
+  const logoutOthers = useSyncStore((state) => state.logoutOthers);
 
-  const [confirming, setConfirming] = useState<'logout' | 'delete' | null>(null);
+  const [confirming, setConfirming] = useState<'logout' | 'delete' | 'logout-others' | null>(null);
   const [busy, setBusy] = useState(false);
 
   const status = statusOf(online, pendingCount, uploadPending);
@@ -69,6 +70,21 @@ export function AccountBlock({ exportBackup }: AccountBlockProps) {
     try {
       const ok = await deleteAccount(exportBackup);
       if (!ok) pushToast({ message: '계정을 삭제하지 못했어요. 다시 시도해 주세요.' });
+    } finally {
+      setBusy(false);
+      setConfirming(null);
+    }
+  };
+
+  const handleLogoutOthers = async () => {
+    setBusy(true);
+    try {
+      const ok = await logoutOthers();
+      pushToast({
+        message: ok
+          ? '다른 기기를 로그아웃했어요.'
+          : '다른 기기를 로그아웃하지 못했어요. 다시 시도해 주세요.',
+      });
     } finally {
       setBusy(false);
       setConfirming(null);
@@ -98,6 +114,17 @@ export function AccountBlock({ exportBackup }: AccountBlockProps) {
           계정 삭제
         </button>
       </div>
+      {/* "다른 기기 모두 로그아웃"(ADR-0020 §결정 5) — 계정 삭제 없이 잃어버린 기기·공용 PC 의
+          세션만 끊는 취소 수단. 이 기기 자신은 로그인 상태를 유지한다. */}
+      <div className="px-[var(--space-1)]">
+        <button
+          type="button"
+          onClick={() => setConfirming('logout-others')}
+          className="text-sm text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        >
+          다른 기기 모두 로그아웃
+        </button>
+      </div>
 
       <ConfirmDialog
         open={confirming === 'logout'}
@@ -112,6 +139,15 @@ export function AccountBlock({ exportBackup }: AccountBlockProps) {
         open={confirming === 'delete'}
         busy={busy}
         onConfirm={() => void handleDelete()}
+        onCancel={() => setConfirming(null)}
+      />
+      <ConfirmDialog
+        open={confirming === 'logout-others'}
+        title="다른 기기를 모두 로그아웃할까요?"
+        description="이 기기는 로그인 상태를 유지하고, 다른 기기의 로그인만 풀려요."
+        confirmLabel={busy ? '로그아웃하는 중…' : '로그아웃'}
+        cancelLabel="취소"
+        onConfirm={() => void handleLogoutOthers()}
         onCancel={() => setConfirming(null)}
       />
     </div>
