@@ -1,7 +1,7 @@
 // 아웃박스(`syncOutbox`) 도메인 — 무엇이 들어가고 언제 비워지는가 중 **순수 함수로 표현 가능한
 // 부분만** (실제 적재·저장은 `SyncRepository`, T-92). docs/specs/sync.md §4 "syncOutbox: 서버에
 // 아직 못 보낸 로컬 변경의 큐. (tbl,id) 유일".
-import type { SyncTable } from '@/domain/sync/wire';
+import type { SyncRejectReason, SyncTable } from '@/domain/sync/wire';
 
 /** 아웃박스 한 줄. `rev` 는 이 변경을 큐에 넣은 시점의 로컬 `Meta.rev` — 그 이상은 필요 없다(아래). */
 export type OutboxEntry = { tbl: SyncTable; id: string; rev: number };
@@ -43,6 +43,13 @@ export function toSyncChange(
  * 큐에 있는 항목의 `rev` 와 **방금 푸시에 실은** `rev` 가 같을 때만 지운다. 그 사이(요청을 보낸
  * 뒤 응답이 오기 전) 사용자가 같은 로우를 다시 고쳐 `rev` 가 올라갔다면, 그 변경은 아직 전송되지
  * 않았으므로 `keep`.
+ *
+ * **이 함수는 `rev` 일치만 보고 applied/rejected 를 구분하지 않는다** — 서버가 이 change 를
+ * 거절했어도(`SyncRejected`) rev 는 그대로 일치할 수 있어 `'remove'` 를 돌려줄 수 있다. **거절된
+ * change 는 이 함수가 아니라 `planOutboxAfterReject` 로 판정한다**(T-92 가 응답의 `applied`/
+ * `rejected` 를 나눠 각각 이 두 함수로 보낸다). 이 함수를 거절된 change 에도 그대로 부르면
+ * `'stale'` 거절이 `'remove'` 로 잘못 처리될 수 있다는 뜻이 아니라 — 애초에 부를 자리가 다르다는
+ * 뜻이다: 호출부가 `applied`/`rejected` 를 먼저 갈라야 한다.
  */
 export function reconcileAck(
   queued: OutboxEntry,
@@ -69,3 +76,42 @@ export const QUARANTINE_AFTER_CONSECUTIVE_INVALID = 3;
 export function shouldQuarantine(consecutiveInvalidRejections: number): boolean {
   return consecutiveInvalidRejections >= QUARANTINE_AFTER_CONSECUTIVE_INVALID;
 }
+
+/** `planOutboxAfterReject` 의 판정 결과. */
+export type OutboxRejectPlan = 'remove' | 'keep';
+
+/**
+ * 거절된(`SyncRejected`) change 를 아웃박스에서 어떻게 할지 — 순수 판정.
+ *
+ * **위험(이 함수가 막는 것)**: 로컬 rev>1 이고 아웃박스에 그 항목이 있는 상태에서 push →
+ * `rejected:'stale'` 이 왔을 때, 아웃박스를 **지우지 않으면** 다음 풀에서 `client-merge.ts` ①-5
+ * 4행이 다시 `keep-local` 을 고르고, 같은 `updatedAt` 으로 재푸시해 **영원히 stale 이 반복된다**
+ * (멈추는 장치가 없다). 아웃박스를 **지우면** 다음 풀에서 서버 값을 그대로 받아(`adopt-remote`)
+ * 수렴한다. 즉 이 한 줄의 선택에 수렴 여부가 달려 있다 — 도메인이 여기서 고정해 T-92 가 임의로
+ * 고르지 못하게 한다.
+ *
+ * - `'stale'`(갱신 시도가 `updatedAt` LWW 로 짐, `server-rules.ts`): 위 이유로 **remove**. 다음
+ *   풀에서 이긴 서버 값을 받아 정착한다.
+ * - `'exists'`(생성 시도인데 이미 있음, F1): 이 기기의 사본은 잃을 것이 없다(`client-merge.ts`
+ *   rev===1 행과 짝) → **remove**.
+ * - `'invalid'`(형식 오류): 재시도해도 같은 이유로 계속 거절될 수 있어 지우지 않는다 → **keep**
+ *   (연속 횟수는 `shouldQuarantine` 이 격리 카운터로 판단, 호출부가 따로 센다).
+ * - `'unknown-table'`(서버가 모르는 테이블 — 버전 불일치류 버그): `'invalid'` 와 같은 급의 형식
+ *   문제라 같은 이유로 **keep**.
+ *
+ * **호출 자리**: `reconcileAck` 는 applied 된 change 전용이다(위 jsdoc). T-92 는 응답의
+ * `rejected` 배열 각 항목에 대해 이 함수를 불러야 한다.
+ */
+export function planOutboxAfterReject(reason: SyncRejectReason): OutboxRejectPlan {
+  return reason === 'stale' || reason === 'exists' ? 'remove' : 'keep';
+}
+
+export type OutboxRejectVector = { reason: SyncRejectReason; expected: OutboxRejectPlan };
+
+/** `planOutboxAfterReject` 고정 벡터 — T-92(메모리 트랜스포트)가 같은 파일을 읽어 검증한다. */
+export const OUTBOX_REJECT_VECTORS: readonly OutboxRejectVector[] = [
+  { reason: 'stale', expected: 'remove' },
+  { reason: 'exists', expected: 'remove' },
+  { reason: 'invalid', expected: 'keep' },
+  { reason: 'unknown-table', expected: 'keep' },
+];

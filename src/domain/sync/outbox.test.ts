@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   deriveBaseSeq,
+  OUTBOX_REJECT_VECTORS,
+  planOutboxAfterReject,
   QUARANTINE_AFTER_CONSECUTIVE_INVALID,
   reconcileAck,
   shouldQuarantine,
@@ -68,6 +70,18 @@ describe('takeOutboxBatch', () => {
     const entries: OutboxEntry[] = [{ tbl: 'todos', id: 'a', rev: 1 }];
     expect(takeOutboxBatch(entries, 0)).toEqual([]);
     expect(takeOutboxBatch(entries, -5)).toEqual([]);
+  });
+});
+
+describe('planOutboxAfterReject — 고정 벡터', () => {
+  for (const vector of OUTBOX_REJECT_VECTORS) {
+    it(`${vector.reason} → ${vector.expected}`, () => {
+      expect(planOutboxAfterReject(vector.reason)).toBe(vector.expected);
+    });
+  }
+
+  it('stale 을 지우지 않으면 무한 재시도 위험 — remove 여야 다음 풀에서 수렴한다', () => {
+    expect(planOutboxAfterReject('stale')).toBe('remove');
   });
 });
 
