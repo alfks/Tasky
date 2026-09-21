@@ -263,6 +263,35 @@ describe('signIn', () => {
     }
   });
 
+  // 리뷰 Finding 2 회귀 가드 — `deleted_users` 안쪽 `sub` 를 한정하지 않으면 이 테스트가 빨개진다
+  // (다른 사용자의 삭제 표식이 있다는 이유만으로 이 사용자의 다른 세션까지 전량 폐기됨). 위
+  // "deleted_users 행이 없는 로그인" 테스트는 `deleted_users` 가 비어 있어 EXISTS 가 어느 쪽으로
+  // 묶여도 거짓이 되므로 이 버그를 잡지 못한다 — 이 테스트가 실제로 그 빈틈을 메운다.
+  it('다른 sub 의 deleted_users 표식이 있어도 이 sub 의 다른 세션은 살아남는다', async () => {
+    const fx = await createD1Fixture();
+    try {
+      const now = '2026-01-01T00:00:00.000Z';
+      const env = envOf(fx);
+      // sub-victim 은 재가입 대상이 아니다 — deleted_users 에는 다른 사람(sub-someone-else)만 있다.
+      await fx.db
+        .prepare('INSERT INTO deleted_users (sub, deleted_at) VALUES (?, ?)')
+        .bind('sub-someone-else', now)
+        .run();
+      const firstLogin = await signIn(env, { sub: 'sub-victim', email: 'v@x.com' }, now);
+      // 두 번째 로그인(다른 기기) — 안쪽 sub 가 바깥으로 되묶이면 이 시점에 firstLogin 이 지워진다.
+      await signIn(env, { sub: 'sub-victim', email: 'v@x.com' }, now);
+
+      const [firstSid] = firstLogin.signedSid.split('.');
+      const firstRow = await fx.db
+        .prepare('SELECT 1 FROM sessions WHERE sid = ?')
+        .bind(firstSid)
+        .first();
+      expect(firstRow).not.toBeNull();
+    } finally {
+      await fx.dispose();
+    }
+  });
+
   it('signIn 뒤 users 행이 존재하고 email 이 upsert 된다', async () => {
     const fx = await createD1Fixture();
     try {
@@ -404,6 +433,63 @@ describe('POST /auth/logout-others', () => {
         now,
       );
       expect(meAsB.status).toBe(401);
+    } finally {
+      await fx.dispose();
+    }
+  });
+
+  // 리뷰 Finding 1 회귀 가드 — 이 세션 행이 지워지는 유일한 요청이므로, 몸과 쿠키 클리어를 함께
+  // 보내지 않으면 그 정보(계정이 삭제됐다는 사실)가 영영 사라진다.
+  it('계정이 삭제된 뒤 호출 → 410 이 account-deleted 몸과 세션 쿠키 클리어를 함께 돌려준다', async () => {
+    const fx = await createD1Fixture();
+    try {
+      const now = '2026-01-01T00:00:00.000Z';
+      const env = envOf(fx);
+      const { signedSid } = await signIn(env, { sub: 'sub-lo-deleted', email: 'd@x.com' }, now);
+      await fx.db
+        .prepare('INSERT INTO deleted_users (sub, deleted_at) VALUES (?, ?)')
+        .bind('sub-lo-deleted', now)
+        .run();
+      const { handleRequest } = await import('../router');
+      const req = new Request('https://tasky.example.workers.dev/auth/logout-others', {
+        method: 'POST',
+        headers: {
+          'X-Tasky': '1',
+          Cookie: `tasky_session=${encodeURIComponent(signedSid)}`,
+        },
+      });
+      const res = await handleRequest(req, env, now);
+      expect(res.status).toBe(410);
+      expect(await res.json()).toEqual({ error: 'account-deleted' });
+      const setCookie = res.headers.get('Set-Cookie');
+      expect(setCookie).toContain('tasky_session=');
+      expect(setCookie).toContain('Max-Age=0');
+    } finally {
+      await fx.dispose();
+    }
+  });
+
+  it('호출자 세션이 이미 만료됐으면 401', async () => {
+    const fx = await createD1Fixture();
+    try {
+      const now = '2026-01-01T00:00:00.000Z';
+      const env = envOf(fx);
+      const { signedSid } = await signIn(env, { sub: 'sub-lo-expired', email: 'x@x.com' }, now);
+      const [sid] = signedSid.split('.');
+      await fx.db
+        .prepare('UPDATE sessions SET expires_at = ? WHERE sid = ?')
+        .bind('2020-01-01T00:00:00.000Z', sid)
+        .run();
+      const { handleRequest } = await import('../router');
+      const req = new Request('https://tasky.example.workers.dev/auth/logout-others', {
+        method: 'POST',
+        headers: {
+          'X-Tasky': '1',
+          Cookie: `tasky_session=${encodeURIComponent(signedSid)}`,
+        },
+      });
+      const res = await handleRequest(req, env, now);
+      expect(res.status).toBe(401);
     } finally {
       await fx.dispose();
     }
