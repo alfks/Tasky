@@ -27,6 +27,7 @@ import {
   completionPercentText,
 } from '@/features/stats';
 import type { CompletionSummary } from '@/features/stats';
+import { useSyncStore } from '@/features/sync';
 import { TimerChip } from '@/features/timer';
 import { useTodoStore } from '@/features/todo';
 
@@ -47,7 +48,10 @@ import { IconButton } from '@/components/ui/IconButton';
 function useSummaryRevision(): number {
   const writeRevision = useTodoStore((state) => state.writeRevision);
   const dataRevision = useBackupStore((state) => state.dataRevision);
-  return writeRevision + dataRevision;
+  // 동기화 엔진이 원격 변경을 채택할 때마다 오른다(sync-engine.ts) — 다른 기기의 변경도 같은
+  // 재조회 신호선을 탄다(T94_LAZY_BOUNDARY.md §D-10).
+  const syncRevision = useSyncStore((state) => state.dataRevision);
+  return writeRevision + dataRevision + syncRevision;
 }
 
 /** 오버레이 패널의 id — 여는 버튼의 `aria-controls` 가 가리킨다(열려 있을 때만 존재한다). */

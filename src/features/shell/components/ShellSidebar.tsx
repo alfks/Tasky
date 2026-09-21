@@ -8,10 +8,11 @@
 import type { Category } from '@/domain/category/category';
 import type { CategoryId } from '@/domain/ids';
 
-import { BackupLauncher } from '@/features/backup';
+import { BackupLauncher, useBackupStore } from '@/features/backup';
 import { CategoryList } from '@/features/category';
 import { useRemovalReturnFocus } from '@/features/shell/hooks/useRemovalReturnFocus';
 import { APP_NAME } from '@/features/shell/lib/title';
+import { AccountBlockLauncher } from '@/features/sync';
 import { ThemeModeToggle, ThemeSettingsPopover } from '@/features/theme';
 import { RoutineManager } from '@/features/todo';
 
@@ -57,6 +58,9 @@ export function ShellSidebar({
   // 등록 성공 `[되돌리기]`)의 버튼으로 포커스가 튀어, 거기서 Enter 를 누르면 루틴 삭제가 아니라
   // 그 등록을 되돌린다(리뷰 #104 Major 실측 — 파괴적이라 반드시 꺼야 한다).
   const routineRemovalFocus = useRemovalReturnFocus({ preferToast: false });
+  // 계정 블록(sync.md §2, R12-a)이 필요로 한다 — `sync` 는 `backup` 을 import 할 수 없어
+  // 셸이 꺼내 prop 으로 내린다(backup/index.ts 머리주석의 선례).
+  const exportBackup = useBackupStore((state) => state.exportBackup);
   return (
     <nav
       aria-label="카테고리"
@@ -111,6 +115,10 @@ export function ShellSidebar({
           removalReturnFocus={routineRemovalFocus.returnFocus}
         />
       </div>
+
+      {/* 계정 블록은 세션에 종속된 상태라 나머지 진입점(도구 줄)과 분리해 사이드바 맨 끝에 둔다
+          (sync.md §2, app-shell.md R12-a). */}
+      <AccountBlockLauncher exportBackup={exportBackup} />
     </nav>
   );
 }
