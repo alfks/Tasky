@@ -75,7 +75,8 @@ export type BackupActions = {
   refresh: () => Promise<void>;
   /** 경고 점 하나만 판정한다 — 마운트 경로. 최신 백업이면 투두를 한 건도 읽지 않는다. */
   refreshWarning: () => Promise<void>;
-  exportBackup: () => Promise<boolean>;
+  /** `options.allowEmpty` — 리뷰 Major 1, `backup-state.ts#canExport` 주석. */
+  exportBackup: (options?: { allowEmpty?: boolean }) => Promise<boolean>;
   selectFile: (file: File | null) => Promise<void>;
   setMode: (mode: ImportMode) => void;
   setAcknowledged: (acknowledged: boolean) => void;
@@ -182,8 +183,8 @@ export function createBackupActions(ctx: BackupContext): BackupActions {
    * 그 기록은 "백업 시도" 이고 임계 기간이 절반(15일)이라 곧 다시 알린다 — 영구히 켜 두면 사용자가
    * 표시를 무시하게 되어 경고의 목적이 무너지고, 전체 기간을 주면 저장되지 않은 파일을 믿게 된다.
    */
-  const exportBackup = async (): Promise<boolean> => {
-    if (!canExport(ctx.get())) {
+  const exportBackup = async (options?: { allowEmpty?: boolean }): Promise<boolean> => {
+    if (!canExport(ctx.get(), options)) {
       return false;
     }
     ctx.set({ phase: 'exporting', error: null, exportNote: null });

@@ -197,6 +197,13 @@ describe('exportBackup (R1·R2·R10)', () => {
     expect(downloads).toHaveLength(0);
   });
 
+  it('allowEmpty 면 데이터가 없어도 내보낸다(인증 경로, 리뷰 Major 1)', async () => {
+    await seed(baseSnapshot({ categories: [], todos: [], focusSessions: [] }));
+    await store.getState().refresh();
+    expect(await store.getState().exportBackup({ allowEmpty: true })).toBe(true);
+    expect(downloads).toHaveLength(1);
+  });
+
   it('내려받기가 실패하면 lastBackupAt 을 갱신하지 않는다 (R10)', async () => {
     const failing = storeWith({
       openTarget: (fileName) =>

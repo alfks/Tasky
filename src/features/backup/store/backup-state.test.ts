@@ -72,6 +72,18 @@ describe('내보내기 가능 여부 (§2 빈 상태)', () => {
   it('진행 중에는 다시 누를 수 없다', () => {
     expect(canExport(state({ phase: 'exporting' }))).toBe(false);
   });
+
+  // 리뷰 Major 1: 인증 경로(로그아웃·계정 삭제·계정 전환)는 빈 데이터셋에서도 내보내기가
+  // 통과해야 한다 — 아니면 사용자가 로그아웃할 방법이 없다.
+  it('allowEmpty 면 데이터가 0개여도 내보낼 수 있다', () => {
+    const empty = state({ current: { categories: 0, todos: 0, hasOtherData: false } });
+    expect(canExport(empty, { allowEmpty: true })).toBe(true);
+  });
+
+  it('allowEmpty 여도 진행 중이거나 아직 못 읽었으면 여전히 불가하다', () => {
+    expect(canExport(state({ phase: 'exporting' }), { allowEmpty: true })).toBe(false);
+    expect(canExport(state({ current: null }), { allowEmpty: true })).toBe(false);
+  });
 });
 
 describe('가져오기 가능 여부 (R7)', () => {
