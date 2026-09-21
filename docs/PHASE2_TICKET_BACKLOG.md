@@ -20,6 +20,8 @@
 
 **진행 현황(2026-09-21 실환경 확인)**: 사용자가 배포 주소에서 직접 확인해 알려줬다 — `GET /api/me` → `{"error":"unauthorized"}`(401 JSON, Worker 가 붙어 있고 `/api/*` 라우팅이 실환경에서 동작한다), `GET /auth/stub-login?sub=x&email=x@y.z` → **not found(404)**(개발용 로그인 우회 `AUTH_STUB` 이 프로덕션에서 닫혀 있다 — #126 보안 리뷰가 "Cloudflare 엣지가 `Host` 스푸핑 우회를 워커로 라우팅하는지"만 배포본이 없어 미확인으로 남겨 뒀던 구멍이 이제 해소됐다). Worker 는 #126 에서 처음 붙었으므로 **배포본은 #126 이후**다. **다만 넘겨짚지 말 것**: 정확히 어느 커밋인지(#129 클라이언트까지 포함하는지)는 여전히 미확인이다 — `/api/me` 401 은 Worker 존재만 말해 준다. **여전히 미확인으로 남은 것**: 구글 로그인 실왕복(아직 아무도 로그인해 보지 않았다), D1 테이블이 원격에 실제로 생성됐는지(마이그레이션 적용 결과 — 사용자가 확인 중, 확인 명령은 [development.md](./development.md) 참고). 상세는 `CLAUDE.md` "현재 상태" 블록·`README.md` [지금 상태](../README.md#지금-상태)가 단일 소스다.
 
+**진행 현황(2026-09-21 D1 확인·낡은 정적 자산 위험 발견)**: 위 절이 미확인으로 남긴 **"D1 테이블이 원격에 실제로 생성됐는지"는 사용자가 직접 확인해 줬다 — 원격 D1 에 테이블이 생성돼 있다.** 남은 미확인은 구글 로그인 실왕복·배포본이 정확히 어느 커밋인지뿐이다. 같은 확인 과정에서 사용자가 "Worker 는 401(새것)·D1 테이블도 있는데 로그인 화면이 안 뜬다"고 보고했고, 추적한 결과 `scripts/deploy.sh` 의 산출물 검사(146~151행)가 `dist/client` 파일이 **존재·비어 있지 않은지만** 보고 **최신인지는 보지 않아**, pull 이전의 낡은 `dist/client` 가 남아 있으면 Worker·D1 은 최신으로 올라가고 **정적 자산만 옛것**으로 남을 수 있다는 것을 찾았다(**아직 추정 — 사용자가 `pnpm build` 후 재배포해 확인해야 확정**). 후속 티켓 **T-106**으로 남겼다(아래 "후속 백로그" 절). `docs/development.md` "배포 확인" 절에 이 증상의 진단법(Worker 는 새것인데 화면이 옛것이면 `dist/client` 가 낡은 것, 시크릿 창으로 서비스 워커 캐시와 구분)을 추가했고, `CLAUDE.md` §5·`docs/development.md` 의 실배포 명령에 `pnpm build &&` 를 넣어 빌드 누락을 줄였다. `scripts/deploy.sh` 자체는 owns 밖이라 고치지 않았다.
+
 **전제**: 관련 스펙 5개(`docs/specs/calendar.md`·`stats.md`·`routine.md`·`diary.md`·`sync.md`)는 전부 `상태: approved`. `docs/decisions/ADR-0016-schema-v3-dday-diary-routine.md`도 `accepted`. `sync.md` 구현만 별도로 구글 OAuth·Cloudflare D1 자격증명 발급이 선행돼야 한다(sync.md §6). **2026-09-21 정정**: 아래 문장은 2026-09-20 시점엔 맞았지만 지금은 낡았다 — sync.md 구현 티켓(T-90~T-95)이 실제로 생겼다. 아래 표에 추가했다.
 
 ## 작업 보드 스냅샷
@@ -577,5 +579,16 @@ T-96~T-98 은 위 절에서 이미 쓰였으므로 **T-99 부터** 잇는다. �
 - **T-102 — 유휴 폴링 이중 쓰기.** `worker/sync/handler.ts` 가 요청마다 `touchDevice`(`devices.seen_at` upsert)와 `setDeviceLastSeq`(`devices.last_seq` UPDATE)를 **변경 0건·새 풀 결과 0건인 유휴 폴링에서도** 무조건 2행 쓴다(핸들러 주석에 후속으로 미뤄 둔 것을 명시). 인수인계 계산(T-95 미재검증): D1 무료 쓰기 한도가 읽기보다 **25배 먼저** 닿고, 기기당 하루 8시간 사용(30초 폴링)이면 **약 52 기기-일**에 한도다. 고치는 방향: 커서·`seen_at` 이 바뀌었을 때만 쓰거나(조건부 UPDATE), `seen_at` 갱신을 N분 단위로 양자화한다. `last_seq` 를 읽는 자리가 T-101 에서 생기므로 **T-101 과 같은 사람이 이어서** 하는 편이 낫다.
 
 - **T-103 — `docs/specs/routine.md` §4 서술 정정.** §4 가 "2026-09-21 정정 … 지금은 배경 채우기(`planRoutineFill`)도 이 값(`fillFloor`)을 전진시킨다 — `SyncRepository.existingIds` 가 배선될 때까지의 임시 조치" 라고 적고 있는데, origin/main 의 코드는 그 반대다 — `src/domain/routine/routine-fill.ts` 머리 주석: "**`fillFloor` 는 이 함수가 옮기지 않는다**(ADR-0018 §결정 3, 최종 설계로 복귀)", `fillFloor` 를 바꾸는 곳은 `routine.rules.ts` 의 `createRoutine`·`resumeRoutine` 둘뿐이고 `existingIds` 는 이미 배선됐다(#123). 스펙의 그 문장을 코드에 맞춰 고치고(채우기는 `fillFloor` 를 바꾸지 않는다, 임시 조치는 끝났다), ADR-0018 "## 정정" 절과 어긋나지 않는지 같이 본다. `docs/specs/**` 는 T-95 owns 밖이라 여기 기록만 남긴다.
+
+- **T-106 — `scripts/deploy.sh` 가 낡은 정적 자산을 배포할 수 있다.** `scripts/deploy.sh:146-151` 의
+  산출물 검사는 `dist/client/index.html`·`sw.js`·`manifest.webmanifest` 가 **존재하고 비어 있지 않은지만**
+  본다 — **최신인지는 보지 않는다.** Worker(`worker/index.ts`)는 소스에서 바로 번들되고 D1 마이그레이션도
+  매 배포마다 돌지만, 정적 자산은 이 검사만 통과하면 그대로 올라간다. 그래서 pull 이전에 만든 낡은
+  `dist/client` 가 남아 있는 채로 `pnpm run deploy` 를 돌리면 **Worker 는 새것·D1 스키마도 최신인데 화면
+  (정적 자산)만 옛것**인 상태로 "성공"할 수 있다 — 부분적으로 성공하므로 무엇이 잘못됐는지 알기 어렵다.
+  (2026-09-21, 사용자가 배포 뒤 로그인 화면이 안 뜬다고 보고해 추적하며 나온 발견. **원인이 이것이라는
+  것은 아직 추정이다** — 사용자가 `pnpm build` 후 재배포해서 확인해야 확정된다.) 고치는 방향은 이 티켓에서
+  정할 일 — 존재 검사 대신 **`pnpm build` 를 스크립트가 직접 돌리거나**, **산출물이 현재 커밋보다
+  오래됐으면 멈추거나** 중 무엇을 택할지는 여기서 미리 정하지 않는다.
 
 - **T-104 — `wt.sh` mkdir 폴백 락의 stale 회수 경합(1/8 재현).** `scripts/check.sh` 전체 실행에서 `wt.sh 스모크 테스트` 15번(flock 없는 환경 흉내, `new` 8개 동시 실행)이 **BOARD 행 7/8** 로 한 번 실패했고, 같은 절을 그 뒤 7번(단독 1·전체 check.sh 1·연속 5) 돌려 전부 8/8 이었다 — 재현율 약 1/8, `wt.sh` 가 `ERROR`/`WARN` 을 찍지 않고 rc=0 으로 끝난 채 행만 사라진다(`new_with_retry` 가 재시도하지 않은 이유). **#79(T-62, `check-arch.sh` 픽스처 경합)의 재발이 아니라 별개 코드다** — `scripts/wt.sh#board_lock_acquire` 의 mkdir 폴백에서, 대기자 C 가 보유자 A 의 pid 를 읽은 **뒤** A 가 반납하고 B 가 새로 잡으면, C 는 죽은 A 의 pid 로 stale 판정을 내려 `rm -rf` 로 **B 의 락을 지우고** 자기도 잡는다(TOCTOU) — B 와 C 가 동시에 BOARD 를 써 한 행이 사라진다. `flock` 이 있는 환경(이 컨테이너 포함 — `/usr/bin/flock`)은 그 경로를 타지 않으므로 실사용 노출은 flock 없는 셸뿐이다. 고칠 방향: stale 회수를 `rm -rf` 가 아니라 **pid 파일 내용을 비교하며 `rename`** 으로 원자화하거나(다른 pid 가 적혀 있으면 회수 포기), 회수 뒤 `mkdir` 성공 후 자기 pid 를 쓰고 **다시 읽어 확인**한다. 실패 로그 원문은 T-95 세션 스크래치패드에만 있어 레포에 없다 — 재현은 `for i in $(seq 8); do bash scripts/test-wt.sh | grep no-flock; done`.

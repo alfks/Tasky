@@ -103,10 +103,23 @@ pnpm exec wrangler d1 execute tasky --remote \
 
 **`wrangler` 는 전역 설치가 아니다 — 반드시 `pnpm exec wrangler` 로 부른다**(사용자가 실제로
 `command not found` 를 밟았다). 2026-09-21 확인 결과: `/api/me` → 401 JSON(Worker 붙음, 배포본은
-#126 이후), `/auth/stub-login` → 404(AUTH_STUB 프로덕션에서 닫혀 있음). **D1 테이블 존재 여부·구글
-로그인 실왕복·배포본이 정확히 어느 커밋인지(#129 클라이언트 포함 여부)는 여전히 미확인**이다 —
-[README.md](../README.md) [지금 상태](../README.md#지금-상태)·[CLAUDE.md](../CLAUDE.md) "현재 상태"
-블록이 단일 소스다.
+#126 이후), `/auth/stub-login` → 404(AUTH_STUB 프로덕션에서 닫혀 있음), **D1 테이블도 원격에 생성돼
+있는 것이 확인됐다**(사용자 확인). **구글 로그인 실왕복·배포본이 정확히 어느 커밋인지(#129 클라이언트
+포함 여부)는 여전히 미확인**이다 — [README.md](../README.md) [지금 상태](../README.md#지금-상태)·
+[CLAUDE.md](../CLAUDE.md) "현재 상태" 블록이 단일 소스다.
+
+**증상: Worker 는 새것(`/api/me` 401)인데 로그인 화면이 안 뜬다면 `dist/client` 가 낡은 것부터 의심한다.**
+`scripts/deploy.sh` 의 산출물 검사는 `dist/client` 의 파일이 **존재하고 비어 있지 않은지만** 보고
+**최신인지는 보지 않는다** — pull 이전에 만든 낡은 `dist/client` 가 남아 있으면 `pnpm run deploy` 를
+그대로 돌려도 검사를 통과해, Worker·D1 마이그레이션은 새로 나가고 **정적 자산만 옛것**으로 배포될 수
+있다(추적 중 발견 — 이것이 실제 원인인지는 `pnpm build` 후 재배포해 봐야 확정된다, 후속 티켓
+[PHASE2_TICKET_BACKLOG.md](./PHASE2_TICKET_BACKLOG.md) T-106). **먼저 `pnpm build` 를 돌린 뒤 재배포한다**
+(`scripts/deploy.sh` 자체는 고치지 않는다 — owns 밖이고 고치는 방식은 T-106 에서 정한다).
+
+**두 번째 용의자: 서비스 워커 캐시.** PWA 라 23개 URL 을 프리캐시하므로, 배포본이 실제로 새것이어도 브라우저에
+남은 옛 서비스 워커가 캐시된 옛 화면을 계속 내줄 수 있다. **구분법**: 시크릿(사생활 보호) 창에서 배포
+주소를 열어 본다 — 거기서 새 화면이 뜨면 캐시 문제고, 개발자도구 → Application → Service Workers →
+Unregister 로 푼다. 시크릿 창에서도 옛 화면이면 위의 낡은 `dist/client` 쪽을 본다.
 
 ### 운영 주의 — D1 을 손으로 만지기 전에
 
