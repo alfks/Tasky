@@ -141,7 +141,11 @@ function ShellBody() {
   const todosFirstLoading = !failed && !everReady.current && todoStatus !== 'error';
 
   return (
-    <div className="flex h-dvh min-w-[400px] flex-col bg-bg text-text">
+    // `min-w` 는 §3 R11 의 최소 폭이다. 400px 이던 시절에는 **실기기 대부분에서 가로 스크롤이
+    // 생겼다** — 휴대폰의 CSS 폭은 360(안드로이드 다수)·375(iPhone SE·mini)·390(iPhone 12~16)
+    // 이라 셋 다 400 아래다. 값을 낮출 때 실제로 검증해야 하는 것은 이 줄이 아니라 헤더 한 줄이다
+    // (ShellHeader 의 `min-w-0` 주석 참고). 360px 실측은 tests/e2e/narrow-viewport.spec.ts 가 지킨다.
+    <div className="flex h-dvh min-w-[360px] flex-col bg-bg text-text">
       <SkipLink />
       {storageStatus === 'memory' ? <MemoryModeBanner /> : null}
       <div
