@@ -16,6 +16,7 @@ import { createMemoryFocusSessionRepository } from '@/repositories/memory/focus-
 import { createMemoryTables, type MemoryTables } from '@/repositories/memory/live';
 import { createMemoryRoutineRepository } from '@/repositories/memory/routine-repository';
 import { createMemorySettingsRepository } from '@/repositories/memory/settings-repository';
+import { createMemorySyncRepository } from '@/repositories/memory/sync-repository';
 import { createMemoryTodoRepository } from '@/repositories/memory/todo-repository';
 
 /** 테스트·개발용 인메모리 구현 한 벌. `tables` 를 넘기면 그 상태를 공유한다. */
@@ -31,5 +32,6 @@ export function createMemoryRepositories(
     dday: createMemoryDdayRepository(tables),
     diaryEntries: createMemoryDiaryRepository(tables),
     routines: createMemoryRoutineRepository(tables),
+    sync: createMemorySyncRepository(tables),
   };
 }

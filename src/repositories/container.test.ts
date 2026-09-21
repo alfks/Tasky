@@ -1,8 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getRepositories, setRepositories } from '@/repositories/container';
+import {
+  getRepositories,
+  getSyncTransport,
+  setRepositories,
+  setSyncTransport,
+} from '@/repositories/container';
 import { contractDeps, contractTodo } from '@/repositories/contract';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
+import { createMemorySyncServer } from '@/repositories/memory/sync-server';
+import { createMemorySyncTransport } from '@/repositories/memory/sync-transport';
 
 describe('container', () => {
   beforeEach(() => {
@@ -25,7 +32,7 @@ describe('container', () => {
     expect(getRepositories()).toBe(repositories);
   });
 
-  it('여덟 저장소를 모두 노출한다 (엔티티 4 + dataset + dday + diaryEntries + routines)', () => {
+  it('아홉 저장소를 모두 노출한다 (엔티티 4 + dataset + dday + diaryEntries + routines + sync)', () => {
     expect(Object.keys(getRepositories()).sort()).toEqual([
       'categories',
       'dataset',
@@ -34,6 +41,7 @@ describe('container', () => {
       'focusSessions',
       'routines',
       'settings',
+      'sync',
       'todos',
     ]);
   });
@@ -52,5 +60,22 @@ describe('container', () => {
     await getRepositories().todos.upsert(todo);
 
     expect(await createMemoryRepositories().todos.getById(todo.id)).toBeUndefined();
+  });
+
+  describe('동기화 트랜스포트 슬롯 (Repositories 와 별개)', () => {
+    it('주입 전에는 throw 한다', async () => {
+      vi.resetModules();
+      const fresh = await import('@/repositories/container');
+
+      expect(() => fresh.getSyncTransport()).toThrow();
+    });
+
+    it('주입한 트랜스포트를 그대로 돌려준다', () => {
+      const transport = createMemorySyncTransport(createMemorySyncServer(), null);
+
+      setSyncTransport(transport);
+
+      expect(getSyncTransport()).toBe(transport);
+    });
   });
 });

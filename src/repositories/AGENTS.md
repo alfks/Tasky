@@ -9,18 +9,21 @@
 
 ## 파일 지도
 
-| 파일                          | 무엇                                                                                   |
-| ----------------------------- | -------------------------------------------------------------------------------------- |
-| `*-repository.ts`             | 엔티티 계약 4종(`Todo`·`Category`·`Settings`·`FocusSession`) + `dataset-repository.ts` |
-| `container.ts`                | 조립 지점(배럴이 아니다 — ADR-0006). 구현을 import 하지 않는다                         |
-| `ordering.ts`                 | 계약이 고정하는 정렬 중 도메인에 자리가 없는 것(집중 세션·검색 결과)                   |
-| `repository-error.ts`         | `RepositoryError` — 도메인 규칙 위반(`DomainError`)과 구분되는 저장소 실패             |
-| `contract.ts`                 | `ContractTarget` 과 계약 전용 엔티티 팩토리                                            |
-| `write-plan.ts`               | `DatasetRepository.write` 1단계(해석·검증). memory·indexeddb 두 구현이 **같이 쓴다**   |
-| `*.contract.ts`               | 계약 스위트 본문(`run<X>Contract(target)`). **테스트 파일이 아니다**                   |
-| `dataset-removal.contract.ts` | `planCategoryRemoval` → `write` 절(TECH_PLAN §6). 데이터셋 러너가 부른다               |
-| `memory.contract.test.ts`     | memory 대상으로 스위트 다섯을 실행                                                     |
-| `memory/`                     | memory 구현(아래 규칙 3)                                                               |
+| 파일                          | 무엇                                                                                                               |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `*-repository.ts`             | 엔티티 계약 4종(`Todo`·`Category`·`Settings`·`FocusSession`) + `dataset-repository.ts`                             |
+| `sync-repository.ts`          | `SyncRepository` 계약(ADR-0018) — 아웃박스·`syncState`. `Repositories.sync` 슬롯                                   |
+| `sync-transport.ts`           | `SyncTransport` 계약(ADR-0018) — **저장소가 아니다**, `container.ts` 의 별도 슬롯                                  |
+| `container.ts`                | 조립 지점(배럴이 아니다 — ADR-0006). 구현을 import 하지 않는다. `sync`·`setSyncTransport` 포함                     |
+| `ordering.ts`                 | 계약이 고정하는 정렬 중 도메인에 자리가 없는 것(집중 세션·검색 결과)                                               |
+| `repository-error.ts`         | `RepositoryError` — 도메인 규칙 위반(`DomainError`)과 구분되는 저장소 실패                                         |
+| `contract.ts`                 | `ContractTarget` 과 계약 전용 엔티티 팩토리                                                                        |
+| `write-plan.ts`               | `DatasetRepository.write` 1단계(해석·검증). memory·indexeddb 두 구현이 **같이 쓴다**                               |
+| `*.contract.ts`               | 계약 스위트 본문(`run<X>Contract(target)`). **테스트 파일이 아니다**                                               |
+| `sync-repository.contract.ts` | `SyncRepository` 계약 — 아웃박스 전수(`WRITES`)·`applyRemote`(`client-merge.vectors.ts`)·`existingIds`·`wipeLocal` |
+| `dataset-removal.contract.ts` | `planCategoryRemoval` → `write` 절(TECH_PLAN §6). 데이터셋 러너가 부른다                                           |
+| `memory.contract.test.ts`     | memory 대상으로 계약 스위트 전부를 실행                                                                            |
+| `memory/`                     | memory 구현(아래 규칙 3)                                                                                           |
 
 ## 규칙
 
@@ -40,7 +43,11 @@
    그래서 스위트는 `src/test/fixtures` 를 쓸 수 없고(레이어 허용 목록 밖) `contract.ts` 의 팩토리를 쓴다.
    스위트는 `describe`/`it`/`expect` 를 전역(`vitest/globals`)으로 쓰므로 **테스트 러너 안에서만**
    import 한다 — 앱 코드가 부르면 런타임에 `describe is not defined` 다.
-7. 출처: `docs/conventions/code-style.md` §5·§11, ADR-0005 · ADR-0007 · ADR-0009.
+7. 출처: `docs/conventions/code-style.md` §5·§11, ADR-0005 · ADR-0007 · ADR-0009 · ADR-0018.
+8. **`memory/sync-server.ts`·`sync-transport.ts` 는 테스트 전용**(`src/test/setup.ts` 만 import,
+   앱이 부르면 가짜 서버가 번들에 실린다 — 리뷰 체크). `live.ts#put` 은 아웃박스에 적재, `putRemote`
+   는 적재하지 않는다(`applyRemote` 전용). `memory/sync-repository.ts`(진입 청크)는
+   `planClientMerge`·`reconcileAck` 만 import 한다 — `wire.ts`·`server-rules.ts` 값은 금지(§C-6).
 
 ## 관할: memory/
 

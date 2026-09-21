@@ -7,6 +7,7 @@ import { runDatasetRepositoryContract } from '@/repositories/dataset-repository.
 import { runFocusSessionRepositoryContract } from '@/repositories/focus-session-repository.contract';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
 import { runSettingsRepositoryContract } from '@/repositories/settings-repository.contract';
+import { runSyncRepositoryContract } from '@/repositories/sync-repository.contract';
 import { runTodoRepositoryContract } from '@/repositories/todo-repository.contract';
 
 /** 호출할 때마다 빈 상태의 새 묶음 — 테스트끼리 상태가 새지 않는다. */
@@ -20,3 +21,4 @@ runCategoryRepositoryContract(MEMORY);
 runSettingsRepositoryContract(MEMORY);
 runFocusSessionRepositoryContract(MEMORY);
 runDatasetRepositoryContract(MEMORY);
+runSyncRepositoryContract(MEMORY);

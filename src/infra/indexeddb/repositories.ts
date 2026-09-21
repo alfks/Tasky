@@ -14,6 +14,7 @@ import { createIndexedDbFocusSessionRepository } from '@/infra/indexeddb/focus-s
 import { tables, type Store } from '@/infra/indexeddb/query';
 import { createIndexedDbRoutineRepository } from '@/infra/indexeddb/routine-indexeddb-repository';
 import { createIndexedDbSettingsRepository } from '@/infra/indexeddb/settings-indexeddb-repository';
+import { createIndexedDbSyncRepository } from '@/infra/indexeddb/sync-indexeddb-repository';
 import { createIndexedDbTodoRepository } from '@/infra/indexeddb/todo-indexeddb-repository';
 
 /** 한 묶음 위의 IndexedDB 구현 한 벌. 조립은 `src/app/providers.tsx` 가 한다(ADR-0006 규칙 6). */
@@ -27,6 +28,7 @@ export function createIndexedDbRepositories(store: Store = tables): Repositories
     dday: createIndexedDbDdayRepository(store),
     diaryEntries: createIndexedDbDiaryRepository(store),
     routines: createIndexedDbRoutineRepository(store),
+    sync: createIndexedDbSyncRepository(store),
   };
 }
 
