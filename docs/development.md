@@ -75,8 +75,8 @@ pnpm build && pnpm start                                      # wrangler dev, **
   `worker/**/*.test.ts` 를 순차 실행한다. `--project=worker` 로 그것만 돌릴 수 있다. 서버 규칙 벡터
   (`src/domain/sync/server-rules.vectors.ts`)를 도메인·메모리 가짜 서버·Worker 셋이 같은 파일로 돈다 —
   벡터를 복사하지 마라(CLAUDE.md "현재 상태").
-- 자격증명 발급(구글 OAuth·Cloudflare D1)은 `SYNC_CREDENTIALS_GUIDE.md`(로컬 스크래치패드, 레포
-  미포함 — 오케스트레이터/프로젝트 소유자가 보관)를 따른다.
+- 자격증명 발급(구글 OAuth·Cloudflare D1, `.env`·`.dev.vars`·배포된 Worker 시크릿 셋의 차이 포함)은
+  [SYNC_CREDENTIALS_GUIDE.md](./SYNC_CREDENTIALS_GUIDE.md)를 따른다.
 - **실제 배포(`pnpm run deploy`, `--dry-run` 아님)는 `wrangler deploy` 직전에 `wrangler d1 migrations apply
 tasky --remote` 와 시크릿(`GOOGLE_CLIENT_SECRET`·`SESSION_SECRET`) 존재 검사(`wrangler secret list`)를
   돈다 — 시크릿이 하나라도 없으면 `rc=1` 로 멈춘다(`wrangler secret put <이름>` 으로 먼저 올려야 한다).
@@ -100,6 +100,7 @@ tasky --remote` 와 시크릿(`GOOGLE_CLIENT_SECRET`·`SESSION_SECRET`) 존재 �
 - 아키텍처: [ARCHITECTURE.md](./ARCHITECTURE.md) · 디렉토리 맵: [DIRECTORY_MAP.md](./DIRECTORY_MAP.md)
 - 결정 기록(ADR): [DECISIONS.md](./DECISIONS.md) · 기능 스펙: [specs/](./specs/)
 - 동기화 구현 설계(자료구조·SQL·티켓 분해, 화면 규칙은 [specs/sync.md](./specs/sync.md)가 단일 소스): [SYNC_DESIGN.md](./SYNC_DESIGN.md)
+- 동기화 자격증명 발급 가이드(구글 OAuth·Cloudflare D1): [SYNC_CREDENTIALS_GUIDE.md](./SYNC_CREDENTIALS_GUIDE.md)
 - Phase 2 구현 티켓 백로그(스냅샷): [PHASE2_TICKET_BACKLOG.md](./PHASE2_TICKET_BACKLOG.md) — 실제 단일 소스는 `.worktrees/tickets/`(로컬, 커밋 안 됨)이고 이 문서는 세션 간 인수인계용 기록
 - 코드 컨벤션: [conventions/code-style.md](./conventions/code-style.md) · git: [conventions/git-workflow.md](./conventions/git-workflow.md)
 - 사용감 실측 기록: [FEEL_REPORT.md](./FEEL_REPORT.md)
