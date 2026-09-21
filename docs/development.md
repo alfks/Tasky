@@ -101,6 +101,7 @@ tasky --remote` 와 시크릿(`GOOGLE_CLIENT_SECRET`·`SESSION_SECRET`) 존재 �
 - 결정 기록(ADR): [DECISIONS.md](./DECISIONS.md) · 기능 스펙: [specs/](./specs/)
 - 동기화 구현 설계(자료구조·SQL·티켓 분해, 화면 규칙은 [specs/sync.md](./specs/sync.md)가 단일 소스): [SYNC_DESIGN.md](./SYNC_DESIGN.md)
 - 동기화 자격증명 발급 가이드(구글 OAuth·Cloudflare D1): [SYNC_CREDENTIALS_GUIDE.md](./SYNC_CREDENTIALS_GUIDE.md)
+- T-94 지연 로드 경계(진입/지연 청크 파일 단위 확정, 번들 예산 실측): [T94_LAZY_BOUNDARY.md](./T94_LAZY_BOUNDARY.md)
 - Phase 2 구현 티켓 백로그(스냅샷): [PHASE2_TICKET_BACKLOG.md](./PHASE2_TICKET_BACKLOG.md) — 실제 단일 소스는 `.worktrees/tickets/`(로컬, 커밋 안 됨)이고 이 문서는 세션 간 인수인계용 기록
 - 코드 컨벤션: [conventions/code-style.md](./conventions/code-style.md) · git: [conventions/git-workflow.md](./conventions/git-workflow.md)
 - 사용감 실측 기록: [FEEL_REPORT.md](./FEEL_REPORT.md)
