@@ -81,9 +81,12 @@ export type SyncStoreActions = {
   logout: (exportBackup: () => Promise<boolean>) => Promise<boolean>;
   /** 성공하면 true. */
   deleteAccount: (exportBackup: () => Promise<boolean>) => Promise<boolean>;
-  /** "다른 기기 모두 로그아웃"(ADR-0020 §결정 5) — 이 기기의 로그인·로컬은 그대로다. 성공하면
-   * true(호출부가 "다른 기기를 로그아웃했어요" 토스트를 띄운다), 실패하면 false. */
-  logoutOthers: () => Promise<boolean>;
+  /** "다른 기기 모두 로그아웃"(ADR-0020 §결정 5) — 이 기기의 로그인·로컬은 그대로다.
+   * `'ok'`(성공 토스트)·`'offline'`(온라인이 되면 다시 시도 문구)·`'error'`(범용 재시도 문구) 는
+   * 호출부(`AccountBlock`)가 토스트로 알린다. `'signed-out'` 은 이 기기 세션이 이미 죽었거나
+   * 계정이 삭제됐다는 뜻이라 `performLogoutOthers` 가 이미 게이트를 넘겼다 — 호출부는 토스트를
+   * 띄우지 않는다(리뷰 Major 1). */
+  logoutOthers: () => Promise<'ok' | 'signed-out' | 'offline' | 'error'>;
 };
 
 export type SyncStore = SyncStoreState & SyncStoreActions;
@@ -244,7 +247,7 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
 
   logoutOthers: async () => {
     const { performLogoutOthers } = await import('@/features/sync/store/auth-actions');
-    return performLogoutOthers();
+    return performLogoutOthers(runtime());
   },
 }));
 

@@ -343,31 +343,87 @@ describe('auth-actions: probeSession', () => {
   });
 });
 
-describe('auth-actions: performLogoutOthers(ADR-0020 §결정 5)', () => {
-  it('로그인 상태면 true — exportBackup 을 요구하지 않는다(이 기기 데이터는 그대로)', async () => {
+describe('auth-actions: performLogoutOthers(ADR-0020 §결정 5, 리뷰 Major 1)', () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(async () => {
+    await getRepositories().sync.wipeLocal();
+    await getRepositories().sync.setState({
+      deviceId: 'device-1',
+      userSub: 'sub-1',
+      userEmail: 'a@example.com',
+      cursor: 3,
+    });
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('성공하면 ok — 이 기기의 표식·로컬 데이터는 그대로다(리뷰 Minor 4: 실제로 확인한다)', async () => {
     setSyncTransport(
       createMemorySyncTransport(createMemorySyncServer(), {
-        sub: 's',
+        sub: 'sub-1',
         email: 'a@example.com',
         expiresAt: '2099-01-01T00:00:00.000Z',
       }),
     );
-    expect(await performLogoutOthers()).toBe(true);
+    const category = createCategory({ name: '다기기', color: '#CFEB8F', existing: [] }, deps);
+    await getRepositories().categories.upsert(category);
+    const { rt } = fakeRuntime();
+
+    expect(await performLogoutOthers(rt)).toBe('ok');
+
+    const state = await getRepositories().sync.getState();
+    expect(state?.userSub).toBe('sub-1'); // 이 기기는 로그인 상태 그대로
+    const categories = await getRepositories().categories.list({ includeClosed: true });
+    expect(categories).toHaveLength(1); // 로컬 데이터도 그대로
   });
 
-  it('세션이 없으면(트랜스포트 unauthorized) false', async () => {
-    setSyncTransport(createMemorySyncTransport(createMemorySyncServer(), null));
-    expect(await performLogoutOthers()).toBe(false);
-  });
-
-  it('오프라인이면 false', async () => {
+  it('오프라인이면 offline — 게이트를 건드리지 않는다', async () => {
     setSyncTransport(
       createMemorySyncTransport(
         createMemorySyncServer(),
-        { sub: 's', email: 'a@example.com', expiresAt: '2099-01-01T00:00:00.000Z' },
+        { sub: 'sub-1', email: 'a@example.com', expiresAt: '2099-01-01T00:00:00.000Z' },
         { offline: true },
       ),
     );
-    expect(await performLogoutOthers()).toBe(false);
+    const { rt, state } = fakeRuntime();
+
+    expect(await performLogoutOthers(rt)).toBe('offline');
+    expect(state.phase).toBeUndefined();
+  });
+
+  it('이 기기 세션이 이미 죽었으면(401) signed-out — verifySession 이 다음 사이클을 기다리지 않고 게이트를 넘긴다', async () => {
+    global.fetch = vi.fn(async () => new Response(null, { status: 401 }));
+    setSyncTransport(createHttpSyncTransport());
+    const { rt, state } = fakeRuntime();
+
+    expect(await performLogoutOthers(rt)).toBe('signed-out');
+    expect(state.phase).toBe('login');
+  });
+
+  it('계정이 다른 기기에서 삭제됐으면(410) signed-out — 계정 삭제 안내를 곧장 띄운다(1회성 410 을 삼키지 않는다)', async () => {
+    global.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: 'account-deleted' }), {
+          status: 410,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    );
+    setSyncTransport(createHttpSyncTransport());
+    const { rt, state } = fakeRuntime();
+
+    expect(await performLogoutOthers(rt)).toBe('signed-out');
+    expect(state.accountDeletedNotice).toBe(true);
+  });
+
+  it('그 밖의 서버 오류면 error — 게이트는 건드리지 않는다', async () => {
+    global.fetch = vi.fn(async () => new Response(null, { status: 500 }));
+    setSyncTransport(createHttpSyncTransport());
+    const { rt, state } = fakeRuntime();
+
+    expect(await performLogoutOthers(rt)).toBe('error');
+    expect(state.phase).toBeUndefined();
   });
 });

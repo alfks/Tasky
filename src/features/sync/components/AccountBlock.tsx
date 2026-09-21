@@ -79,12 +79,18 @@ export function AccountBlock({ exportBackup }: AccountBlockProps) {
   const handleLogoutOthers = async () => {
     setBusy(true);
     try {
-      const ok = await logoutOthers();
-      pushToast({
-        message: ok
-          ? '다른 기기를 로그아웃했어요.'
-          : '다른 기기를 로그아웃하지 못했어요. 다시 시도해 주세요.',
-      });
+      const result = await logoutOthers();
+      // 리뷰 Major 1 — 실패를 갈래별로 다르게 알린다. 'signed-out' 은 토스트를 띄우지 않는다:
+      // 이 기기 세션이 이미 죽었거나(401) 계정이 삭제됐다(410)는 뜻이라 `performLogoutOthers` 가
+      // 이미 게이트를 넘겼고, 화면은 곧 로그인 화면이나 계정 삭제 안내로 바뀐다 — 그 화면 자체가
+      // 설명이라 여기서 또 말할 필요가 없다.
+      if (result === 'ok') {
+        pushToast({ message: '다른 기기를 로그아웃했어요.' });
+      } else if (result === 'offline') {
+        pushToast({ message: '인터넷에 연결되면 다시 시도해 주세요.' });
+      } else if (result === 'error') {
+        pushToast({ message: '다른 기기를 로그아웃하지 못했어요. 다시 시도해 주세요.' });
+      }
     } finally {
       setBusy(false);
       setConfirming(null);
@@ -144,7 +150,7 @@ export function AccountBlock({ exportBackup }: AccountBlockProps) {
       <ConfirmDialog
         open={confirming === 'logout-others'}
         title="다른 기기를 모두 로그아웃할까요?"
-        description="이 기기는 로그인 상태를 유지하고, 다른 기기의 로그인만 풀려요."
+        description="이 기기는 로그인 상태를 유지하고, 다른 기기의 로그인만 풀려요. 다른 기기는 다시 로그인해야 해요."
         confirmLabel={busy ? '로그아웃하는 중…' : '로그아웃'}
         cancelLabel="취소"
         onConfirm={() => void handleLogoutOthers()}

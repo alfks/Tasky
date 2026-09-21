@@ -46,7 +46,7 @@ describe('AccountBlock — 다른 기기 모두 로그아웃', () => {
     resetSyncStoreForTest();
     clearToasts();
     useSyncStore.setState({ email: 'a@example.com', online: true, pendingCount: 0 });
-    const logoutOthers = vi.fn().mockResolvedValue(true);
+    const logoutOthers = vi.fn().mockResolvedValue('ok');
     useSyncStore.setState({ logoutOthers });
     const user = userEvent.setup();
     render(<AccountBlock exportBackup={exportBackup} />);
@@ -69,7 +69,7 @@ describe('AccountBlock — 다른 기기 모두 로그아웃', () => {
     resetSyncStoreForTest();
     clearToasts();
     useSyncStore.setState({ email: 'a@example.com', online: true, pendingCount: 0 });
-    const logoutOthers = vi.fn().mockResolvedValue(true);
+    const logoutOthers = vi.fn().mockResolvedValue('ok');
     useSyncStore.setState({ logoutOthers });
     const user = userEvent.setup();
     render(<AccountBlock exportBackup={exportBackup} />);
@@ -84,11 +84,11 @@ describe('AccountBlock — 다른 기기 모두 로그아웃', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('실패하면 실패 토스트를 띄운다', async () => {
+  it('진짜 서버 오류면 범용 재시도 토스트를 띄운다(리뷰 Major 1 — 갈래 중 하나)', async () => {
     resetSyncStoreForTest();
     clearToasts();
     useSyncStore.setState({ email: 'a@example.com', online: true, pendingCount: 0 });
-    const logoutOthers = vi.fn().mockResolvedValue(false);
+    const logoutOthers = vi.fn().mockResolvedValue('error');
     useSyncStore.setState({ logoutOthers });
     const user = userEvent.setup();
     render(<AccountBlock exportBackup={exportBackup} />);
@@ -104,5 +104,42 @@ describe('AccountBlock — 다른 기기 모두 로그아웃', () => {
         ),
       ).toBe(true),
     );
+  });
+
+  it('오프라인이면 재시도 문구가 아니라 온라인이 되면 다시 하라는 문구를 띄운다(리뷰 Major 1)', async () => {
+    resetSyncStoreForTest();
+    clearToasts();
+    useSyncStore.setState({ email: 'a@example.com', online: true, pendingCount: 0 });
+    const logoutOthers = vi.fn().mockResolvedValue('offline');
+    useSyncStore.setState({ logoutOthers });
+    const user = userEvent.setup();
+    render(<AccountBlock exportBackup={exportBackup} />);
+
+    await user.click(screen.getByRole('button', { name: '다른 기기 모두 로그아웃' }));
+    const dialog = screen.getByRole('alertdialog', { name: '다른 기기를 모두 로그아웃할까요?' });
+    await user.click(within(dialog).getByRole('button', { name: '로그아웃' }));
+
+    await waitFor(() =>
+      expect(getToasts().some((t) => t.message === '인터넷에 연결되면 다시 시도해 주세요.')).toBe(
+        true,
+      ),
+    );
+  });
+
+  it('이 기기가 이미 로그아웃됐으면(signed-out) 토스트 없이 넘어간다 — 화면 전환 자체가 설명이다(리뷰 Major 1)', async () => {
+    resetSyncStoreForTest();
+    clearToasts();
+    useSyncStore.setState({ email: 'a@example.com', online: true, pendingCount: 0 });
+    const logoutOthers = vi.fn().mockResolvedValue('signed-out');
+    useSyncStore.setState({ logoutOthers });
+    const user = userEvent.setup();
+    render(<AccountBlock exportBackup={exportBackup} />);
+
+    await user.click(screen.getByRole('button', { name: '다른 기기 모두 로그아웃' }));
+    const dialog = screen.getByRole('alertdialog', { name: '다른 기기를 모두 로그아웃할까요?' });
+    await user.click(within(dialog).getByRole('button', { name: '로그아웃' }));
+
+    await waitFor(() => expect(logoutOthers).toHaveBeenCalledTimes(1));
+    expect(getToasts()).toHaveLength(0);
   });
 });

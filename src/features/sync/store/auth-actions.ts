@@ -160,16 +160,32 @@ export async function performDeleteAccount(
 
 /**
  * "다른 기기 모두 로그아웃"(ADR-0020 §결정 5) — 이 기기의 로그인 상태·로컬 데이터는 그대로 두고,
- * 서버에 남은 이 계정의 나머지 세션만 지운다. 로그아웃·계정 삭제와 달리 `exportBackup` 이 필요
- * 없다(이 기기 자신의 데이터는 손대지 않는다). 실패하면 false — 호출부(`AccountBlock`)가 토스트로
- * 알린다.
+ * 서버에 남은 이 계정의 나머지 세션만 지운다. `exportBackup` 이 필요 없다(이 기기 데이터는
+ * 손대지 않는다).
+ *
+ * **리뷰 Major 1** — 실패를 갈래별로 다룬다(전에는 전부 `false` 로 뭉개 범용 재시도 토스트만
+ * 띄웠다). `unauthorized`(이 기기 세션이 이미 죽음)·`account-deleted`(계정이 다른 기기에서
+ * 삭제됨, 410 — **1회성**: `requireSession` 이 첫 410 에서 세션 행을 지워버려 여기서 삼키면
+ * `AccountDeletedNotice` 가 다시 뜰 기회가 없다)는 재시도로 고쳐지지 않으므로 다음 엔진 사이클
+ * (최대 30초, 탭 숨김이면 그마저 없음)을 기다리지 않고 `verifySession` 으로 게이트를 바로
+ * 넘긴다. `offline`은 서버가 아니라 네트워크 문제임을 그대로 말한다. 그 밖(5xx 등)만 범용
+ * 재시도 문구.
  */
-export async function performLogoutOthers(): Promise<boolean> {
+export async function performLogoutOthers(
+  rt: SyncRuntime,
+): Promise<'ok' | 'signed-out' | 'offline' | 'error'> {
   try {
     await getSyncTransport().logoutOthers();
-    return true;
-  } catch {
-    return false;
+    return 'ok';
+  } catch (error) {
+    if (isTransportError(error)) {
+      if (error.kind === 'unauthorized' || error.kind === 'account-deleted') {
+        await verifySession(rt);
+        return 'signed-out';
+      }
+      if (error.kind === 'offline') return 'offline';
+    }
+    return 'error';
   }
 }
 
