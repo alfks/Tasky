@@ -2,7 +2,7 @@
 
 # 테마·컬러 시스템 스펙
 
-- 상태: approved · 관련 ADR: ADR-0003 · 리서치 참조: reference-app-research.md §6 전체(추정치를 아래 확정값으로 대체), §9 과제 2
+- 상태: implemented · 관련 ADR: ADR-0003 · 리서치 참조: reference-app-research.md §6 전체(추정치를 아래 확정값으로 대체), §9 과제 2
 
 ## 1. 목표
 

@@ -2,7 +2,7 @@
 
 # 달성률 스펙
 
-- 상태: approved · 관련 ADR: - · 리서치 참조: reference-app-research.md §3-5, §6(완료율 상승 시 시각 보상), §9 기회 5
+- 상태: implemented · 관련 ADR: - · 리서치 참조: reference-app-research.md §3-5, §6(완료율 상승 시 시각 보상), §9 기회 5
 
 ## 1. 목표
 

@@ -4,7 +4,7 @@
 
 > **이 문서의 기준 시점**: `origin/main` **a62da2b**(2026-09-21 확인, `git log --oneline origin/main` 기준). 아래 표의 status 열은 이 커밋 시점까지 `git log`/`git show --stat`로 실제 대조한 값이다 — main 이 더 움직이면 다시 대조하고 고친다. **로컬 `main` 브랜치는 무관한 커밋을 가리키므로 비교 기준으로 쓰지 않는다 — 항상 `origin/main`.**
 
-이 문서는 **기록용 스냅샷**이다. 실제 오케스트레이션의 단일 소스는 언제나 `.worktrees/tickets/T-<n>.md` + `.worktrees/BOARD.md`([.worktrees/AGENTS.md](.worktrees/AGENTS.md), [docs/conventions/agent-collaboration.md](docs/conventions/agent-collaboration.md) §1~§2) — 그 디렉토리는 로컬 전용이라 커밋되지 않는다. 이 파일은 컨테이너 세션이 끝나면 그 로컬 파일들이 사라지는 문제를 메우려고, 2026-09-20에 만들어진 티켓 8개를 그대로 옮겨 적어 git에 남겨 둔다.
+이 문서는 **기록용 스냅샷**이다. 실제 오케스트레이션의 단일 소스는 언제나 `.worktrees/tickets/T-<n>.md` + `.worktrees/BOARD.md`([.worktrees/AGENTS.md](../.worktrees/AGENTS.md), [conventions/agent-collaboration.md](./conventions/agent-collaboration.md) §1~§2) — 그 디렉토리는 로컬 전용이라 커밋되지 않는다. 이 파일은 컨테이너 세션이 끝나면 그 로컬 파일들이 사라지는 문제를 메우려고, 2026-09-20에 만들어진 티켓 8개를 그대로 옮겨 적어 git에 남겨 둔다.
 
 **사용법**: 새 세션에서 이 작업을 이어받으면, 아래 각 티켓 블록을 그대로 `.worktrees/tickets/T-<n>.md`로 복사하고 BOARD 표를 `.worktrees/BOARD.md`에 붙여넣은 뒤(`bash scripts/wt.sh init`으로 헤더가 없으면 먼저 만든다) 평소대로 오케스트레이터 역할을 계속한다. 구현이 시작되면 이 스냅샷은 낡아진다 — 그때부터는 `.worktrees/BOARD.md`가 다시 단일 소스다.
 

@@ -2,7 +2,7 @@
 
 # 키보드 단축키 & 커맨드 팔레트 스펙
 
-- 상태: approved · 관련 ADR: - · 리서치 참조: reference-app-research.md §2.8(검색이 프리미엄), §9 기회 3·4, 과제 6
+- 상태: implemented · 관련 ADR: - · 리서치 참조: reference-app-research.md §2.8(검색이 프리미엄), §9 기회 3·4, 과제 6
 
 ## 1. 목표
 

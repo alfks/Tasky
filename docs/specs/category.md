@@ -2,7 +2,7 @@
 
 # 카테고리 스펙
 
-- 상태: approved · 관련 ADR: ADR-0002 · 리서치 참조: reference-app-research.md §1(색으로 꾸미는 성취감), §3-3, §6 팔레트, §7 Category
+- 상태: implemented · 관련 ADR: ADR-0002 · 리서치 참조: reference-app-research.md §1(색으로 꾸미는 성취감), §3-3, §6 팔레트, §7 Category
 
 ## 1. 목표
 

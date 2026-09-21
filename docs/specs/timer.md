@@ -2,7 +2,7 @@
 
 # 포커스 타이머 스펙
 
-- 상태: approved · 관련 ADR: ADR-0002 · 리서치 참조: reference-app-research.md §2.6(타이머 화면/위젯), §3-7(측정 시간이 할 일에 누적), §9 기회 6
+- 상태: implemented · 관련 ADR: ADR-0002 · 리서치 참조: reference-app-research.md §2.6(타이머 화면/위젯), §3-7(측정 시간이 할 일에 누적), §9 기회 6
 
 ## 1. 목표
 

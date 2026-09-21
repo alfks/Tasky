@@ -2,7 +2,7 @@
 
 # 데이터 백업/복원 스펙
 
-- 상태: approved · 관련 ADR: ADR-0002, ADR-0009(`DatasetRepository`·`adopt`·물리 삭제 예외) · 리서치 참조: reference-app-research.md §4(백업/동기화가 로그인 기반), §9 과제 4
+- 상태: implemented · 관련 ADR: ADR-0002, ADR-0009(`DatasetRepository`·`adopt`·물리 삭제 예외) · 리서치 참조: reference-app-research.md §4(백업/동기화가 로그인 기반), §9 과제 4
 
 ## 1. 목표
 

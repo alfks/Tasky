@@ -2,7 +2,7 @@
 
 # PWA / 오프라인 스펙
 
-- 상태: approved · 관련 ADR: ADR-0001, ADR-0002 · 리서치 참조: reference-app-research.md §4(크로스 플랫폼), §9 과제 4·7
+- 상태: implemented · 관련 ADR: ADR-0001, ADR-0002 · 리서치 참조: reference-app-research.md §4(크로스 플랫폼), §9 과제 4·7
 
 ## 1. 목표
 

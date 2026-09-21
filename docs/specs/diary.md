@@ -2,7 +2,7 @@
 
 # 다이어리 스펙
 
-- 상태: approved · 관련 ADR: - · 리서치 참조: reference-app-research.md §2.3(다이어리 화면), §4(시그니처 이모지·스티커), §7 DiaryEntry
+- 상태: implemented · 관련 ADR: - · 리서치 참조: reference-app-research.md §2.3(다이어리 화면), §4(시그니처 이모지·스티커), §7 DiaryEntry
 
 ## 1. 목표
 

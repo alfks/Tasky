@@ -2,7 +2,7 @@
 
 # 캘린더 스펙
 
-- 상태: approved · 관련 ADR: - · 리서치 참조: reference-app-research.md §2.2(캘린더 화면), §9 기회 1
+- 상태: implemented · 관련 ADR: - · 리서치 참조: reference-app-research.md §2.2(캘린더 화면), §9 기회 1
 
 ## 1. 목표
 

@@ -2,7 +2,7 @@
 
 # 통계 스펙
 
-- 상태: approved · 관련 ADR: - · 리서치 참조: reference-app-research.md §2.7(통계/리포트), §3-5, §4(프리미엄 번들)
+- 상태: implemented · 관련 ADR: - · 리서치 참조: reference-app-research.md §2.7(통계/리포트), §3-5, §4(프리미엄 번들)
 
 ## 1. 목표
 
