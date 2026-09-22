@@ -1,0 +1,124 @@
+<!-- 읽기 조건: 달력(월 보기 격자)의 크기·밀도, 데스크탑 3영역(사이드바 드로어 · 달력 컬럼 · 선택 날짜 패널) 재배치, 년·월 피커 티켓을 시작할 때. 먼저 app-shell.md §2·R1~R6, date-strip.md §2-A-2·R14~R18 을 읽는다 — 이 문서는 그 둘을 **개정**하는 설계 스펙이다. -->
+
+# 달력 레이아웃 스펙 (달력 밀도 · 3영역 재배치 · 년·월 피커)
+
+- 상태: draft · 관련 ADR: ADR-0003(토큰) · 리서치 참조: reference-app-research.md §2.1, §2.2, §6, §9 과제 3
+- 사용자 요구(2026-09-22): (1) 모바일에서 달력이 화면을 너무 먹어 아래 할 일이 안 보인다 — 달력·글자를 줄여도 된다. (2) 데스크탑에서 달력이 너무 크다 — 왼쪽 사이드바를 "다른 창"으로 빼고, 날짜를 누르면 그 날의 할 일이 **옆 패널**에 뜨게. (3) 날짜 선택 창이 촌스럽다 — **년·월만 고르는 전용 피커**를 새로.
+- 용어: 이 문서의 **"달력"** 은 `date-strip.md` §2-A-2 의 **월 보기 격자**(주 보기와 같은 셀)다. `calendar.md`(D-day) 가 아니다.
+
+## 0. 배경 — 지금 왜 답답한가 (코드에서 관측한 값)
+
+- **격자 치수가 고정값이다.** 셀 `56×56`(월)·`56×72`(주), 행·열 간격 `--space-2`(8px), 숫자 `--text-lg`(17px, 600), 요일 `--text-xs`(12px). 반응형 분기가 없다.
+- **7열 격자 폭 = 7×56 + 6×8 = 440px.** 휴대폰 CSS 폭 360/375/390 에서 셸 가터(`px-[--space-4]` 양쪽 32px)를 빼면 328~358px 이라 **격자가 뷰포트에 들어가지 않고 가로 스크롤**(`overflow-x-auto`)한다 — 오른쪽 한두 열(토·일)이 잘린다.
+- **월 보기의 고정 영역 높이(6줄 달)**: 셸 상단 줄 32 + 8 + 스트립 헤더 32 + 8 + 요일 줄 18 + 8 + 6×56 + 5×8 = **482px**(5줄 달 418px). 360×640 휴대폰(브라우저 크롬을 뺀 가시 높이 ≈ 560px)에서 **75~86%** 를 달력이 먹고 할 일 목록에 남는 것은 80~140px 이다. 주 보기는 152px 로 app-shell R3(≤160) 안이지만, **월 보기(T-69)는 R3 를 2.5~3배 넘는다** — R3 는 주 보기만 보고 쓴 규칙이다.
+- **데스크탑 1280×800 도 같다**: 월 보기 고정 영역 482px 로 메인 스크롤 영역에 남는 높이 ≈ 270px. 달력이 메인 컬럼의 위를 차지하고 할 일은 그 아래로 밀리는 구조라, 달력을 펼치는 순간 핵심 루프(날짜 → 할 일 → 체크)가 한 화면에서 끝나지 않는다 — app-shell §1 의 목표 위반이다.
+- **날짜 점프는 네이티브 `<input type="date">`** (`DateStripHeader` 의 `MonthJump`, 공용 `Popover` 안). OS·브라우저마다 생김새가 다르고 토큰(라운드·강조색·폰트)을 전혀 따르지 않는다. 일 단위 점프인데 격자가 바로 아래 있어 일 선택은 중복이다.
+- 사이드바는 이미 별도 컬럼(240px, ≥1024)이고 <1024 에서는 ☰ 드로어다(app-shell §2-B). 사용자의 "다른 창" 은 **컬럼을 없애 달력에 폭을 주라**는 뜻으로 읽는다(§1-A).
+
+## 1. 레이아웃 결정
+
+### 1-A. "사이드바를 다른 창으로" 의 해석 — **모든 폭에서 드로어가 기본, 고정(핀)은 선택**
+
+- 결정: 사이드바는 **기본적으로 ☰ 드로어**다(≥1024 포함). 사용자가 `[고정]` 을 켜면(≥1280 에서만) 지금처럼 240px 컬럼으로 선다. 드로어·`Mod+\`·`카테고리 열기` 버튼은 **이미 있는 <1024 배선을 그대로** 쓴다 — 새 오버레이를 만들지 않는다.
+- 별도 브라우저 창(`window.open`)을 **택하지 않는** 이유: (ㄱ) Zustand 상태는 창마다 따로라 카테고리 선택·삭제 되돌리기 토스트·포커스 인계가 창을 넘지 못한다(app-shell §6 "다중 창 실시간 동기화" 는 범위 밖). (ㄴ) 설치형 PWA(standalone)에서 팝업은 브라우저 창으로 튀어 나가 감성이 깨진다. (ㄷ) `Mod+\`·`카테고리 열기` 접근 경로와 R14 포커스 규약을 새로 써야 한다. 트레이드오프: 카테고리별 `2/3` 진행이 상시 보이지 않게 된다 — 대신 선택 날짜 패널의 그룹 헤더가 같은 값을 보여 준다(todo.md). 진짜 별도 창을 원하면 미결 Q1.
+
+### 1-B. 데스크탑 (≥1024) — 3영역
+
+```
+┌ ☰ Tasky   🔍 할 일 검색 또는 명령 ⌘K       [⏱ 18:42 장보기]  3/5 ┐   ← 셸 상단 줄(달력 컬럼 머리, 캔버스)
+│ ┌ 달력 컬럼 (flex-1, 440~560) ─────────┐ ┌ 선택 날짜 패널 400 ───────┐ │
+│ │ ‹  2026년 9월 ▾   [주 보기] [오늘]  › │ │ 9월 17일 (목)      ◯ 60% │ │  ← 패널 머리(고정)
+│ │  월  화  수  목  금  토  일           │ │ ● 📝 todo            2/3 │ │
+│ │  31   1   2   3   4   5   6          │ │   ○ 장보기        ⏱25분 ⋯│ │
+│ │   7   8   9  10  11  12  13          │ │   + 할 일 추가            │ │
+│ │  14  15  16 [17] 18  19  20          │ │ ● 📚 공부            1/2 │ │
+│ │  …  (칸 48×40, 간격 6 — §2)           │ │ ───── 완료 1 ─────       │ │
+│ ├ 오늘 요약 (aside, 스크롤) ───────────┤ │ 다이어리 카드             │ │
+│ │ [집중] [달성률] [카테고리별] [D-day]   │ │                          │ │  ← 목록만 스크롤
+│ └──────────────────────────────────────┘ └──────────────────────────┘ │
+└ [고정] 켜면 왼쪽에 사이드바 240 컬럼이 선다(≥1280) ─────────────────────┘
+```
+
+- R1. **영역은 셋**: (a) 사이드바 — 드로어(기본) 또는 고정 컬럼 240px(≥1280·`[고정]`), (b) **달력 컬럼** — 셸 상단 줄 + 날짜 스트립(주/월) + 그 아래 **인사이트 카드들**(`aside "오늘 요약"`, 순서는 app-shell R6 그대로), (c) **선택 날짜 패널** — `main` 랜드마크. 랜드마크는 여전히 `nav`(카테고리)·`main`·`aside`(오늘 요약) 각 1개(app-shell R1 유지). `main` 이 패널로 옮겨 가는 이유: 건너뛰기 링크(R10)·`#shell-main` 포커스 복귀·e2e 의 `main` 조회가 전부 "할 일이 있는 곳" 을 가리키고, 그것이 이제 패널이다.
+- R2. **폭**: 사이드바 240(고정일 때만) · 선택 날짜 패널 **400px 고정** · 달력 컬럼 `flex-1 min-w-[440px] max-w-[560px]` 가운데 정렬 · 컬럼 간격 `--space-6`. Tailwind: 바깥 `flex gap-[var(--space-6)]`, 패널 `w-[400px] shrink-0`, 달력 컬럼 `min-w-0 flex-1`. (app-shell R2 개정.)
+- R3. **고정 영역**: 달력 컬럼에서는 "셸 상단 줄 + 스트립 헤더 + 격자" 가 고정이고 인사이트만 스크롤한다 — 6줄 달 기준 **≤ 380px**(§2 치수로 372). 패널에서는 머리 한 줄만 고정, 목록·다이어리가 스크롤. (app-shell R3 개정 — 주 보기 ≤160 조항은 §1-C 의 1열 폭에서만 남는다.)
+- R4. **인사이트는 ≥1024 에서 컬럼(달력 아래)** 이다 — `hasInsightColumn` 이 `wide|mid` 에서 참(지금은 `wide` 만). `[접기]` 는 그대로 동작하고 접힌 상태·<1024 에서는 지금처럼 `◯ 60%` 버튼 + 오버레이(app-shell R6). 인사이트를 달력 아래에 두는 이유: 달력이 §2 치수로 ≤380px 이면 컬럼의 아래 절반이 비고, 그 자리를 새 정보로 짓지 않는다는 원칙(§2-A-2)에 따라 **이미 있는 카드**를 옮겨 채운다. 4번째 컬럼은 만들지 않는다(1280 에서 240+440+400+280 > 1280).
+- R5. **선택 날짜 패널 머리**: `M월 D일 (요일)` + 달성률 `◯ n%`(링 20px, `CompletionRing`) 한 줄. 헤더의 달성률 숫자 줄(`insightIsColumn` 갈래)은 **패널 머리로 옮기고** 셸 상단 줄에서는 뺀다 — 같은 숫자가 두 곳에 있으면 안 된다(ShellHeader 머리주석과 같은 이유). 오버레이 여는 `오늘 요약 열기` 버튼은 <1024 에서만 그대로.
+- R6. **앱 이름**: 사이드바가 컬럼이 아닐 때 `h1` 을 `sr-only` 로 숨기던 것을 **셸 상단 줄 ☰ 오른쪽에 보이게** 둔다(`text-lg font-bold`, <768 에서는 `sr-only` — 헤더 한 줄 예산 R11). 드로어가 기본이 되면 앱 이름이 화면에서 사라지고, `smoke.spec.ts` 의 `heading level 1 visible` 도 그래서 깨진다.
+- R7. 날짜를 누르면 패널이 그 날로 바뀐다 — **새 이동 로직 없음**: 패널은 `date-strip` 스토어의 `selectedDate` 를 구독할 뿐이다(§4). 날짜 변경 → 목록 100ms 규칙(date-strip R10)은 그대로 패널에 적용된다.
+
+### 1-C. 1열 (< 1024)
+
+- R8. 768~1023(`narrow`)·<768(`compact`)은 **지금 구조 그대로**(셸 상단 줄 → 스트립 → 목록 → 다이어리, 하단 `[+ 할 일]` 은 compact 만). 바뀌는 것은 §2 의 밀도 토큰뿐이다. 패널·인사이트 컬럼 없음, 인사이트는 오버레이.
+- R9. **compact 의 달력 블록 목표 높이**: 6줄 달에서 스트립 헤더 줄 포함 **≤ 280px**, 셸 상단 줄까지 고정 영역 전체 **≤ 320px** — 360×640 기준 **≤ 50%**(지금 482px, 75%). 5줄 달은 282px. 격자 폭 7×40 + 6×4 = **304px ≤ 328** 이라 360 에서 가로 스크롤이 없어진다(app-shell R11 과 같은 판정 — 실제 박스로 잰다).
+- R10. 브레이크포인트 수치(1280/1024/768)와 `layoutFor` 는 바꾸지 않는다. 바뀌는 것은 각 갈래의 **뜻**뿐이다: `wide` = 3영역 + `[고정]` 허용, `mid` = 3영역(고정 불가, 사이드바는 드로어만), `narrow`/`compact` = 1열.
+
+## 2. 타이포·밀도 스케일 — **date-strip 한정 축소, 전역 토큰은 건드리지 않는다**
+
+- R11. 전역 `--text-*`·`--space-*` 값을 낮추지 않는다. 근거: `--text-base` 는 할 일 행·입력·버튼 전부의 기준이고 `--control-hit-min`(32)·체크박스(22) 같은 터치 치수와 짝을 이룬다. 전역을 1px 만 낮춰도 theme.md §3-D 표·`narrow-viewport.spec.ts` 의 박스 실측·FEEL_REPORT 의 밀도 측정이 전부 다시 열린다. 사용자가 "글자를 줄여도 된다" 고 한 대상은 달력이며, 전역 축소는 별도 테마 티켓(미결 Q3).
+- R12. 달력 치수는 **런타임 토큰 6개**로만 정한다(`src/styles/tokens.css` 의 `:root` — `@theme` 밖, 그림자와 같은 자리. `@theme` 에 넣으면 유틸이 생겨 다른 feature 가 집어 쓰기 시작한다). 컴포넌트는 `w-[var(--cal-cell-w)]` 처럼 토큰만 참조하고 **px 리터럴 0개**(DateCell·MonthGrid 의 `56px/72px` 제거). 값과 갈래:
+
+| 토큰                 | ≥768(기본)          | <768 (`@media (max-width: 767.98px)`) | 쓰는 곳                    |
+| -------------------- | ------------------- | ------------------------------------- | -------------------------- |
+| `--cal-cell-w`       | 48px                | 40px                                  | 셀 폭 · 요일 머리글 폭     |
+| `--cal-cell-h-week`  | 64px                | 56px                                  | 주 보기 셀 높이            |
+| `--cal-cell-h-month` | 40px                | 34px                                  | 월 보기 셀 높이            |
+| `--cal-gap`          | 6px                 | 4px                                   | 행·열 간격(주·월 공통)     |
+| `--cal-day-text`     | `var(--text-md)` 15 | `var(--text-base)` 14                 | 셀 숫자(굵기 600/700 유지) |
+| `--cal-weekday-text` | `var(--text-xs)` 12 | `var(--text-xs)` 12 · `leading-none`  | 요일 글자·columnheader     |
+
+- R13. CSS 미디어 경계(767.98)는 JS `SHELL_BREAKPOINTS.narrow`(768)와 같은 값을 가리킨다 — 두 곳에 같은 숫자가 있는 것은 허용하되 tokens.css 주석이 `layout.ts` 를 가리킨다. 점(5px)·✓(10px)·`+n` 은 그대로(R7·R8 판독성).
+- R14. 이 표로 date-strip.md §2-A "셀 56×72"·§2-A-2 "셀 56×56"·**R16 (3) "72 → 56"** 을 "토큰 `--cal-cell-h-week` → `--cal-cell-h-month`" 로 개정하고, theme.md §3-D 표에 "달력 밀도 토큰(단일 소스는 calendar-layout.md §2)" 한 줄을 더한다. 컴포넌트가 같은 한 벌(R16)이라는 원칙은 그대로다.
+
+## 3. 년·월 피커 (`MonthJump` 교체)
+
+- 위치: **`src/features/date-strip/components/YearMonthPicker.tsx`**(+ 순수 계산 `lib/year-month.ts`). `components/ui/` 가 아닌 이유: 쓰는 곳이 스트립 헤더 하나이고(DIRECTORY_MAP "두 기능 이상 → ui"), `DateKey`·이동 범위(R6 1970~2099)·`shiftMonthWithinRange` 의 자르기 규칙 등 date-strip 의 lib 에 묶인다. D-day 폼·루틴·기간 통계의 `input[type=date]` 는 **일 단위 입력**이라 대상이 아니다. 두 번째 사용처가 생기면 그때 승격한다.
+- R15. **상호작용 모델 — 한 화면, 두 단계 없음**: 열면 `[‹ 이전 해] 2026 [다음 해 ›]` 줄 + `[이번 달]` + **3×4 월 격자**(1월…12월)가 함께 보인다. 년 → 월 순서를 화면 전환으로 강제하지 않는다 — 년은 스테퍼로, 월은 한 번 눌러 확정. 월을 누르면 **선택 날짜의 일(日)을 유지한 채 그 년·월로 이동**(목적지 달에 없는 날은 말일로 자른다 — date-strip R14 와 같은 규칙), 보기(주/월)는 바꾸지 않고, 팝오버는 닫힌다. `[이번 달]` 은 오늘의 년·월로(일 유지). 범위(R6) 밖 년·월은 `disabled`.
+- R16. **키보드**: 열리면 포커스는 선택된 달의 월 버튼. 월 격자는 roving tabindex — `←/→` ±1달, `↑/↓` ±3달, `Home/End` 1월/12월, **`PageUp/PageDown` ±1년**(월 유지), `Enter/Space` 확정, `Esc` 닫기(변경 없음, 앵커 복귀). 년 스테퍼 버튼은 Tab 으로 닿는다. **모달 트랩은 두지 않는다** — 공용 `Popover`(비모달, `traps:false`, Esc·바깥 클릭·앵커 복귀 내장)를 그대로 쓴다. 테마 설정 팝오버와 같은 문법이고, 대화상자로 올리면 열 때마다 뒤가 어두워져 "날짜 한 번 넘기기" 에 과하다(app-shell R7 만족).
+- R17. **접근성**: 팝오버 `aria-label="연도와 월 선택"`; 년 줄은 `role="group"` 안에 `이전 해`·`다음 해` 버튼과 `aria-live="polite"` 인 년 텍스트; 월 격자는 `role="radiogroup" aria-label="월 선택"` + `role="radio" aria-checked`(선택 달), 이름은 `"9월"`(오늘의 달이면 `"9월, 이번 달"`). 앵커 버튼의 `aria-haspopup/expanded/controls` 는 `Popover` 가 붙인다(지금과 같다). `isComposing/229` 키는 무시(app-shell R14).
+- R18. **시각 언어(토큰 안에서)**: 패널 폭 280px, `bg-surface border-border rounded-[--radius-xl] shadow-md p-[--space-3]`(오버레이 층, app-shell §2-A-1). 년 숫자 `--text-xl` 700 `tabular-nums`, 스테퍼는 `IconButton` + 헤더와 같은 `Chevron`. 월 버튼 `h-[--control-height] rounded-[--radius-lg] --text-md 600`, hover `bg-surface-2`, **선택 달 = `bg-accent text-on-accent` + 잉크 안쪽 링**(DateCell 의 선택 표현 그대로, theme R17), **이번 달 = `ring-2 ring-accent`**(오늘 셀과 같은 언어) — 달력에서 배운 표현을 피커에서 다시 만나게 한다. 강제 색 모드 갈래도 DateCell 과 같다.
+- R19. **모션**: 열림은 `Popover` 기본. 년이 바뀔 때 월 격자만 `opacity` 크로스페이드 `--motion-xfast`(120ms, date-strip R10 상한), `motion-safe:` 한정, reduced-motion 0ms. 새 애니메이션 값·새 그림자 값을 만들지 않는다.
+- R20. **스펙 충돌 정리**: `calendar.md` §1·§6 의 "새 연도 선택기를 만들지 않는다" 는 **여러 달 그리드·D-day 용 위젯**을 막던 문장이다 — 년·월 피커는 date-strip 의 `MonthJump` 를 대체하는 것이라 그 결정과 목적이 다르다. 같은 PR 에서 calendar.md §1·§6 을 "년·월 피커는 date-strip 소관(calendar-layout.md §3), D-day 폼은 `input[type=date]` 유지" 로 고치고, date-strip.md §2-A 의 "네이티브 날짜 입력 팝오버" 와 R14 의 `MonthJump` 언급을 이 절로 바꾼다.
+
+## 4. 상태·아키텍처
+
+- R21. **선택 날짜의 소유자는 지금처럼 `date-strip` 스토어**(`useDateStripStore.selectedDate/today`)다. 선택 날짜 패널(`src/features/shell/components/ShellDayPanel.tsx`)은 `ShellMain` 이 하던 것과 똑같이 구독하고 `TodoList`·`DiaryCard`·빈 상태 문구(`emptyTodosText`, R19 시제)를 **옮겨 받는다**. 피커는 `select(date)` 액션 하나만 부른다(calendar.md R6 과 같은 원칙 — 새 이동 로직 없음).
+- R22. **레이어 검사**: `shell` 은 이미 `date-strip`·`todo`·`diary`·`stats`·`calendar` 배럴을 import 한다 — 새 간선 0. `YearMonthPicker` 는 자기 feature 의 `lib`·`store` 타입 + `components/ui`(Popover·IconButton·Button) + `lib/cn` 만 쓴다. 토큰은 CSS 라 레이어 밖. `domain`·`repositories` 변경 없음.
+- R23. **새 스토어 없음.** `shell-ui-store` 의 `sidebarCollapsed`(기본 false) 를 **`sidebarPinned`(기본 false)** 로 뒤집고 localStorage 키를 `tasky.ui.v1` → **`tasky.ui.v2`** 로 올린다(v1 은 읽지 않고 버린다 — 값의 뜻이 반대라 옮기면 지금 컬럼을 쓰던 사람이 전부 고정 상태로 시작한다. 잃는 것은 인사이트 접힘 선호 하나뿐). `drawerOpen`·`insightOverlayOpen` 은 그대로. `useShellPanels` 의 반환 API(`toggleSidebar`·`openDrawer`…)는 **이름을 유지**해 `AppShell` 이 바뀌지 않게 한다(§5 병렬성).
+- R24. `sidebarIsColumn = layout === 'wide' && sidebarPinned`, `insightIsColumn = (wide|mid) && !insightCollapsed`. 컬럼이 서면 드로어를 닫는 기존 effect 그대로.
+
+## 5. 구현 분해 — 서로 겹치지 않는 `owns:`
+
+| 단위                               | 커밋 제목(초안)                                                                              | owns (정확한 경로)                                                                                                                                                                                                                                                                                                                                                                                                                   | 의존                                                                                                 |
+| ---------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| **WU-0** 스펙 개정                 | `docs(specs): 달력 레이아웃 스펙에 맞춰 app-shell·date-strip·calendar·theme 규칙을 개정한다` | `docs/specs/app-shell.md`(R1~R3·R5·R6·R10·§2-A·§2-B) · `docs/specs/date-strip.md`(§2-A·§2-A-2·R14·R16) · `docs/specs/calendar.md`(§1·§6) · `docs/specs/theme.md`(§3-D 한 줄) · `docs/specs/AGENTS.md`(표에 이 파일) · 이 파일의 `- 상태:`                                                                                                                                                                                            | 없음                                                                                                 |
+| **WU-1** 밀도 토큰                 | `feat(date-strip): 달력 칸 치수를 밀도 토큰으로 옮기고 좁은 화면에서 줄인다`                 | `src/styles/tokens.css` · `src/features/date-strip/components/DateCell.tsx` · `MonthGrid.tsx` · `DateCell.test.tsx` · `MonthGrid.test.tsx` · `DateStrip.viewport.test.tsx` · `tests/e2e/month-view.spec.ts`                                                                                                                                                                                                                          | 없음                                                                                                 |
+| **WU-2** 년·월 피커                | `feat(date-strip): 네이티브 날짜 입력을 년·월 피커로 바꾼다`                                 | `src/features/date-strip/components/YearMonthPicker.tsx`(신규, ≤200줄) · `YearMonthPicker.test.tsx` · `DateStripHeader.tsx` · `DateStripHeader.test.tsx` · `src/features/date-strip/lib/year-month.ts`(신규) · `year-month.test.ts` · `tests/e2e/year-month-picker.spec.ts`(신규)                                                                                                                                                    | 없음                                                                                                 |
+| **WU-3** 사이드바 드로어 기본·고정 | `feat(shell): 사이드바를 드로어 기본으로 바꾸고 고정 토글을 더한다`                          | `src/features/shell/lib/ui-prefs.ts` · `ui-prefs.test.ts` · `src/features/shell/store/shell-ui-store.ts` · `shell-ui-store.test.ts` · `src/features/shell/hooks/useShellPanels.ts` · `src/features/shell/components/ShellSidebar.tsx` · `ShellSidebar.test.tsx` · `ShellOverlays.tsx` · `AppShell.test.tsx`(사이드바 기본값 케이스)                                                                                                  | 없음                                                                                                 |
+| **WU-4** 3영역 재배치              | `feat(shell): 달력 컬럼과 선택 날짜 패널로 셸을 재배치한다`                                  | `src/features/shell/components/AppShell.tsx` · `AppShell.test.tsx` · `ShellMain.tsx` · `ShellMain.test.tsx` · `ShellDayPanel.tsx`(신규, ≤200줄) · `ShellDayPanel.test.tsx` · `ShellInsights.tsx` · `ShellInsights.test.tsx` · `ShellHeader.tsx` · `ShellHeader.test.tsx` · `src/features/shell/lib/layout.ts` · `layout.test.ts` · `tests/e2e/narrow-viewport.spec.ts` · `tests/e2e/smoke.spec.ts` · `docs/FEEL_REPORT.md`(§11 추가) | **WU-3 머지 후** rebase 해서 착수(둘 다 `AppShell.test.tsx` 를 건드린다 — 시점을 갈라 겹침을 없앤다) |
+
+- 병렬 가능 조합: {WU-0, WU-1, WU-2, WU-3} 동시 → WU-4. WU-1 과 WU-2 는 같은 디렉토리지만 파일이 겹치지 않는다(WU-2 는 `DateCell`·`MonthGrid` 를, WU-1 은 `DateStripHeader` 를 건드리지 않는다). 월 이름 상수는 `year-month.ts` 에 두고 `format.ts` 는 누구도 손대지 않는다.
+- 새 디렉토리 없음 → `AGENTS.md` 추가 없음. `src/features/date-strip/index.ts`·`shell/index.ts` 배럴 변경 없음.
+- WU-3 의 `[고정]` 토글 자리: 드로어 제목줄(✕ 옆, ≥1280 에서만 렌더) 과 고정 컬럼의 앱 이름 옆 `[접기]`. 레이아웃 제어는 app-shell R12 의 "진입점" 이 아니다 — WU-0 이 R12 에 그 한 줄을 붙인다.
+
+## 6. 테스트 계획
+
+- 단위(규칙 = 테스트명): `year-month.test.ts` — 일 유지·말일 자르기·범위 클램프·월 이름. `YearMonthPicker.test.tsx` — R15 확정이 `select` 를 한 번만 부른다, R16 키 맵 전부, PageUp 이 월을 유지한다, Esc 는 변경 없음 + 앵커 복귀, R17 역할·이름. `DateStripHeader.test.tsx` — `input[type=date]` 케이스 삭제, 월 표시 버튼이 피커를 연다. `DateCell/MonthGrid.test` — 클래스 문자열에 px 리터럴이 없다(토큰 참조만; 치수 자체는 jsdom 에서 못 잰다). `layout.test.ts` — `hasInsightColumn('mid') === true`. `ui-prefs.test` — v2 키·`sidebarPinned` 기본 false·v1 무시. `AppShell.test` — 1280 기본에서 `nav` 가 없고 `카테고리 열기` 가 있다, 고정을 켜면 컬럼, `main` 이 패널이고 안에 목록·다이어리가 있다, `complementary "오늘 요약"` 이 달력 컬럼 안에 있다, 헤더에 달성률 숫자가 없고 패널 머리에 있다. `ShellDayPanel.test` — `emptyTodosText` 시제 케이스를 `ShellMain.test` 에서 옮긴다.
+- E2E(역할·접근 이름만): `month-view.spec.ts` — 360 에서 격자 `grid` 의 박스가 뷰포트 안(가로 스크롤 0)이고 **고정 영역 ≤ 320px**(R9, 박스 실측). `year-month-picker.spec.ts` — 월 표시 → 피커 → `다음 해` → `3월` 확정 → 월 표시가 `2027년 3월` → 포커스가 월 표시 버튼. `smoke.spec.ts` — `heading level 1` 이 헤더 줄에 보인다(R6), 카테고리 생성이 드로어 경유로 된다. `narrow-viewport.spec.ts` — 세 폭 박스 검사 유지. `sync.spec.ts` 의 계정 블록 조작은 드로어 안에서 그대로(이미 좁은 폭 경로가 있다).
+- 감성 실측: `docs/FEEL_REPORT.md` **§11 을 더한다**(덮어쓰지 않는다) — 1280·1024·360 에서 달력 블록 높이·격자 폭·잉크 비율, 피커 패널의 명도비.
+
+## 7. 리스크
+
+- **번들 예산 — 진입 폐포 여유 1,779 B.** 피커는 2.5~3.5 KB gzip 이 예상돼 정적으로 넣으면 넘친다. WU-2 는 **`BackupLauncher` 와 같은 `lazy()` 패턴**으로 피커 청크를 첫 열림에 받고 프리캐시(23 → 24 URL)에 넣는다 — 폐포 밖이라 진입 예산에 안 들어간다. WU-4 는 코드 이동이라 ±0 근처여야 하고, WU-1 은 토큰 참조로 0 근처. 그래도 넘치면 #117 절차대로 `check-dist.mjs` 주석에 근거를 적고 올린다(단독 결정 금지). PR 마다 `pnpm build` 의 폐포 값을 본문에 적는다.
+- **E2E 셀렉터**: 유지되는 이름 — `날짜 선택`(radiogroup/grid)·`이전 달`·`다음 달`·`월 보기로 전환`·`오늘로 이동`·`카테고리 열기`·`오늘 요약 열기`·`오늘 요약`. 새 이름 — `연도와 월 선택`·`이전 해`·`다음 해`·`이번 달`·`월 선택`·`n월`. 없어지는 것 — 팝오버 안 `날짜 선택` 이름의 `textbox`(어떤 스펙도 쓰지 않는다 — 확인됨). 클래스·색 셀렉터 0건 원칙 유지.
+- **기존 규칙과의 충돌**(WU-0 이 전부 개정): app-shell R2(폭)·R3(고정 영역)·R5(키 v2·`sidebarPinned`)·R6(인사이트 컬럼 폭 조건과 위치)·R10(Tab 순서: 건너뛰기 → 상단 줄 → 스트립 → 인사이트 → 패널)·§2-A 와이어프레임·§2-B(1024~1279 갈래 설명); date-strip §2-A·§2-A-2 치수·R14·R16; calendar.md §1·§6. **R14(주 보기 시작)·R2(오늘 시작)는 건드리지 않는다** — 미결 Q4 가 결정될 때까지.
+- **접근성 회귀 후보**: 드로어가 기본이면 카테고리 목록 도달 경로가 `☰`/`Mod+\` 뿐이다 — 카테고리 선택 후 드로어 닫힘 → 패널의 그룹으로 포커스 인계(`useCategoryFocus`, 지금의 <1024 경로)가 1280 에서도 도는지 `AppShell.test` 로 고정. 선호 키 교체로 기존 사용자의 접힘 선호가 초기화된다(1회, 안내 불필요).
+- **CLAUDE.md 실측 수치**(테스트 수·E2E 수·프리캐시 URL·폐포 gzip)는 머지 후 다시 재서 갱신한다 — 옛 값을 근거로 리뷰하지 않는다.
+
+## 미결 질문 (사용자 결정 필요)
+
+- **Q1. 사이드바 "다른 창" 의 뜻** — (a) **드로어 기본 + 고정 토글**(이 문서의 결정: 배선 재사용, 상태 동기화 문제 없음 / 카테고리 진행률이 상시로 안 보임) · (b) 진짜 별도 브라우저 창(항상 보임 / 창 간 상태 동기화·PWA 팝업·포커스 규약을 새로 지어야 하고 app-shell §6 범위 밖) · (c) 컬럼은 두되 폭을 240 → 180 으로(가장 싸다 / 달력에 60px 만 돌아와 "너무 크다" 를 못 푼다).
+- **Q2. 인사이트(집중·달성률·카테고리별·D-day) 자리** — (a) **달력 아래**(결정: 카드 재사용, 4열 없음 / 달력 컬럼이 세로로 길어짐) · (b) 오버레이만(가장 단순 / 타이머·D-day 가 한 클릭 뒤로) · (c) ≥1536 에서만 4번째 컬럼(넓은 모니터 활용 / 갈래 하나 추가·테스트 배가).
+- **Q3. 모바일 전역 글자 축소** — (a) **달력만**(결정: 터치 치수·실측 유지) · (b) <768 에서 `--text-base` 14 → 13, `--text-lg` 17 → 16 도 함께(목록도 한 줄 더 보임 / theme.md 표·FEEL 실측·narrow e2e 재검, 별도 티켓).
+- **Q4. ≥1024 의 시작 보기** — (a) 지금처럼 항상 주 보기(R14 유지) · (b) 3영역에서는 **월 보기로 시작**(달력이 주인공인 배치에 맞음 / R14 "시작 상태 하나" 를 폭별로 갈라야 하고 스토어가 폭을 알게 된다).
+- **Q5. 피커에서 월을 고르면 보기 전환도 할지** — (a) **보기 유지**(결정: R14 와 일관) · (b) 월을 고르면 월 보기로 자동 전환(점프 뒤 곧바로 달 전체가 보임 / 주 보기 사용자가 매번 되돌려야 함).
