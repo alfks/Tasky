@@ -1,51 +1,27 @@
 'use client';
 
-// 메인 컬럼 (app-shell.md §2-A · §2-C 네 상태 · R1 `main` · R3 고정 영역 + 목록만 스크롤).
+// 메인 컬럼 — **<1024(narrow·compact)의 1열 경로 전용**(calendar-layout.md R8: "지금 구조 그대로").
+// ≥1024(wide·mid)에서는 `ShellDayPanel` 이 `main` 을 맡고 이 컴포넌트는 아예 마운트되지 않는다
+// (app-shell.md §2-A · §2-C 네 상태 · R1 `main` · R3 고정 영역 + 목록만 스크롤).
+//
+// 목록·다이어리·빈 상태의 실제 렌더링(`DayPanelBody`)은 `ShellDayPanel.tsx` 가 갖고 있고 여기서는
+// 가져다 쓸 뿐이다 — 두 갈래가 각자 그 본문을 그리면 한쪽만 고쳐지는 순간 다른 쪽에서 조용히
+// 되살아난다(calendar-layout.md R21).
 import type { ReactNode } from 'react';
 
 import type { Category } from '@/domain/category/category';
 import type { DateKey } from '@/domain/date/date-key';
 
 import { useCommandStore } from '@/features/command';
-import { useDateStripStore } from '@/features/date-strip';
-import { DiaryCard } from '@/features/diary';
+import { DayPanelBody, SKELETON_DELAY_MS } from '@/features/shell/components/ShellDayPanel';
 import { useDelayedFlag } from '@/features/shell/hooks/useDelayedFlag';
-import { TodoList } from '@/features/todo';
 
 import { Button } from '@/components/ui/Button';
-import { Skeleton } from '@/components/ui/Skeleton';
-
-/** §2-C 문구. 테스트가 스펙과 1:1 로 대조한다. */
-export const EMPTY_CATEGORIES_TEXT = '카테고리를 만들면 할 일을 적을 수 있어요';
-export const EMPTY_CATEGORIES_CTA = '첫 카테고리 만들기';
-/** 선택 날짜가 **오늘**일 때의 §2-C 문구. 스펙에 적힌 문장 그대로다. */
-export const EMPTY_TODOS_TEXT = '오늘은 비어 있어요. 하나 적어 볼까요?';
-/** 아직 오지 않은 날. 지금 하자고 부르지 않고 미리 적어 두자고 권한다. */
-export const EMPTY_TODOS_TEXT_FUTURE = '이날은 아직 비어 있어요. 미리 적어 둘까요?';
-/**
- * 이미 지난 날. "하나 적어 볼까요?" 는 지나간 날엔 재촉으로 읽히고, 그날 아무것도 안 한 사람을
- * 나무라는 말이 된다. 그래서 과거형으로 사실만 말하고, 뒤늦게 적는 것도 괜찮다고만 덧붙인다
- * (지난 날짜에도 투두는 그대로 추가된다 — 길을 막지는 않는다).
- */
-export const EMPTY_TODOS_TEXT_PAST = '이날은 비어 있었어요. 지금 적어 둬도 괜찮아요.';
 
 /**
- * 선택 날짜가 오늘인지 과거인지 미래인지에 따라 빈 상태 한 줄을 고른다.
- *
- * 날짜를 옮겨 다니는 것이 이 앱의 핵심 동작이라(date-strip R4), "오늘은" 을 어느 날짜에나
- * 쓰면 화면이 거짓말을 한다. `today` 는 **날짜 스트립 스토어의 것**을 그대로 받는다 —
- * 오늘 판정의 출처는 `lib/date.todayKey()` 하나이고, 자정을 넘길 때 그 값을 갱신하는 곳도
- * 거기뿐이다(R12). 여기서 시계를 다시 읽으면 판정이 두 벌이 된다.
- *
- * DateKey 는 0 을 채운 'YYYY-MM-DD' 고정 폭이라 사전순 비교가 곧 날짜순 비교다.
+ * `main` 랜드마크의 id. **단일 소스**다 — `SkipLink.tsx`(이 단위의 owns 밖)가 이 이름을 그대로
+ * import 한다. `ShellDayPanel.tsx` 는 같은 문자열을 독립적으로 갖는다(그 파일 머리주석 참고).
  */
-export function emptyTodosText(date: DateKey, today: DateKey): string {
-  if (date === today) return EMPTY_TODOS_TEXT;
-  return date > today ? EMPTY_TODOS_TEXT_FUTURE : EMPTY_TODOS_TEXT_PAST;
-}
-/** §2-C 로딩: 이 시간을 넘겨도 끝나지 않을 때만 스켈레톤을 그린다. */
-export const SKELETON_DELAY_MS = 100;
-
 export const SHELL_MAIN_ID = 'shell-main';
 /** 하단 고정 막대. 토스트가 이 위로 비켜 가야 해서 밖에서 찾을 수 있는 표식을 단다(R8). */
 export const BOTTOM_BAR_ATTR = 'data-shell-bottom-bar';
@@ -80,18 +56,6 @@ function useTodoNewHandler(): ((e: KeyboardEvent) => void) | undefined {
   return useCommandStore((state) => state.shortcuts.find((entry) => entry.id === 'todo.new')?.run);
 }
 
-/** 그룹 헤더 1 + 행 3 (§2-C 로딩). */
-function MainSkeleton() {
-  return (
-    <div aria-busy="true" className="flex flex-col gap-[var(--space-2)]">
-      <Skeleton className="h-[var(--space-6)] w-[8rem]" />
-      <Skeleton className="h-[var(--control-height)]" />
-      <Skeleton className="h-[var(--control-height)]" />
-      <Skeleton className="h-[var(--control-height)]" />
-    </div>
-  );
-}
-
 export function ShellMain({
   date,
   categories,
@@ -103,13 +67,12 @@ export function ShellMain({
   onCreateCategory,
   showBottomAdd,
 }: ShellMainProps) {
-  // 자정을 넘기면 스트립의 '오늘' 이 갱신되고(R12) 이 한 줄도 같은 박자로 따라간다.
-  const today = useDateStripStore((state) => state.today);
-  const showCategorySkeleton = useDelayedFlag(categoriesPending, SKELETON_DELAY_MS);
-  const showTodoSkeleton = useDelayedFlag(todosFirstLoading, SKELETON_DELAY_MS);
   const noCategories = !categoriesPending && categories.length === 0;
   const runTodoNew = useTodoNewHandler();
   const todoAreaLive = failureCard === null && !categoriesPending && !noCategories;
+  // `DayPanelBody` 안의 스켈레톤 표시 여부와 **같은 문턱**으로 다시 잰다(같은 훅·같은 입력이라
+  // 갈릴 수 없다) — 첫 조회가 끝나기 전에는 하단 버튼도 누를 대상이 준비되지 않은 것으로 본다.
+  const showTodoSkeleton = useDelayedFlag(todosFirstLoading, SKELETON_DELAY_MS);
   // 누를 대상이 없을 때는 비활성이다 — 눌러도 아무 일 없는 버튼을 화면의 유일한 버튼으로 두지 않는다.
   const canAddTodo = todoAreaLive && !showTodoSkeleton && runTodoNew !== undefined;
 
@@ -125,44 +88,15 @@ export function ShellMain({
       </div>
 
       <div className="mx-auto min-h-0 w-full max-w-[760px] flex-1 overflow-y-auto px-[var(--space-4)] py-[var(--space-3)]">
-        {failureCard !== null ? (
-          failureCard
-        ) : categoriesPending ? (
-          showCategorySkeleton ? (
-            <MainSkeleton />
-          ) : null
-        ) : noCategories ? (
-          // 빈 상태 안내도 **상시 카드**다(app-shell.md §2-A). 화면에 카드가 이것 하나뿐인
-          // 순간이라 오히려 여기서 면이 흐리면 앱이 아직 안 그려진 것처럼 보인다.
-          <div className="flex flex-col items-start gap-[var(--space-3)] rounded-[var(--radius-xl)] border border-border bg-surface p-[var(--space-6)] shadow-sm">
-            <p className="text-base text-text">{EMPTY_CATEGORIES_TEXT}</p>
-            <Button onClick={onCreateCategory}>{EMPTY_CATEGORIES_CTA}</Button>
-          </div>
-        ) : (
-          <>
-            {showTodoSkeleton ? <MainSkeleton /> : null}
-            {/*
-              **`TodoList` 를 스켈레톤으로 갈아 끼우지 않는다.** 그 컴포넌트가 선택 날짜를 메모리에
-              올리는 주체라(todo R17), 스켈레톤이 자리를 대신하면 언마운트 → 적재 취소 → 다시 마운트
-              → 또 적재로 진동한다(리뷰 실측: 조작 0회에 `listByDate` 8회). 그래서 **항상 마운트한
-              채** 숨기기만 한다. 화면에 한 번만 마운트한다는 규약도 그대로다.
-            */}
-            <div hidden={showTodoSkeleton}>
-              {todosEmpty ? (
-                <p className="pb-[var(--space-2)] text-base text-muted">
-                  {emptyTodosText(date, today)}
-                </p>
-              ) : null}
-              <TodoList date={date} categories={categories} />
-            </div>
-          </>
-        )}
-        {/*
-          다이어리 카드(diary.md §2 — 투두 목록 아래). 카테고리·투두와 무관한 독립 기록이라
-          `noCategories`/`categoriesPending` 과 상관없이 항상 보인다 — 저장소 자체가 죽은
-          `failureCard` 상태에서만 함께 숨는다(다이어리도 같은 컨테이너의 저장소를 쓴다).
-        */}
-        {failureCard === null ? <DiaryCard date={date} /> : null}
+        <DayPanelBody
+          date={date}
+          categories={categories}
+          categoriesPending={categoriesPending}
+          todosFirstLoading={todosFirstLoading}
+          failureCard={failureCard}
+          todosEmpty={todosEmpty}
+          onCreateCategory={onCreateCategory}
+        />
       </div>
 
       {showBottomAdd && todoAreaLive ? (

@@ -56,8 +56,11 @@ beforeEach(async () => {
   clearToasts();
   document.documentElement.style.removeProperty(TOAST_BOTTOM_RESERVE_VAR);
   useDateStripStore.setState({ selectedDate: TODAY, today: TODAY });
+  // 이 파일은 토스트 배선을 재는 것이 목적이라 사이드바는 옛 기본(컬럼)과 같은 모양으로
+  // 고정해 둔다(calendar-layout.md R23 — 실제 앱 기본값은 `false`/드로어다, AppShell.test.tsx
+  // 의 같은 주석 참고) — 아래 "되돌리기 도달 가능성" 테스트가 `nav` 컬럼을 전제한다.
   useShellUiStore.setState({
-    sidebarCollapsed: false,
+    sidebarPinned: true,
     insightCollapsed: false,
     drawerOpen: false,
     insightOverlayOpen: false,

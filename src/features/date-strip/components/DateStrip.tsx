@@ -238,9 +238,10 @@ export function DateStrip({
           role="radiogroup"
           aria-label="날짜 선택"
           onBlur={clearFocusOnLeave}
-          // 간격은 어느 폭에서도 --space-2(8px) 다 (§2-A). 넓은 화면에서 `justify-between` 으로 늘리면
-          // 조밀한 주 블록이 흩어진 버튼 7개로 읽히므로, 남는 폭은 블록을 가운데로 미는 데만 쓴다.
-          className="flex snap-x snap-mandatory gap-[var(--space-2)] overflow-x-auto overscroll-x-contain md:justify-center md:overflow-x-visible"
+          // 간격은 밀도 토큰 --cal-gap 이다(calendar-layout.md §2 R12, MonthGrid 와 같은 값). 넓은
+          // 화면에서 `justify-between` 으로 늘리면 조밀한 주 블록이 흩어진 버튼 7개로 읽히므로, 남는
+          // 폭은 블록을 가운데로 미는 데만 쓴다.
+          className="flex snap-x snap-mandatory gap-[var(--cal-gap)] overflow-x-auto overscroll-x-contain md:justify-center md:overflow-x-visible"
         >
           {days.map((day) => (
             <DateCell

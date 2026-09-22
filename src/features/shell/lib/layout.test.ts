@@ -28,15 +28,20 @@ describe('layoutFor', () => {
   });
 });
 
-describe('컬럼 판정', () => {
-  it('사이드바는 1024px 이상에서만 컬럼이다 (§2-B: 768~1023 은 드로어)', () => {
-    expect(hasSidebarColumn(layoutFor(1024))).toBe(true);
-    expect(hasSidebarColumn(layoutFor(1023))).toBe(false);
+describe('컬럼 판정 (calendar-layout.md R23~R24 — 드로어가 기본, mid 도 3영역)', () => {
+  it('사이드바는 wide + 고정일 때만 컬럼이다 — mid 는 고정을 넘겨도 드로어다(R10)', () => {
+    expect(hasSidebarColumn('wide', true)).toBe(true);
+    expect(hasSidebarColumn('wide', false)).toBe(false);
+    expect(hasSidebarColumn('mid', true)).toBe(false);
+    expect(hasSidebarColumn('narrow', true)).toBe(false);
+    expect(hasSidebarColumn('compact', true)).toBe(false);
   });
 
-  it('인사이트는 1280px 이상에서만 컬럼이다 (§2-B: 1024~1279 는 오버레이)', () => {
+  it('인사이트는 1024px 이상(wide·mid) 양쪽에서 컬럼이다 — mid 도 3영역이다(R4)', () => {
+    expect(hasInsightColumn('mid')).toBe(true);
     expect(hasInsightColumn(layoutFor(1280))).toBe(true);
-    expect(hasInsightColumn(layoutFor(1279))).toBe(false);
+    expect(hasInsightColumn(layoutFor(1024))).toBe(true);
+    expect(hasInsightColumn(layoutFor(1023))).toBe(false);
   });
 
   it('하단 고정 [+ 할 일] 은 768px 미만에서만', () => {

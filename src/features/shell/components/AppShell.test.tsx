@@ -21,7 +21,7 @@ import {
   EMPTY_CATEGORIES_TEXT,
   EMPTY_TODOS_TEXT,
   SKELETON_DELAY_MS,
-} from '@/features/shell/components/ShellMain';
+} from '@/features/shell/components/ShellDayPanel';
 import { STORAGE_FAILURE_TEXT } from '@/features/shell/components/StorageFailureCard';
 import { useShellStorageStore } from '@/features/shell/store/shell-storage-store';
 import { useShellToastStore } from '@/features/shell/store/shell-toast-store';
@@ -277,30 +277,38 @@ describe('타이머 슬롯 (리뷰 필수항목 5 · R15)', () => {
   });
 });
 
-describe('달성률 낭독 (R6 판단 — 리뷰 필수항목 7)', () => {
-  it('인사이트 컬럼이 서 있으면 링은 패널의 하나뿐이다 — 헤더는 숫자만 맡는다', async () => {
+describe('달성률 낭독 (calendar-layout.md R5·R24 재배치 후 — 리뷰 필수항목 7 갱신)', () => {
+  it('인사이트 컬럼이 서 있으면 링은 인사이트와 패널 머리 두 곳이다 — 헤더는 아무것도 맡지 않는다', async () => {
     await mount();
     const rings = screen.getAllByRole('img');
-    expect(rings).toHaveLength(1);
-    expect(rings[0]?.closest('[aria-live]:not([aria-live="off"])')).toBeNull();
-    // 헤더는 같은 값을 숫자로만 보여 준다(R3 "달성률 요약").
-    const header = screen.getByRole('main').firstElementChild;
-    expect(header?.textContent).toContain('0 / 1');
+    // 인사이트 컬럼(120px, complementary)의 큰 링 + 선택 날짜 패널 머리(20px, main)의 작은 링.
+    // 같은 숫자가 두 번째로 새는 것은 옛 "헤더 숫자 줄" 뿐이었다(R5) — 그건 이제 없다.
+    expect(rings).toHaveLength(2);
+    expect(within(screen.getByRole('complementary')).getAllByRole('img')).toHaveLength(1);
+    expect(within(screen.getByRole('main')).getAllByRole('img')).toHaveLength(1);
+    for (const ring of rings) {
+      expect(ring.closest('[aria-live]:not([aria-live="off"])')).toBeNull();
+    }
+    // 패널 머리가 R5 그대로 'M월 D일 (요일)' + 퍼센트 한 줄이다.
+    const panelHead = screen.getByRole('main').firstElementChild;
+    expect(panelHead?.textContent).toContain('9월 16일');
+    expect(panelHead?.textContent).toContain('0%');
   });
 
-  it('인사이트 컬럼이 없으면 헤더 버튼이 그 링을 맡는다', async () => {
-    setWidth(1100);
+  it('인사이트 컬럼이 없으면(<1024) 헤더 버튼이 그 링을 맡는다', async () => {
+    setWidth(900);
     await mount();
     const rings = screen.getAllByRole('img');
     expect(rings).toHaveLength(1);
     expect(rings[0]?.closest('button')).toHaveAccessibleName('오늘 요약 열기');
   });
 
-  it('달성률을 알리는 라이브 영역은 헤더의 하나뿐이다 (R6 3연속 낭독 판단)', async () => {
+  it('달성률을 알리는 라이브 영역은 셸에 하나뿐이다 (R6 3연속 낭독 판단)', async () => {
     await mount();
-    // 고정 영역(헤더)만 본다 — 목록의 순서 변경 낭독은 달성률과 다른 얘기를 하는 다른 영역이다.
-    const header = screen.getByRole('main').firstElementChild;
-    expect(header?.querySelectorAll('[aria-live="polite"]')).toHaveLength(1);
+    // 헤더는 이제 `main` 밖(달력 컬럼)에 있다 — 문구 자체로 찾는다. `getByText` 는 둘 이상
+    // 있으면 스스로 던지므로 이 단언이 곧 "하나뿐" 단언이다(목록의 순서 변경 낭독은 다른 문구다).
+    const live = screen.getByText('달성률 0%');
+    expect(live).toHaveAttribute('aria-live', 'polite');
   });
 });
 
@@ -366,22 +374,34 @@ describe('상태 (§2-C)', () => {
 });
 
 describe('붕괴 순서 (§2-B · R4)', () => {
-  it('1024~1279 에서는 인사이트가 컬럼에서 내려가고 여는 버튼이 생긴다', async () => {
-    setWidth(1100);
-    await mount();
-    expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
-    const opener = screen.getByRole('button', { name: '오늘 요약 열기' });
-    // 접힘/펼침 버튼은 상태를 말해야 한다(§5).
-    expect(opener).toHaveAttribute('aria-expanded', 'false');
-    // 닫혀 있는 동안 패널은 DOM 에 없다 — 없는 id 를 가리키지 않는다.
-    expect(opener).not.toHaveAttribute('aria-controls');
-  });
+  it(
+    '1024~1279(mid) 에서도 3영역 그대로다 — 사이드바만 드로어로 내려간다 ' +
+      '(calendar-layout.md R4·R10·R24, WU-4 가 갈아 끼운 진실)',
+    async () => {
+      setWidth(1100);
+      useShellUiStore.setState({ sidebarPinned: false });
+      await mount();
+      // 인사이트는 여전히 컬럼이다 — 옛 §2-B 는 "1024~1279 는 오버레이" 였지만 calendar-layout.md
+      // R4·R24 가 그 문턱을 `wide` 하나에서 `wide|mid` 로 올렸다.
+      expect(screen.getByRole('complementary')).toHaveAccessibleName('오늘 요약');
+      expect(screen.queryByRole('button', { name: '오늘 요약 열기' })).not.toBeInTheDocument();
+      // 선택 날짜 패널도 여전히 `main` 이다 — 목록·다이어리가 그 안에 있다.
+      expect(screen.getByRole('main')).toHaveTextContent(/할 일 추가/);
+      // 다만 `mid` 는 고정이 불가능하다(R10) — 사이드바는 드로어(☰)로만 남는다.
+      expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '카테고리 열기' })).toBeInTheDocument();
+    },
+  );
 
-  it('오버레이를 열면 그때 `aria-controls` 가 실제 패널을 가리킨다', async () => {
+  it('오버레이를 열면 그때 `aria-controls` 가 실제 패널을 가리킨다 (<1024)', async () => {
     const user = userEvent.setup();
-    setWidth(1100);
+    setWidth(900);
     await mount();
     const opener = screen.getByRole('button', { name: '오늘 요약 열기' });
+    // 접힘/펼침 버튼은 닫힌 상태를 말해야 하고(§5), 닫혀 있는 동안 패널은 DOM 에 없다 — 없는
+    // id 를 가리키지 않는다.
+    expect(opener).toHaveAttribute('aria-expanded', 'false');
+    expect(opener).not.toHaveAttribute('aria-controls');
     await user.click(opener);
     await screen.findByRole('dialog', { name: '오늘 요약' });
     expect(opener).toHaveAttribute('aria-controls', 'shell-insight-overlay');
@@ -407,7 +427,7 @@ describe('붕괴 순서 (§2-B · R4)', () => {
 
   it('오버레이는 Esc 로 닫히고 포커스가 열었던 버튼으로 돌아온다 (R7)', async () => {
     const user = userEvent.setup();
-    setWidth(1100);
+    setWidth(900);
     await mount();
     const opener = screen.getByRole('button', { name: '오늘 요약 열기' });
     await user.click(opener);
@@ -684,7 +704,7 @@ describe('타이머 칩의 "인사이트 열기" (R1)', () => {
 
   it('컬럼이 없으면 오버레이를 연다', async () => {
     const user = userEvent.setup();
-    setWidth(1100);
+    setWidth(900);
     await mount();
     act(startRunningSession);
     await user.click(await screen.findByRole('button', { name: /집중 타이머/ }));
@@ -696,7 +716,7 @@ describe('타이머 칩의 "인사이트 열기" (R1)', () => {
 describe('붕괴와 오버레이의 상호작용 (§2-B · R4)', () => {
   it('폭이 넓어지면 컬럼이 서고 오버레이는 닫힌다', async () => {
     const user = userEvent.setup();
-    setWidth(1100);
+    setWidth(900);
     await mount();
     await user.click(screen.getByRole('button', { name: '오늘 요약 열기' }));
     await screen.findByRole('dialog', { name: '오늘 요약' });

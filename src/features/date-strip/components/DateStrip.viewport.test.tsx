@@ -100,11 +100,11 @@ describe('§2-B. 좁은 화면에서는 가로 스크롤·스냅으로 선택 �
     }
   });
 
-  it('셀 간격은 어느 폭에서도 --space-2 이고 폭에 따라 벌어지지 않는다', async () => {
+  it('셀 간격은 어느 폭에서도 밀도 토큰 --cal-gap 이고 폭에 따라 벌어지지 않는다 (calendar-layout.md §2 R12, WU-4 가 MonthGrid 와 맞췄다)', async () => {
     setReducedMotion(false);
     await renderStrip();
     const group = screen.getByRole('radiogroup', { name: '날짜 선택' });
-    expect(group.className).toContain('gap-[var(--space-2)]');
+    expect(group.className).toContain('gap-[var(--cal-gap)]');
     // `justify-between` 은 남는 폭을 칸 사이로 나눠 간격을 스펙의 몇 배로 벌린다 (§2-A).
     expect(group.className).not.toContain('justify-between');
   });
