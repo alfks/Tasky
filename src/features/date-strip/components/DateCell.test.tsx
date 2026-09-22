@@ -164,6 +164,24 @@ describe('calendar-layout.md §2 R12. 칸 치수는 밀도 토큰만 참조하�
   });
 });
 
+describe('R3. 강제 색 모드에서도 "오늘(선택 아님)" 링이 테두리로 남는다(리뷰 Nit)', () => {
+  it('오늘이면서 선택되지 않았으면 forced-colors 테두리 유틸이 붙는다', () => {
+    renderCell({ isToday: true, isSelected: false });
+    expect(screen.getByRole('radio').className).toContain(
+      'forced-colors:[border-width:var(--control-selected-ring)]',
+    );
+  });
+
+  it('오늘이면서 선택됐으면(잉크 링만) 이 대체 표현은 붙지 않는다 — 선택 쪽 표현이 이미 있다', () => {
+    renderCell({ isToday: true, isSelected: true });
+    const classes = screen.getByRole('radio').className;
+    // 선택 표현 자체의 forced-colors 테두리는 그대로 있어야 한다(기존 동작).
+    expect(classes).toContain('forced-colors:[border-width:var(--control-selected-ring)]');
+    // "오늘(선택 아님)" 분기(ring-2 ring-accent)는 선택일 때 아예 켜지지 않는다.
+    expect(classes).not.toMatch(/\bring-2 ring-accent ring-inset\b/);
+  });
+});
+
 describe('R10. 모션 수치는 --motion-xfast 토큰 한 곳에만 산다', () => {
   it('셀 색 전환과 점 페이드가 같은 토큰을 참조하고 리터럴 ms 가 남아 있지 않다', () => {
     const { container } = renderCell({ summary: makeSummary() });

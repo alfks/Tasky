@@ -166,7 +166,15 @@ function YearMonthJump({
         autoFocus={false}
         className="w-[280px] rounded-[var(--radius-xl)] p-[var(--space-3)]"
       >
-        <Suspense fallback={null}>
+        <Suspense
+          fallback={
+            // 실제 패널 크기의 자리표시자(리뷰 Minor) — `null` 이면 첫 열림에서 패널 높이가
+            // ~26px 로 측정돼 Popover 의 하단 클램프 계산이 틀어진다. 치수는 R18 패널 폭 280px +
+            // 실측 내용 높이(년 줄·이번 달 버튼·4행 월 격자) 근사값이다. `aria-busy` 는 콘텐츠가
+            // 아직 채워지지 않았음을 알린다 — 시각 언어를 새로 더하지 않으므로 빈 박스로 둔다.
+            <div aria-busy="true" className="h-[220px] w-[280px]" />
+          }
+        >
           <LazyYearMonthPicker
             selectedDate={selectedDate}
             today={today}

@@ -17,8 +17,14 @@ function parts(date: DateKey): { year: number; month: number; day: number } {
   return { year, month, day };
 }
 
-/** `month` 는 1 기반. `new Date(y, m, 0)` 은 그 달의 마지막 날이다(윤년 2월 29일 포함). */
-function daysInMonth(year: number, month: number): number {
+/**
+ * `year`년 `month`월(1 기반)의 마지막 날짜(28~31, 윤년 포함). `new Date(y, m, 0)` 은 그 달의
+ * 마지막 날이다.
+ *
+ * "일 유지 + 말일 자르기" 규칙의 단일 소스는 이 파일이다 — `year-month.ts` 의 `withYearMonth`
+ * 도 이 함수와 `shiftMonthWithinRange` 를 그대로 가져다 쓴다(같은 규칙을 두 번 짜지 않는다).
+ */
+export function daysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
 }
 

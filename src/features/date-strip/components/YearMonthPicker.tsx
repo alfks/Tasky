@@ -30,6 +30,19 @@ import { isImeKey } from '@/lib/ime';
 
 const MONTHS = Array.from({ length: 12 }, (_, index) => index + 1);
 
+/**
+ * 년 텍스트 `aria-live` 낭독 디바운스(리뷰 Minor). `이전 해`/`다음 해` 연타나 PageUp/PageDown
+ * 연속 입력마다 라이브 영역이 갱신되면 `polite` 큐가 밀려, 이미 2027년에 가 있는데 스크린리더가
+ * 2020~2027 을 순서대로 계속 읽는 사고가 난다 — **시각 표시는 즉시** 바뀌고 낭독용 노드만 늦춘다.
+ *
+ * `src/features/stats/hooks/useCompletionPulse.ts#useCompletionAnnouncement` 가 같은 300ms
+ * 디바운스를 이미 구현해 뒀지만(grep 으로 확인함) feature 간 공용 React 훅의 자리가 없어
+ * (`src/features/AGENTS.md` 규칙 5-(4) — 복제 금지·에스컬레이션 대상) 가져다 쓸 수 없다. React
+ * 내장 훅만 쓰는 8줄짜리 범용 디바운스라 도메인 규칙 복제가 아니라고 보고 여기서 다시 짠다 —
+ * 값이 갈릴 여지가 있는 것은 300ms 상수뿐이고, 그마저 같은 값으로 맞춰 뒀다.
+ */
+const ANNOUNCE_DEBOUNCE_MS = 300;
+
 /** 방향키 → `moveMonthFocus` 의 이동 이름 (R16). Home/End/PageUp/PageDown 도 여기서 한 번에 잡는다. */
 const KEY_MOVE: Partial<Record<string, MonthGridMove>> = {
   ArrowLeft: 'left',
@@ -56,8 +69,16 @@ export function YearMonthPicker({ selectedDate, today, onSelect }: YearMonthPick
   const todayYm = yearMonthOf(today);
   const [focus, setFocus] = useState<YearMonth>(selectedYm);
   const [fading, setFading] = useState(false);
+  const [announcedYear, setAnnouncedYear] = useState(focus.year);
   const monthRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const lastYearRef = useRef(focus.year);
+
+  // 낭독용 년 텍스트만 300ms 디바운스한다(위 ANNOUNCE_DEBOUNCE_MS 주석) — 시각 텍스트(`focus.year`)는
+  // 그대로 즉시 갱신된다.
+  useEffect(() => {
+    const timer = window.setTimeout(() => setAnnouncedYear(focus.year), ANNOUNCE_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [focus.year]);
 
   // 열리면 포커스는 선택된 달의 월 버튼(R16) — 마운트 시 한 번뿐이다.
   useEffect(() => {
@@ -104,8 +125,10 @@ export function YearMonthPicker({ selectedDate, today, onSelect }: YearMonthPick
         >
           <Chevron direction="left" />
         </IconButton>
-        <span aria-live="polite" className="text-xl leading-none font-bold text-text tabular-nums">
-          {focus.year}
+        <span className="text-xl leading-none font-bold text-text tabular-nums">{focus.year}</span>
+        {/* 화면에 보이는 년 숫자와 달리 이 노드만 디바운스된 값을 낭독한다(ANNOUNCE_DEBOUNCE_MS). */}
+        <span aria-live="polite" className="sr-only">
+          {announcedYear}
         </span>
         <IconButton
           label="다음 해"
@@ -126,11 +149,22 @@ export function YearMonthPicker({ selectedDate, today, onSelect }: YearMonthPick
         className={cn(
           'grid grid-cols-3 gap-[var(--space-2)]',
           'motion-safe:transition-opacity motion-safe:duration-[var(--motion-xfast)] motion-safe:ease-[var(--motion-ease)]',
-          fading ? 'opacity-0' : 'opacity-100',
+          // reduced-motion 에서는 `opacity-0` 자체를 `motion-safe:` 로 가둔다 — transition 이 꺼진
+          // 채로 opacity 만 0→100 으로 튀면 페이드가 아니라 깜빡임이 된다(R19 "reduced-motion 0ms"
+          // 위반). `motion-safe:opacity-0` 는 reduced-motion 에서 아예 매치되지 않아 값이 그대로
+          // 100 에 머문다 — JS 로 감속 설정을 따로 읽을 필요가 없다.
+          fading ? 'motion-safe:opacity-0' : 'opacity-100',
         )}
       >
         {MONTHS.map((month) => {
-          const isSelectedMonth = focus.year === selectedYm.year && month === selectedYm.month;
+          // 다른 해를 보고 있을 때는 selectedYm 이 이 화면 어디에도 없어 12개 라디오가 전부
+          // aria-checked="false" 가 되는 사고가 났다(리뷰 Minor — "선택 없음" 라디오그룹은
+          // 스크린리더가 읽기 어렵다). roving tabindex 의 진입점(`focus.month`)과 일치시켜, 다른
+          // 해에서는 **포커스 중인 달**을 checked 로 둔다 — 화살표로 훑는 동안은 checked 도 같이
+          // 따라가지만(선택 아님·포커스만 이동해도 checked 가 바뀜), 적어도 그룹에 checked 가
+          // 하나도 없는 상태는 생기지 않는다. 실제 확정은 여전히 클릭/Enter(`commit`) 하나뿐이다.
+          const isSelectedMonth =
+            focus.year === selectedYm.year ? month === selectedYm.month : month === focus.month;
           const isCurrentMonth = focus.year === todayYm.year && month === todayYm.month;
           return (
             <button
@@ -156,7 +190,14 @@ export function YearMonthPicker({ selectedDate, today, onSelect }: YearMonthPick
                   : 'bg-transparent text-text hover:bg-surface-2',
                 // 이번 달 = 오늘 셀과 같은 강조색 링(R3 과 같은 언어). 선택 달과는 겹치지 않는 시각
                 // 언어로 두 상태가 같은 칸에서 만나면 채움이 이긴다(DateCell 의 오늘+선택 규칙과 같다).
-                isCurrentMonth && !isSelectedMonth && 'ring-2 ring-accent ring-inset',
+                // 강제 색 모드에서는 `ring`(box-shadow) 이 통째로 사라진다(리뷰 Nit — DateCell 의
+                // "오늘(선택 아님)" 링도 같은 상태였다, 새 회귀는 아니다) — 선택 달과 같은 방식으로
+                // 같은 굵기의 테두리를 대체 표현으로 둔다. `outline` 이 아니라 `border` 인 이유도
+                // 같다: 이 버튼은 포커스를 받고, `focus-visible` 의 outline 을 forced-colors 규칙이
+                // 덮어쓰지 않게 서로 다른 속성을 쓴다.
+                isCurrentMonth &&
+                  !isSelectedMonth &&
+                  'ring-2 ring-accent ring-inset forced-colors:[border-width:var(--control-selected-ring)] forced-colors:[border-style:solid]',
               )}
             >
               {monthLabel(month)}

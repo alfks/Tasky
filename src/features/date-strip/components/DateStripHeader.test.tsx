@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -47,6 +47,23 @@ describe('R11. 월 표시는 YYYY년 M월 이고 이동 버튼에는 이름이 �
 // YearMonthPicker.test.tsx 가 자기 완결적 하네스로 덮는다(Popover 는 shared ui 라 새 간선이 아니다).
 // 여기서는 "월 표시 버튼이 피커를 연다" 는 연결부만 확인한다(calendar-layout.md §6).
 describe('calendar-layout.md §3. 월 표시를 누르면 년·월 피커가 열린다(네이티브 날짜 입력 교체)', () => {
+  // 이 파일에서 가장 먼저 열어야 한다 — `LazyYearMonthPicker` 는 모듈 스코프의 `lazy()` 싱글턴이라
+  // 한 번 풀린 동적 import 는 이 파일이 도는 내내(이후 it 전부) 캐시된 채 남는다. 다른 테스트가
+  // 먼저 열면 이 테스트에 닿을 즈음엔 이미 청크가 있어 fallback(자리표시자)이 그려질 틈이 없다.
+  it('청크가 로드되는 동안 실제 패널 크기의 자리표시자가 보인다(리뷰 Minor — 레이아웃 붕괴 방지)', async () => {
+    renderHeader();
+
+    // `fireEvent.click`(동기)으로 연다 — `user.click`(비동기)은 내부적으로 매크로태스크까지
+    // 흘려보내 지연 청크의 동적 import 가 이미 풀린 뒤에야 단언에 닿을 수 있다. 여기서는
+    // 아직 청크가 없는 바로 그 순간(fallback)을 잡아야 한다.
+    fireEvent.click(monthButton());
+    const placeholder = document.querySelector('[aria-busy="true"]');
+    expect(placeholder).not.toBeNull();
+    expect(placeholder).toHaveClass('w-[280px]', 'h-[220px]');
+
+    expect(await screen.findByRole('radiogroup', { name: '월 선택' })).toBeInTheDocument();
+  });
+
   it('클릭하면 년·월 피커(월 선택 라디오그룹)가 열린다', async () => {
     const user = userEvent.setup();
     renderHeader();

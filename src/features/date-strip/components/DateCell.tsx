@@ -154,7 +154,13 @@ export function DateCell({
           : 'bg-transparent text-text hover:enabled:bg-surface-2',
         // 오늘이면서 선택이면 강조색 링을 걷어내고 잉크 링만 남긴다 (R3 · theme.md §3-G R20).
         // "오늘"(강조색 링, 채움 없음)과 "선택"(채움 + 잉크 링)은 색도 채움 여부도 달라 겹치지 않는다.
-        isToday && !isSelected && 'ring-2 ring-accent ring-inset',
+        // 강제 색 모드에서는 `ring`(box-shadow)이 통째로 사라져 "오늘" 표시가 안 보인다(리뷰 Nit —
+        // 새 회귀는 아니다, 위 `isSelected` 분기와 같은 상태였다). 같은 방식으로 테두리를 대체
+        // 표현으로 둔다 — `outline` 이 아니라 `border` 인 이유는 위 주석과 같다(포커스 outline 과
+        // 겹치지 않아야 한다).
+        isToday &&
+          !isSelected &&
+          'ring-2 ring-accent ring-inset forced-colors:[border-width:var(--control-selected-ring)] forced-colors:[border-style:solid]',
         isDropTarget && 'border-2 border-dashed border-accent',
       )}
     >

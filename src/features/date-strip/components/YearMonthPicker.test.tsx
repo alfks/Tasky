@@ -3,9 +3,9 @@
 // 배선(Popover + 앵커 버튼)을 여기서 직접 세워 R16 의 Esc·포커스 복귀까지 자기 완결적으로 검증한다.
 import { useRef, useState } from 'react';
 
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DateKey } from '@/domain/date/date-key';
 
@@ -48,11 +48,17 @@ function renderPicker(
     );
   }
 
-  render(<Harness />);
-  return { onSelect };
+  const { container } = render(<Harness />);
+  return { onSelect, container };
 }
 
-const yearText = () => screen.getByText(/^\d{4}$/);
+/** 화면에 보이는 년 숫자(즉시 갱신) — sr-only 디바운스 노드와는 별개다. */
+const yearText = () => screen.getByText(/^\d{4}$/, { selector: 'span:not([aria-live])' });
+/**
+ * 디바운스된 낭독용 라이브 영역(§5 폭주 방지). `Popover` 가 `createPortal` 로 그리므로 RTL
+ * `render()` 의 `container` 밖(`document.body`)에 붙는다 — `document` 전체에서 찾는다.
+ */
+const liveYearText = () => document.querySelector('[aria-live="polite"]');
 const monthRadio = (name: string | RegExp) => screen.getByRole('radio', { name });
 
 describe('R16. 열리면 포커스는 선택된 달의 월 버튼이다', () => {
@@ -68,10 +74,13 @@ describe('R16. 열리면 포커스는 선택된 달의 월 버튼이다', () => 
 });
 
 describe('R17. 역할과 접근 이름', () => {
-  it('팝오버는 "연도와 월 선택", 년 텍스트는 aria-live=polite, 월 격자는 "월 선택" 라디오그룹이다', () => {
+  it('팝오버는 "연도와 월 선택", 낭독용 년 텍스트는 aria-live=polite, 월 격자는 "월 선택" 라디오그룹이다', () => {
     renderPicker();
     expect(screen.getByRole('group', { name: '연도와 월 선택' })).toBeInTheDocument();
-    expect(yearText()).toHaveAttribute('aria-live', 'polite');
+    // 화면에 보이는 년 텍스트 자체에는 aria-live 가 없다 — 낭독 폭주 방지(§5)를 위해
+    // 디바운스되는 노드가 따로 있다(아래 describe).
+    expect(yearText()).not.toHaveAttribute('aria-live');
+    expect(liveYearText()).not.toBeNull();
     expect(screen.getByRole('radiogroup', { name: '월 선택' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '이전 해' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '다음 해' })).toBeInTheDocument();
@@ -87,6 +96,89 @@ describe('R17. 역할과 접근 이름', () => {
     renderPicker({ selectedDate: '1970-05-10', today: '1970-05-10' });
     expect(screen.getByRole('button', { name: '이전 해' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '다음 해' })).toBeEnabled();
+  });
+
+  it('강제 색 모드에서도 "이번 달" 링이 테두리로 남는다(리뷰 Nit)', () => {
+    // today 와 selectedDate 를 다른 달로 둬 "이번 달" 표현이 선택 표현과 겹치지 않게 한다.
+    renderPicker({ selectedDate: '2026-03-15', today: '2026-09-17' });
+    expect(monthRadio('9월, 이번 달').className).toContain(
+      'forced-colors:[border-width:var(--control-selected-ring)]',
+    );
+  });
+});
+
+describe('다른 해를 보고 있으면 포커스 중인 달이 checked 다(리뷰 Minor — "선택 없음" 라디오그룹 방지)', () => {
+  it('[다음 해] 를 눌러도 라디오 하나는 항상 aria-checked=true 다', async () => {
+    const user = userEvent.setup();
+    renderPicker({ selectedDate: '2026-09-17', today: '2026-09-17' });
+
+    await user.click(screen.getByRole('button', { name: '다음 해' }));
+
+    const checked = screen
+      .getAllByRole('radio')
+      .filter((radio) => radio.getAttribute('aria-checked') === 'true');
+    expect(checked).toHaveLength(1);
+    // 실제 선택(selectedDate)의 달(9월)과 여전히 같다 — 년만 바뀌고 포커스 중인 달은 그대로다.
+    expect(checked[0]).toHaveAccessibleName('9월');
+  });
+
+  it('다른 해에서 화살표로 다른 달에 포커스하면 checked 도 그 달로 옮겨간다', async () => {
+    const user = userEvent.setup();
+    renderPicker({ selectedDate: '2026-09-17', today: '2020-01-01' });
+
+    // 년 스테퍼 버튼 클릭은 DOM 포커스를 그 버튼으로 옮긴다 — 이어지는 방향키가 월 격자에
+    // 닿으려면 먼저 라디오로 포커스를 되돌려야 한다(PageUp/PageDown 처럼 라디오 위에서 직접
+    // 년을 바꾸는 경로는 포커스가 그대로라 이 단계가 필요 없다).
+    await user.click(screen.getByRole('button', { name: '다음 해' }));
+    monthRadio('9월').focus();
+    await user.keyboard('{ArrowRight}');
+
+    expect(monthRadio('10월')).toHaveAttribute('aria-checked', 'true');
+    expect(monthRadio('9월')).toHaveAttribute('aria-checked', 'false');
+  });
+});
+
+describe('년 텍스트 aria-live 는 300ms 디바운스된다(리뷰 Minor — polite 큐 폭주 방지)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('시각 텍스트는 즉시 바뀌지만 낭독 영역은 300ms 뒤에야 반영된다', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderPicker({ selectedDate: '2026-09-17', today: '2026-09-17' });
+
+    await user.click(screen.getByRole('button', { name: '다음 해' }));
+
+    expect(yearText()).toHaveTextContent('2027');
+    expect(liveYearText()).toHaveTextContent('2026');
+
+    // rAF(페이드 종료)도 이 타이머 큐에 걸리므로 act() 로 감싼다 — 그러지 않으면 advance 중에
+    // 일어나는 setFading(false) 가 "act 밖 갱신" 경고를 낸다.
+    await act(() => vi.advanceTimersByTimeAsync(300));
+
+    expect(liveYearText()).toHaveTextContent('2027');
+  });
+
+  it('연타(이전 해 연속 클릭)는 낭독을 한 번으로 모은다', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderPicker({ selectedDate: '2026-09-17', today: '2026-09-17' });
+
+    await user.click(screen.getByRole('button', { name: '이전 해' }));
+    await act(() => vi.advanceTimersByTimeAsync(200));
+    await user.click(screen.getByRole('button', { name: '이전 해' }));
+    await act(() => vi.advanceTimersByTimeAsync(200));
+
+    // 첫 클릭 뒤 300ms 가 지났어도 두 번째 클릭이 타이머를 다시 미뤄 아직 원래 값이다.
+    expect(liveYearText()).toHaveTextContent('2026');
+
+    await act(() => vi.advanceTimersByTimeAsync(100));
+
+    // 두 번 연속으로 [이전 해] 를 눌렀으니(2026 → 2025 → 2024) 마지막 값 하나만 낭독된다.
+    expect(liveYearText()).toHaveTextContent('2024');
   });
 });
 
@@ -178,6 +270,20 @@ describe('R15. 확정은 select 를 한 번만 부르고(일 유지) 팝오버�
     await user.click(screen.getByRole('button', { name: '이번 달' }));
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith('2026-09-15');
+  });
+});
+
+describe('R19. reduced-motion 에서 크로스페이드가 깜빡임이 되지 않는다(리뷰 Minor)', () => {
+  it('연이 바뀌는 순간 opacity-0 는 motion-safe: 로만 걸린다(리터럴 opacity-0 는 reduced-motion 에서도 적용돼 깜빡임이 된다)', async () => {
+    const user = userEvent.setup();
+    renderPicker({ selectedDate: '2026-09-17', today: '2026-09-17' });
+    const grid = screen.getByRole('radiogroup', { name: '월 선택' });
+
+    await user.click(screen.getByRole('button', { name: '다음 해' }));
+
+    const classes = grid.className.split(' ');
+    expect(classes).toContain('motion-safe:opacity-0');
+    expect(classes).not.toContain('opacity-0');
   });
 });
 

@@ -1,16 +1,21 @@
 // 년·월 피커의 순수 계산 (calendar-layout.md §3 R15·R16). React·DOM 을 참조하지 않는다.
 //
-// 이동 가능 범위는 date-strip 의 MIN_DATE_KEY~MAX_DATE_KEY(1970-01-01~2099-12-31, week.ts)와
-// 같은 해 범위다 — 그 범위가 딱 연 단위로 끊기므로(1월~12월 전부 유효) 개별 월 버튼을 비활성으로
-// 만들 일은 없고, 범위 끝은 **년 스테퍼**(이전 해/다음 해)에서만 갈린다(calendar-layout.md R15).
+// 이동 가능 범위는 date-strip 의 MIN_DATE_KEY~MAX_DATE_KEY(week.ts, R6 의 단일 소스)와 같은 해
+// 범위다 — 숫자를 다시 적지 않고 그 상수에서 뽑는다(범위가 바뀌어도 여기가 조용히 갈리지 않는다).
+// 범위가 딱 연 단위로 끊기므로(1월~12월 전부 유효) 개별 월 버튼을 비활성으로 만들 일은 없고,
+// 범위 끝은 **년 스테퍼**(이전 해/다음 해)에서만 갈린다(calendar-layout.md R15).
+//
+// "일 유지 + 말일 자르기" 규칙은 여기서 다시 짜지 않는다 — `month.ts` 가 그 규칙의 단일 소스라
+// `withYearMonth` 는 그 파일의 `daysInMonth`·`shiftMonthWithinRange` 위에 얹는다.
 import type { DateKey } from '@/domain/date/date-key';
 
-import { fromDateKey, toDateKey } from '@/lib/date';
+import { daysInMonth, shiftMonthWithinRange } from '@/features/date-strip/lib/month';
+import { MAX_DATE_KEY, MIN_DATE_KEY } from '@/features/date-strip/lib/week';
 
-/** 이동 가능 범위의 첫 해 (date-strip.md R6 의 MIN_DATE_KEY 와 같다). */
-export const MIN_YEAR = 1970;
-/** 이동 가능 범위의 마지막 해 (date-strip.md R6 의 MAX_DATE_KEY 와 같다). */
-export const MAX_YEAR = 2099;
+/** 이동 가능 범위의 첫 해 (week.ts 의 `MIN_DATE_KEY` 에서 뽑는다 — 숫자를 복제하지 않는다). */
+export const MIN_YEAR = Number(MIN_DATE_KEY.slice(0, 4));
+/** 이동 가능 범위의 마지막 해 (week.ts 의 `MAX_DATE_KEY` 에서 뽑는다). */
+export const MAX_YEAR = Number(MAX_DATE_KEY.slice(0, 4));
 
 /** 년·월 한 쌍. `month` 은 1(1월)~12(12월) — Date 의 0-based 월 인덱스와 다르다. */
 export type YearMonth = { year: number; month: number };
@@ -26,19 +31,23 @@ export function monthLabel(month: number): string {
   return `${month}월`;
 }
 
-/** `year`년 `month`월(1-based)의 마지막 날짜(28~31). 윤년을 반영한다. */
-export function daysInMonth(year: number, month: number): number {
-  // Date 의 월은 0-based 라 `month`(1-based)를 그대로 넘기면 "다음 달의 0일" = 이번 달 말일이 된다.
-  return new Date(year, month, 0).getDate();
-}
+/** `year`년 `month`월(1-based)의 마지막 날짜(28~31, 윤년 포함). 단일 소스는 `month.ts`. */
+export { daysInMonth };
 
 /**
  * `date` 의 일(日)을 유지한 채 `target` 년·월로 옮긴다 (R15). 목적지 달에 없는 날(1/31 → 2월)은
- * 그 달의 마지막 날로 자른다 — 달을 건너뛰지 않는다(date-strip.md R14 와 같은 규칙).
+ * 그 달의 마지막 날로 자른다 — 달을 건너뛰지 않는다.
+ *
+ * 자르는 규칙 자체는 `month.ts` 의 `shiftMonthWithinRange`(date-strip.md R14 의 ‹/› 이동과 같은
+ * 규칙)를 그대로 쓴다 — "몇 달을 이동하는가" 만 여기서 계산해 넘긴다. `target` 은 항상 연 스테퍼
+ * (`shiftYear`)로 [MIN_YEAR, MAX_YEAR] 안으로 당겨진 값이라 결과는 항상 이동 가능 범위 안이고,
+ * `shiftMonthWithinRange` 가 `undefined` 를 낼 일은 없다 — 그래도 타입상 `undefined` 가 나오면
+ * (호출 계약이 깨진 경우) 원래 날짜를 그대로 돌려주는 안전망을 둔다.
  */
 export function withYearMonth(date: DateKey, target: YearMonth): DateKey {
-  const day = Math.min(fromDateKey(date).getDate(), daysInMonth(target.year, target.month));
-  return toDateKey(new Date(target.year, target.month - 1, day));
+  const current = yearMonthOf(date);
+  const months = (target.year - current.year) * 12 + (target.month - current.month);
+  return shiftMonthWithinRange(date, months) ?? date;
 }
 
 /** 해 스테퍼 한 걸음(`delta`=±1, R15·R16 PageUp/PageDown). 월은 그대로 두고 해만 범위 안으로 당긴다. */
