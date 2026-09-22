@@ -21,10 +21,13 @@ import {
 } from '@/features/category';
 import { INSIGHT_OVERLAY_ID } from '@/features/shell/components/ShellHeader';
 import { ShellInsights } from '@/features/shell/components/ShellInsights';
-import { ShellSidebar } from '@/features/shell/components/ShellSidebar';
+import { SIDEBAR_PIN_TOGGLE_ATTR, ShellSidebar } from '@/features/shell/components/ShellSidebar';
+import { useShellLayout } from '@/features/shell/hooks/useShellLayout';
 import { APP_NAME } from '@/features/shell/lib/title';
+import { useShellUiStore } from '@/features/shell/store/shell-ui-store';
 import { AccountSyncOverlays } from '@/features/sync';
 
+import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 
 type ShellOverlaysProps = {
@@ -60,22 +63,68 @@ export function ShellOverlays({
   onSelectCategory,
   exportBackup,
 }: ShellOverlaysProps) {
+  // 사이드바가 이제 모든 폭의 기본 경로다(calendar-layout.md §1-A) — 이 드로어는 `wide` 를 포함해
+  // 늘 열릴 수 있다. `[고정]` 은 그 중 `wide`(≥1280)에서만 뜻이 있다(고정 컬럼은 `wide` 전용,
+  // R24) — 그래서 폭을 직접 재서 그 경계에서만 제목줄에 버튼을 더한다.
+  const layout = useShellLayout();
+  const sidebarPinned = useShellUiStore((s) => s.sidebarPinned);
+  const toggleSidebarPinned = useShellUiStore((s) => s.toggleSidebarPinned);
+
+  const drawerTitle =
+    layout === 'wide' ? (
+      <span className="flex items-center gap-[var(--space-2)]">
+        {APP_NAME}
+        <Button
+          {...{ [SIDEBAR_PIN_TOGGLE_ATTR]: '' }}
+          variant="ghost"
+          size="sm"
+          aria-pressed={sidebarPinned}
+          onClick={toggleSidebarPinned}
+        >
+          사이드바 {sidebarPinned ? '고정 해제' : '고정'}
+        </Button>
+      </span>
+    ) : (
+      APP_NAME
+    );
+
   return (
     <>
       {/* 드로어는 `Dialog` 위에 짓는다 — Esc·바깥 클릭·✕·포커스 트랩·포커스 복귀가 전부 거기 있다(R7). */}
       <Dialog
         open={drawerOpen}
         onClose={onDrawerClose}
-        title={APP_NAME}
+        title={drawerTitle}
         closeLabel="카테고리 닫기"
         className="mr-auto h-full max-w-[300px] self-stretch"
+        /*
+         * `[고정]` 을 눌러 고정을 켜면 이 드로어는 (열었던 `카테고리 열기` 버튼이 사라지는 것과
+         * 함께) 스스로 닫힌다(`useShellPanels` 의 "컬럼이 서면 드로어를 닫는다" 효과) — 즉 이
+         * onClose 호출 없이 `open` 이 바뀌는 경로다. 그때 `Dialog` 기본 복귀 대상(열었던 요소)은
+         * 이미 DOM 에서 사라져 있으므로, 방금 선 컬럼의 같은 표식(`SIDEBAR_PIN_TOGGLE_ATTR`)을
+         * 대체 대상으로 준다 — 없으면 포커스가 `<body>` 로 떨어진다(app-shell R14).
+         */
+        returnFocus={() => document.querySelector<HTMLElement>(`[${SIDEBAR_PIN_TOGGLE_ATTR}]`)}
       >
         <ShellSidebar
           showTitle={false}
           categories={categories}
           onSelectCategory={(id) => {
             onDrawerClose();
-            onSelectCategory(id);
+            /*
+             * `Dialog` 는 닫힐 때 **열었던 요소(카테고리 열기)로 무조건 되돌린다** — `returnFocus`
+             * 는 그 요소가 사라졌을 때만 묻는 대체 대상이라(app-shell R14 규약, `Dialog.tsx`
+             * `restoreFocus`), 열었던 요소가 아직 있으면 이 컴포넌트가 지금 여기서 목록으로 옮긴
+             * 포커스를 **그 복귀 효과가 나중에 덮어쓴다**(실측: 되돌림 효과가 `useEffect` 로,
+             * `onSelectCategory` 보다 한 프레임 늦게 돈다). 그래서 인계를 그 효과 **다음
+             * 프레임**으로 미룬다 — `useShellPanels` 의 `handoffFocus` 와 같은 타이밍 규약이다
+             * (`src/lib/focus-fallback.ts` 머리주석 "다음 프레임에야 DOM 에 있다").
+             */
+            if (typeof requestAnimationFrame === 'function') {
+              requestAnimationFrame(() => onSelectCategory(id));
+            } else {
+              onSelectCategory(id);
+            }
           }}
           onRemoveCategory={onRemoveCategory}
           exportBackup={exportBackup}

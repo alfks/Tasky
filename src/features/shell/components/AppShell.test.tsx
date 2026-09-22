@@ -68,8 +68,13 @@ async function seed(
 beforeEach(async () => {
   setWidth(1440);
   useDateStripStore.setState({ selectedDate: TODAY, today: TODAY });
+  // `sidebarPinned: true` 는 **이 파일의 기존 테스트 대다수가 기대하는 고정값**이다 — 그 테스트들은
+  // "1440(wide)이면 `nav` 가 컬럼으로 선다" 는 이 티켓 이전의 가정을 그대로 물려받았고, 그 가정을
+  // 다시 참으로 만드는 것이 `sidebarPinned: true` 다. **앱의 실제 기본값은 `false`(드로어)** 다
+  // (calendar-layout.md R23) — 그 기본값 자체를 재는 테스트는 아래 "사이드바 기본값" describe 가
+  // 이 자리에서 명시적으로 `sidebarPinned: false` 로 되돌려 따로 검증한다.
   useShellUiStore.setState({
-    sidebarCollapsed: false,
+    sidebarPinned: true,
     insightCollapsed: false,
     drawerOpen: false,
     insightOverlayOpen: false,
@@ -424,10 +429,14 @@ describe('적재 배선 (Blocker: 1024px 미만·사이드바 접힘에서 앱�
   it.each([
     ['폭 900(드로어)', 900, false],
     ['폭 400(드로어)', 400, false],
-    ['폭 1440 + 사이드바 접힘(새로고침해도 남는 상태)', 1440, true],
-  ])('%s 에서도 카테고리를 읽고 투두 영역을 그린다', async (_label, width, collapsed) => {
+    [
+      '폭 1440 + 사이드바 고정 안 함(새로고침해도 남는 상태, calendar-layout.md R23 기본값)',
+      1440,
+      false,
+    ],
+  ])('%s 에서도 카테고리를 읽고 투두 영역을 그린다', async (_label, width, pinned) => {
     setWidth(width);
-    useShellUiStore.setState({ sidebarCollapsed: collapsed });
+    useShellUiStore.setState({ sidebarPinned: pinned });
     useCategoryStore.setState({ byId: {}, status: 'idle', error: null });
     await mount();
     await waitFor(() => expect(useCategoryStore.getState().status).toBe('ready'));
@@ -840,4 +849,47 @@ describe('통계 화면 배선 (T-85, stats.md "메인 컬럼 전체 대체")', 
 
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('main')));
   });
+});
+
+describe('사이드바 기본값 (calendar-layout.md §1-A · R23~R24 — WU-3)', () => {
+  // 이 파일의 공용 `beforeEach` 는 나머지 테스트를 지키려고 `sidebarPinned: true` 로 시작한다(그
+  // 주석 참고). 여기서는 **실제 기본값**(고정하지 않음 — 드로어가 기본)을 명시적으로 되돌려 잰다.
+  beforeEach(() => {
+    useShellUiStore.setState({ sidebarPinned: false });
+  });
+
+  it('1280(wide) 기본에서는 nav 컬럼이 없고 `카테고리 열기` 가 있다', async () => {
+    await mount();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '카테고리 열기' })).toBeInTheDocument();
+  });
+
+  it('고정을 켜면 nav 컬럼이 선다', async () => {
+    useShellUiStore.setState({ sidebarPinned: true });
+    await mount();
+    expect(screen.getByRole('navigation')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '카테고리 열기' })).not.toBeInTheDocument();
+  });
+
+  it(
+    '드로어로 카테고리를 선택해도 본문 그룹으로 포커스가 인계된다 — <1024 경로가 1280 에서도 돈다 ' +
+      '(useCategoryFocus, app-shell R14)',
+    async () => {
+      const user = userEvent.setup();
+      await mount();
+
+      await user.click(screen.getByRole('button', { name: '카테고리 열기' }));
+      // 1280(wide)의 드로어 제목줄에는 `[고정]` 도 있어 접근 이름이 "Tasky 사이드바 고정" 이다
+      // (calendar-layout.md §5 "WU-3 의 [고정] 토글 자리") — 이 테스트의 관심사는 카테고리 선택
+      // 뒤 포커스 인계이지 제목 문구가 아니라 느슨하게 잡는다.
+      const drawer = await screen.findByRole('dialog', { name: /Tasky/ });
+      await user.click(within(drawer).getByRole('button', { name: '공부 0/1' }));
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      const group = screen.getByRole('region', { name: '공부' });
+      await waitFor(() =>
+        expect(document.activeElement).toBe(within(group).getByRole('list', { hidden: true })),
+      );
+    },
+  );
 });

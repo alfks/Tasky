@@ -12,6 +12,7 @@ import { getRepositories, setRepositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
 import { ShellSidebar } from '@/features/shell/components/ShellSidebar';
+import { useShellUiStore } from '@/features/shell/store/shell-ui-store';
 import { useTodoStore } from '@/features/todo';
 import { makeCategory } from '@/test/fixtures/category';
 import { makeRoutine } from '@/test/fixtures/routine';
@@ -44,6 +45,12 @@ beforeEach(() => {
     writeRevision: 0,
     routines: {},
     routineStatus: 'idle',
+  });
+  useShellUiStore.setState({
+    sidebarPinned: false,
+    insightCollapsed: false,
+    drawerOpen: false,
+    insightOverlayOpen: false,
   });
   clearToasts();
 });
@@ -121,4 +128,52 @@ describe('"루틴" 진입점', () => {
       expect(document.activeElement).not.toBe(document.body);
     },
   );
+});
+
+describe('사이드바 고정 토글 (calendar-layout.md §1-A · R23~R24)', () => {
+  it('showTitle 이 아닐 때(드로어 안)는 렌더되지 않는다', () => {
+    render(
+      <ShellSidebar
+        showTitle={false}
+        categories={[운동]}
+        onSelectCategory={vi.fn()}
+        onRemoveCategory={vi.fn()}
+        exportBackup={exportBackup}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /사이드바 고정/ })).not.toBeInTheDocument();
+  });
+
+  it('고정돼 있지 않으면 "사이드바 고정" · aria-pressed=false', () => {
+    render(
+      <ShellSidebar
+        showTitle
+        categories={[운동]}
+        onSelectCategory={vi.fn()}
+        onRemoveCategory={vi.fn()}
+        exportBackup={exportBackup}
+      />,
+    );
+    const toggle = screen.getByRole('button', { name: '사이드바 고정' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('고정돼 있으면 "사이드바 고정 해제" · aria-pressed=true, 누르면 store 를 뒤집는다', async () => {
+    useShellUiStore.setState({ sidebarPinned: true });
+    const user = userEvent.setup();
+    render(
+      <ShellSidebar
+        showTitle
+        categories={[운동]}
+        onSelectCategory={vi.fn()}
+        onRemoveCategory={vi.fn()}
+        exportBackup={exportBackup}
+      />,
+    );
+    const toggle = screen.getByRole('button', { name: '사이드바 고정 해제' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(toggle);
+    expect(useShellUiStore.getState().sidebarPinned).toBe(false);
+  });
 });
