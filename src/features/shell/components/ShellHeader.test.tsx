@@ -11,7 +11,7 @@
 // 아래쪽 T-56 절도 같은 질문을 한다: **"쓰기 뒤에 날짜 셀이 실제로 다시 읽히는가"**. 그 배선이
 // 여기 있는 이유는 `date-strip` 이 feature 그래프의 리프라 `todo`·`backup` 을 스스로 구독할 수 없고
 // (`import/no-cycle`) 셸이 세 화살표를 모두 가진 유일한 합성 지점이기 때문이다.
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -39,13 +39,20 @@ const SUMMARY: CompletionSummary = { done: 3, total: 5, rate: 0.6, percent: 60 }
 /** 입구의 접근 이름 — 좁은 폭에서도 같아야 한다(문구는 `sr-only` 로 내려갈 뿐 사라지지 않는다). */
 const ENTRY_NAME = /할 일 검색 또는 명령/;
 
-function Harness({ insightIsColumn = true }: { insightIsColumn?: boolean }) {
+function Harness({
+  insightIsColumn = true,
+  dayPanelVisible = false,
+}: {
+  insightIsColumn?: boolean;
+  dayPanelVisible?: boolean;
+}) {
   return (
     <>
       <ShellHeader
         summary={SUMMARY}
         sidebarIsColumn
         insightIsColumn={insightIsColumn}
+        dayPanelVisible={dayPanelVisible}
         insightOverlayOpen={false}
         onOpenDrawer={vi.fn()}
         onOpenInsight={vi.fn()}
@@ -311,5 +318,21 @@ describe('ShellHeader — 무기한 루틴 지연 생성 배선 (routine.md R6)'
     await user.click(screen.getByRole('button', { name: '이전 주' }));
 
     await waitFor(() => expect(cellName()).toContain('할 일 1개 중 0개 완료'), { timeout: 2000 });
+  });
+});
+
+describe('달성률 열기 버튼의 링 중복 방지 (calendar-layout.md R5 · 리뷰 Minor)', () => {
+  it('3영역이지만 인사이트를 접었으면(패널 머리에 이미 링이 있다) 이 버튼은 링 없이 텍스트만이다', () => {
+    render(<Harness insightIsColumn={false} dayPanelVisible />);
+    const opener = screen.getByRole('button', { name: '오늘 요약 열기' });
+    expect(within(opener).queryByRole('img')).toBeNull();
+    expect(opener).toHaveTextContent('오늘 요약');
+  });
+
+  it('1열(패널이 아예 없는 폭)에서는 원래대로 링 + 퍼센트다', () => {
+    render(<Harness insightIsColumn={false} dayPanelVisible={false} />);
+    const opener = screen.getByRole('button', { name: '오늘 요약 열기' });
+    expect(within(opener).getByRole('img')).toBeInTheDocument();
+    expect(opener).toHaveTextContent('60%');
   });
 });

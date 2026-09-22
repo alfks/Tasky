@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   SHELL_BREAKPOINTS,
+  canPinSidebar,
   hasBottomAddButton,
+  hasDayPanelColumn,
   hasInsightColumn,
   hasSidebarColumn,
   layoutFor,
@@ -48,4 +50,24 @@ describe('컬럼 판정 (calendar-layout.md R23~R24 — 드로어가 기본, mid
     expect(hasBottomAddButton(layoutFor(767))).toBe(true);
     expect(hasBottomAddButton(layoutFor(768))).toBe(false);
   });
+
+  it('canPinSidebar 는 wide 에서만 참이다 — hasSidebarColumn 은 이 판정에 sidebarPinned 를 더한 것뿐이다', () => {
+    expect(canPinSidebar('wide')).toBe(true);
+    expect(canPinSidebar('mid')).toBe(false);
+    expect(canPinSidebar('narrow')).toBe(false);
+    expect(canPinSidebar('compact')).toBe(false);
+    for (const layout of ['wide', 'mid', 'narrow', 'compact'] as const) {
+      expect(hasSidebarColumn(layout, true)).toBe(canPinSidebar(layout));
+    }
+  });
+
+  it(
+    'hasDayPanelColumn 과 hasInsightColumn 은 지금은 같은 값이지만 서로 다른 질문이다 — ' +
+      '갈라지면 여기서 드러나야 한다(리뷰 Minor)',
+    () => {
+      for (const layout of ['wide', 'mid', 'narrow', 'compact'] as const) {
+        expect(hasDayPanelColumn(layout)).toBe(hasInsightColumn(layout));
+      }
+    },
+  );
 });

@@ -95,7 +95,9 @@ export const SHORTCUTS = {
   'shell.sidebar': {
     chords: ['Mod+\\'],
     group: '화면',
-    description: '사이드바 접기/펼치기',
+    // 이제 기본 동작은 드로어 여닫기다(calendar-layout.md §1-A) — 컬럼으로 고정했을 때만 고정을
+    // 풀고 드로어로 내려간다. "접기/펼치기"는 옛 컬럼-기본 시절의 문구였다(리뷰 Nit).
+    description: '사이드바 열기/닫기',
     scope: 'global',
   },
   'help.open': { chords: ['?'], group: '화면', description: '단축키 도움말', scope: 'global' },

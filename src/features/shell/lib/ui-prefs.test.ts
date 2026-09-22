@@ -1,4 +1,4 @@
-// 접힘 상태의 기기별 저장 (app-shell.md R5, calendar-layout.md R23 — v1 → v2, 마이그레이션 없음).
+// 접힘 상태의 기기별 저장 (app-shell.md R5 — v1 → v2, insightCollapsed 만 반쪽 승계·v1 은 삭제).
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -39,17 +39,29 @@ describe('readUiPrefs', () => {
   });
 
   it(
-    'v1(tasky.ui.v1) 값이 남아 있어도 무시한다 — 값의 뜻이 반대라 옮기지 않는다 ' +
-      '(calendar-layout.md R23)',
+    'v2 가 없고 v1(tasky.ui.v1) 이 있으면 insightCollapsed 만 승계하고 v1 키를 지운다 ' +
+      '(리뷰 Minor — sidebarCollapsed 는 뜻이 반대라 승계하지 않는다)',
     () => {
       window.localStorage.setItem(
         'tasky.ui.v1',
         JSON.stringify({ sidebarCollapsed: true, insightCollapsed: true }),
       );
-      // v1 은 다른 키다 — v2 를 읽는 readUiPrefs 는 그 값을 절대 보지 않는다.
-      expect(readUiPrefs()).toEqual(DEFAULT_UI_PREFS);
+      expect(readUiPrefs()).toEqual({ sidebarPinned: false, insightCollapsed: true });
+      // 옮긴 뒤에는 v1 자체가 없어야 한다 — 안 지우면 아무도 안 읽는 값이 영구히 남는다.
+      expect(window.localStorage.getItem('tasky.ui.v1')).toBeNull();
     },
   );
+
+  it('v1·v2 둘 다 없으면 기본값이고, v1 을 지우려 들지 않는다', () => {
+    expect(readUiPrefs()).toEqual(DEFAULT_UI_PREFS);
+    expect(window.localStorage.getItem('tasky.ui.v1')).toBeNull();
+  });
+
+  it('v1 이 깨진 JSON 이어도 기본값으로 떨어지고, v1 키는 지운다', () => {
+    window.localStorage.setItem('tasky.ui.v1', '{not json');
+    expect(readUiPrefs()).toEqual(DEFAULT_UI_PREFS);
+    expect(window.localStorage.getItem('tasky.ui.v1')).toBeNull();
+  });
 
   it('localStorage 접근 자체가 throw 해도(사생활 보호 모드) 기본값으로 산다', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {

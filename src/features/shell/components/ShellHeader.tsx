@@ -118,6 +118,14 @@ type ShellHeaderProps = {
   sidebarIsColumn: boolean;
   /** 인사이트가 컬럼으로 서 있는가. 아니면 달성률이 오버레이를 여는 버튼이 된다(R6). */
   insightIsColumn: boolean;
+  /**
+   * 3영역(≥1024)이라 **선택 날짜 패널이 항상 같이 떠 있는가** — `AppShell` 의 `threeRegion`
+   * 그대로다. 인사이트를 접어도(`insightIsColumn` 이 거짓이어도) `wide`·`mid` 에서는 패널 머리가
+   * 이미 같은 달성률 링을 보여주므로(calendar-layout.md R5), 그 갈래에서는 이 헤더가 **링을
+   * 반복하지 않는다** — 텍스트만 있는 버튼으로 낮춘다(리뷰 Minor, R5 중복 방지). <1024(패널이
+   * 아예 없는 폭)에서만 이 버튼이 유일한 자리라 원래대로 링+퍼센트를 보여준다.
+   */
+  dayPanelVisible: boolean;
   insightOverlayOpen: boolean;
   onOpenDrawer: () => void;
   /** 타이머 칩·달성률 버튼이 인사이트를 "연다" — 컬럼이면 그리로 데려가고, 아니면 오버레이다. */
@@ -130,6 +138,7 @@ export function ShellHeader({
   summary,
   sidebarIsColumn,
   insightIsColumn,
+  dayPanelVisible,
   insightOverlayOpen,
   onOpenDrawer,
   onOpenInsight,
@@ -186,8 +195,16 @@ export function ShellHeader({
             onClick={onOpenInsight}
             className="flex h-[var(--control-hit-min)] shrink-0 items-center gap-[var(--space-2)] rounded-[var(--radius-full)] border border-border bg-surface px-[var(--space-3)] text-base font-semibold text-text hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           >
-            <CompletionRing summary={summary} size={20} thickness={3} />
-            <span aria-hidden="true">{completionPercentText(summary)}</span>
+            {dayPanelVisible ? (
+              // 선택 날짜 패널 머리가 이미 같은 숫자를 링으로 보여준다 — 여기서 또 링을 그리면
+              // R5 가 금지하는 중복이다. 버튼 자체(오늘 요약 오버레이를 여는 기능)는 남긴다.
+              <span aria-hidden="true">오늘 요약</span>
+            ) : (
+              <>
+                <CompletionRing summary={summary} size={20} thickness={3} />
+                <span aria-hidden="true">{completionPercentText(summary)}</span>
+              </>
+            )}
           </button>
         )}
         {/* 달성률을 읽는 라이브 영역은 어느 갈래에서도 **여기 하나**다(§5). */}

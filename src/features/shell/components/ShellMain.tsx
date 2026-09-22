@@ -15,14 +15,15 @@ import type { DateKey } from '@/domain/date/date-key';
 import { useCommandStore } from '@/features/command';
 import { DayPanelBody, SKELETON_DELAY_MS } from '@/features/shell/components/ShellDayPanel';
 import { useDelayedFlag } from '@/features/shell/hooks/useDelayedFlag';
+import { SHELL_MAIN_ID } from '@/features/shell/lib/main-id';
 
 import { Button } from '@/components/ui/Button';
 
 /**
- * `main` 랜드마크의 id. **단일 소스**다 — `SkipLink.tsx`(이 단위의 owns 밖)가 이 이름을 그대로
- * import 한다. `ShellDayPanel.tsx` 는 같은 문자열을 독립적으로 갖는다(그 파일 머리주석 참고).
+ * **단일 소스는 `lib/main-id.ts`** 다(리뷰 Nit). 여기서 재수출하는 이유: `SkipLink.tsx`(이 단위의
+ * owns 밖)가 이 이름으로 import 하고 있어, 여기서 걷으면 그 배선이 끊긴다.
  */
-export const SHELL_MAIN_ID = 'shell-main';
+export { SHELL_MAIN_ID };
 /** 하단 고정 막대. 토스트가 이 위로 비켜 가야 해서 밖에서 찾을 수 있는 표식을 단다(R8). */
 export const BOTTOM_BAR_ATTR = 'data-shell-bottom-bar';
 

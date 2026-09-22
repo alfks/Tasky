@@ -68,13 +68,12 @@ async function seed(
 beforeEach(async () => {
   setWidth(1440);
   useDateStripStore.setState({ selectedDate: TODAY, today: TODAY });
-  // `sidebarPinned: true` 는 **이 파일의 기존 테스트 대다수가 기대하는 고정값**이다 — 그 테스트들은
-  // "1440(wide)이면 `nav` 가 컬럼으로 선다" 는 이 티켓 이전의 가정을 그대로 물려받았고, 그 가정을
-  // 다시 참으로 만드는 것이 `sidebarPinned: true` 다. **앱의 실제 기본값은 `false`(드로어)** 다
-  // (calendar-layout.md R23) — 그 기본값 자체를 재는 테스트는 아래 "사이드바 기본값" describe 가
-  // 이 자리에서 명시적으로 `sidebarPinned: false` 로 되돌려 따로 검증한다.
+  // **앱의 실제 기본값** 그대로다 — `sidebarPinned: false`(드로어가 기본, calendar-layout.md R23).
+  // `nav` 컬럼이 서 있는 것을 전제로 하는 개별 테스트(사이드바 메뉴로 카테고리를 다루는 것들)는
+  // 그 안에서 명시적으로 `sidebarPinned: true` 로 override 한다 — 리뷰 Major(공용 beforeEach 가
+  // 실제 기본값의 반대를 강제하던 자리).
   useShellUiStore.setState({
-    sidebarPinned: true,
+    sidebarPinned: false,
     insightCollapsed: false,
     drawerOpen: false,
     insightOverlayOpen: false,
@@ -143,6 +142,8 @@ async function mount(options: { todos?: boolean } = {}): Promise<void> {
 
 describe('랜드마크와 골격 (R1·R10)', () => {
   it('nav·main·aside 가 각각 하나씩이다', async () => {
+    // 이 단언은 컬럼으로 선 `nav` 를 전제로 한다 — 기본값(드로어)에서는 `nav` 자체가 없다.
+    useShellUiStore.setState({ sidebarPinned: true });
     await mount();
     expect(screen.getAllByRole('navigation')).toHaveLength(1);
     expect(screen.getAllByRole('main')).toHaveLength(1);
@@ -226,6 +227,9 @@ describe('한 번만 서는 전역 레이어 (리뷰 필수항목 2·3)', () => 
 describe('카테고리 삭제 배선 (리뷰 필수항목 4)', () => {
   it('사이드바 카테고리 메뉴에 "삭제" 가 있다', async () => {
     const user = userEvent.setup();
+    // 사이드바를 컬럼으로 고정해 `nav` 를 직접 잡는다 — 이 테스트의 관심사는 배선(메뉴 항목의
+    // 존재)이지 드로어냐 컬럼이냐가 아니다.
+    useShellUiStore.setState({ sidebarPinned: true });
     await mount();
     const nav = screen.getByRole('navigation');
     await user.click(within(nav).getByRole('button', { name: /메뉴/ }));
@@ -234,6 +238,7 @@ describe('카테고리 삭제 배선 (리뷰 필수항목 4)', () => {
 
   it('"삭제" 를 누르면 확인 대화상자가 뜬다 — 제어기와 대화상자가 같은 것이어야 한다', async () => {
     const user = userEvent.setup();
+    useShellUiStore.setState({ sidebarPinned: true });
     await mount();
     await user.click(within(screen.getByRole('navigation')).getByRole('button', { name: /메뉴/ }));
     await user.click(await screen.findByRole('menuitem', { name: /삭제/ }));
@@ -302,6 +307,22 @@ describe('달성률 낭독 (calendar-layout.md R5·R24 재배치 후 — 리뷰 
     expect(rings).toHaveLength(1);
     expect(rings[0]?.closest('button')).toHaveAccessibleName('오늘 요약 열기');
   });
+
+  it(
+    '인사이트를 접어도(≥1024) 링은 패널 머리 하나뿐이다 — 헤더 버튼은 텍스트로 낮춘다 ' +
+      '(리뷰 Minor, R5 중복 방지 확인)',
+    async () => {
+      useShellUiStore.setState({ insightCollapsed: true });
+      await mount();
+      // 인사이트는 오버레이로 대체됐으니 `complementary` 는 없고, 남는 링은 패널 머리 하나다.
+      expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
+      const rings = screen.getAllByRole('img');
+      expect(rings).toHaveLength(1);
+      expect(within(screen.getByRole('main')).getAllByRole('img')).toHaveLength(1);
+      const opener = screen.getByRole('button', { name: '오늘 요약 열기' });
+      expect(within(opener).queryByRole('img')).toBeNull();
+    },
+  );
 
   it('달성률을 알리는 라이브 영역은 셸에 하나뿐이다 (R6 3연속 낭독 판단)', async () => {
     await mount();
@@ -466,6 +487,7 @@ describe('적재 배선 (Blocker: 1024px 미만·사이드바 접힘에서 앱�
   });
 
   it('사이드바가 컬럼이면 적재가 두 번 걸리지 않는다 — 셸과 목록이 같은 자리를 다툰다', async () => {
+    useShellUiStore.setState({ sidebarPinned: true });
     // 두 호출부가 같은 스토어 액션을 부르므로 그 액션 자체를 센다(`categories.list` 는 날짜 스트립도 부른다).
     const load = vi.fn(useCategoryStore.getState().load);
     useCategoryStore.setState({ byId: {}, status: 'idle', error: null, load });
@@ -630,6 +652,7 @@ describe('하단 고정 [+ 할 일] (§2-B)', () => {
 describe('포커스가 `<body>` 로 떨어지지 않는다 (R14 · §5 — 접근성 리뷰가 3경로에서 실측한 자리)', () => {
   it('카테고리를 삭제해도 포커스가 살아 있다', async () => {
     const user = userEvent.setup();
+    useShellUiStore.setState({ sidebarPinned: true });
     await seed([], [STUDY, makeCategory({ seq: 2, order: 1, name: '운동' })]);
     await mount();
     const nav = screen.getByRole('navigation');
@@ -658,6 +681,7 @@ describe('포커스가 `<body>` 로 떨어지지 않는다 (R14 · §5 — 접�
 
   it('사이드바를 접으면 포커스가 `카테고리 열기` 로 간다', async () => {
     const user = userEvent.setup();
+    useShellUiStore.setState({ sidebarPinned: true });
     await mount();
     const menu = within(screen.getByRole('navigation')).getByRole('button', { name: /메뉴/ });
     menu.focus();
@@ -670,6 +694,9 @@ describe('포커스가 `<body>` 로 떨어지지 않는다 (R14 · §5 — 접�
 
   it('영역 밖에 포커스가 있으면 접어도 포커스를 뺏지 않는다', async () => {
     const user = userEvent.setup();
+    // 컬럼이 서 있는 상태에서 접는 경로를 재는 테스트다 — 기본값(드로어)에서 `Mod+\` 는 드로어를
+    // **여는** 쪽이라(대화상자가 첫 포커스 가능 요소로 초점을 옮긴다) 이 단언과 다른 것을 잰다.
+    useShellUiStore.setState({ sidebarPinned: true });
     await mount();
     const skip = screen.getByRole('link', { name: '본문으로 건너뛰기' });
     skip.focus();
@@ -788,6 +815,7 @@ describe('삭제된 카테고리의 이름·색 복원 배선 (category R17·R22
   });
 
   it('사이드바·선택지에는 여전히 나오지 않는다', async () => {
+    useShellUiStore.setState({ sidebarPinned: true });
     await seed(
       [
         makeTodo({ seq: 1, categoryId: STUDY.id, date: TODAY }),
@@ -872,11 +900,8 @@ describe('통계 화면 배선 (T-85, stats.md "메인 컬럼 전체 대체")', 
 });
 
 describe('사이드바 기본값 (calendar-layout.md §1-A · R23~R24 — WU-3)', () => {
-  // 이 파일의 공용 `beforeEach` 는 나머지 테스트를 지키려고 `sidebarPinned: true` 로 시작한다(그
-  // 주석 참고). 여기서는 **실제 기본값**(고정하지 않음 — 드로어가 기본)을 명시적으로 되돌려 잰다.
-  beforeEach(() => {
-    useShellUiStore.setState({ sidebarPinned: false });
-  });
+  // 이 파일의 공용 `beforeEach` 가 이미 실제 기본값(`sidebarPinned: false`, 드로어)에서 시작한다 —
+  // 여기서 다시 override 할 필요가 없다(리뷰 Major, 예전에는 이 반대였다).
 
   it('1280(wide) 기본에서는 nav 컬럼이 없고 `카테고리 열기` 가 있다', async () => {
     await mount();
@@ -899,16 +924,42 @@ describe('사이드바 기본값 (calendar-layout.md §1-A · R23~R24 — WU-3)'
       await mount();
 
       await user.click(screen.getByRole('button', { name: '카테고리 열기' }));
-      // 1280(wide)의 드로어 제목줄에는 `[고정]` 도 있어 접근 이름이 "Tasky 사이드바 고정" 이다
-      // (calendar-layout.md §5 "WU-3 의 [고정] 토글 자리") — 이 테스트의 관심사는 카테고리 선택
-      // 뒤 포커스 인계이지 제목 문구가 아니라 느슨하게 잡는다.
-      const drawer = await screen.findByRole('dialog', { name: /Tasky/ });
+      // 제목은 이제 항상 정확히 앱 이름 하나다(리뷰 Major 2 — `[고정]` 버튼이 더 이상 `title`
+      // 안에 있지 않다). 예전에는 여기서 `/Tasky/` 로 느슨하게 잡아야 했는데, 그 회피 자체가
+      // 신호였다.
+      const drawer = await screen.findByRole('dialog', { name: 'Tasky' });
       await user.click(within(drawer).getByRole('button', { name: '공부 0/1' }));
 
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
       const group = screen.getByRole('region', { name: '공부' });
       await waitFor(() =>
         expect(document.activeElement).toBe(within(group).getByRole('list', { hidden: true })),
+      );
+    },
+  );
+
+  it(
+    '드로어 본문의 [고정] 을 누르면 컬럼으로 바뀌고, 포커스가 새로 선 컬럼의 [고정 해제] 로 넘어간다 ' +
+      '(리뷰 Major 5 — 누락돼 있던 경로)',
+    async () => {
+      const user = userEvent.setup();
+      await mount();
+
+      await user.click(screen.getByRole('button', { name: '카테고리 열기' }));
+      const drawer = await screen.findByRole('dialog', { name: 'Tasky' });
+      // 드로어 제목은 그대로고, `[고정]` 은 본문 첫 줄에 있다(리뷰 Major 2).
+      await user.click(within(drawer).getByRole('button', { name: '사이드바 고정' }));
+
+      // 드로어는 `useShellPanels` 의 "컬럼이 서면 드로어를 닫는다" 효과로 스스로 닫힌다.
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      const nav = screen.getByRole('navigation');
+      expect(nav).toBeInTheDocument();
+      // `Dialog` 의 기본 복귀 대상(열었던 `카테고리 열기`)은 이미 사라졌으므로 `returnFocus` 가
+      // 같은 표식(`SIDEBAR_PIN_TOGGLE_ATTR`)으로 새로 선 컬럼의 버튼을 찾아야 한다.
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          within(nav).getByRole('button', { name: '사이드바 고정 해제' }),
+        ),
       );
     },
   );

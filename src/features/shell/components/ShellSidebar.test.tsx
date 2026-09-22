@@ -61,6 +61,8 @@ describe('"루틴" 진입점', () => {
     render(
       <ShellSidebar
         showTitle
+        sidebarPinned={false}
+        onTogglePinned={vi.fn()}
         categories={[운동]}
         onSelectCategory={vi.fn()}
         onRemoveCategory={vi.fn()}
@@ -78,6 +80,8 @@ describe('"루틴" 진입점', () => {
     render(
       <ShellSidebar
         showTitle
+        sidebarPinned={false}
+        onTogglePinned={vi.fn()}
         categories={[운동]}
         onSelectCategory={vi.fn()}
         onRemoveCategory={vi.fn()}
@@ -102,6 +106,8 @@ describe('"루틴" 진입점', () => {
       render(
         <ShellSidebar
           showTitle
+          sidebarPinned={false}
+          onTogglePinned={vi.fn()}
           categories={[운동]}
           onSelectCategory={vi.fn()}
           onRemoveCategory={vi.fn()}
@@ -130,11 +136,13 @@ describe('"루틴" 진입점', () => {
   );
 });
 
-describe('사이드바 고정 토글 (calendar-layout.md §1-A · R23~R24)', () => {
-  it('showTitle 이 아닐 때(드로어 안)는 렌더되지 않는다', () => {
+describe('사이드바 고정 토글 (calendar-layout.md §1-A · R23~R24, 리뷰 Major 2·4)', () => {
+  it('showTitle·showPinToggle 둘 다 아니면(드로어인데 wide 도 아닐 때) 렌더되지 않는다', () => {
     render(
       <ShellSidebar
         showTitle={false}
+        sidebarPinned={false}
+        onTogglePinned={vi.fn()}
         categories={[운동]}
         onSelectCategory={vi.fn()}
         onRemoveCategory={vi.fn()}
@@ -144,10 +152,30 @@ describe('사이드바 고정 토글 (calendar-layout.md §1-A · R23~R24)', () 
     expect(screen.queryByRole('button', { name: /사이드바 고정/ })).not.toBeInTheDocument();
   });
 
-  it('고정돼 있지 않으면 "사이드바 고정" · aria-pressed=false', () => {
+  it('showPinToggle 이면 showTitle 이 아니어도(드로어 본문 첫 줄) 뜬다 — 제목 없이 버튼만', () => {
+    render(
+      <ShellSidebar
+        showTitle={false}
+        showPinToggle
+        sidebarPinned={false}
+        onTogglePinned={vi.fn()}
+        categories={[운동]}
+        onSelectCategory={vi.fn()}
+        onRemoveCategory={vi.fn()}
+        exportBackup={exportBackup}
+      />,
+    );
+    expect(screen.getByRole('button', { name: '사이드바 고정' })).toBeInTheDocument();
+    // 제목은 드로어(Dialog)가 갖는다 — 여기서는 h1 을 그리지 않는다(문서에 h1 은 하나여야 한다).
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
+  });
+
+  it('고정돼 있지 않으면 "사이드바 고정" 이다 — aria-pressed 는 쓰지 않는다(리뷰 Major)', () => {
     render(
       <ShellSidebar
         showTitle
+        sidebarPinned={false}
+        onTogglePinned={vi.fn()}
         categories={[운동]}
         onSelectCategory={vi.fn()}
         onRemoveCategory={vi.fn()}
@@ -155,15 +183,19 @@ describe('사이드바 고정 토글 (calendar-layout.md §1-A · R23~R24)', () 
       />,
     );
     const toggle = screen.getByRole('button', { name: '사이드바 고정' });
-    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    // 글자가 이미 상태와 목적지를 함께 말한다(DateStripHeader 의 주/월 보기 토글과 같은 이유) —
+    // `aria-pressed` 를 더하면 같은 상태가 두 번 낭독된다.
+    expect(toggle).not.toHaveAttribute('aria-pressed');
   });
 
-  it('고정돼 있으면 "사이드바 고정 해제" · aria-pressed=true, 누르면 store 를 뒤집는다', async () => {
-    useShellUiStore.setState({ sidebarPinned: true });
+  it('고정돼 있으면 "사이드바 고정 해제" 이고, 누르면 넘겨받은 콜백을 그대로 부른다', async () => {
+    const onTogglePinned = vi.fn();
     const user = userEvent.setup();
     render(
       <ShellSidebar
         showTitle
+        sidebarPinned
+        onTogglePinned={onTogglePinned}
         categories={[운동]}
         onSelectCategory={vi.fn()}
         onRemoveCategory={vi.fn()}
@@ -171,9 +203,11 @@ describe('사이드바 고정 토글 (calendar-layout.md §1-A · R23~R24)', () 
       />,
     );
     const toggle = screen.getByRole('button', { name: '사이드바 고정 해제' });
-    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(toggle).not.toHaveAttribute('aria-pressed');
 
     await user.click(toggle);
-    expect(useShellUiStore.getState().sidebarPinned).toBe(false);
+    // 인계 로직(`handoffFocus`)은 이제 `useShellPanels.toggleSidebarPinned` 하나에만 있다 — 이
+    // 컴포넌트는 그 함수를 그대로 부를 뿐 스스로 store 를 만지거나 포커스를 옮기지 않는다.
+    expect(onTogglePinned).toHaveBeenCalledTimes(1);
   });
 });

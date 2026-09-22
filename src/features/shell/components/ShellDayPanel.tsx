@@ -16,6 +16,7 @@ import type { DateKey } from '@/domain/date/date-key';
 import { useDateStripStore } from '@/features/date-strip';
 import { DiaryCard } from '@/features/diary';
 import { useDelayedFlag } from '@/features/shell/hooks/useDelayedFlag';
+import { SHELL_MAIN_ID } from '@/features/shell/lib/main-id';
 import { titleDateLabel } from '@/features/shell/lib/title';
 import { CompletionRing, completionPercentText, type CompletionSummary } from '@/features/stats';
 import { TodoList } from '@/features/todo';
@@ -52,13 +53,6 @@ export function emptyTodosText(date: DateKey, today: DateKey): string {
 }
 /** §2-C 로딩: 이 시간을 넘겨도 끝나지 않을 때만 스켈레톤을 그린다. */
 export const SKELETON_DELAY_MS = 100;
-
-/**
- * `main` 랜드마크의 id. **단일 소스는 여전히 `ShellMain.tsx`** 다 — `SkipLink.tsx` 가 거기서
- * import 하고 있어(이 단위의 owns 밖) 옮기면 그 배선이 끊긴다. 여기서는 같은 문자열을 독립적으로
- * 갖는다 — `ReportsScreen.tsx` 가 이미 같은 이유로 같은 선례를 쓴다(그 파일 머리주석 참고).
- */
-const SHELL_MAIN_ID = 'shell-main';
 
 /** 그룹 헤더 1 + 행 3 (§2-C 로딩). */
 function MainSkeleton() {

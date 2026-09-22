@@ -38,7 +38,7 @@ import { useShellShortcuts } from '@/features/shell/hooks/useShellShortcuts';
 import { useToastStack } from '@/features/shell/hooks/useToastStack';
 import { useTodoDropToDate } from '@/features/shell/hooks/useTodoDropToDate';
 import { useTopNoticeOffset } from '@/features/shell/hooks/useTopNoticeOffset';
-import { hasBottomAddButton, hasInsightColumn } from '@/features/shell/lib/layout';
+import { hasBottomAddButton, hasDayPanelColumn } from '@/features/shell/lib/layout';
 import { APP_NAME } from '@/features/shell/lib/title';
 import { useShellStorageStore } from '@/features/shell/store/shell-storage-store';
 import { useShellToastStore } from '@/features/shell/store/shell-toast-store';
@@ -50,10 +50,11 @@ function ShellBody() {
   // 두 패널의 "지금 컬럼인가 / 어떻게 열고 접는가" 와 접을 때의 포커스 인계는 한 훅에 모여 있다.
   const panels = useShellPanels();
   const { sidebarIsColumn, insightIsColumn, drawerOpen, insightOverlayOpen } = panels;
-  // 3영역(달력 컬럼 + 선택 날짜 패널) 대 1열(`ShellMain`)의 갈림은 인사이트 컬럼과 같은 문턱이다
-  // (calendar-layout.md R10: wide·mid 는 3영역, narrow·compact 만 1열) — 그래서 같은 판정식을
-  // 그대로 쓴다(`hasInsightColumn` 은 접힘을 보지 않는 순수 폭 판정이라 이 갈래에 맞다).
-  const threeRegion = hasInsightColumn(panels.layout);
+  // 3영역(달력 컬럼 + 선택 날짜 패널) 대 1열(`ShellMain`)의 갈림은 지금은 인사이트 컬럼과 같은
+  // 문턱이지만 **뜻이 다른 판정**이라 전용 함수를 쓴다(`hasDayPanelColumn` — 리뷰 Minor). 예전에는
+  // `hasInsightColumn` 을 그대로 재사용했는데, 인사이트 정책만 바뀌어도(예: 인사이트를 `wide`
+  // 전용으로 좁히면) 3영역 레이아웃이 `mid` 에서 조용히 1열로 무너지는 결합이었다.
+  const threeRegion = hasDayPanelColumn(panels.layout);
 
   // 테마 적재·OS 추종은 화면에 한 번만 건다(theme R6~R8).
   const theme = useThemeSync();
@@ -174,6 +175,7 @@ function ShellBody() {
       summary={summary}
       sidebarIsColumn={sidebarIsColumn}
       insightIsColumn={insightIsColumn}
+      dayPanelVisible={threeRegion}
       insightOverlayOpen={insightOverlayOpen}
       onOpenDrawer={panels.openDrawer}
       onOpenInsight={panels.openInsight}
@@ -210,6 +212,8 @@ function ShellBody() {
             <ShellSidebar
               showTitle
               framed
+              sidebarPinned={panels.sidebarPinned}
+              onTogglePinned={panels.toggleSidebarPinned}
               categories={categories}
               onSelectCategory={focusCategory}
               onRemoveCategory={requestRemove}
@@ -225,7 +229,17 @@ function ShellBody() {
           // 인사이트, 인사이트만 스크롤) + 선택 날짜 패널(`main`, R1(c)) 둘로 나뉜다. `h1` 은 여기서
           // 그리지 않는다 — `sidebarIsColumn` 이면 `ShellSidebar` 가, 아니면 `ShellHeader` 가 이미
           // ☰ 옆에 갖고 있다(calendar-layout.md R6).
-          <>
+          //
+          // **이 duo 를 감싸는 `justify-center` 래퍼(사용자 결정, 리뷰 Major — "1280·1440 에서
+          // 오른쪽에 300~500px 빈 공간").** 달력 컬럼은 `max-w-[560px]` 에서 자라기를 멈추고, 선택
+          // 날짜 패널은 400 고정이다 — 둘의 합(최대 984px + 간격)이 넓은 화면의 남는 폭보다 늘 작아,
+          // 이 래퍼가 없으면 `justify-content` 기본값(flex-start)에 따라 그 차액이 전부 **오른쪽
+          // 한쪽에** 쌓여 "로딩이 덜 된 것처럼" 보였다. 사이드바(고정 컬럼)는 이 래퍼 **밖**의
+          // 형제라 폭에 관여하지 않는다 — 그래서 고정 컬럼이 서 있어도 안 서 있어도, 이 duo 는
+          // 그 왼쪽에 남은 공간 안에서 자기끼리 가운데로 온다(1280·1440·1600 계산은 PR 본문·핸드오프
+          // 참고). `min-w-0` 은 이 래퍼가 `justify-center` 로 줄어들 때도 자식의 `min-w-[440px]` 가
+          // 실제로 지켜지게 한다(안 주면 flex 기본 `min-width:auto` 가 이 래퍼 자체를 늘려 버린다).
+          <div className="flex min-h-0 min-w-0 flex-1 justify-center gap-[var(--space-6)]">
             <div className="flex min-h-0 max-w-[560px] min-w-[440px] flex-1 flex-col gap-[var(--space-3)]">
               <div className="shrink-0">{failureCard === null ? header : null}</div>
               {insightIsColumn ? (
@@ -255,7 +269,7 @@ function ShellBody() {
               failureCard={failureCard}
               onCreateCategory={handleCreateCategory}
             />
-          </>
+          </div>
         ) : (
           // calendar-layout.md R8: <1024 는 지금 구조 그대로 — 헤더가 `ShellMain` 안, `main` 하나뿐.
           <ShellMain
@@ -276,6 +290,9 @@ function ShellBody() {
 
       <ShellOverlays
         categories={categoriesWithHistory}
+        layout={panels.layout}
+        sidebarPinned={panels.sidebarPinned}
+        onToggleSidebarPinned={panels.toggleSidebarPinned}
         drawerOpen={drawerOpen}
         onDrawerClose={panels.closeDrawer}
         insightOverlayOpen={insightOverlayOpen}
