@@ -127,9 +127,10 @@ export function DateCell({
           : undefined
       }
       className={cn(
-        'flex w-[56px] shrink-0 snap-center flex-col items-center justify-center gap-[var(--space-1)]',
-        // 요일 글자 한 줄이 빠지는 만큼 월 보기 칸이 낮다 (R16).
-        isMonth ? 'h-[56px]' : 'h-[72px]',
+        'flex w-[var(--cal-cell-w)] shrink-0 snap-center flex-col items-center justify-center gap-[var(--space-1)]',
+        // 요일 글자 한 줄이 빠지는 만큼 월 보기 칸이 낮다 (R16). 치수는 calendar-layout.md §2 R12
+        // 밀도 토큰 — px 리터럴은 여기 없고 <768 갈래는 tokens.css 미디어 쿼리가 진다.
+        isMonth ? 'h-[var(--cal-cell-h-month)]' : 'h-[var(--cal-cell-h-week)]',
         // 날짜를 바꿀 때 실제로 움직이는 것이 이 색 전환이라, R10 의 120ms 상한이 걸리는 자리도 여기다.
         // 수치는 `--motion-xfast`(theme.md §3-D) 한 곳에만 산다 — `--motion-fast`(150ms)는 상한을 넘는다.
         'rounded-[var(--radius-lg)] motion-safe:transition-colors motion-safe:duration-[var(--motion-xfast)] motion-safe:ease-[var(--motion-ease)]',
@@ -161,7 +162,8 @@ export function DateCell({
       {!isMonth && (
         <span
           className={cn(
-            'text-xs leading-normal',
+            // calendar-layout.md §2 R12: <768 은 leading-none(요일 줄을 한 톨 더 조인다).
+            'text-[length:var(--cal-weekday-text)] leading-none md:leading-normal',
             isSelected ? 'text-on-accent' : weekdayColor(index),
           )}
         >
@@ -170,7 +172,7 @@ export function DateCell({
       )}
       <span
         className={cn(
-          'text-lg leading-normal',
+          'text-[length:var(--cal-day-text)] leading-normal',
           isToday ? 'font-bold' : 'font-semibold',
           // 이 달 밖 날짜는 숫자만 보조 색으로 물린다 — 투명도로 흐리면 대비가 예측 불가능해지고
           // 점·✓ 까지 같이 흐려져 "할 일이 적은 날"처럼 보인다 (R16).

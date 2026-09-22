@@ -145,6 +145,32 @@
   --color-cat-gray-dark: #9ea1ab;
 }
 
+/* 달력(월 보기 격자) 밀도 토큰(calendar-layout.md §2 R12) — 값의 단일 소스는 그 문서의 표다.
+   `@theme` 밖에 두는 이유는 위 카테고리 팔레트와 같다: `@theme` 에 넣으면 `w-[var(--cal-cell-w)]`
+   대신 `w-cal-cell-w` 같은 유틸이 생겨 이 밀도가 date-strip 담장 밖으로 새 나갈 길이 열린다.
+   미디어 경계 767.98 은 임의의 다른 값이 아니라 `src/features/shell/lib/layout.ts` 의
+   `SHELL_BREAKPOINTS.narrow`(768)와 같은 지점을 가리킨다(R13) — `max-width` 는 그 지점 미만을
+   잡아야 하므로 0.02 를 뺀다(768 자체는 이 미디어 쿼리 밖, 곧 ≥768 갈래). */
+:root {
+  --cal-cell-w: 48px;
+  --cal-cell-h-week: 64px;
+  --cal-cell-h-month: 40px;
+  --cal-gap: 6px;
+  --cal-day-text: var(--text-md);
+  --cal-weekday-text: var(--text-xs);
+}
+
+@media (max-width: 767.98px) {
+  :root {
+    --cal-cell-w: 40px;
+    --cal-cell-h-week: 56px;
+    --cal-cell-h-month: 34px;
+    --cal-gap: 4px;
+    --cal-day-text: var(--text-base);
+    --cal-weekday-text: var(--text-xs);
+  }
+}
+
 /* 3-G "선택됨" 표현 토큰(theme.md §3-G R17~R20). @theme inline 인 이유는 그림자와 같다 —
    값이 다른 토큰을 가리키므로 빌드 시점 리터럴로 굳으면 라이트/다크·강조색 변경을 따라가지 못한다.
    inline 은 var() 를 유틸에 그대로 흘려보내 런타임에 읽게 한다.
