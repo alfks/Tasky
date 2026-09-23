@@ -159,9 +159,12 @@ Dexie(IndexedDB, 지연 로드) · Serwist(PWA) · Vitest · Playwright · pnpm 
 
 - 여러분이 적은 데이터는 **여러분 브라우저의 IndexedDB** 에 있습니다. 서버로 전송되지 않습니다.
 - 추적 스크립트는 없습니다. 다만 앱 화면을 열 때마다(로그인 여부와 무관하게) **Cloudflare Web
-  Analytics** 가 쿠키·기기 식별자 없이 익명 페이지뷰 신호(주소 경로·리퍼러·브라우저 종류·로딩 속도)를
-  Cloudflare 로 보냅니다 — 방문 수와 속도를 보기 위해서이고, 할 일 내용이나 이메일 같은 개인 정보는
-  담기지 않습니다. 자세한 항목은 [개인정보처리방침](./public/privacy.html) 2절, 결정 근거는
+  Analytics** 가 쿠키·기기 식별자 없이 익명 페이지뷰 신호(주소의 경로와 쿼리 문자열·리퍼러·브라우저
+  종류·기기 종류와 운영체제·로딩 속도, 그리고 Cloudflare 가 IP 로 추정한 대략적인 국가)를 Cloudflare 로
+  보냅니다 — 방문 수와 속도를 보기 위해서이고, Tasky 가 보는 것은 나라별·기기별 합계 같은 집계 통계뿐이며
+  방문 한 건의 IP 주소나 할 일 내용·이메일 같은 개인 정보는 담기지 않습니다. 앱 안에 끄는 스위치는 아직
+  없고, 브라우저의 추적 방지가 `static.cloudflareinsights.com` 을 막아도 앱은 그대로 동작합니다. 자세한
+  항목은 [개인정보처리방침](./public/privacy.html) 2절, 결정 근거는
   [ADR-0021](./docs/decisions/ADR-0021-cloudflare-web-analytics.md).
 - 브라우저 데이터를 지우면 할 일도 함께 사라집니다. **백업 기능으로 내보내 두는 것을 권합니다.**
 
