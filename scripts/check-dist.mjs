@@ -5,7 +5,7 @@
 // 원칙: **규칙 문자열이 있는지**가 아니라 **실제 산출물이 그 규칙에 덮이는지**를 본다.
 // 규칙 문자열만 보던 시절에는 `build.assetsDir` 를 'assets' 아닌 값으로 바꿔도 초록불이었고,
 // 그 순간 해시 자산 전부가 1년 immutable 을 조용히 잃었다(리뷰 변이 M12).
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import { gzipSync } from 'node:zlib';
 
@@ -13,6 +13,8 @@ const DIST = 'dist/client';
 const errors = [];
 const note = (m) => errors.push(m);
 let summary = '진입 청크 미검사';
+const UPDATE_BASELINE = process.argv.includes('--update-baseline');
+const BASELINE_PATH = 'scripts/bundle-baseline.json';
 
 // --- 프리캐시 목록(specs/pwa.md R3·R10) ---------------------------------------
 // serwist 가 만든 sw.js 안의 매니페스트를 그대로 읽는다(빌드 로그 파싱이 아니다).
@@ -253,13 +255,24 @@ function entryClosure(entryFile, allFiles) {
   }
   return [...seen].map((url) => byUrl.get(url)).filter((f) => f !== undefined);
 }
-// ENTRY_BUDGET 160,000: 기준 154,686(T-94 착수 시점 진입 폐포 실측, T92b 머지 직후) + 이 티켓이
-// 더하는 게이트·스토어·계정 블록·업로드 다이얼로그(진입 고정, 실측 근거는 PR 본문) — 여유를
-// 다음 재검토 트리거로 남겨 둔다(전부 쓰지 않는다).
-const ENTRY_BUDGET = 160_000; // gzip. 진입 폐포(진입 + 정적 위성 청크) 합.
-// NETWORK_BUDGET 210,000: 기준 193,486(T92b) + 동기화 지연 청크(엔진·auth-actions·http-transport·
-// 공유 조각) 실측 증가분. 계측 정의는 그대로 — `/assets/*.js` 전부의 합(사실 4의 프리로드 필터
-// 수정으로 전부 `<head>` 프리로드되므로 "첫 로드 네트워크" 라는 이름이 정확히 참이 된다).
+// ENTRY_BUDGET 164,000: 리뷰 라운드1(R2-C, 2026-09-22)이 백엔드·프론트 둘 다 Major 로 지적한
+// 항목 — 직전 기준 158,221(T-94/#129 머지 직후 실측)에서 이 브랜치(3영역 배선·사이드바 고정·
+// 헤더 h1)가 +1,536 B 를 더해 159,757(`pnpm build` 직접 재측정, 2026-09-22)까지 올랐고, 옛
+// 예산 160,000 대비 여유가 243 B(0.15%)뿐이라 "다음 PR 이 200 B 만 더해도 빌드가 멈춘다"는
+// 지적이 나왔다. 여기서 **160,000 → 164,000** 으로 올려 여유를 확보한다 — 근거 없이 크게
+// 올리지 않고, 실측된 사용량 위에 "다음 재검토 트리거" 로 쓸 최소한의 폭만 얹는다(아래 208행
+// 원칙 그대로 — 전부 쓰지 않는다, calendar-layout.md §7 절차). **이 세션 안에서도 병렬로 돌던
+// 다른 작업이 반영되며 159,757 → 160,070(2026-09-23 `pnpm build` 재확인, +313 B)으로 한 번 더
+// 움직였다** — `scripts/bundle-baseline.json` 은 이 마지막 실측값을 담고 있다(옛 값을 베끼지
+// 않는다는 원칙, CLAUDE.md). 그 값 기준으로도 여유는 3,930 B(약 2.5%) 남는다. 예산을 다시
+// 올려야 하면 이번처럼 (a) 직전 기준값 (b) 무엇이 얼마나 더했는지 (c) 남기는 여유, 셋을 이
+// 주석에 반드시 적고 PR 본문에도 옮긴다 — 단독 결정 금지.
+const ENTRY_BUDGET = 164_000; // gzip. 진입 폐포(진입 + 정적 위성 청크) 합.
+// NETWORK_BUDGET 210,000: 그대로 둔다(R2-C, 2026-09-22 재검토, 2026-09-23 재확인). 마지막
+// 재측정(`bundle-baseline.json`과 같은 시점)에서 네트워크 합은 204,990 B — 여유 5,010 B(약
+// 2.4%)가 아직 있어 진입 폐포처럼 당장 막히는 신호가 아니다. 진입 폐포만 올리고 이쪽은
+// 건드리지 않는 것 자체가 결정이므로 기록해 둔다 — 다음에 이 여유도 좁아지면 그때 같은
+// 절차(위 ENTRY_BUDGET 주석 형식)로 근거를 적어 올린다.
 const NETWORK_BUDGET = 210_000; // gzip. = TECH_PLAN §8 제품 계약값(2026-09-21 갱신).
 const entryUrl = /<script[^>]+type="module"[^>]+src="([^"]+)"/.exec(doc)?.[1];
 const entryFile = distFiles.find((f) => f.url === entryUrl);
@@ -290,6 +303,54 @@ if (doc !== '' && entryFile === undefined) {
       `첫 로드 네트워크 JS gzip 합 ${networkGzip} B 가 예산 ${NETWORK_BUDGET} B 를 넘었습니다 ` +
         '— ADR-0013 재검토 트리거에 도달했습니다.',
     );
+
+  // --- 번들 델타 리포트(R2-C, 2026-09-22) ---------------------------------------------------
+  // 왜: 상한(ENTRY_BUDGET) 한 줄뿐이던 게이트는 "넘느냐/안 넘느냐"만 말해서, 예산을 다 채워 가는
+  // PR 이 하나씩 조용히 쌓여도 마지막 한 PR 이 상한을 넘기 전까지는 아무 신호가 없었다(리뷰
+  // 라운드1 Major — 여유 243 B 까지 몰린 뒤에야 발견됨). 그래서 매 빌드마다 **직전 기준값 대비
+  // 증감(delta)** 을 찍는다 — 실패(상한 초과)와는 별개로, 상한 아래에서도 크게 늘면 경고한다.
+  // 기준값은 `scripts/bundle-baseline.json`(신뢰 가능한 소스는 이 파일 하나, git 에 커밋된다)에
+  // 둔다 — 값을 바꾸려면(즉 새 기준을 인정하려면) `node scripts/check-dist.mjs --update-baseline`
+  // 을 사람이 명시적으로 돌려야 한다(자동 갱신 금지 — 그러면 delta 가 항상 0 이 되어 무의미해진다).
+  let baseline = null;
+  if (existsSync(BASELINE_PATH)) {
+    try {
+      baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf-8'));
+    } catch (error) {
+      note(`${BASELINE_PATH} 를 읽지 못했습니다(JSON 파싱 실패): ${String(error)}`);
+    }
+  }
+  let deltaNote = '';
+  if (UPDATE_BASELINE) {
+    const next = {
+      entryClosureGzip: closureGzip,
+      recordedAt: new Date().toISOString().slice(0, 10),
+      note: 'node scripts/check-dist.mjs --update-baseline 로 갱신됨 — scripts/AGENTS.md 참고.',
+    };
+    writeFileSync(BASELINE_PATH, `${JSON.stringify(next, null, 2)}\n`);
+    process.stdout.write(
+      `기준값 갱신: 진입 폐포 gzip ${closureGzip} B 를 ${BASELINE_PATH} 에 새 기준으로 저장했습니다.\n`,
+    );
+    baseline = next;
+  } else if (baseline === null) {
+    // 규칙(scripts/AGENTS.md #6): 검사 대상이 없을 때 조용히 통과시키지 않는다 — 최소 WARN.
+    console.warn(
+      `WARN: ${BASELINE_PATH} 가 없어 진입 폐포 delta 를 비교하지 못했습니다 — ` +
+        'node scripts/check-dist.mjs --update-baseline 로 만드세요.',
+    );
+  } else if (typeof baseline.entryClosureGzip === 'number') {
+    const delta = closureGzip - baseline.entryClosureGzip;
+    const sign = delta >= 0 ? '+' : '';
+    deltaNote = ` · 진입 폐포 delta ${sign}${delta} B(기준 ${baseline.entryClosureGzip} B, ${baseline.recordedAt})`;
+    if (delta >= 2_000) {
+      console.warn(
+        `WARN: 진입 폐포 gzip 이 기준(${baseline.recordedAt}, ${baseline.entryClosureGzip} B) 대비 ` +
+          `${sign}${delta} B 늘었습니다(상한 초과는 아닙니다) — PR 본문에 무엇이 늘었는지 근거를 ` +
+          '적으세요(calendar-layout.md §7). 근거가 붙었으면 이 경고는 무시해도 되고, 새 값을 ' +
+          '기준으로 인정하려면 node scripts/check-dist.mjs --update-baseline 을 돌리세요.',
+      );
+    }
+  }
 
   // --- 동기화 가짜 서버·검증 벡터 마커(T94_LAZY_BOUNDARY.md §C-8②) ---------------------------
   // 문자열 리터럴만 본다(식별자는 minify 로 사라진다, 사실 11). 진입에 없어야 하는 것들은 각각
@@ -322,7 +383,8 @@ if (doc !== '' && entryFile === undefined) {
 
   summary =
     `진입 폐포 gzip ${closureGzip} B / 예산 ${ENTRY_BUDGET} B · ` +
-    `index.js 단독 ${entryGzip} B · 네트워크 합 ${networkGzip} B / 예산 ${NETWORK_BUDGET} B`;
+    `index.js 단독 ${entryGzip} B · 네트워크 합 ${networkGzip} B / 예산 ${NETWORK_BUDGET} B` +
+    deltaNote;
 }
 
 if (errors.length > 0) {

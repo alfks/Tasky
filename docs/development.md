@@ -36,7 +36,15 @@ pnpm check              # PR 전 필수 게이트 (11개 검사)
 `pnpm build`가 재는 번들 예산(값은 [TECH_PLAN.md](./TECH_PLAN.md) §8, 검사는 `pnpm check`에 포함)을
 올릴 때의 정책(언제·어디서·왜 올리는지)은 `scripts/check-dist.mjs`의 `ENTRY_BUDGET`·`NETWORK_BUDGET`
 주석이 단일 소스다 — 여기서 다시 적지 않는다. **계측 이름이 T-94(#129)에서 바뀌었다** — "진입 청크
-단독"이 아니라 **"진입 폐포(진입 + 정적 위성 청크) 합"** 이 `ENTRY_BUDGET`(예산 160,000)과 비교된다.
+단독"이 아니라 **"진입 폐포(진입 + 정적 위성 청크) 합"** 이 `ENTRY_BUDGET`(R2-C, 2026-09-22 이후
+예산 164,000)과 비교된다.
+
+**상한 게이트만으로는 여유가 조용히 바닥날 때까지 신호가 없었다(R2-C, 리뷰 라운드1 Major)** —
+그래서 `pnpm build`는 매번 진입 폐포 gzip을 `scripts/bundle-baseline.json`의 기준값과 비교해
+**증감(delta)**을 같이 찍는다. +2,000 B 이상 늘면 상한을 넘지 않아도 WARN을 찍는다(실패는 아니다 —
+PR 본문에 무엇이 늘었는지 근거를 적으라는 안내, calendar-layout.md §7 절차). 새 값을 기준으로
+인정하려면(즉 정당한 증가였다고 확정하려면) `node scripts/check-dist.mjs --update-baseline`을
+사람이 직접 돌려 `scripts/bundle-baseline.json`을 갱신한다 — 자동 갱신은 하지 않는다.
 
 E2E 브라우저는 설치돼 있다(`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`). `playwright install` 은 쓰지 않는다.
 
