@@ -7,6 +7,7 @@
 // 셀렉터는 전부 **역할(role) + 접근 이름**이다. 클래스·색·DOM 구조에 걸면 면·토큰·레이아웃을
 // 바꾸는 다른 티켓이 이 테스트를 부순다.
 import { expect, test } from './fixtures/stub-login';
+import { createCategory } from './sidebar';
 
 import type { Page } from '@playwright/test';
 
@@ -20,15 +21,6 @@ async function waitForShell(page: Page): Promise<void> {
   await page.waitForSelector('main#shell-main');
   await expect(page.getByRole('heading', { name: 'Tasky', level: 1 })).toBeVisible();
   await expect(page.getByText(MEMORY_MODE_TEXT)).toHaveCount(0);
-}
-
-async function createCategory(page: Page, name: string): Promise<void> {
-  await page.getByRole('button', { name: '+ 카테고리 추가' }).click();
-  const dialog = page.getByRole('dialog', { name: '카테고리 만들기' });
-  await expect(dialog).toBeVisible();
-  await dialog.getByLabel('이름').fill(name);
-  await dialog.getByRole('button', { name: '만들기' }).click();
-  await expect(dialog).toHaveCount(0);
 }
 
 /** 오늘 칸. 접근 이름이 '…, 오늘, …' 을 포함하는 칸은 하루에 하나뿐이다. */

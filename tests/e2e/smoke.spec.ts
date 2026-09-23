@@ -6,6 +6,7 @@
 // 셀렉터는 전부 **역할(role) + 접근 이름**이다. 클래스·색·DOM 구조에 걸면 면·토큰·레이아웃을
 // 바꾸는 다른 티켓이 이 테스트를 부수고, 반대로 **화면이 깨져도 통과하는** 느슨한 단언이 된다.
 import { expect, test } from './fixtures/stub-login';
+import { closeSidebarDrawer, createCategoryInDialog, openSidebarDrawer } from './sidebar';
 
 import type { CDPSession, Locator, Page } from '@playwright/test';
 
@@ -55,27 +56,6 @@ async function commitComposition(cdp: CDPSession, text: string): Promise<void> {
   await cdp.send('Input.insertText', { text });
 }
 
-/**
- * 사이드바 드로어를 연다 (calendar-layout.md §1-A — 모든 폭에서 드로어가 기본, `nav` 는 열려
- * 있는 동안만 DOM 에 있다). 돌려주는 것은 그 드로어 `dialog` — 호출부가 닫을 때 같은 로케이터로 잰다.
- */
-async function openSidebarDrawer(page: Page): Promise<Locator> {
-  await page.getByRole('button', { name: '카테고리 열기' }).click();
-  const drawer = page.getByRole('dialog', { name: /Tasky/ });
-  await expect(drawer).toBeVisible();
-  return drawer;
-}
-
-/** 카테고리 하나를 만든다(다이얼로그 경로 그대로) — "+ 카테고리 추가" 가 지금 reachable 하다고 전제한다. */
-async function createCategory(page: Page, name: string): Promise<void> {
-  await page.getByRole('button', { name: '+ 카테고리 추가' }).click();
-  const dialog = page.getByRole('dialog', { name: '카테고리 만들기' });
-  await expect(dialog).toBeVisible();
-  await dialog.getByLabel('이름').fill(name);
-  await dialog.getByRole('button', { name: '만들기' }).click();
-  await expect(dialog).toHaveCount(0);
-}
-
 /** 그룹 안에서 항목 메뉴를 열고 항목 하나를 고른다. */
 async function runItemMenu(page: Page, group: Locator, title: string, item: string): Promise<void> {
   await group.getByRole('button', { name: `${title} 메뉴` }).click();
@@ -108,9 +88,8 @@ test('한글 조합 중 Enter 는 항목을 만들지 않는다 (todo R4)', asyn
   await page.goto('/');
   await waitForShell(page);
   const drawer = await openSidebarDrawer(page);
-  await createCategory(page, CATEGORY);
-  await page.keyboard.press('Escape');
-  await expect(drawer).toHaveCount(0);
+  await createCategoryInDialog(page, CATEGORY);
+  await closeSidebarDrawer(page, drawer);
 
   const group = page.getByRole('region', { name: CATEGORY });
   await group.getByRole('button', { name: '+ 할 일 추가' }).click();
@@ -163,12 +142,11 @@ test('핵심 흐름: 카테고리 생성 → 한글 투두 → 체크 → 편집
   // 버튼 존재만으로는 "시드 완료" 를 보장하지 않는다).
   await expect(categorySection.getByRole('listitem')).not.toHaveCount(0);
   const before = await categorySection.getByRole('listitem').count();
-  await createCategory(page, CATEGORY);
+  await createCategoryInDialog(page, CATEGORY);
   await expect(categorySection.getByRole('listitem')).toHaveCount(before + 1);
   // 확인이 끝났으니 드로어를 닫는다 — 뒤의 투두 조작은 선택 날짜 패널(`main`, 모든 폭에서 항상
   // 보인다) 안에서 이뤄지고 드로어가 열려 있을 필요가 없다.
-  await page.keyboard.press('Escape');
-  await expect(drawer).toHaveCount(0);
+  await closeSidebarDrawer(page, drawer);
   const group = page.getByRole('region', { name: CATEGORY });
   await expect(group.getByRole('heading', { name: CATEGORY, level: 2 })).toBeVisible();
 
@@ -257,8 +235,7 @@ test('핵심 흐름: 카테고리 생성 → 한글 투두 → 체크 → 편집
   await expect(
     reopenedDrawer.getByRole('navigation').getByRole('button', { name: `${CATEGORY} 메뉴` }),
   ).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(reopenedDrawer).toHaveCount(0);
+  await closeSidebarDrawer(page, reopenedDrawer);
   await expect(group.getByRole('checkbox', { name: KEPT })).toBeChecked();
   await expectBelowDoneDivider(group, KEPT);
   await expect(ring).toHaveAccessibleName('오늘 달성률 100퍼센트, 1개 중 1개 완료');

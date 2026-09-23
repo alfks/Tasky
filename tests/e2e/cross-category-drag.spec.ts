@@ -7,6 +7,7 @@
 //
 // 이동이 저장까지 갔는지는 **새로고침 뒤**에 잰다 — 화면만 보면 낙관적 갱신이 저장 실패를 가린다.
 import { expect, test } from './fixtures/stub-login';
+import { closeSidebarDrawer, createCategoryInDialog, openSidebarDrawer } from './sidebar';
 
 import type { Locator, Page } from '@playwright/test';
 
@@ -21,15 +22,6 @@ async function waitForShell(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Tasky', level: 1 })).toBeVisible();
   // 메모리 구현으로 내려간 상태에서 "새로고침해도 남는다" 를 재면 거짓 기록이 된다.
   await expect(page.getByText(MEMORY_MODE_TEXT)).toHaveCount(0);
-}
-
-async function createCategory(page: Page, name: string): Promise<void> {
-  await page.getByRole('button', { name: '+ 카테고리 추가' }).click();
-  const dialog = page.getByRole('dialog', { name: '카테고리 만들기' });
-  await expect(dialog).toBeVisible();
-  await dialog.getByLabel('이름').fill(name);
-  await dialog.getByRole('button', { name: '만들기' }).click();
-  await expect(dialog).toHaveCount(0);
 }
 
 /** 그룹의 입력 행으로 할 일을 넣는다(UI 경로 그대로 — 데이터를 심지 않는다). */
@@ -68,12 +60,17 @@ async function titles(page: Page, category: string): Promise<string[]> {
     );
 }
 
-/** 카테고리 둘과 할 일 하나(공부)를 만든다. */
+/**
+ * 카테고리 둘과 할 일 하나(공부)를 만든다. 카테고리 생성은 드로어 경유다(calendar-layout.md
+ * §1-A) — 드로어를 열어 둘 다 만들고, 이후 할 일 조작은 메인 패널 몫이라 닫는다.
+ */
 async function setup(page: Page, title: string): Promise<void> {
   await page.goto('/');
   await waitForShell(page);
-  await createCategory(page, 공부);
-  await createCategory(page, 운동);
+  const drawer = await openSidebarDrawer(page);
+  await createCategoryInDialog(page, 공부);
+  await createCategoryInDialog(page, 운동);
+  await closeSidebarDrawer(page, drawer);
   await addTodo(page, 공부, title);
 }
 

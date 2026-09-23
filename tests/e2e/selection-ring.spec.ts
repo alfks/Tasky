@@ -16,6 +16,7 @@
 // `aria-hidden` 인 곳(색 스와치·타이머 프리셋)은 역할이 없어 주소를 매길 수 없다 —
 // 그때만 `evaluate` 안에서 한 칸 내려간다(그 한 칸을 주석으로 못 박는다).
 import { expect, test } from './fixtures/stub-login';
+import { openSidebarDrawer } from './sidebar';
 
 import type { Locator, Page } from '@playwright/test';
 
@@ -175,8 +176,13 @@ function markerBorderOf(radio: Locator, hop: 'child' | 'sibling'): Promise<Inset
   }, hop);
 }
 
-/** 카테고리 만들기 다이얼로그를 열고 색 스와치 그룹을 돌려준다. */
+/**
+ * 카테고리 만들기 다이얼로그를 열고 색 스와치 그룹을 돌려준다. "+ 카테고리 추가" 는 사이드바
+ * 드로어 안에 있다(calendar-layout.md §1-A) — 먼저 연다. 이 다이얼로그는 제출하지 않고 안의
+ * 스와치만 재는 호출부뿐이라 드로어는 닫지 않는다(테스트가 끝나면 컨텍스트째 버려진다).
+ */
 async function openColorSwatches(page: Page): Promise<Locator> {
+  await openSidebarDrawer(page);
   await page.getByRole('button', { name: '+ 카테고리 추가' }).click();
   const dialog = page.getByRole('dialog', { name: '카테고리 만들기' });
   await expect(dialog).toBeVisible();

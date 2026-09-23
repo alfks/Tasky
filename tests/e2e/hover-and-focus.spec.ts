@@ -21,6 +21,7 @@
 //
 // 셀렉터는 `tests/AGENTS.md` 규칙대로 역할 + 접근 이름만 쓴다.
 import { expect, test } from './fixtures/stub-login';
+import { closeSidebarDrawer, createCategoryInDialog, openSidebarDrawer } from './sidebar';
 
 import type { Locator, Page } from '@playwright/test';
 
@@ -69,13 +70,15 @@ function ringOf(target: Locator): Promise<Ring> {
   });
 }
 
-/** 데이터는 UI 경로로만 만든다(`tests/AGENTS.md` 규칙 3). */
+/**
+ * 데이터는 UI 경로로만 만든다(`tests/AGENTS.md` 규칙 3). 카테고리 생성은 드로어 경유다
+ * (calendar-layout.md §1-A) — 만들고 나면 닫는다: 뒤이은 "+ 할 일 추가" 는 메인 패널(선택 날짜
+ * 패널)의 그룹 몫이고, 드로어가 열려 있으면 배경이 `inert` 라 그 버튼을 찾을 수 없다.
+ */
 async function seedTodo(page: Page): Promise<void> {
-  await page.getByRole('button', { name: '+ 카테고리 추가' }).click();
-  const dialog = page.getByRole('dialog', { name: '카테고리 만들기' });
-  await dialog.getByRole('textbox', { name: /이름/ }).fill(CATEGORY);
-  await dialog.getByRole('button', { name: '만들기' }).click();
-  await expect(dialog).toHaveCount(0);
+  const drawer = await openSidebarDrawer(page);
+  await createCategoryInDialog(page, CATEGORY);
+  await closeSidebarDrawer(page, drawer);
 
   await page.getByRole('button', { name: '+ 할 일 추가' }).first().click();
   const input = page.getByRole('textbox', { name: /할 일/ }).first();
@@ -159,6 +162,8 @@ test.describe('사이드바 카테고리 행 호버 (theme.md R29)', () => {
     await page.goto('/');
     await waitForShell(page);
     await seedTodo(page);
+    // 사이드바 행은 드로어 안(`nav`)이라 다시 열어야 보인다(calendar-layout.md §1-A).
+    await openSidebarDrawer(page);
 
     const surface3 = await resolveColor(page, '--color-surface-3');
     const surface2 = await resolveColor(page, '--color-surface-2');
@@ -188,6 +193,8 @@ test.describe('사이드바 카테고리 행 호버 (theme.md R29)', () => {
     await input.press('Enter');
     await expect(group.getByRole('checkbox', { name: '물 마시기' })).toBeVisible();
     await page.keyboard.press('Escape');
+    // 사이드바 행은 드로어 안(`nav`)이라 다시 열어야 보인다(calendar-layout.md §1-A).
+    await openSidebarDrawer(page);
 
     const row = sidebarRow(page);
     // `0/1` 은 사용자에게 보이는 글자 그대로다(category R19) — 역할이 없는 자리라 글자로 잡는다.
@@ -207,6 +214,8 @@ test.describe('사이드바 카테고리 행 호버 (theme.md R29)', () => {
     await page.goto('/');
     await waitForShell(page);
     await seedTodo(page);
+    // 사이드바 행은 드로어 안(`nav`)이라 다시 열어야 보인다(calendar-layout.md §1-A).
+    await openSidebarDrawer(page);
 
     const handle = page.getByRole('button', { name: `${CATEGORY} 순서 변경 (Alt+위/아래)` });
     const faint = await resolveColor(page, '--color-faint');
@@ -265,6 +274,10 @@ test.describe('포커스 링은 앱의 링 하나뿐이다 (theme.md §5)', () =
   test('백업/복원 버튼의 링이 같은 화면 다른 버튼의 링과 같다', async ({ page }) => {
     await page.goto('/');
     await waitForShell(page);
+    // 두 기준 버튼 모두 사이드바 드로어 안(`nav`)에 있다(calendar-layout.md §1-A). **키보드로
+    // 연다** — 마우스로 열면(기본값) 이 화면의 입력 양상이 "포인터" 로 남아, 뒤이은
+    // `.focus()` 가 `:focus-visible` 을 켜지 못한다(실측 — `sidebar.ts#openSidebarDrawer` 주석).
+    await openSidebarDrawer(page, 'keyboard');
 
     const focusColor = await resolveColor(page, '--color-focus');
 

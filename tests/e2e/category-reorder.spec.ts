@@ -7,6 +7,7 @@
 //
 // 순서가 저장까지 갔는지는 **새로고침 뒤**에 잰다 — 화면만 보면 낙관적 갱신이 저장 실패를 가린다.
 import { expect, test } from './fixtures/stub-login';
+import { closeSidebarDrawer, createCategoryInDialog, openSidebarDrawer } from './sidebar';
 
 import type { Locator, Page } from '@playwright/test';
 
@@ -18,15 +19,6 @@ async function waitForShell(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Tasky', level: 1 })).toBeVisible();
   // 메모리 구현으로 내려간 상태에서 "새로고침해도 남는다" 를 재면 거짓 기록이 된다.
   await expect(page.getByText(MEMORY_MODE_TEXT)).toHaveCount(0);
-}
-
-async function createCategory(page: Page, name: string): Promise<void> {
-  await page.getByRole('button', { name: '+ 카테고리 추가' }).click();
-  const dialog = page.getByRole('dialog', { name: '카테고리 만들기' });
-  await expect(dialog).toBeVisible();
-  await dialog.getByLabel('이름').fill(name);
-  await dialog.getByRole('button', { name: '만들기' }).click();
-  await expect(dialog).toHaveCount(0);
 }
 
 /** 사이드바 행의 드래그 손잡이. 드래그는 여기서만 시작한다(R5). */
@@ -51,38 +43,52 @@ async function names(page: Page): Promise<string[]> {
     );
 }
 
-/** 첫 실행 시드(R18) 하나 위에 둘을 더 만들어 셋으로 시작한다. */
-async function setup(page: Page): Promise<string[]> {
+/**
+ * 첫 실행 시드(R18) 하나 위에 둘을 더 만들어 셋으로 시작한다. 카테고리 목록·손잡이가 전부
+ * 드로어 안(`nav`)이라(calendar-layout.md §1-A) **드로어를 연 채로 돌려준다** — 이 파일의 모든
+ * 조작(드래그·키보드·순서 확인)이 사이드바 행 위에서 일어나므로 호출부가 계속 그 드로어로 잰다.
+ */
+async function setup(page: Page): Promise<{ drawer: Locator; names: string[] }> {
   await page.goto('/');
   await waitForShell(page);
-  await createCategory(page, '공부');
-  await createCategory(page, '운동');
-  return names(page);
+  const drawer = await openSidebarDrawer(page);
+  await createCategoryInDialog(page, '공부');
+  await createCategoryInDialog(page, '운동');
+  return { drawer, names: await names(page) };
 }
 
 test('행을 아래로 끌어 놓으면 순서가 바뀌고 새로고침해도 남는다', async ({ page }) => {
-  const [첫째, 둘째, 셋째] = await setup(page);
+  const { drawer, names: seeded } = await setup(page);
+  const [첫째, 둘째, 셋째] = seeded;
 
   // 마지막 행의 **아래쪽**에 떨어뜨린다. 정중앙은 중간점과 같은 값이라 앞/뒤 판정이 반올림에 걸린다.
   await handle(page, 첫째).dragTo(handle(page, 셋째), { targetPosition: { x: 8, y: 30 } });
 
   await expect.poll(async () => names(page)).toEqual([둘째, 셋째, 첫째]);
+  await closeSidebarDrawer(page, drawer);
 
   await page.reload();
   await waitForShell(page);
+  // 드로어는 세션 안에서만 열림 상태를 갖는다(새로고침으로 리셋된다) — 사이드바 행을 다시 보려면
+  // 한 번 더 연다(smoke.spec.ts 와 같은 이유).
+  const reopened = await openSidebarDrawer(page);
   await expect.poll(async () => names(page)).toEqual([둘째, 셋째, 첫째]);
+  await closeSidebarDrawer(page, reopened);
 });
 
 test('행을 위로 끌어 놓으면 그 앞에 꽂힌다', async ({ page }) => {
-  const [첫째, 둘째, 셋째] = await setup(page);
+  const { drawer, names: seeded } = await setup(page);
+  const [첫째, 둘째, 셋째] = seeded;
 
   await handle(page, 셋째).dragTo(handle(page, 첫째), { targetPosition: { x: 8, y: 2 } });
 
   await expect.poll(async () => names(page)).toEqual([셋째, 첫째, 둘째]);
+  await closeSidebarDrawer(page, drawer);
 });
 
 test('키보드 `Alt+↓` 도 같은 순서 변경을 하고 결과를 낭독한다 (§5)', async ({ page }) => {
-  const [첫째, 둘째, 셋째] = await setup(page);
+  const { drawer, names: seeded } = await setup(page);
+  const [첫째, 둘째, 셋째] = seeded;
 
   await handle(page, 첫째).focus();
   await page.keyboard.press('Alt+ArrowDown');
@@ -92,4 +98,5 @@ test('키보드 `Alt+↓` 도 같은 순서 변경을 하고 결과를 낭독한
   await expect(
     page.getByRole('region', { name: '카테고리', exact: true }).getByRole('status'),
   ).toContainText(`${첫째} 을(를) 2번째로 옮겼어요`);
+  await closeSidebarDrawer(page, drawer);
 });
