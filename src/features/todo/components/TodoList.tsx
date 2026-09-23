@@ -11,6 +11,7 @@ import type { Todo } from '@/domain/todo/todo';
 
 import { ITEM_SHORTCUT_IDS, useDocumentedShortcuts, useShortcut } from '@/features/command';
 import { TodoGroupSection } from '@/features/todo/components/TodoGroupSection';
+import { useCollapsedCategories } from '@/features/todo/hooks/useCollapsedCategories';
 import { useTodoActions } from '@/features/todo/hooks/useTodoActions';
 import { useTodoCommands } from '@/features/todo/hooks/useTodoCommands';
 import { useTodoDate } from '@/features/todo/hooks/useTodoDate';
@@ -63,6 +64,7 @@ export function TodoList({ date, categories, onStartTimer }: TodoListProps) {
   const { status, error } = useTodoDate(date);
   const groups = useTodoGroups(categories);
   const { removeTodo, moveToDate, changeCategory, clearError } = useTodoActions();
+  const { isCollapsed, toggle: toggleCollapsed } = useCollapsedCategories();
   const [addOpenFor, setAddOpenFor] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: TodoId; field: 'title' | 'memo' } | null>(null);
   const [draggingId, setDraggingId] = useState<TodoId | null>(null);
@@ -175,6 +177,8 @@ export function TodoList({ date, categories, onStartTimer }: TodoListProps) {
             onDragChange={setDraggingId}
             draggingFrom={draggingFrom}
             onDropToCategory={handleDropToCategory}
+            collapsed={isCollapsed(group.categoryId)}
+            onToggleCollapse={() => toggleCollapsed(group.categoryId)}
             {...handlers}
           />
         );
