@@ -198,7 +198,9 @@ export function TodoGroupSection({
        * 보완한다) + `--elev-sm`(`shadow-sm`, 라이트에서 부유감을 만든다) + `--radius-xl`.
        */
       className={cn(
-        'flex flex-col gap-[var(--space-2)] rounded-[var(--radius-xl)] border border-border bg-surface p-[var(--space-3)] shadow-sm',
+        // 카드 안쪽 여백·헤더-목록 간격은 좁은 화면에서 --todo-section-pad·--todo-section-gap 으로
+        // 줄어든다(theme.md §3-D R32). 데스크탑 값은 각각 --space-3·--space-2 와 같아 변화가 없다.
+        'flex flex-col gap-[var(--todo-section-gap)] rounded-[var(--radius-xl)] border border-border bg-surface p-[var(--todo-section-pad)] shadow-sm',
         // 받을 수 있다는 표시는 **이미 앱에 있는 언어**다: `DateCell` 이 투두를 받을 때 쓰는 점선
         // (`border-2 border-dashed border-accent`, date-strip R13) 그대로다. 같은 드래그가 두 곳에
         // 떨어질 수 있는데 표시가 서로 다르면 사용자는 둘을 다른 기능으로 읽는다.

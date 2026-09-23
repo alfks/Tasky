@@ -1,9 +1,8 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { DateStripHeader } from '@/features/date-strip/components/DateStripHeader';
-import { MAX_DATE_KEY, MIN_DATE_KEY } from '@/features/date-strip/lib/week';
 
 function renderHeader(props: Partial<Parameters<typeof DateStripHeader>[0]> = {}) {
   const onSelect = vi.fn();
@@ -22,9 +21,6 @@ function renderHeader(props: Partial<Parameters<typeof DateStripHeader>[0]> = {}
         onSelect={onSelect}
         {...props}
       />
-      {/* 팝오버 "바깥" 두 종류 — 눌러도 포커스를 못 받는 곳과, 받는 곳. */}
-      <p data-testid="바깥 빈 곳">바깥 빈 곳</p>
-      <input aria-label="바깥 입력" />
     </div>,
   );
   return { onSelect, onToggleView };
@@ -46,97 +42,78 @@ describe('R11. 월 표시는 YYYY년 M월 이고 이동 버튼에는 이름이 �
   });
 });
 
-describe('§2-A. 월 표시를 누르면 네이티브 날짜 입력으로 아무 날짜나 점프할 수 있다', () => {
-  it('키보드만으로 열고 날짜를 확정하면 그 날이 선택되고 포커스가 돌아온다', async () => {
+// 피커 본문(YearMonthPicker)은 지연 로드라 열자마자 바로 보이지 않는다 — 동적 import 가
+// 풀리길 기다린다(calendar-layout.md §7 · DateStripHeader 머리 주석). 세부 키보드·ARIA 계약은
+// YearMonthPicker.test.tsx 가 자기 완결적 하네스로 덮는다(Popover 는 shared ui 라 새 간선이 아니다).
+// 여기서는 "월 표시 버튼이 피커를 연다" 는 연결부만 확인한다(calendar-layout.md §6).
+describe('calendar-layout.md §3. 월 표시를 누르면 년·월 피커가 열린다(네이티브 날짜 입력 교체)', () => {
+  // 이 파일에서 가장 먼저 열어야 한다 — `LazyYearMonthPicker` 는 모듈 스코프의 `lazy()` 싱글턴이라
+  // 한 번 풀린 동적 import 는 이 파일이 도는 내내(이후 it 전부) 캐시된 채 남는다. 다른 테스트가
+  // 먼저 열면 이 테스트에 닿을 즈음엔 이미 청크가 있어 fallback(자리표시자)이 그려질 틈이 없다.
+  it('청크가 로드되는 동안 실제 패널 크기의 자리표시자가 보인다(리뷰 Minor — 레이아웃 붕괴 방지)', async () => {
+    renderHeader();
+
+    // `fireEvent.click`(동기)으로 연다 — `user.click`(비동기)은 내부적으로 매크로태스크까지
+    // 흘려보내 지연 청크의 동적 import 가 이미 풀린 뒤에야 단언에 닿을 수 있다. 여기서는
+    // 아직 청크가 없는 바로 그 순간(fallback)을 잡아야 한다.
+    fireEvent.click(monthButton());
+    const placeholder = document.querySelector('[aria-busy="true"]');
+    expect(placeholder).not.toBeNull();
+    // w-full: 이 자리표시자는 패널(Popover, w-[280px])의 콘텐츠 상자를 채우는 자식이지 패널
+    // 자체가 아니다 — 자식이 또 280px 를 주장하면 패딩·테두리만큼 밖으로 삐져나온다(2차 리뷰
+    // Major). 높이 256px 은 YearMonthPicker 실제 내용의 실측 합(그 파일 자리표시자 주석 참고).
+    expect(placeholder).toHaveClass('w-full', 'h-[256px]');
+
+    expect(await screen.findByRole('radiogroup', { name: '월 선택' })).toBeInTheDocument();
+  });
+
+  it('클릭하면 년·월 피커(월 선택 라디오그룹)가 열린다', async () => {
     const user = userEvent.setup();
-    const { onSelect } = renderHeader();
+    renderHeader();
+
+    await user.click(monthButton());
+
+    expect(await screen.findByRole('radiogroup', { name: '월 선택' })).toBeInTheDocument();
+  });
+
+  it('키보드만으로 열 수 있다', async () => {
+    const user = userEvent.setup();
+    renderHeader();
 
     monthButton().focus();
     await user.keyboard('{Enter}');
 
-    const input = screen.getByLabelText('날짜 선택');
-    expect(input).toHaveFocus();
-    // input[type=date] 는 문자 입력이 아니라 값 확정(change)으로 다룬다 — 한글 IME 조합이 끼어들 여지가 없다.
-    fireEvent.change(input, { target: { value: '2026-12-25' } });
+    expect(await screen.findByRole('radiogroup', { name: '월 선택' })).toBeInTheDocument();
+  });
 
-    expect(onSelect).toHaveBeenCalledWith('2026-12-25');
-    expect(screen.queryByLabelText('날짜 선택')).not.toBeInTheDocument();
+  it('월을 확정하면 그 날이 선택되고(일 유지) 피커가 닫히며 포커스가 월 버튼으로 돌아온다', async () => {
+    const user = userEvent.setup();
+    const { onSelect } = renderHeader({ selectedDate: '2026-09-17' });
+
+    await user.click(monthButton());
+    await user.click(await screen.findByRole('radio', { name: '12월' }));
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith('2026-12-17');
+    expect(screen.queryByRole('radiogroup', { name: '월 선택' })).not.toBeInTheDocument();
     expect(monthButton()).toHaveFocus();
   });
 
-  it('Esc 를 누르면 닫히고 포커스가 월 버튼으로 돌아온다', async () => {
+  it('Esc 를 누르면 변경 없이 닫히고 포커스가 월 버튼으로 돌아온다', async () => {
     const user = userEvent.setup();
     const { onSelect } = renderHeader();
 
     await user.click(monthButton());
-    expect(screen.getByLabelText('날짜 선택')).toHaveFocus();
+    await screen.findByRole('radiogroup', { name: '월 선택' });
 
     await user.keyboard('{Escape}');
-    expect(screen.queryByLabelText('날짜 선택')).not.toBeInTheDocument();
+
+    expect(screen.queryByRole('radiogroup', { name: '월 선택' })).not.toBeInTheDocument();
     expect(monthButton()).toHaveFocus();
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('입력 가능 범위는 이동 가능 범위와 같다 (R6)', async () => {
-    const user = userEvent.setup();
-    renderHeader();
-    await user.click(monthButton());
-    const input = screen.getByLabelText('날짜 선택');
-    expect(input).toHaveAttribute('min', MIN_DATE_KEY);
-    expect(input).toHaveAttribute('max', MAX_DATE_KEY);
-  });
-
-  it('형식이 아닌 값(브라우저가 비운 입력)은 선택을 바꾸지 않는다', async () => {
-    const user = userEvent.setup();
-    const { onSelect } = renderHeader();
-    await user.click(monthButton());
-    fireEvent.change(screen.getByLabelText('날짜 선택'), { target: { value: '' } });
-    expect(onSelect).not.toHaveBeenCalled();
-  });
-});
-
-describe('app-shell R7. 날짜 점프는 Popover 프리미티브를 타고 닫히면 월 버튼으로 돌아온다', () => {
-  it('바깥 빈 곳을 누르면 닫히고 포커스가 월 버튼으로 돌아온다', async () => {
-    const user = userEvent.setup();
-    const { onSelect } = renderHeader();
-
-    await user.click(monthButton());
-    expect(screen.getByLabelText('날짜 선택')).toHaveFocus();
-
-    // fireEvent 로는 재현되지 않는다 — userEvent v14 만 mousedown 의 기본 포커스 이동을 모사한다.
-    await user.click(screen.getByTestId('바깥 빈 곳'));
-
-    expect(screen.queryByLabelText('날짜 선택')).not.toBeInTheDocument();
-    expect(monthButton()).toHaveFocus();
-    expect(onSelect).not.toHaveBeenCalled();
-  });
-
-  it('바깥의 포커스 가능한 곳을 누르면 팝오버는 닫히되 포커스는 그쪽으로 간다(비모달)', async () => {
-    const user = userEvent.setup();
-    renderHeader();
-
-    await user.click(monthButton());
-    await user.click(screen.getByLabelText('바깥 입력'));
-
-    expect(screen.queryByLabelText('날짜 선택')).not.toBeInTheDocument();
-    // 여기서 앵커로 되돌리면 바깥 입력칸에 캐럿이 가지 않는다 — 팝오버는 비모달이다(T-39).
-    expect(screen.getByLabelText('바깥 입력')).toHaveFocus();
-  });
-
-  it('입력이 포커스를 잃어도 닫지 않는다 — blur 로 닫으면 안쪽 이동까지 닫힌다', async () => {
-    const user = userEvent.setup();
-    renderHeader();
-
-    await user.click(monthButton());
-    const input = screen.getByLabelText('날짜 선택');
-    act(() => {
-      input.blur();
-    });
-
-    expect(screen.getByLabelText('날짜 선택')).toBeInTheDocument();
-  });
-
-  it('열려 있는 동안 월 버튼이 aria-controls 로 패널을 가리킨다', async () => {
+  it('열려 있는 동안 월 버튼이 aria-controls 로 패널을 가리킨다(닫혀 있어도 aria-haspopup 은 붙는다)', async () => {
     const user = userEvent.setup();
     renderHeader();
 
@@ -144,11 +121,10 @@ describe('app-shell R7. 날짜 점프는 Popover 프리미티브를 타고 닫�
     expect(monthButton()).toHaveAttribute('aria-expanded', 'false');
 
     await user.click(monthButton());
+    const panel = await screen.findByRole('radiogroup', { name: '월 선택' });
     const panelId = monthButton().getAttribute('aria-controls');
     expect(panelId).not.toBeNull();
-    expect(document.getElementById(panelId ?? '')).toContainElement(
-      screen.getByLabelText('날짜 선택'),
-    );
+    expect(document.getElementById(panelId ?? '')).toContainElement(panel);
     expect(monthButton()).toHaveAttribute('aria-expanded', 'true');
   });
 });
@@ -194,11 +170,11 @@ describe('§5. 자기 클릭으로 비활성되는 버튼은 포커스를 넘긴
     expect(onSelect).toHaveBeenCalledWith('2099-12-27', true);
   });
 
-  it('날짜 점프는 월 버튼이 그대로 살아 있어 포커스를 넘기지 않는다', async () => {
+  it('년·월 피커에서 월을 확정해도 월 버튼이 그대로 살아 있어 onSelect 에 adoptFocus 를 요청하지 않는다', async () => {
     const user = userEvent.setup();
     const { onSelect } = renderHeader();
     await user.click(monthButton());
-    fireEvent.change(screen.getByLabelText('날짜 선택'), { target: { value: '2026-12-25' } });
-    expect(onSelect).toHaveBeenCalledWith('2026-12-25');
+    await user.click(await screen.findByRole('radio', { name: '12월' }));
+    expect(onSelect).toHaveBeenCalledWith('2026-12-17');
   });
 });

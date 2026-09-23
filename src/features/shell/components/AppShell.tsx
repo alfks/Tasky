@@ -18,11 +18,12 @@ import {
 import { useDateStripStore } from '@/features/date-strip';
 import { ReportsScreen, useReportsStore } from '@/features/reports';
 import { MemoryModeBanner } from '@/features/shell/components/MemoryModeBanner';
+import { ShellDayPanel } from '@/features/shell/components/ShellDayPanel';
 import { ShellErrorBoundary } from '@/features/shell/components/ShellErrorBoundary';
 import { ShellGlobals } from '@/features/shell/components/ShellGlobals';
 import { ShellHeader } from '@/features/shell/components/ShellHeader';
 import { INSIGHT_PANEL_ID, ShellInsights } from '@/features/shell/components/ShellInsights';
-import { SHELL_MAIN_ID, ShellMain } from '@/features/shell/components/ShellMain';
+import { ShellMain } from '@/features/shell/components/ShellMain';
 import { ShellOverlays } from '@/features/shell/components/ShellOverlays';
 import { ShellSidebar } from '@/features/shell/components/ShellSidebar';
 import { SkipLink } from '@/features/shell/components/SkipLink';
@@ -37,7 +38,8 @@ import { useShellShortcuts } from '@/features/shell/hooks/useShellShortcuts';
 import { useToastStack } from '@/features/shell/hooks/useToastStack';
 import { useTodoDropToDate } from '@/features/shell/hooks/useTodoDropToDate';
 import { useTopNoticeOffset } from '@/features/shell/hooks/useTopNoticeOffset';
-import { hasBottomAddButton } from '@/features/shell/lib/layout';
+import { hasBottomAddButton, hasDayPanelColumn } from '@/features/shell/lib/layout';
+import { SHELL_MAIN_ID } from '@/features/shell/lib/main-id';
 import { APP_NAME } from '@/features/shell/lib/title';
 import { useShellStorageStore } from '@/features/shell/store/shell-storage-store';
 import { useShellToastStore } from '@/features/shell/store/shell-toast-store';
@@ -49,6 +51,11 @@ function ShellBody() {
   // 두 패널의 "지금 컬럼인가 / 어떻게 열고 접는가" 와 접을 때의 포커스 인계는 한 훅에 모여 있다.
   const panels = useShellPanels();
   const { sidebarIsColumn, insightIsColumn, drawerOpen, insightOverlayOpen } = panels;
+  // 3영역(달력 컬럼 + 선택 날짜 패널) 대 1열(`ShellMain`)의 갈림은 지금은 인사이트 컬럼과 같은
+  // 문턱이지만 **뜻이 다른 판정**이라 전용 함수를 쓴다(`hasDayPanelColumn` — 리뷰 Minor). 예전에는
+  // `hasInsightColumn` 을 그대로 재사용했는데, 인사이트 정책만 바뀌어도(예: 인사이트를 `wide`
+  // 전용으로 좁히면) 3영역 레이아웃이 `mid` 에서 조용히 1열로 무너지는 결합이었다.
+  const threeRegion = hasDayPanelColumn(panels.layout);
 
   // 테마 적재·OS 추종은 화면에 한 번만 건다(theme R6~R8).
   const theme = useThemeSync();
@@ -160,6 +167,24 @@ function ShellBody() {
   if (todoStatus === 'ready') everReady.current = true;
   const todosFirstLoading = !failed && !everReady.current && todoStatus !== 'error';
 
+  const failureCard = failed ? (
+    <StorageFailureCard onContinue={() => void loadCategories()} />
+  ) : null;
+  const handleCreateCategory = () => setCategoryFormOpen(true);
+  const header = (
+    <ShellHeader
+      summary={summary}
+      sidebarIsColumn={sidebarIsColumn}
+      insightIsColumn={insightIsColumn}
+      dayPanelVisible={threeRegion}
+      insightOverlayOpen={insightOverlayOpen}
+      onOpenDrawer={panels.openDrawer}
+      onOpenInsight={panels.openInsight}
+      onSummaryError={(message) => pushToast({ message, variant: 'error' })}
+      onDropTodo={handleDropTodo}
+    />
+  );
+
   return (
     // `min-w` 는 §3 R11 의 최소 폭이다. 400px 이던 시절에는 **실기기 대부분에서 가로 스크롤이
     // 생겼다** — 휴대폰의 CSS 폭은 360(안드로이드 다수)·375(iPhone SE·mini)·390(iPhone 12~16)
@@ -174,9 +199,18 @@ function ShellBody() {
         style={{ height: noticeOffset }}
         className="shrink-0"
       />
-      {/* 문서의 `h1` 은 언제나 하나다. 사이드바가 컬럼일 때는 그쪽이 보이는 제목을 갖고,
-          아닐 때(드로어 포함)는 여기 숨은 제목이 그 자리를 맡는다. */}
-      {sidebarIsColumn ? null : <h1 className="sr-only">{APP_NAME}</h1>}
+      {/*
+        문서의 `h1` 은 언제나 하나다. 사이드바가 컬럼이면 `ShellSidebar` 가, 아니면 `ShellHeader`
+        가 이미 갖고 있다(calendar-layout.md R6, ☰ 오른쪽) — 단 `ShellHeader` 는 다음 두 갈래에서
+        통째로 숨는다: 저장소 열기 실패(`failureCard`, §2-C 에러, `header` 변수 참고)와 통계 화면
+        (`reportsOpen` — `ReportsScreen` 하나만 렌더되고 그 제목은 h2 다, stats.md). 그 두 갈래에서만
+        여기서 대신 낸다(sr-only — 두 화면 모두 보이는 제목을 더할 자리가 없다). 이 조건을
+        `reportsOpen` 을 빼고 좁히면(리뷰 Major) 통계를 연 순간 문서에 `h1` 이 0개가 된다 —
+        `AppShell.test.tsx` 가 그 상태를 고정한다.
+      */}
+      {sidebarIsColumn || (failureCard === null && !reportsOpen) ? null : (
+        <h1 className="sr-only">{APP_NAME}</h1>
+      )}
 
       <div className="flex min-h-0 flex-1 gap-[var(--space-6)] px-[var(--space-4)] py-[var(--space-3)]">
         {sidebarIsColumn ? (
@@ -184,6 +218,8 @@ function ShellBody() {
             <ShellSidebar
               showTitle
               framed
+              sidebarPinned={panels.sidebarPinned}
+              onTogglePinned={panels.toggleSidebarPinned}
               categories={categories}
               onSelectCategory={focusCategory}
               onRemoveCategory={requestRemove}
@@ -194,7 +230,54 @@ function ShellBody() {
 
         {reportsOpen ? (
           <ReportsScreen />
+        ) : threeRegion ? (
+          // calendar-layout.md §1-B R1(b)·R2·R4: 달력 컬럼(셸 상단 줄 + 날짜 스트립 + 그 아래
+          // 인사이트, 인사이트만 스크롤) + 선택 날짜 패널(`main`, R1(c)) 둘로 나뉜다. `h1` 은 여기서
+          // 그리지 않는다 — `sidebarIsColumn` 이면 `ShellSidebar` 가, 아니면 `ShellHeader` 가 이미
+          // ☰ 옆에 갖고 있다(calendar-layout.md R6).
+          //
+          // **이 duo 를 감싸는 `justify-center` 래퍼(사용자 결정, 리뷰 Major — "1280·1440 에서
+          // 오른쪽에 300~500px 빈 공간").** 달력 컬럼은 `max-w-[560px]` 에서 자라기를 멈추고, 선택
+          // 날짜 패널은 400 고정이다 — 둘의 합(최대 984px + 간격)이 넓은 화면의 남는 폭보다 늘 작아,
+          // 이 래퍼가 없으면 `justify-content` 기본값(flex-start)에 따라 그 차액이 전부 **오른쪽
+          // 한쪽에** 쌓여 "로딩이 덜 된 것처럼" 보였다. 사이드바(고정 컬럼)는 이 래퍼 **밖**의
+          // 형제라 폭에 관여하지 않는다 — 그래서 고정 컬럼이 서 있어도 안 서 있어도, 이 duo 는
+          // 그 왼쪽에 남은 공간 안에서 자기끼리 가운데로 온다(1280·1440·1600 계산은 PR 본문·핸드오프
+          // 참고). `min-w-0` 은 이 래퍼가 `justify-center` 로 줄어들 때도 자식의 `min-w-[440px]` 가
+          // 실제로 지켜지게 한다(안 주면 flex 기본 `min-width:auto` 가 이 래퍼 자체를 늘려 버린다).
+          <div className="flex min-h-0 min-w-0 flex-1 justify-center gap-[var(--space-6)]">
+            <div className="flex min-h-0 max-w-[560px] min-w-[440px] flex-1 flex-col gap-[var(--space-3)]">
+              <div className="shrink-0">{failureCard === null ? header : null}</div>
+              {insightIsColumn ? (
+                <aside
+                  ref={panels.asideRef}
+                  id={INSIGHT_PANEL_ID}
+                  tabIndex={-1}
+                  aria-label="오늘 요약"
+                  className="min-h-0 flex-1 outline-none"
+                >
+                  <ShellInsights
+                    categories={categoriesWithHistory}
+                    panelId={INSIGHT_PANEL_ID}
+                    onCollapse={panels.collapseInsight}
+                  />
+                </aside>
+              ) : null}
+            </div>
+
+            <ShellDayPanel
+              date={date}
+              summary={summary}
+              categories={categoriesWithHistory}
+              categoriesPending={categoriesPending}
+              todosFirstLoading={todosFirstLoading}
+              todosEmpty={summary.total === 0}
+              failureCard={failureCard}
+              onCreateCategory={handleCreateCategory}
+            />
+          </div>
         ) : (
+          // calendar-layout.md R8: <1024 는 지금 구조 그대로 — 헤더가 `ShellMain` 안, `main` 하나뿐.
           <ShellMain
             date={date}
             categories={categoriesWithHistory}
@@ -202,46 +285,20 @@ function ShellBody() {
             todosFirstLoading={todosFirstLoading}
             todosEmpty={summary.total === 0}
             showBottomAdd={hasBottomAddButton(panels.layout)}
-            failureCard={
-              failed ? <StorageFailureCard onContinue={() => void loadCategories()} /> : null
-            }
-            onCreateCategory={() => setCategoryFormOpen(true)}
-            header={
-              <ShellHeader
-                summary={summary}
-                sidebarIsColumn={sidebarIsColumn}
-                insightIsColumn={insightIsColumn}
-                insightOverlayOpen={insightOverlayOpen}
-                onOpenDrawer={panels.openDrawer}
-                onOpenInsight={panels.openInsight}
-                onSummaryError={(message) => pushToast({ message, variant: 'error' })}
-                onDropTodo={handleDropTodo}
-              />
-            }
+            failureCard={failureCard}
+            onCreateCategory={handleCreateCategory}
+            header={header}
           />
         )}
-
-        {insightIsColumn ? (
-          <aside
-            ref={panels.asideRef}
-            id={INSIGHT_PANEL_ID}
-            tabIndex={-1}
-            aria-label="오늘 요약"
-            className="w-[280px] shrink-0 outline-none"
-          >
-            <ShellInsights
-              categories={categoriesWithHistory}
-              panelId={INSIGHT_PANEL_ID}
-              onCollapse={panels.collapseInsight}
-            />
-          </aside>
-        ) : null}
       </div>
 
       <ShellGlobals onBackup={openBackupDialog} />
 
       <ShellOverlays
         categories={categoriesWithHistory}
+        layout={panels.layout}
+        sidebarPinned={panels.sidebarPinned}
+        onToggleSidebarPinned={panels.toggleSidebarPinned}
         drawerOpen={drawerOpen}
         onDrawerClose={panels.closeDrawer}
         insightOverlayOpen={insightOverlayOpen}

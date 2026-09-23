@@ -91,6 +91,13 @@
   /* 3-G R18: "선택됨" 링 두께. 미체크 체크박스 테두리(2px)·스와치 선택 테두리(2px)와 같은 굵기 —
      3:1 을 지는 선은 앱 전체에서 한 굵기다. */
   --control-selected-ring: 2px;
+
+  /* 3-D 브레이크포인트 — Tailwind 기본값(48rem)은 브라우저 루트 글꼴 크기가 16px 가 아니면
+     (접근성 설정으로 바꾼 경우) 768px 에서 어긋난다. px 로 고정해 JS `SHELL_BREAKPOINTS.narrow`
+     (768, src/features/shell/lib/layout.ts)·CSS `max-width: 767.98px`(calendar-layout.md R13)와
+     항상 같은 지점을 가리키게 한다(theme.md §3-D R31). `sm:`(640px)은 대응하는 JS 상수가 없어
+     그대로 둔다 — `lg:`·`xl:`·`2xl:` 는 이 레포가 쓰지 않아 손대지 않는다. */
+  --breakpoint-md: 768px;
 }
 
 /* @theme 밖 런타임 토큰. 여기 값은 Tailwind 유틸을 만들지 않고 CSS 변수로만 존재한다.
@@ -143,6 +150,92 @@
   --color-cat-lilac-dark: #bc9ecc;
   --color-cat-gray: #c9ccd6;
   --color-cat-gray-dark: #9ea1ab;
+}
+
+/* 달력(월 보기 격자) 밀도 토큰(calendar-layout.md §2 R12) — 값의 단일 소스는 그 문서의 표다.
+   `@theme` 밖에 두는 이유는 위 카테고리 팔레트와 같다: `@theme` 에 넣으면 `w-[var(--cal-cell-w)]`
+   대신 `w-cal-cell-w` 같은 유틸이 생겨 이 밀도가 date-strip 담장 밖으로 새 나갈 길이 열린다.
+   미디어 경계 767.98 은 임의의 다른 값이 아니라 `src/features/shell/lib/layout.ts` 의
+   `SHELL_BREAKPOINTS.narrow`(768)와 같은 지점을 가리킨다(R13) — `max-width` 는 그 지점 미만을
+   잡아야 하므로 0.02 를 뺀다(768 자체는 이 미디어 쿼리 밖, 곧 ≥768 갈래). */
+:root {
+  --cal-cell-w: 48px;
+  --cal-cell-h-week: 64px;
+  --cal-cell-h-month: 40px;
+  --cal-gap: 6px;
+  --cal-day-text: var(--text-md);
+  --cal-weekday-text: var(--text-xs);
+}
+
+@media (max-width: 767.98px) {
+  :root {
+    --cal-cell-w: 40px;
+    --cal-cell-h-week: 56px;
+    --cal-cell-h-month: 34px;
+    --cal-gap: 4px;
+    /* 리터럴로 고정한다(var(--text-base) 참조가 아니다) — 아래 "모바일 전역 글자 축소" 블록이
+       --text-base 자체를 14→13 으로 낮추므로, 여기서 계속 var() 로 물려 있으면 달력 글자가
+       이중으로 작아진다(theme.md R30). 값 14 는 축소 이전에 이미 실측(calendar-layout.md R9)을
+       마친 지점이라 그대로 굳힌다 — 달력은 더 줄이지 않는다. */
+    --cal-day-text: 14px;
+    --cal-weekday-text: var(--text-xs);
+  }
+}
+
+/* 모바일 전역 글자 축소(theme.md §3-D R30, calendar-layout.md R11 개정 — 사용자 결정으로
+   "전역은 낮추지 않는다" 를 뒤집었다). `--text-xs`(12) 는 본문 판독성 하한이라 여기서 다시
+   낮추지 않는다 — 그래서 이 블록에 없다. 터치 치수(`--control-height`·`--control-hit-min`·
+   체크박스 22px)는 글자가 아니므로 이 블록이 건드리지 않는다.
+
+   `--text-base`(14→13)·`--text-lg`(17→16)는 사용자 관점 리뷰어가 제안한 기준선을 그대로 쓴다.
+   `--text-sm`은 원래 13 이라 base 를 13 으로 낮추면 그대로 두면 base 와 같아진다 — 스케일의
+   두 단계가 같은 값이 되는 것(뭉개짐)을 피하려고 12.5 로 반 단계만 낮췄다(12 인 xs 와도 겹치지
+   않는다). 나머지(md·xl·2xl·3xl)는 원래 스케일의 상대 배율(약 0.90~0.94)을 유지하는 선에서
+   1~2px 씩 낮춰 8 단계 전부가 계속 엄격히 증가하도록 정했다: 12(xs, 불변) < 12.5(sm) < 13(base)
+   < 14(md) < 16(lg) < 18(xl) < 22(2xl) < 28(3xl). */
+@media (max-width: 767.98px) {
+  :root {
+    --text-sm: 12.5px;
+    --text-base: 13px;
+    --text-md: 14px;
+    --text-lg: 16px;
+    --text-xl: 18px;
+    --text-2xl: 22px;
+    --text-3xl: 28px;
+  }
+}
+
+/* 할 일 행 밀도(theme.md §3-D R32) — 사용자 결정("행높이도 조절해서 한번에 보이는 할일 task가
+   더 많이 보였으면 좋겠어"). `@theme` 밖에 두는 이유는 위 --cal-* 와 같다: `todo` 목록 전용
+   밀도라 `@theme` 에 넣으면 `h-todo-row-hit-min` 같은 유틸이 생겨 이 값이 todo 담장 밖으로 새
+   나갈 길이 열린다(src/styles/AGENTS.md 규칙 1 확장 — 이 다섯 이름을 추가했다).
+
+   기존 --control-hit-min 을 좁은 화면에서 직접 낮추지 않는 이유: 그 토큰은 ShellHeader·
+   CommandPalette·EmojiPicker·ColorSwatchGroup·Timer 등 앱 전체가 공유한다 — 거기를 함께 줄이면
+   이 티켓 밖의 화면들이 건드리지 않아도 될 자리에서 손가락 타깃이 좁아진다. 새 이름을 만들어
+   `src/features/todo/` 안의 요소만 이 값을 참조하게 하면, 값을 :root 에 두어도(다른 컴포넌트가
+   이 이름을 아예 모르므로) 사실상 todo 목록에만 적용된다.
+
+   기본값(데스크탑)은 대응하는 기존 토큰과 값이 같아 데스크탑 밀도는 그대로다(사용자 결정 —
+   "마우스는 정밀하지만 손가락은 아니다", 데스크탑은 이미 3영역으로 풀렸다). */
+:root {
+  --todo-row-hit-min: 32px; /* = --control-hit-min */
+  --todo-row-py: 4px; /* = --space-1 */
+  --todo-section-pad: 12px; /* = --space-3 */
+  --todo-section-gap: 8px; /* = --space-2 */
+  --todo-group-gap: 16px; /* = --space-4 */
+}
+
+@media (max-width: 767.98px) {
+  :root {
+    /* 28px: WCAG 2.5.8(AA) 최소 24×24 CSS px 위 4px 여유. 시각 체크박스(22px)보다 크게 유지해
+       히트 영역이 시각 크기 아래로 내려가지 않는다(R32 트레이드오프 — 누르기 쉬움을 지킨다). */
+    --todo-row-hit-min: 28px;
+    --todo-row-py: 2px;
+    --todo-section-pad: 8px;
+    --todo-section-gap: 6px;
+    --todo-group-gap: 10px;
+  }
 }
 
 /* 3-G "선택됨" 표현 토큰(theme.md §3-G R17~R20). @theme inline 인 이유는 그림자와 같다 —

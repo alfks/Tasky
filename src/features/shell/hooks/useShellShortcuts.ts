@@ -6,7 +6,7 @@ import { useShortcut } from '@/features/command';
 import { useDateStripStore } from '@/features/date-strip';
 
 type ShellShortcutTargets = {
-  /** `Mod+\` — 사이드바 접기/펼치기. 좁은 화면에서는 드로어 열기/닫기다. */
+  /** `Mod+\` — 사이드바 열기/닫기(드로어). 컬럼으로 고정돼 있으면 고정을 풀고 드로어로 내린다. */
   toggleSidebar: () => void;
 };
 

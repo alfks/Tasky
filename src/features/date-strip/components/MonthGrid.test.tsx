@@ -229,6 +229,28 @@ describe('R16. 월 보기 칸도 주 보기와 같은 언어를 쓴다', () => {
   });
 });
 
+describe('calendar-layout.md §2 R12. 격자 치수는 밀도 토큰만 참조하고 px 리터럴이 없다', () => {
+  it('요일 머리글 줄이 --cal-cell-w·--cal-weekday-text 를 쓴다', async () => {
+    stub();
+    await renderMonth();
+    const columnheader = screen.getAllByRole('columnheader')[0]!;
+    expect(columnheader.className).toContain('w-[var(--cal-cell-w)]');
+    expect(columnheader.className).toContain('text-[length:var(--cal-weekday-text)]');
+    expect(columnheader.className).not.toMatch(/\bw-\[\d+px\]/);
+  });
+
+  it('칸이 --cal-cell-h-month·--cal-cell-w 를 쓰고 px 리터럴이 없다', async () => {
+    stub();
+    await renderMonth();
+    const cell = screen.getByRole('gridcell', { name: /^9월 17일 목요일/ });
+    expect(cell.className).toContain('w-[var(--cal-cell-w)]');
+    expect(cell.className).toContain('h-[var(--cal-cell-h-month)]');
+    expect(cell.className).not.toMatch(/\b[wh]-\[\d+px\]/);
+    // 숫자는 칸(button) 안 span 이 그린다 — --cal-day-text 는 거기 있다.
+    expect(screen.getByText('17').className).toContain('text-[length:var(--cal-day-text)]');
+  });
+});
+
 describe('R18. 월 보기에서 ↑/↓ 는 일주일을 움직인다', () => {
   it('↓ 는 7일 뒤, ↑ 는 7일 앞 칸으로 포커스를 옮긴다', async () => {
     stub();

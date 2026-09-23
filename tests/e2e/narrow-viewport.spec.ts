@@ -11,8 +11,9 @@
 // 헤더를 가장 빡빡한 상태로 만들어 두고 잰다: ☰ · 팔레트 입구 · **타이머 칩** · 달성률 넷이
 // 한 줄에 있는 상태(app-shell R15). 칩이 없으면 제일 잘 넘치는 경우를 비켜 가게 된다.
 import { expect, test } from './fixtures/stub-login';
+import { createCategory } from './sidebar';
 
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 /** 첫 실행 시드가 만드는 카테고리(domain `SEED_CATEGORY`). UI 경로만 쓰기 위한 발판이다. */
 const SEEDED_CATEGORY = 'todo';
@@ -81,4 +82,109 @@ test('휴대폰 폭(360·375·390)에서 가로 스크롤이 생기지 않는다
       ).toBeLessThanOrEqual(overflow.innerWidth);
     }
   }
+});
+
+/**
+ * 같은 카테고리에 연속으로 여러 개를 적을 때 쓴다 — 입력 행이 열린 채 남는다(todo R3)는 것을
+ * 전제로, 이미 열려 있으면 "+ 할 일 추가" 를 다시 누르지 않는다(눌러도 응답이 없어 타임아웃 난다).
+ */
+async function addTodoContinuing(page: Page, categoryName: string, title: string): Promise<void> {
+  const group = page.getByRole('region', { name: categoryName });
+  const input = page.getByRole('textbox', { name: `${categoryName}에 할 일 추가` });
+  if ((await input.count()) === 0) {
+    await group.getByRole('button', { name: '+ 할 일 추가' }).click();
+  }
+  await input.fill(title);
+  await page.keyboard.press('Enter');
+  await expect(group.getByRole('checkbox', { name: title })).toBeVisible();
+}
+
+/** `locator` 의 화면 중심을 `document.elementFromPoint` 로 찍어, 그 지점을 실제로 차지한 것이
+ * `locator` 자신(또는 그 후손)인지 본다 — 접근성 트리·`boundingBox()` 는 가려짐을 모른다
+ * (routine-manager-menu.spec.ts 의 같은 기법). Playwright 의 `click()` 은 실패 시 자동으로
+ * 대상을 스크롤해 넣어 주므로(actionability), 그 보정 없이 **지금 화면에 그려진 자리**를 그대로
+ * 잰다 — 실제 손가락 탭에는 그 보정이 없다.
+ */
+async function isOnTop(locator: Locator): Promise<boolean> {
+  const box = await locator.boundingBox();
+  if (box === null) return false;
+  return locator.evaluate(
+    (el, { x, y }) => {
+      const hit = document.elementFromPoint(x, y);
+      return hit !== null && (hit === el || el.contains(hit));
+    },
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+  );
+}
+
+/**
+ * 카테고리 2개·할 일 9개를 만들고 배너를 닫는다 — 리뷰 Major 재현 조건 그대로(360px 은 호출부가
+ * 뷰포트로 정한다). 마지막 카테고리("공부")의 마지막 할 일("공부 4")이 이 테스트가 재는 대상이다.
+ */
+async function buildNineTodos(page: Page): Promise<void> {
+  const dismissBanner = page.getByRole('button', { name: '저장 공간 알림 닫기' });
+  if ((await dismissBanner.count()) > 0) await dismissBanner.click();
+
+  await createCategory(page, '공부');
+
+  for (let i = 1; i <= 5; i++) await addTodoContinuing(page, SEEDED_CATEGORY, `할 일 ${i}`);
+  await page.keyboard.press('Escape'); // 다음 카테고리로 넘어가려면 입력 행부터 닫아야 한다.
+  for (let i = 1; i <= 4; i++) await addTodoContinuing(page, '공부', `공부 ${i}`);
+  await page.keyboard.press('Escape');
+}
+
+test('마지막 할 일 행이 하단 [+ 할 일] 막대에 가리지 않는다(리뷰 Major — elementFromPoint 실측)', async ({
+  page,
+}) => {
+  const WIDTH = 360;
+  await page.setViewportSize({ width: WIDTH, height: 900 });
+  await page.goto('/');
+  await waitForShell(page);
+  await buildNineTodos(page);
+
+  const lastGroup = page.getByRole('region', { name: '공부' });
+  const lastCheckbox = lastGroup.getByRole('checkbox', { name: '공부 4' });
+  const lastHandle = lastGroup.getByRole('button', { name: '공부 4 순서 변경 (Alt+위/아래)' });
+  const lastMenu = lastGroup.getByRole('button', { name: '공부 4 메뉴' });
+
+  // 사용자가 마지막 행을 읽으려고 손가락으로 끝까지 내린 자리 — Playwright 의 `click()` 이 하는
+  // 자동 스크롤 보정과 같은 지점이다(주석 위 `isOnTop`). 이 지점에서조차 막대에 가린다면 막대
+  // 아래로는 영원히 닿을 수 없는 사각지대가 있다는 뜻이다.
+  await lastCheckbox.scrollIntoViewIfNeeded();
+  expect(await isOnTop(lastCheckbox), '마지막 행 체크박스가 하단 막대에 가려 있다').toBe(true);
+  expect(await isOnTop(lastHandle), '마지막 행 손잡이가 하단 막대에 가려 있다').toBe(true);
+  expect(await isOnTop(lastMenu), '마지막 행 메뉴가 하단 막대에 가려 있다').toBe(true);
+
+  // **손대지 않은 첫 화면**(scrollTop=0, 진짜 새로고침 — 타이핑 중 브라우저가 스스로 스크롤해 둔
+  // 자리를 배제한다)에서도, 마지막 행이 "거의 다 보이는데 살짝만 잘린" 애매한 상태로 뜨지 않아야
+  // 한다(`ShellMain` 의 `useGuardAmbiguousClip`). 콘텐츠 높이는 폭 변경 등으로 달라질 수 있으므로
+  // 리터럴 높이를 짐작하지 않고, **직접 재서** "잘린 양이 정확히 목표(250px)가 되는 높이"를 구한다
+  // — 리뷰가 재현한 것과 같은 종류의 애매함(대상 자신이 일부만 잘린 상태)을 안정적으로 만든다.
+  await page.reload();
+  await waitForShell(page);
+  const dismissAgain = page.getByRole('button', { name: '저장 공간 알림 닫기' });
+  if ((await dismissAgain.count()) > 0) await dismissAgain.click();
+
+  const PROBE_HEIGHT = 400; // 확실히 넘치는 높이 — 콘텐츠의 실제 스크롤 높이를 재는 발판.
+  const TARGET_OVERFLOW = 250; // 한 컨트롤 높이(36px)보다 훨씬 커, 고치기 전 코드에서 실패가
+  // 재현되는 지점이다(실측: 200 이하는 원래도 통과, 250 부터 원래 코드가 막대에 잡혔다).
+  await page.setViewportSize({ width: WIDTH, height: PROBE_HEIGHT });
+  const scrollArea = page.locator('main#shell-main > div:nth-child(2)');
+  const probe = await scrollArea.evaluate((el) => ({
+    scrollHeight: el.scrollHeight,
+    clientHeight: el.clientHeight,
+  }));
+  const targetHeight = Math.round(
+    PROBE_HEIGHT + probe.scrollHeight - TARGET_OVERFLOW - probe.clientHeight,
+  );
+  await page.setViewportSize({ width: WIDTH, height: targetHeight });
+
+  expect(
+    await isOnTop(lastCheckbox),
+    `${targetHeight}px·손대지 않은 첫 화면에서 마지막 행 체크박스가 하단 막대에 가려 있다`,
+  ).toBe(true);
+  expect(
+    await isOnTop(lastMenu),
+    `${targetHeight}px·손대지 않은 첫 화면에서 마지막 행 메뉴가 하단 막대에 가려 있다`,
+  ).toBe(true);
 });

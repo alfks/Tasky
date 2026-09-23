@@ -7,6 +7,7 @@
 // 셀렉터는 전부 **역할(role) + 접근 이름**이다. 클래스·색·DOM 구조에 걸면 면·토큰·레이아웃을
 // 바꾸는 다른 티켓이 이 테스트를 부순다.
 import { expect, test } from './fixtures/stub-login';
+import { createCategory } from './sidebar';
 
 import type { Page } from '@playwright/test';
 
@@ -20,15 +21,6 @@ async function waitForShell(page: Page): Promise<void> {
   await page.waitForSelector('main#shell-main');
   await expect(page.getByRole('heading', { name: 'Tasky', level: 1 })).toBeVisible();
   await expect(page.getByText(MEMORY_MODE_TEXT)).toHaveCount(0);
-}
-
-async function createCategory(page: Page, name: string): Promise<void> {
-  await page.getByRole('button', { name: '+ 카테고리 추가' }).click();
-  const dialog = page.getByRole('dialog', { name: '카테고리 만들기' });
-  await expect(dialog).toBeVisible();
-  await dialog.getByLabel('이름').fill(name);
-  await dialog.getByRole('button', { name: '만들기' }).click();
-  await expect(dialog).toHaveCount(0);
 }
 
 /** 오늘 칸. 접근 이름이 '…, 오늘, …' 을 포함하는 칸은 하루에 하나뿐이다. */
@@ -78,6 +70,50 @@ test('월 보기로 바꾸면 달력 격자가 나오고, 체크하면 그 달�
   await expect(page.getByRole('radiogroup', { name: '날짜 선택' })).toBeVisible();
   await expect(todayCell(page, 'radio')).toHaveAccessibleName(/할 일 1개 중 1개 완료/);
   await expect(todayCell(page, 'radio')).toBeChecked();
+});
+
+test('360 폭 6줄 달에서 격자가 뷰포트 안에 들어오고 고정 영역이 320px 이하다(calendar-layout.md R9)', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto('/');
+  await waitForShell(page);
+
+  await page.getByRole('button', { name: '월 보기로 전환' }).click();
+
+  // R9 의 목표치는 **6줄(42칸) 달** 기준이라, 지금 달이 6줄이 아니면 나올 때까지 다음 달로 넘긴다.
+  let cellCount = await page.getByRole('gridcell').count();
+  for (let i = 0; i < 24 && cellCount !== 42; i += 1) {
+    await page.getByRole('button', { name: '다음 달' }).click();
+    cellCount = await page.getByRole('gridcell').count();
+  }
+  expect(cellCount, '2년 안에 6줄 달을 찾지 못했다').toBe(42);
+
+  // 가로 스크롤이 없다 — 문서 폭이 뷰포트를 넘지 않는다.
+  const overflow = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth,
+  }));
+  expect(overflow.scrollWidth, '360px 에서 문서가 뷰포트보다 넓다').toBeLessThanOrEqual(
+    overflow.innerWidth,
+  );
+
+  // 격자 자체도 뷰포트 폭 안에 있다.
+  const grid = page.getByRole('grid', { name: '날짜 선택' });
+  const box = await grid.boundingBox();
+  expect(box, '격자 박스를 읽지 못했다').not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(overflow.innerWidth);
+
+  // 고정 영역(셸 상단 줄 + 스트립 헤더 + 격자) ≤ 320px(R9) — 격자 바로 아래부터 목록이 스크롤된다.
+  // 기준선은 **셸 상단 줄의 위**(`카테고리 열기` 버튼의 y)다 — 그 위의 페이지 여백(안전 영역 거터)은
+  // 달력 블록 소관이 아니라 셸의 바깥 여백이라 R9 의 "고정 영역"에 포함되지 않는다.
+  const shellTop = await page.getByRole('button', { name: '카테고리 열기' }).boundingBox();
+  expect(shellTop, '셸 상단 줄 기준점을 읽지 못했다').not.toBeNull();
+  expect(
+    box!.y + box!.height - shellTop!.y,
+    '고정 영역(셸 상단 줄 + 스트립 헤더 + 격자)이 320px 을 넘는다',
+  ).toBeLessThanOrEqual(320);
 });
 
 test('월 보기에서 ↑/↓ 는 일주일을 옮기고 ‹ › 는 한 달을 옮긴다', async ({ page }) => {

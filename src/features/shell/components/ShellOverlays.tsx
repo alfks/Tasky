@@ -11,6 +11,13 @@
 //   마운트된다**(리뷰 Major 3). 드로어 안의 `ShellSidebar` 와 달리 `Dialog` 밖(이 컴포넌트의
 //   최상위 프래그먼트)에 있다 — 그래야 드로어를 한 번도 연 적 없는 좁은 뷰포트 세션에서도 R7·
 //   계정 삭제·계정 전환 안내가 뜨고 `exportBackup` 등록이 이뤄진다.
+//
+// `layout`·`sidebarPinned`·`onToggleSidebarPinned` 는 **`AppShell` 이 `useShellPanels()` 에서 만든
+// 값을 prop 으로 내린다** — 이 컴포넌트가 직접 `useShellLayout()`/`useShellUiStore` 를 구독하지
+// 않는다(리뷰 Minor). `useShellLayout` 머리주석이 "화면에 한 번만 마운트하고 prop 으로 내린다" 고
+// 못 박아 둔 것을 그대로 지킨다 — 두 번째 구독은 리사이즈 한 번에 리스너를 두 배로 돌린다.
+import { useEffect, useRef } from 'react';
+
 import type { Category } from '@/domain/category/category';
 import type { CategoryId } from '@/domain/ids';
 
@@ -21,7 +28,8 @@ import {
 } from '@/features/category';
 import { INSIGHT_OVERLAY_ID } from '@/features/shell/components/ShellHeader';
 import { ShellInsights } from '@/features/shell/components/ShellInsights';
-import { ShellSidebar } from '@/features/shell/components/ShellSidebar';
+import { SIDEBAR_PIN_TOGGLE_ATTR, ShellSidebar } from '@/features/shell/components/ShellSidebar';
+import { canPinSidebar, type ShellLayout } from '@/features/shell/lib/layout';
 import { APP_NAME } from '@/features/shell/lib/title';
 import { AccountSyncOverlays } from '@/features/sync';
 
@@ -29,6 +37,11 @@ import { Dialog } from '@/components/ui/Dialog';
 
 type ShellOverlaysProps = {
   categories: readonly Category[];
+  /** 드로어 본문에 `[고정]` 을 낼지 정하는 데만 쓴다(`canPinSidebar`) — `AppShell` 의
+   * `panels.layout` 그대로다. */
+  layout: ShellLayout;
+  sidebarPinned: boolean;
+  onToggleSidebarPinned: () => void;
   drawerOpen: boolean;
   onDrawerClose: () => void;
   insightOverlayOpen: boolean;
@@ -48,6 +61,9 @@ type ShellOverlaysProps = {
 
 export function ShellOverlays({
   categories,
+  layout,
+  sidebarPinned,
+  onToggleSidebarPinned,
   drawerOpen,
   onDrawerClose,
   insightOverlayOpen,
@@ -60,22 +76,67 @@ export function ShellOverlays({
   onSelectCategory,
   exportBackup,
 }: ShellOverlaysProps) {
+  // 방금 선택한 카테고리로의 포커스 인계를 다음 프레임으로 미루는 예약 — 언마운트되면 취소한다
+  // (아래 onSelectCategory 콜백, 리뷰 Minor: 취소하지 않으면 이미 사라진 트리에 대고 실행된다).
+  const selectHandoffRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (selectHandoffRef.current !== null) cancelAnimationFrame(selectHandoffRef.current);
+    };
+  }, []);
+
   return (
     <>
-      {/* 드로어는 `Dialog` 위에 짓는다 — Esc·바깥 클릭·✕·포커스 트랩·포커스 복귀가 전부 거기 있다(R7). */}
+      {/*
+        드로어는 `Dialog` 위에 짓는다 — Esc·바깥 클릭·✕·포커스 트랩·포커스 복귀가 전부 거기
+        있다(R7). **제목은 항상 앱 이름 하나다(리뷰 Major 2)** — `[고정]` 버튼을 `title` 안에 넣던
+        예전 방식은 `Dialog` 가 `title` 을 `<h2 id>` 로 그리고 `aria-labelledby` 로 가리키므로,
+        버튼이 그 안에 있으면 드로어의 접근 이름이 토글마다 "Tasky 사이드바 고정" ↔ "Tasky 사이드바
+        고정 해제" 로 바뀌었다 — 대화상자 하나의 이름은 고정돼야 한다. 버튼은 이제 본문 첫 줄(아래
+        `ShellSidebar` 의 `showPinToggle`)로 내려갔다.
+      */}
       <Dialog
         open={drawerOpen}
         onClose={onDrawerClose}
         title={APP_NAME}
         closeLabel="카테고리 닫기"
         className="mr-auto h-full max-w-[300px] self-stretch"
+        /*
+         * `[고정]` 을 눌러 고정을 켜면 이 드로어는 (열었던 `카테고리 열기` 버튼이 사라지는 것과
+         * 함께) 스스로 닫힌다(`useShellPanels` 의 "컬럼이 서면 드로어를 닫는다" 효과) — 즉 이
+         * onClose 호출 없이 `open` 이 바뀌는 경로다. 그때 `Dialog` 기본 복귀 대상(열었던 요소)은
+         * 이미 DOM 에서 사라져 있으므로, 방금 선 컬럼의 같은 표식(`SIDEBAR_PIN_TOGGLE_ATTR`)을
+         * 대체 대상으로 준다 — 없으면 포커스가 `<body>` 로 떨어진다(app-shell R14).
+         */
+        returnFocus={() => document.querySelector<HTMLElement>(`[${SIDEBAR_PIN_TOGGLE_ATTR}]`)}
       >
         <ShellSidebar
           showTitle={false}
+          showPinToggle={canPinSidebar(layout)}
+          sidebarPinned={sidebarPinned}
+          onTogglePinned={onToggleSidebarPinned}
           categories={categories}
           onSelectCategory={(id) => {
             onDrawerClose();
-            onSelectCategory(id);
+            /*
+             * `Dialog` 는 닫힐 때 **열었던 요소(카테고리 열기)로 무조건 되돌린다** — `returnFocus`
+             * 는 그 요소가 사라졌을 때만 묻는 대체 대상이라(app-shell R14 규약, `Dialog.tsx`
+             * `restoreFocus`), 열었던 요소가 아직 있으면 이 컴포넌트가 지금 여기서 목록으로 옮긴
+             * 포커스를 **그 복귀 효과가 나중에 덮어쓴다**(실측: 되돌림 효과가 `useEffect` 로,
+             * `onSelectCategory` 보다 한 프레임 늦게 돈다). 그래서 인계를 그 효과 **다음
+             * 프레임**으로 미룬다 — `useShellPanels` 의 `handoffFocus` 와 같은 타이밍 규약이다
+             * (`src/lib/focus-fallback.ts` 머리주석 "다음 프레임에야 DOM 에 있다"). id 는 위
+             * `selectHandoffRef` 에 담아 둔다 — 이 콜백이 실행되기 전에 이 컴포넌트가 언마운트되면
+             * (리뷰 Minor) 정리에서 취소한다.
+             */
+            if (typeof requestAnimationFrame === 'function') {
+              selectHandoffRef.current = requestAnimationFrame(() => {
+                selectHandoffRef.current = null;
+                onSelectCategory(id);
+              });
+            } else {
+              onSelectCategory(id);
+            }
           }}
           onRemoveCategory={onRemoveCategory}
           exportBackup={exportBackup}

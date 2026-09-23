@@ -6,6 +6,7 @@
 // 셀렉터는 전부 **역할(role) + 접근 이름**이다. 클래스·색·DOM 구조에 걸면 면·토큰·레이아웃을
 // 바꾸는 다른 티켓이 이 테스트를 부수고, 반대로 **화면이 깨져도 통과하는** 느슨한 단언이 된다.
 import { expect, test } from './fixtures/stub-login';
+import { closeSidebarDrawer, createCategoryInDialog, openSidebarDrawer } from './sidebar';
 
 import type { CDPSession, Locator, Page } from '@playwright/test';
 
@@ -55,16 +56,6 @@ async function commitComposition(cdp: CDPSession, text: string): Promise<void> {
   await cdp.send('Input.insertText', { text });
 }
 
-/** 카테고리 하나를 만든다(다이얼로그 경로 그대로). */
-async function createCategory(page: Page, name: string): Promise<void> {
-  await page.getByRole('button', { name: '+ 카테고리 추가' }).click();
-  const dialog = page.getByRole('dialog', { name: '카테고리 만들기' });
-  await expect(dialog).toBeVisible();
-  await dialog.getByLabel('이름').fill(name);
-  await dialog.getByRole('button', { name: '만들기' }).click();
-  await expect(dialog).toHaveCount(0);
-}
-
 /** 그룹 안에서 항목 메뉴를 열고 항목 하나를 고른다. */
 async function runItemMenu(page: Page, group: Locator, title: string, item: string): Promise<void> {
   await group.getByRole('button', { name: `${title} 메뉴` }).click();
@@ -96,7 +87,9 @@ test('앱을 열면 셸이 뜬다', async ({ page }) => {
 test('한글 조합 중 Enter 는 항목을 만들지 않는다 (todo R4)', async ({ page, context }) => {
   await page.goto('/');
   await waitForShell(page);
-  await createCategory(page, CATEGORY);
+  const drawer = await openSidebarDrawer(page);
+  await createCategoryInDialog(page, CATEGORY);
+  await closeSidebarDrawer(page, drawer);
 
   const group = page.getByRole('region', { name: CATEGORY });
   await group.getByRole('button', { name: '+ 할 일 추가' }).click();
@@ -133,10 +126,12 @@ test('핵심 흐름: 카테고리 생성 → 한글 투두 → 체크 → 편집
   await page.goto('/');
   await waitForShell(page);
 
-  // 1. 카테고리 생성 — 사이드바와 본문 양쪽에 나타나야 한다.
-  const sidebar = page.getByRole('navigation');
+  // 1. 카테고리 생성 — **드로어 경유**로(calendar-layout.md §1-A: 사이드바는 이제 모든 폭에서
+  // 드로어가 기본이다. `nav` 는 열려 있는 동안만 DOM 에 있다).
+  const drawer = await openSidebarDrawer(page);
+  const sidebar = drawer.getByRole('navigation');
   const categorySection = sidebar.getByRole('region', { name: '카테고리' });
-  // `before` 를 셸이 뜬 직후 바로 재면 안 된다: 첫 실행 시드(category.md R18)가 카테고리 적재와
+  // `before` 를 드로어가 뜬 직후 바로 재면 안 된다: 첫 실행 시드(category.md R18)가 카테고리 적재와
   // 별도의 비동기 단계라 사이드바가 잠깐 "아직 카테고리가 없어요" 로 그려졌다가 시드된 카테고리로
   // 바뀐다 — 그 사이에 `before` 를 읽으면 0을 얻고, 시드는 이미 반영된 뒤 `createCategory` 가 도니
   // 최종 개수는 2(시드 1 + 방금 만든 것)라 `before + 1`(=1) 과 어긋난다(실측: 시드에 지연을 주면
@@ -147,8 +142,11 @@ test('핵심 흐름: 카테고리 생성 → 한글 투두 → 체크 → 편집
   // 버튼 존재만으로는 "시드 완료" 를 보장하지 않는다).
   await expect(categorySection.getByRole('listitem')).not.toHaveCount(0);
   const before = await categorySection.getByRole('listitem').count();
-  await createCategory(page, CATEGORY);
+  await createCategoryInDialog(page, CATEGORY);
   await expect(categorySection.getByRole('listitem')).toHaveCount(before + 1);
+  // 확인이 끝났으니 드로어를 닫는다 — 뒤의 투두 조작은 선택 날짜 패널(`main`, 모든 폭에서 항상
+  // 보인다) 안에서 이뤄지고 드로어가 열려 있을 필요가 없다.
+  await closeSidebarDrawer(page, drawer);
   const group = page.getByRole('region', { name: CATEGORY });
   await expect(group.getByRole('heading', { name: CATEGORY, level: 2 })).toBeVisible();
 
@@ -231,8 +229,13 @@ test('핵심 흐름: 카테고리 생성 → 한글 투두 → 체크 → 편집
   // 7. 새로고침 후 유지 — 카테고리도 투두도 완료 상태도 살아 있어야 한다.
   await page.reload();
   await waitForShell(page);
-  // 사이드바 행의 접근 이름에는 달성 수가 붙는다("공부 1/1") — `⋯` 버튼 쪽이 이름이 고정이라 그걸 본다.
-  await expect(sidebar.getByRole('button', { name: `${CATEGORY} 메뉴` })).toBeVisible();
+  // 드로어는 세션 안에서만 열림 상태를 갖는다(새로고침으로 리셋된다) — 사이드바 행을 다시 보려면
+  // 한 번 더 연다. 접근 이름에는 달성 수가 붙는다("공부 1/1") — `⋯` 버튼 쪽이 이름이 고정이라 그걸 본다.
+  const reopenedDrawer = await openSidebarDrawer(page);
+  await expect(
+    reopenedDrawer.getByRole('navigation').getByRole('button', { name: `${CATEGORY} 메뉴` }),
+  ).toBeVisible();
+  await closeSidebarDrawer(page, reopenedDrawer);
   await expect(group.getByRole('checkbox', { name: KEPT })).toBeChecked();
   await expectBelowDoneDivider(group, KEPT);
   await expect(ring).toHaveAccessibleName('오늘 달성률 100퍼센트, 1개 중 1개 완료');

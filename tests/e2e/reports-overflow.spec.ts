@@ -11,6 +11,7 @@
 // 로 정해지므로(TrendChart 는 데이터가 없는 날도 표에 "기록 없음" 행을 낸다) 투두 하나만 있어도
 // "이 기간에 기록이 없어요" 빈 상태를 벗어나 표 전체가 그려진다 — 대량 시드가 필요 없다.
 import { expect, test } from './fixtures/stub-login';
+import { createCategory } from './sidebar';
 
 import type { Page } from '@playwright/test';
 
@@ -19,15 +20,6 @@ const CATEGORY = '공부';
 async function waitForShell(page: Page): Promise<void> {
   await page.waitForSelector('main#shell-main');
   await expect(page.getByRole('heading', { name: 'Tasky', level: 1 })).toBeVisible();
-}
-
-async function createCategory(page: Page, name: string): Promise<void> {
-  await page.getByRole('button', { name: '+ 카테고리 추가' }).click();
-  const dialog = page.getByRole('dialog', { name: '카테고리 만들기' });
-  await expect(dialog).toBeVisible();
-  await dialog.getByLabel('이름').fill(name);
-  await dialog.getByRole('button', { name: '만들기' }).click();
-  await expect(dialog).toHaveCount(0);
 }
 
 async function addTodo(page: Page, categoryName: string, title: string): Promise<void> {

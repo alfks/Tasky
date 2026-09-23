@@ -3,7 +3,8 @@
 // 메인 상단 고정 영역 (app-shell.md §2-A · R3 높이 ≤160px · R15 타이머 칩).
 //
 // 월 표시·‹ ›·[오늘] 은 `DateStrip` 이 이미 갖고 있다(date-strip §2-A) — 여기서 다시 그리지 않는다.
-// 셸이 더하는 것은 그 위 한 줄: ☰(사이드바가 컬럼이 아닐 때) · **팔레트 입구** · 타이머 칩 · 달성률 요약이다.
+// 셸이 더하는 것은 그 위 한 줄: ☰ + 앱 이름(사이드바가 컬럼이 아닐 때) · **팔레트 입구** · 타이머 칩 ·
+// 달성률(컬럼이 없을 때만, 오버레이를 여는 버튼)이다.
 //
 // **팔레트 입구가 왜 헤더인가.** 셸에서 **모든 폭에 렌더되는 영역은 이 헤더뿐**이다: 사이드바는
 // <1024 에서 드로어로 접히고(§2-B), 인사이트 컬럼은 <1280 에서 사라진다 — `단축키 ?` 버튼이 거기
@@ -11,21 +12,23 @@
 // 검색/명령 어포던스 0개). 사이드바는 R12 가 "상단에는 앱 이름만, 그 외 진입점을 더하지 않는다" 로
 // 이미 닫아 두었고, 인사이트는 접을 수 있어 입구를 둘 자리가 아니다. 남는 자리는 여기 하나다.
 //
-// **달성률을 헤더에서 링으로 그리지 않는다.** 인사이트 컬럼이 서 있을 때는 같은 값이 120px 링으로
-// 바로 오른쪽에 있어(두 링 사이 실측 ~160px) 같은 숫자가 두 번, 100% 때는 "다 했어요 🎉" 까지 두 번
-// 나왔다. 그래서 컬럼이 있을 때 헤더는 **숫자 한 줄**만 맡고(R3 의 "달성률 요약"), 컬럼이 없을 때만
-// 링이 달린 버튼이 되어 오버레이를 연다(R6). 덤으로 고정 영역이 40px → 32px 로 줄어 상한에 여유가 생겼다.
+// **달성률을 헤더에서 두 번 말하지 않는다.** 인사이트 컬럼이 서 있을 때(이제 `wide`·`mid` 양쪽,
+// calendar-layout.md R24) 같은 숫자는 선택 날짜 패널의 머리에 링 20px 로 이미 있다
+// (calendar-layout.md R5, `ShellDayPanel`) — 그래서 그 갈래에서는 헤더가 **아무것도** 맡지 않는다.
+// 컬럼이 없을 때(<1024)만 여기 링이 달린 버튼이 되어 오버레이를 연다(R6).
+//
+// **앱 이름(h1)도 여기로 옮겨 왔다(calendar-layout.md R6).** 사이드바가 드로어가 기본이 되면서
+// (calendar-layout.md §1-A) `h1` 이 화면에서 사라지는 자리가 생겼다 — 사이드바가 컬럼일 때는
+// `ShellSidebar` 가 보이는 제목을 갖지만, 드로어일 때(이제 대부분의 경우)는 이 줄의 ☰ 오른쪽이
+// 그 자리를 맡는다. <768 은 헤더 한 줄 예산(R11) 때문에 `sr-only` 로 남는다 — Tailwind 기본
+// `md:` 브레이크포인트(768px)가 그 경계와 정확히 같다.
 import type { DateKey } from '@/domain/date/date-key';
 
 import { useBackupStore } from '@/features/backup';
 import { ShortcutKeys, chordsOf, useCommandStore } from '@/features/command';
 import { DateStrip, useDateStripStore } from '@/features/date-strip';
-import {
-  CompletionRing,
-  completionAnnouncement,
-  completionCountText,
-  completionPercentText,
-} from '@/features/stats';
+import { APP_NAME } from '@/features/shell/lib/title';
+import { CompletionRing, completionAnnouncement, completionPercentText } from '@/features/stats';
 import type { CompletionSummary } from '@/features/stats';
 import { useSyncStore } from '@/features/sync';
 import { TimerChip } from '@/features/timer';
@@ -115,6 +118,14 @@ type ShellHeaderProps = {
   sidebarIsColumn: boolean;
   /** 인사이트가 컬럼으로 서 있는가. 아니면 달성률이 오버레이를 여는 버튼이 된다(R6). */
   insightIsColumn: boolean;
+  /**
+   * 3영역(≥1024)이라 **선택 날짜 패널이 항상 같이 떠 있는가** — `AppShell` 의 `threeRegion`
+   * 그대로다. 인사이트를 접어도(`insightIsColumn` 이 거짓이어도) `wide`·`mid` 에서는 패널 머리가
+   * 이미 같은 달성률 링을 보여주므로(calendar-layout.md R5), 그 갈래에서는 이 헤더가 **링을
+   * 반복하지 않는다** — 텍스트만 있는 버튼으로 낮춘다(리뷰 Minor, R5 중복 방지). <1024(패널이
+   * 아예 없는 폭)에서만 이 버튼이 유일한 자리라 원래대로 링+퍼센트를 보여준다.
+   */
+  dayPanelVisible: boolean;
   insightOverlayOpen: boolean;
   onOpenDrawer: () => void;
   /** 타이머 칩·달성률 버튼이 인사이트를 "연다" — 컬럼이면 그리로 데려가고, 아니면 오버레이다. */
@@ -127,6 +138,7 @@ export function ShellHeader({
   summary,
   sidebarIsColumn,
   insightIsColumn,
+  dayPanelVisible,
   insightOverlayOpen,
   onOpenDrawer,
   onOpenInsight,
@@ -146,13 +158,18 @@ export function ShellHeader({
     <div className="flex flex-col gap-[var(--space-2)]">
       <div className="flex min-h-[var(--control-hit-min)] items-center gap-[var(--space-2)]">
         {sidebarIsColumn ? null : (
-          <IconButton
-            {...{ [DRAWER_OPENER_ATTR]: '' }}
-            label="카테고리 열기"
-            onClick={onOpenDrawer}
-          >
-            ☰
-          </IconButton>
+          <>
+            <IconButton
+              {...{ [DRAWER_OPENER_ATTR]: '' }}
+              label="카테고리 열기"
+              onClick={onOpenDrawer}
+            >
+              ☰
+            </IconButton>
+            <h1 className="sr-only shrink-0 text-lg font-bold text-text md:not-sr-only">
+              {APP_NAME}
+            </h1>
+          </>
         )}
         <PaletteEntry />
         <div className="flex-1" />
@@ -166,9 +183,7 @@ export function ShellHeader({
           줄어드는 것은 칩 안에서 이미 `truncate` 인 투두 제목이라 시계는 그대로 읽힌다.
         */}
         <TimerChip onOpen={onOpenInsight} className="min-w-0" />
-        {insightIsColumn ? (
-          <p className="text-base text-muted tabular-nums">{completionCountText(summary)}</p>
-        ) : (
+        {insightIsColumn ? null : (
           <button
             type="button"
             {...{ [INSIGHT_OPENER_ATTR]: '' }}
@@ -180,8 +195,16 @@ export function ShellHeader({
             onClick={onOpenInsight}
             className="flex h-[var(--control-hit-min)] shrink-0 items-center gap-[var(--space-2)] rounded-[var(--radius-full)] border border-border bg-surface px-[var(--space-3)] text-base font-semibold text-text hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           >
-            <CompletionRing summary={summary} size={20} thickness={3} />
-            <span aria-hidden="true">{completionPercentText(summary)}</span>
+            {dayPanelVisible ? (
+              // 선택 날짜 패널 머리가 이미 같은 숫자를 링으로 보여준다 — 여기서 또 링을 그리면
+              // R5 가 금지하는 중복이다. 버튼 자체(오늘 요약 오버레이를 여는 기능)는 남긴다.
+              <span aria-hidden="true">오늘 요약</span>
+            ) : (
+              <>
+                <CompletionRing summary={summary} size={20} thickness={3} />
+                <span aria-hidden="true">{completionPercentText(summary)}</span>
+              </>
+            )}
           </button>
         )}
         {/* 달성률을 읽는 라이브 영역은 어느 갈래에서도 **여기 하나**다(§5). */}

@@ -12,6 +12,7 @@
 // 헬퍼는 `selection-ring.spec.ts` 의 것과 같은 모양이지만 **복사본**이다: 그 파일은 다른 티켓과
 // 공유하는 자리라 export 를 추가하려면 그쪽을 건드려야 한다. 재는 대상이 달라 함께 움직일 이유도 없다.
 import { expect, test } from './fixtures/stub-login';
+import { openSidebarDrawer } from './sidebar';
 
 import type { Locator, Page } from '@playwright/test';
 
@@ -62,8 +63,14 @@ function markerBorderOf(radio: Locator): Promise<{ color: string; width: string 
   });
 }
 
-/** 카테고리 만들기 다이얼로그를 열고 이모지 라디오 그룹을 돌려준다. */
+/**
+ * 카테고리 만들기 다이얼로그를 열고 이모지 라디오 그룹을 돌려준다. "+ 카테고리 추가" 는 사이드바
+ * 드로어 안에 있다(calendar-layout.md §1-A) — 먼저 연다. 드로어는 닫지 않는다: 제출까지 가는
+ * 호출부(새로고침 뒤 유지 테스트)는 새로고침이 상태를 리셋하고, 제출하지 않는 호출부는 테스트가
+ * 끝나면 컨텍스트째 버려진다.
+ */
 async function openEmojiPicker(page: Page): Promise<Locator> {
+  await openSidebarDrawer(page);
   await page.getByRole('button', { name: '+ 카테고리 추가' }).click();
   const dialog = page.getByRole('dialog', { name: '카테고리 만들기' });
   await expect(dialog).toBeVisible();
@@ -124,6 +131,9 @@ test.describe('카테고리 이모지 피커 (category.md R4-a)', () => {
     await page.reload();
     await waitForShell(page);
 
+    // 드로어는 세션 안에서만 열림 상태를 갖는다(새로고침으로 리셋된다) — 사이드바 행("⋯ 메뉴")을
+    // 다시 보려면 한 번 더 연다(smoke.spec.ts 와 같은 이유).
+    await openSidebarDrawer(page);
     await page.getByRole('button', { name: '커피타임 메뉴' }).click();
     await page.getByRole('menuitem', { name: '수정' }).click();
     const editing = page.getByRole('dialog', { name: '카테고리 수정' });

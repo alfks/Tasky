@@ -36,8 +36,8 @@ type MonthGridProps = {
   onDropTodo?: (todoId: string, date: DateKey) => void;
 };
 
-/** 한 줄(7칸)과 요일 머리글 줄이 공유하는 배치. 간격은 주 보기와 같은 --space-2 다. */
-const ROW_CLASS = 'flex justify-center gap-[var(--space-2)]';
+/** 한 줄(7칸)과 요일 머리글 줄이 공유하는 배치. 간격은 밀도 토큰 --cal-gap(calendar-layout.md §2 R12). */
+const ROW_CLASS = 'flex justify-center gap-[var(--cal-gap)]';
 
 export function MonthGrid({
   days,
@@ -61,7 +61,7 @@ export function MonthGrid({
       // 주 보기의 radiogroup 과 **같은 이름**이다 — 보기를 바꿔도 "무엇을 고르는 곳인지"는 같다.
       aria-label="날짜 선택"
       onBlur={onBlur}
-      className="flex flex-col gap-[var(--space-2)] overflow-x-auto overscroll-x-contain md:overflow-x-visible"
+      className="flex flex-col gap-[var(--cal-gap)] overflow-x-auto overscroll-x-contain md:overflow-x-visible"
     >
       {/* 요일은 여기서 한 번만 나온다 — 칸마다 반복하지 않는다 (R16). */}
       <div role="row" className={ROW_CLASS}>
@@ -70,7 +70,8 @@ export function MonthGrid({
             key={label}
             role="columnheader"
             className={cn(
-              'w-[56px] shrink-0 text-center text-xs leading-normal',
+              // 칸 폭·요일 글자 치수는 calendar-layout.md §2 R12 밀도 토큰(DateCell 과 같은 값).
+              'w-[var(--cal-cell-w)] shrink-0 text-center text-[length:var(--cal-weekday-text)] leading-none md:leading-normal',
               weekdayColor(index),
             )}
           >

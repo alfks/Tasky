@@ -22,6 +22,7 @@
 import { expect, test } from '@playwright/test';
 
 import { randomAccount, stubLogin } from './fixtures/stub-login';
+import { createCategory, createCategoryInDialog, openSidebarDrawer } from './sidebar';
 
 import type { Page } from '@playwright/test';
 
@@ -34,15 +35,6 @@ const SEED_CATEGORY_NAME = 'todo';
 async function waitForShell(page: Page): Promise<void> {
   await page.waitForSelector('main#shell-main');
   await expect(page.getByRole('heading', { name: 'Tasky', level: 1 })).toBeVisible();
-}
-
-async function createCategory(page: Page, name: string): Promise<void> {
-  await page.getByRole('button', { name: '+ 카테고리 추가' }).click();
-  const dialog = page.getByRole('dialog', { name: '카테고리 만들기' });
-  await expect(dialog).toBeVisible();
-  await dialog.getByLabel('이름').fill(name);
-  await dialog.getByRole('button', { name: '만들기' }).click();
-  await expect(dialog).toHaveCount(0);
 }
 
 /** 계정 블록의 상태 줄("● 동기화됨"/"○ 대기 N건"/"○ 오프라인 …") — AccountBlock.tsx 의
@@ -91,6 +83,9 @@ test.describe('동기화: 두 기기(sync.md R5·R6)', () => {
     const page = await ctx.newPage();
     await stubLogin(page, account);
     await waitForShell(page);
+    // 계정 블록의 상태 줄("● 동기화됨" 등)은 사이드바 드로어 안(`nav`)에 있다(calendar-layout.md
+    // §1-A) — 이 테스트는 그 문구를 끝까지 지켜봐야 하므로 드로어를 열어 두고 간다.
+    await openSidebarDrawer(page);
     // 첫 실행 시드(category R18)가 카테고리 + 설정 두 로우를 아웃박스에 남긴다 — `waitForShell`
     // 은 `<h1>` 만 보고 이 시드가 로컬에 커밋됐는지는 보장하지 않는다. 시드 카테고리가 실제로
     // 보일 때까지 기다려 "로컬 커밋은 끝났다"를 확인한다.
@@ -107,7 +102,8 @@ test.describe('동기화: 두 기기(sync.md R5·R6)', () => {
     await expect(statusLine(page)).toHaveText('● 동기화됨', { timeout: 15_000 });
 
     await ctx.setOffline(true);
-    await createCategory(page, '오프라인 카테고리');
+    // 드로어가 이미 열려 있다 — 다이얼로그만 처리한다("+ 카테고리 추가" 도 같은 `nav` 안).
+    await createCategoryInDialog(page, '오프라인 카테고리');
     await expect(statusLine(page)).toHaveText('○ 대기 1건', { timeout: 10_000 });
 
     await ctx.setOffline(false);
@@ -142,9 +138,12 @@ test.describe('동기화: 계정 삭제 안내(sync.md §6, ADR-0019)', () => {
     await waitForShell(pageA);
     await waitForShell(pageB);
 
-    // A: 계정 삭제. 내보내기는 파일 저장 대화상자를 여는데, 실 파일시스템 저장창은 e2e 에서
-    // 확인할 수 없으니 "취소"로 내보내기를 흉내내지 않는다 — 실제로 저장이 되는지는
-    // backup.md 쪽 e2e 몫이다. 여기서는 삭제 확인 → 내보내기 다이얼로그가 뜬다는 것까지만 본다.
+    // A: 계정 삭제. "계정 삭제" 버튼은 계정 블록(사이드바 드로어 `nav` 안, calendar-layout.md
+    // §1-A)에 있다 — A 는 기본(넓은) 뷰포트라 먼저 드로어를 연다. 내보내기는 파일 저장
+    // 대화상자를 여는데, 실 파일시스템 저장창은 e2e 에서 확인할 수 없으니 "취소"로 내보내기를
+    // 흉내내지 않는다 — 실제로 저장이 되는지는 backup.md 쪽 e2e 몫이다. 여기서는 삭제 확인 →
+    // 내보내기 다이얼로그가 뜬다는 것까지만 본다.
+    await openSidebarDrawer(pageA);
     await pageA.getByRole('button', { name: '계정 삭제' }).click();
     await pageA
       .getByRole('alertdialog', { name: '계정을 삭제할까요?' })
@@ -225,6 +224,8 @@ test.describe('동기화: 다른 기기 모두 로그아웃(ADR-0020 §결정 5,
     await waitForShell(pageA);
     await waitForShell(pageB);
 
+    // "다른 기기 모두 로그아웃" 도 계정 블록(사이드바 드로어 `nav` 안)에 있다 — 먼저 연다.
+    await openSidebarDrawer(pageA);
     await pageA.getByRole('button', { name: '다른 기기 모두 로그아웃' }).click();
     await pageA
       .getByRole('alertdialog', { name: '다른 기기를 모두 로그아웃할까요?' })

@@ -16,7 +16,16 @@ import { AccountBlockLauncher } from '@/features/sync';
 import { ThemeModeToggle, ThemeSettingsPopover } from '@/features/theme';
 import { RoutineManager } from '@/features/todo';
 
+import { Button } from '@/components/ui/Button';
+
 import { cn } from '@/lib/cn';
+
+/** `[고정]`/`[고정 해제]` 버튼의 표식 — 컬럼(이 파일, `showTitle`)과 드로어 본문 첫 줄(이 파일,
+ * `showPinToggle`)에 각각 하나씩 서지만 서로 다른 순간에만 존재하므로(고정이 켜지면 드로어 쪽이
+ * 닫히고 컬럼 쪽이 선다) 같은 표식을 공유해도 안전하다. `ShellOverlays` 가 고정을 켠 뒤 사라지는
+ * 드로어 대신 포커스를 넘길 곳을 찾을 때(`Dialog` 의 `returnFocus`) 이 표식으로 새로 선 컬럼의
+ * 버튼을 집는다. */
+export const SIDEBAR_PIN_TOGGLE_ATTR = 'data-shell-sidebar-pin-toggle';
 
 /**
  * 상시 카드 한 장 (app-shell.md §2-A "면과 고도" — 값의 단일 소스는 그 절이다).
@@ -30,6 +39,21 @@ const CARD_CLASS =
 type ShellSidebarProps = {
   /** 드로어 안에서는 `false` — 제목은 드로어가 갖는다(문서에 `h1` 은 하나여야 한다). */
   showTitle: boolean;
+  /**
+   * 드로어 본문 **첫 줄**에 `[고정]` 토글을 낼지 — `showTitle` 이 거짓일 때만 뜻이 있다(리뷰
+   * Major 2). `showTitle` 이 참이면(컬럼) 이미 그 줄에서 제목과 함께 항상 낸다. 대화상자의
+   * `title`(`<h2>`, `aria-labelledby`) 안에 이 버튼을 넣던 예전 방식은 드로어의 접근 이름이
+   * 토글마다 "Tasky 사이드바 고정" ↔ "Tasky 사이드바 고정 해제" 로 바뀌게 했다 — 제목은 대화상자
+   * 하나를 가리키는 고정된 이름이어야 한다. `ShellOverlays` 가 `canPinSidebar(layout)` 일 때만
+   * 참을 넘긴다.
+   */
+  showPinToggle?: boolean;
+  /** 지금 고정돼 있는가. `showTitle`·`showPinToggle` 어느 쪽이든 이 값을 함께 받는다. */
+  sidebarPinned: boolean;
+  /** `[고정]`/`[고정 해제]` 를 눌렀을 때. 포커스 인계(컬럼 → 드로어 오프너)는 `useShellPanels
+   * .toggleSidebarPinned` 가 이미 갖고 있다 — 여기서 다시 구현하지 않는다(리뷰 Major 4, 두 벌이던
+   * `handoffFocus` 호출을 하나로 모은다). */
+  onTogglePinned: () => void;
   /**
    * 내용을 **카드에 담을지**. 컬럼으로 섰을 때만 `true` 다(R17).
    *
@@ -54,6 +78,9 @@ type ShellSidebarProps = {
 
 export function ShellSidebar({
   showTitle,
+  showPinToggle = false,
+  sidebarPinned,
+  onTogglePinned,
   framed = false,
   categories,
   onSelectCategory,
@@ -67,13 +94,37 @@ export function ShellSidebar({
   // 등록 성공 `[되돌리기]`)의 버튼으로 포커스가 튀어, 거기서 Enter 를 누르면 루틴 삭제가 아니라
   // 그 등록을 되돌린다(리뷰 #104 Major 실측 — 파괴적이라 반드시 꺼야 한다).
   const routineRemovalFocus = useRemovalReturnFocus({ preferToast: false });
+  const showPinRow = showTitle || showPinToggle;
+  /*
+   * `aria-pressed` 를 **일부러 쓰지 않는다.** 글자 자체가 "사이드바 고정" ↔ "사이드바 고정 해제"
+   * 로 지금 상태와 누르면 바뀔 상태를 함께 말한다 — `aria-pressed` 를 더하면 "고정 해제, 눌림" 처럼
+   * 같은 상태를 두 번 낭독한다(리뷰 Major). 같은 이유로 같은 선택을 이미 한 선례가
+   * `date-strip/components/DateStripHeader.tsx` 의 주/월 보기 토글이다 — 그 파일 주석 참고.
+   */
+  const pinToggleLabel = `사이드바 ${sidebarPinned ? '고정 해제' : '고정'}`;
+
   return (
     <nav
       aria-label="카테고리"
       className="flex h-full min-h-0 flex-col gap-[var(--space-3)] overflow-hidden"
     >
-      {showTitle ? (
-        <h1 className="shrink-0 px-[var(--space-2)] text-lg font-bold text-text">{APP_NAME}</h1>
+      {showPinRow ? (
+        <div
+          className={cn(
+            'flex shrink-0 items-center gap-[var(--space-2)] px-[var(--space-2)]',
+            showTitle ? 'justify-between' : 'justify-end',
+          )}
+        >
+          {showTitle ? <h1 className="text-lg font-bold text-text">{APP_NAME}</h1> : null}
+          <Button
+            {...{ [SIDEBAR_PIN_TOGGLE_ATTR]: '' }}
+            variant="ghost"
+            size="sm"
+            onClick={onTogglePinned}
+          >
+            {pinToggleLabel}
+          </Button>
+        </div>
       ) : null}
 
       {/*

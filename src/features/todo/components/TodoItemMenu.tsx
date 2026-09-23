@@ -45,6 +45,12 @@ type TodoItemMenuProps = {
   returnFocus?: () => HTMLElement | null;
   /** 메뉴가 열릴 때. 호출부가 "이 행이 사라지면 어디로 갈지" 를 **미리** 찍어 두는 자리다. */
   onOpen?: () => void;
+  /**
+   * `⋯` 트리거의 크기 override(theme.md §3-D R32) — `TodoItem` 만 좁은 화면 행 밀도 토큰
+   * (`--todo-row-hit-min`)을 넘긴다. `RoutineManagerRow` 는 넘기지 않아 기본 32px 그대로다 —
+   * 이 메뉴가 두 자리에서 쓰이지만 행 밀도는 `todo` 목록에만 적용되는 결정이라서다.
+   */
+  triggerClassName?: string;
 };
 
 /**
@@ -69,6 +75,7 @@ export function TodoItemMenu({
   onDelete,
   returnFocus,
   onOpen,
+  triggerClassName,
 }: TodoItemMenuProps) {
   const anchor = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -137,6 +144,7 @@ export function TodoItemMenu({
       <IconButton
         ref={anchor}
         label={M.menuLabel(todo.title)}
+        className={triggerClassName}
         onClick={() => {
           setView('root');
           setOpen((value) => {

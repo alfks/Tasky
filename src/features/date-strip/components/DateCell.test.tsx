@@ -129,6 +129,59 @@ describe('R13. 미완료 투두를 셀에 놓으면 그 날짜로 옮긴다', ()
   });
 });
 
+describe('calendar-layout.md §2 R12. 칸 치수는 밀도 토큰만 참조하고 px 리터럴이 없다', () => {
+  it('주 보기 칸의 폭·높이·숫자·요일 글자가 --cal-* 토큰을 참조한다', () => {
+    renderCell({ variant: 'week' });
+    const cell = screen.getByRole('radio');
+    expect(cell.className).toContain('w-[var(--cal-cell-w)]');
+    expect(cell.className).toContain('h-[var(--cal-cell-h-week)]');
+    expect(cell.className).not.toMatch(/\b[wh]-\[\d+px\]/);
+
+    // 2026-09-17 은 목요일이라 요일 글자는 '목'이다.
+    expect(screen.getByText('목').className).toContain('text-[length:var(--cal-weekday-text)]');
+    expect(screen.getByText('17').className).toContain('text-[length:var(--cal-day-text)]');
+  });
+
+  it('월 보기 칸은 --cal-cell-h-month 를 쓰고 요일 줄은 그리지 않는다', () => {
+    renderCell({ variant: 'month' });
+    const cell = screen.getByRole('gridcell');
+    expect(cell.className).toContain('h-[var(--cal-cell-h-month)]');
+    expect(cell.className).not.toContain('h-[var(--cal-cell-h-week)]');
+    expect(cell.className).not.toMatch(/\bh-\[\d+px\]/);
+  });
+
+  it('점(5px)·✓(10px) 치수는 토큰화하지 않고 그대로 둔다(R13 판독성)', () => {
+    const { container } = renderCell({
+      summary: makeSummary({
+        total: 1,
+        doneCount: 1,
+        isAllDone: true,
+        dots: [{ categoryId: 'c0', color: '#AAA111' }],
+      }),
+    });
+    expect(container.querySelector('[style*="--cat-color"]')?.className).toContain('size-[5px]');
+    expect(badgeOf(container)?.getAttribute('class')).toContain('size-[10px]');
+  });
+});
+
+describe('R3. 강제 색 모드에서도 "오늘(선택 아님)" 링이 테두리로 남는다(리뷰 Nit)', () => {
+  it('오늘이면서 선택되지 않았으면 forced-colors 테두리 유틸이 붙는다', () => {
+    renderCell({ isToday: true, isSelected: false });
+    expect(screen.getByRole('radio').className).toContain(
+      'forced-colors:[border-width:var(--control-selected-ring)]',
+    );
+  });
+
+  it('오늘이면서 선택됐으면(잉크 링만) 이 대체 표현은 붙지 않는다 — 선택 쪽 표현이 이미 있다', () => {
+    renderCell({ isToday: true, isSelected: true });
+    const classes = screen.getByRole('radio').className;
+    // 선택 표현 자체의 forced-colors 테두리는 그대로 있어야 한다(기존 동작).
+    expect(classes).toContain('forced-colors:[border-width:var(--control-selected-ring)]');
+    // "오늘(선택 아님)" 분기(ring-2 ring-accent)는 선택일 때 아예 켜지지 않는다.
+    expect(classes).not.toMatch(/\bring-2 ring-accent ring-inset\b/);
+  });
+});
+
 describe('R10. 모션 수치는 --motion-xfast 토큰 한 곳에만 산다', () => {
   it('셀 색 전환과 점 페이드가 같은 토큰을 참조하고 리터럴 ms 가 남아 있지 않다', () => {
     const { container } = renderCell({ summary: makeSummary() });

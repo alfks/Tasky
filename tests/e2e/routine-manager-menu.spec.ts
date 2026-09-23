@@ -14,6 +14,7 @@
 // 보정하므로 — 가드가 상수 값 자체엔 둔감한 것은 의도된 성질이다). 확인 없이 상수를 낮춰 "재현
 // 안 됨" 으로 결론짓지 마라.
 import { expect, test } from './fixtures/stub-login';
+import { openSidebarDrawer } from './sidebar';
 
 import type { Page } from '@playwright/test';
 
@@ -78,6 +79,8 @@ test('대화상자 안에서 연 행 ⋯ 메뉴는 실제로 클릭할 수 있�
   await page.reload();
   await waitForShell(page);
 
+  // "루틴" 진입점은 사이드바 드로어 안(`nav` 도구 줄)에 있다(calendar-layout.md §1-A) — 먼저 연다.
+  await openSidebarDrawer(page);
   // 루틴 관리 화면 — 대화상자다. 그 **안**에서 행의 `⋯` 를 연다(리뷰가 재현한 정확한 조건).
   await page.getByRole('button', { name: '루틴' }).click();
   const manager = page.getByRole('dialog', { name: '루틴' });

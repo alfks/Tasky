@@ -143,7 +143,9 @@ export function TodoList({ date, categories }: TodoListProps) {
   };
 
   return (
-    <div className="flex flex-col gap-[var(--space-4)]">
+    // 카테고리 그룹 사이 간격은 좁은 화면에서 --todo-group-gap 으로 줄어든다(theme.md §3-D R32).
+    // 데스크탑 값은 --space-4 와 같아 변화가 없다.
+    <div className="flex flex-col gap-[var(--todo-group-gap)]">
       {status === 'loading' ? <p className="text-sm text-muted">불러오는 중이에요</p> : null}
       {status === 'error' ? (
         <p role="alert" className="text-sm text-muted">

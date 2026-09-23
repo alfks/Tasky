@@ -5,19 +5,16 @@
 // `‹`/`›` 는 **보고 있는 단위**를 옮긴다 — 주 보기에서는 ±7일, 월 보기에서는 ±1달(R14). 이름도 함께
 // 바뀐다("이전 주" ↔ "이전 달"): 같은 버튼이 보기에 따라 다른 거리를 움직이는데 이름이 하나면
 // 스크린리더 사용자는 어디로 가는지 알 수 없다.
-import { useRef, useState } from 'react';
+import { lazy, Suspense, useRef, useState } from 'react';
 
 import type { DateKey } from '@/domain/date/date-key';
 
 import { formatMonthLabel, formatShortMonthLabel } from '@/features/date-strip/lib/format';
-import { MAX_DATE_KEY, MIN_DATE_KEY } from '@/features/date-strip/lib/week';
 import type { DateStripView } from '@/features/date-strip/store/date-strip-store';
 
 import { Button } from '@/components/ui/Button';
 import { IconButton } from '@/components/ui/IconButton';
 import { Popover } from '@/components/ui/Popover';
-
-import { isDateKey } from '@/lib/date';
 
 type DateStripHeaderProps = {
   /**
@@ -75,7 +72,12 @@ export function DateStripHeader({
         <Chevron direction="left" />
       </IconButton>
 
-      <MonthJump anchorDate={anchorDate} selectedDate={selectedDate} onSelect={onSelect} />
+      <YearMonthJump
+        anchorDate={anchorDate}
+        selectedDate={selectedDate}
+        today={today}
+        onSelect={onSelect}
+      />
 
       <div className="flex items-center gap-[var(--space-2)]">
         {/* 글자가 **가려는 곳**을 가리킨다(주 보기에서는 "월 보기"). aria-pressed 를 쓰면 같은 글자가
@@ -110,22 +112,34 @@ export function DateStripHeader({
   );
 }
 
+/** 피커 본문은 지연 로드한다(BackupLauncher 와 같은 lazy() 패턴) — 아래 `YearMonthJump` 머리 주석. */
+const LazyYearMonthPicker = lazy(async () => {
+  const loaded = await import('@/features/date-strip/components/YearMonthPicker');
+  return { default: loaded.YearMonthPicker };
+});
+
 /**
- * 월 표시를 누르면 네이티브 날짜 입력이 열린다 (§2-A).
+ * 월 표시를 누르면 년·월 피커가 열린다(calendar-layout.md §3 R15~R19, T-07 의 네이티브
+ * `input[type=date]` 를 교체했다).
  *
- * `input[type=date]` 을 쓰므로 한글 IME 조합이 끼어들 여지가 없고(텍스트 입력이 아니다) 확정은
- * `change` 로만 받는다 — Enter 키를 직접 해석하지 않으므로 조합 중 Enter 오작동 경로가 없다.
+ * 피커 본문(`YearMonthPicker`)은 **지연 로드한다** — 자주 열지 않는 화면이라 첫 로드 JS 예산에
+ * 상시로 실릴 이유가 없다(calendar-layout.md §7 리스크 — 진입 폐포 여유 1,779 B 뿐이라 정적
+ * import 는 예산을 넘긴다). `autoFocus={false}` 인 이유: 지연 로드로 처음 여는 순간엔 패널 안에
+ * 포커스할 것이 아직 없고(청크 로딩 중), 청크가 캐시된 다음번부터는 Popover 의 "첫 포커스 가능
+ * 요소" 가 이전 해 버튼이 되어 R16(선택된 달의 월 버튼)과 어긋난다 — 초기 포커스는
+ * `YearMonthPicker` 자신의 effect 가 전담한다.
  *
  * 열고 닫는 일 자체는 **`Popover` 프리미티브에 맡긴다.** T-07 당시 프리미티브가 없어 여기에
  * 자체 구현(Esc + `blur` 닫기)을 두었는데, `blur` 로 닫으면 (1) 바깥을 눌렀을 때 포커스를
  * 앵커로 되돌릴 수 없고(`mousedown` 기본 동작이 그 뒤에 덮는다 — T-35), (2) 팝오버 **안에서**
  * 포커스가 움직이기만 해도 닫힌다. 둘 다 프리미티브가 이미 푼 문제다(app-shell R7).
  */
-function MonthJump({
+function YearMonthJump({
   anchorDate,
   selectedDate,
+  today,
   onSelect,
-}: Pick<DateStripHeaderProps, 'anchorDate' | 'selectedDate' | 'onSelect'>) {
+}: Pick<DateStripHeaderProps, 'anchorDate' | 'selectedDate' | 'today' | 'onSelect'>) {
   const [isOpen, setIsOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
 
@@ -143,29 +157,44 @@ function MonthJump({
         <span className="sm:hidden">{formatShortMonthLabel(anchorDate)}</span>
         <Chevron direction="down" />
       </Button>
-      {/* 항상 마운트하고 open 만 토글한다 — 닫혀 있을 때도 앵커에 aria-haspopup 이 붙어야 한다. */}
+      {/* 항상 마운트하고 open 만 토글한다 — 닫혀 있을 때도 앵커에 aria-haspopup 이 붙어야 한다(R17). */}
       <Popover
         open={isOpen}
         onClose={() => setIsOpen(false)}
         anchorRef={anchorRef}
-        // label 을 주지 않는다: 안에 있는 것이 이름 있는 입력 하나뿐이라, 주면 같은 이름이
-        // 버튼 → 그룹 → 입력으로 거듭 낭독된다.
-        className="w-fit min-w-0"
+        label="연도와 월 선택"
+        autoFocus={false}
+        className="w-[280px] rounded-[var(--radius-xl)] p-[var(--space-3)]"
       >
-        <input
-          type="date"
-          aria-label="날짜 선택"
-          value={selectedDate}
-          min={MIN_DATE_KEY}
-          max={MAX_DATE_KEY}
-          onChange={(event) => {
-            const value = event.target.value;
-            if (!isDateKey(value)) return;
-            onSelect(value);
-            setIsOpen(false);
-          }}
-          className="h-[var(--control-height)] rounded-[var(--radius-sm)] border border-border bg-surface px-[var(--space-2)] text-base text-text"
-        />
+        <Suspense
+          fallback={
+            // 실제 패널 크기의 자리표시자(리뷰 Minor) — `null` 이면 첫 열림에서 패널 높이가
+            // ~26px 로 측정돼 Popover 의 하단 클램프 계산이 틀어진다.
+            // 폭은 `w-full` — 이 div 는 `Popover` 의 콘텐츠 상자(`p-[--space-3]`·`border` 안쪽) 를
+            // 그대로 채우는 자리이지, 패널 자체가 아니다(R18 의 280px 는 패널 바깥 치수 — 자식이
+            // 다시 280px 를 주장하면 패딩·테두리만큼 밖으로 삐져나온다, 아래 `YearMonthPicker`
+            // 머리 주석과 같은 계산·같은 사고, 2차 리뷰 Major).
+            // 높이 256px = `YearMonthPicker` 실제 내용의 실측 합(2026-09-23, 토큰값 그대로 계산):
+            //   년 줄(`IconButton` = --control-hit-min 32) 32
+            //   + 세로 gap(--space-3) 12
+            //   + [이번 달] 버튼(`Button size="sm"` = --control-hit-min) 32
+            //   + 세로 gap(--space-3) 12
+            //   + 월 격자 4행(--control-height 36) + 3간(--space-2 8) = 4*36 + 3*8 = 168
+            //   = 32 + 12 + 32 + 12 + 168 = 256
+            // `aria-busy` 는 콘텐츠가 아직 채워지지 않았음을 알린다 — 시각 언어를 새로 더하지
+            // 않으므로 빈 박스로 둔다.
+            <div aria-busy="true" className="h-[256px] w-full" />
+          }
+        >
+          <LazyYearMonthPicker
+            selectedDate={selectedDate}
+            today={today}
+            onSelect={(date) => {
+              onSelect(date);
+              setIsOpen(false);
+            }}
+          />
+        </Suspense>
       </Popover>
     </>
   );
