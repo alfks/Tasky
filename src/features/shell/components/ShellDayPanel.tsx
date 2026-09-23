@@ -12,6 +12,7 @@ import type { ReactNode } from 'react';
 
 import type { Category } from '@/domain/category/category';
 import type { DateKey } from '@/domain/date/date-key';
+import type { Todo } from '@/domain/todo/todo';
 
 import { useDateStripStore } from '@/features/date-strip';
 import { DiaryCard } from '@/features/diary';
@@ -78,6 +79,8 @@ export type DayPanelBodyProps = {
   /** 그날 투두가 0개인가 (§2-C 두 번째 빈 상태). */
   todosEmpty: boolean;
   onCreateCategory: () => void;
+  /** 투두 항목 메뉴 "타이머 시작" (timer.md §2) — `TodoList` 로 그대로 흘려보낸다. */
+  onStartTimer?: (todo: Todo) => void;
 };
 
 /**
@@ -93,6 +96,7 @@ export function DayPanelBody({
   failureCard,
   todosEmpty,
   onCreateCategory,
+  onStartTimer,
 }: DayPanelBodyProps) {
   // 자정을 넘기면 스트립의 '오늘' 이 갱신되고(R12) 이 한 줄도 같은 박자로 따라간다.
   const today = useDateStripStore((state) => state.today);
@@ -128,7 +132,7 @@ export function DayPanelBody({
         {todosEmpty ? (
           <p className="pb-[var(--space-2)] text-base text-muted">{emptyTodosText(date, today)}</p>
         ) : null}
-        <TodoList date={date} categories={categories} />
+        <TodoList date={date} categories={categories} onStartTimer={onStartTimer} />
       </div>
       {/* 다이어리 카드(diary.md §2 — 투두 목록 아래). 카테고리·투두와 무관한 독립 기록이다. */}
       <DiaryCard date={date} />

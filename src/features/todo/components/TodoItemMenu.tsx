@@ -31,13 +31,16 @@ type TodoItemMenuProps = {
    * 목록에 없다. 빼는 코드를 두면 아무 일도 하지 않으면서 "걸러진다" 는 인상만 남는다.
    */
   moveTargets: readonly Category[];
-  /** 완료 항목에서는 위로/아래로가 비활성이다 (R11). */
-  canReorder: boolean;
   onEdit: () => void;
   onAddMemo: () => void;
+  /**
+   * 이 투두로 집중 타이머를 시작한다(timer.md §2, 사용자 결정). 셸이 두 feature 를 잇는 자리에서
+   * 내려주는 콜백이라(`todo` 는 `timer` 를 import 할 수 없다 — `timer` 가 이미 `Todo.focusSeconds`
+   * 갱신 때문에 `todo` 를 참조해 순환이 된다) 없을 수 있다 — 그때는 항목을 숫제 그리지 않는다.
+   */
+  onStartTimer?: () => void;
   onTomorrow: () => void;
   onPickDate: () => void;
-  onMove: (direction: -1 | 1) => void;
   onChangeCategory: (categoryId: CategoryId) => void;
   onRegisterRoutine: () => void;
   onDelete: () => void;
@@ -54,9 +57,10 @@ type TodoItemMenuProps = {
 };
 
 /**
- * 항목의 `⋯` 메뉴 (todo.md §2-A·R10·R11·R13·R16).
+ * 항목의 `⋯` 메뉴 (todo.md §2-A·R10·R13·R16).
  *
- * "타이머 시작"(§2-A)은 두지 않았다 — 타이머는 T-23 소유라 누르면 아무 일도 없는 항목이 된다.
+ * "위로"·"아래로"는 여기 두지 않는다(사용자 결정) — 순서 변경의 키보드 대안은 드래그 손잡이·행
+ * 포커스의 `Alt+↑/↓`(WCAG 2.5.7)로 이미 있어, 메뉴 항목은 세 번째 중복 경로였다.
  * 카테고리 목록은 **2단계 메뉴**로 편다: 읽기 전용 그룹의 유일한 출구인데(R16) 활성 카테고리가
  * 최대 50개라 1단계에 펼치면 삭제가 스크롤 밖으로 밀린다.
  */
@@ -64,12 +68,11 @@ export function TodoItemMenu({
   todo,
   readOnly,
   moveTargets,
-  canReorder,
   onEdit,
   onAddMemo,
+  onStartTimer,
   onTomorrow,
   onPickDate,
-  onMove,
   onChangeCategory,
   onRegisterRoutine,
   onDelete,
@@ -115,21 +118,16 @@ export function TodoItemMenu({
     : [
         { id: 'edit', label: M.menuEdit, onSelect: run(onEdit) },
         { id: 'memo', label: M.menuMemo, onSelect: run(onAddMemo) },
+        // 완료한 일에 다시 집중을 걸 일은 없다 — TimerSetup 의 "미완료만" 필터(timer.md §2)와
+        // 같은 판단이다. 콜백 자체가 없으면(위 prop 주석) 항목을 아예 만들지 않는다.
+        ...(onStartTimer === undefined
+          ? []
+          : [
+              { id: 'timer', label: M.menuTimer, disabled: todo.done, onSelect: run(onStartTimer) },
+            ]),
         { id: 'tomorrow', label: M.menuTomorrow, onSelect: run(onTomorrow) },
         { id: 'pick-date', label: M.menuPickDate, onSelect: run(onPickDate) },
         { id: 'routine', label: M.menuRoutine, onSelect: run(onRegisterRoutine) },
-        {
-          id: 'up',
-          label: M.menuUp,
-          disabled: !canReorder,
-          onSelect: run(() => onMove(-1)),
-        },
-        {
-          id: 'down',
-          label: M.menuDown,
-          disabled: !canReorder,
-          onSelect: run(() => onMove(1)),
-        },
         { id: 'delete', label: M.menuDelete, destructive: true, onSelect: run(onDelete) },
       ];
 
@@ -168,6 +166,7 @@ export function TodoItemMenu({
           label={view === 'root' ? M.menuLabel(todo.title) : M.menuMoveCategory}
           items={view === 'root' ? rootItems : categoryItems}
           onClose={close}
+          dense
         />
       </Popover>
     </>

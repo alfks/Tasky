@@ -35,6 +35,7 @@ import { useRemovalReturnFocus } from '@/features/shell/hooks/useRemovalReturnFo
 import { useShellDocumentTitle } from '@/features/shell/hooks/useShellDocumentTitle';
 import { useShellPanels } from '@/features/shell/hooks/useShellPanels';
 import { useShellShortcuts } from '@/features/shell/hooks/useShellShortcuts';
+import { useStartTimerForTodo } from '@/features/shell/hooks/useStartTimerForTodo';
 import { useToastStack } from '@/features/shell/hooks/useToastStack';
 import { useTodoDropToDate } from '@/features/shell/hooks/useTodoDropToDate';
 import { useTopNoticeOffset } from '@/features/shell/hooks/useTopNoticeOffset';
@@ -74,6 +75,9 @@ function ShellBody() {
   const { load: loadCategories } = useCategoryActions();
   const todoStatus = useTodoStore((s) => s.status);
   const summary = useCompletion();
+  // 투두 항목 메뉴 "타이머 시작" (timer.md §2) — `todo` 는 `timer` 를 import 할 수 없어 이 다리가
+  // 필요하다(`useStartTimerForTodo` 머리 주석).
+  const startTimerForTodo = useStartTimerForTodo();
   const removal = useCategoryRemoval();
   const pushToast = useShellToastStore((s) => s.pushToast);
   const storageStatus = useShellStorageStore((s) => s.status);
@@ -274,6 +278,7 @@ function ShellBody() {
               todosEmpty={summary.total === 0}
               failureCard={failureCard}
               onCreateCategory={handleCreateCategory}
+              onStartTimer={startTimerForTodo}
             />
           </div>
         ) : (
@@ -287,6 +292,7 @@ function ShellBody() {
             showBottomAdd={hasBottomAddButton(panels.layout)}
             failureCard={failureCard}
             onCreateCategory={handleCreateCategory}
+            onStartTimer={startTimerForTodo}
             header={header}
           />
         )}

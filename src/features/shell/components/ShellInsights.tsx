@@ -4,6 +4,9 @@
 //
 // 섹션 순서는 **집중 → 달성률 → 카테고리별 → 단축키** 로 고정이다(R6). 각 섹션의 내용은 그 feature
 // 가 그리고, 여기서는 순서·카드 껍질·접기만 맡는다. Phase 2 의 캘린더·통계 위젯도 이 목록에 낀다.
+//
+// **집중은 이 중 유일하게 "있을 때만" 그려지는 섹션이다**(사용자 결정, R6 갱신) — 보여줄 상태가
+// 없으면(대기) 아예 마운트하지 않는다. 그려질 때는 여전히 맨 앞이라 순서 자체는 바뀌지 않는다.
 import type { ReactNode } from 'react';
 
 import type { Category } from '@/domain/category/category';
@@ -11,7 +14,7 @@ import type { Category } from '@/domain/category/category';
 import { DdayPanelSection } from '@/features/calendar';
 import { useCommandStore } from '@/features/command';
 import { CategoryPanelSection, CompletionPanelSection } from '@/features/stats';
-import { TimerPanelSection } from '@/features/timer';
+import { selectTimerPanelVisible, TimerPanelSection, useTimerStore } from '@/features/timer';
 
 import { Button } from '@/components/ui/Button';
 import { Kbd } from '@/components/ui/Kbd';
@@ -49,12 +52,18 @@ function Card({ children }: { children: ReactNode }) {
 
 export function ShellInsights({ categories, onCollapse, panelId, className }: ShellInsightsProps) {
   const openHelp = useCommandStore((state) => state.openHelp);
+  // 대기 중(세션·휴식·알림·완료·에러가 전부 비었을 때)에는 이 섹션 자체를 그리지 않는다(사용자
+  // 결정 — "집중 부분이 메인 화면에서 없어졌으면 좋겠다"). 시작은 이제 항목 메뉴 "타이머 시작"
+  // (todo.md §2-A) 또는 커맨드 팔레트다 — 대기 화면(투두 선택·길이 프리셋)은 그래서 상시 자리가
+  // 필요 없다. `TimerChip`(헤더)은 이 섹션과 무관하게 계속 마운트돼 있어 적재·1초 갱신은 끊기지
+  // 않는다(`@/features/timer` 머리 주석).
+  const timerPanelVisible = useTimerStore(selectTimerPanelVisible);
 
   return (
     <div
       className={cn('flex h-full min-h-0 flex-col gap-[var(--space-4)] overflow-y-auto', className)}
     >
-      <TimerPanelSection className="shadow-sm" />
+      {timerPanelVisible ? <TimerPanelSection className="shadow-sm" /> : null}
       <Card>
         <CompletionPanelSection />
       </Card>

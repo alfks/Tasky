@@ -32,6 +32,11 @@ type TodoListProps = {
    * 구독하지 않는다(feature 간 결합을 호출부 한 곳에 모은다, `useTodoGroups` 주석).
    */
   categories: readonly Category[];
+  /**
+   * 항목 메뉴 "타이머 시작" (timer.md §2). `todo` 는 `timer` 를 import 할 수 없어(`TodoItemMenu.tsx`
+   * 머리 주석) 셸이 내려주는 콜백이다 — 생략하면 메뉴에 그 항목이 없다.
+   */
+  onStartTimer?: (todo: Todo) => void;
 };
 
 /**
@@ -54,7 +59,7 @@ function dayLabel(date: DateKey): string {
  * 화면 전체가 아니라 **본문 컬럼**이다 — 사이드바·헤더·날짜 스트립을 붙이는 것은 셸(T-20)이다.
  * 토스트는 자기 뷰포트를 띄우지 않고 전역 허브에 밀어 넣는다(T-30, app-shell R8 "동시에 1개").
  */
-export function TodoList({ date, categories }: TodoListProps) {
+export function TodoList({ date, categories, onStartTimer }: TodoListProps) {
   const { status, error } = useTodoDate(date);
   const groups = useTodoGroups(categories);
   const { removeTodo, moveToDate, changeCategory, clearError } = useTodoActions();
@@ -140,6 +145,7 @@ export function TodoList({ date, categories }: TodoListProps) {
       setPending({ todo, fallback: returnFocus() }),
     onAnnounce: setAnnouncement,
     onMovedToDate: handleMovedToDate,
+    onStartTimer,
   };
 
   return (

@@ -10,7 +10,7 @@
 // 셀렉터는 smoke.spec.ts 와 같이 **역할 + 접근 이름**만 쓴다.
 import { expect, test } from './fixtures/stub-login';
 
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 /** 타이머의 기기별 설정·상태 키 (`timer-prefs.ts`·`pomodoro-state.ts`). */
 const PREFS_KEY = 'tasky.timer.v1';
@@ -70,23 +70,55 @@ async function seed(
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-test('뽀모도로는 옵션이고, 켜면 파생된 휴식 길이가 보이고 기억된다 (P1)', async ({ page }) => {
+/**
+ * 팔레트를 연다. 화면에 입구가 없어(T-36) 단축키가 유일한 경로다 — `selection-ring.spec.ts` 의
+ * 같은 이름 헬퍼와 같은 판정이다.
+ */
+async function openPalette(page: Page): Promise<Locator> {
+  await page.keyboard.press('Control+k');
+  const list = page.getByRole('listbox', { name: '명령과 할 일' });
+  await expect(list.getByRole('option').first()).toBeVisible();
+  return list;
+}
+
+/** 팔레트를 열고 라벨로 찾아 눌러 실행한다. 실행되면 팔레트는 스스로 닫힌다. */
+async function runCommand(page: Page, label: string): Promise<void> {
+  const list = await openPalette(page);
+  await page.getByRole('combobox', { name: '할 일 검색 또는 명령' }).fill(label);
+  await list.getByRole('option', { name: label, exact: true }).click();
+}
+
+test('뽀모도로는 옵션이고, 대기 화면이 사라진 대신 팔레트로 켜면 기억된다 (P1)', async ({
+  page,
+}) => {
   // 아무것도 심지 않은 새 브라우저다 — 기본값이 무엇인지까지 여기서 본다.
   await page.goto('/');
   await waitForShell(page);
 
-  const toggle = page.getByRole('checkbox', { name: '뽀모도로로 집중하기' });
-  // 기본은 꺼짐 — 지금까지의 단일 집중 세션이 그대로 기본 동작이다.
-  await expect(toggle).not.toBeChecked();
-  await expect(page.getByText('4번째마다')).toHaveCount(0);
+  // 기본은 꺼짐 — 지금까지의 단일 집중 세션이 그대로 기본 동작이다. 팔레트에는 "켜기" 만 있고
+  // "끄기" 는 없다(사용자 결정 — 대기 화면(`TimerSetup`)이 메인 화면에서 사라지면서, 그 화면
+  // 안에 있던 이 설정은 팔레트로만 남았다).
+  let list = await openPalette(page);
+  await page.getByRole('combobox', { name: '할 일 검색 또는 명령' }).fill('뽀모도로');
+  await expect(list.getByRole('option', { name: '뽀모도로 켜기', exact: true })).toBeVisible();
+  await expect(list.getByRole('option', { name: '뽀모도로 끄기', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Escape');
 
-  await toggle.check();
-  // 고른 값은 여전히 집중 길이 하나이고, 파생된 분 수는 화면이 말한다.
-  await expect(page.getByText('집중이 끝나면 5분 휴식 · 4번째마다 15분 휴식')).toBeVisible();
+  await runCommand(page, '뽀모도로 켜기');
 
+  // 켜졌다 — 다시 열면 반대쪽("끄기")만 있다.
+  list = await openPalette(page);
+  await page.getByRole('combobox', { name: '할 일 검색 또는 명령' }).fill('뽀모도로');
+  await expect(list.getByRole('option', { name: '뽀모도로 끄기', exact: true })).toBeVisible();
+  await expect(list.getByRole('option', { name: '뽀모도로 켜기', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  // 기기별로 기억된다(R1) — 새로고침해도 그대로다.
   await page.reload();
   await waitForShell(page);
-  await expect(page.getByRole('checkbox', { name: '뽀모도로로 집중하기' })).toBeChecked();
+  list = await openPalette(page);
+  await page.getByRole('combobox', { name: '할 일 검색 또는 명령' }).fill('뽀모도로');
+  await expect(list.getByRole('option', { name: '뽀모도로 끄기', exact: true })).toBeVisible();
 });
 
 test('진행 중인 휴식은 새로고침해도 이어진다 (P4)', async ({ page }) => {

@@ -238,8 +238,21 @@ test.describe('선택됨 잉크 링 (theme.md §3-G R17~R20)', () => {
   });
 
   test('타이머 프리셋: 체크된 원의 테두리가 같은 잉크다 (R19)', async ({ page }) => {
+    // 대기 화면(`TimerSetup`)은 이제 메인 화면에 상시 있지 않다(사용자 결정, timer.md §2) —
+    // 완료 카드가 뜬 순간(R10 "다음 할 일 고르기")에만 그 아래 다시 나타난다. 실제로 완료를
+    // 만들어 닿는다: 기본 길이(25분)로 시작한 뒤 가짜 시계로 그 시간을 건너뛴다.
+    await page.clock.install();
     await page.goto('/');
     await waitForShell(page);
+
+    await page.keyboard.press('Control+k');
+    const palette = page.getByRole('listbox', { name: '명령과 할 일' });
+    await page.getByRole('combobox', { name: '할 일 검색 또는 명령' }).fill('타이머 시작');
+    await palette.getByRole('option', { name: '타이머 시작', exact: true }).click();
+    await expect(page.getByRole('timer')).toBeVisible();
+
+    await page.clock.fastForward('26:00');
+    await expect(page.getByRole('alertdialog', { name: '집중 25분 끝!' })).toBeVisible();
 
     const checked = page.getByRole('radio', { name: '25분' });
     await expect(checked).toBeChecked();

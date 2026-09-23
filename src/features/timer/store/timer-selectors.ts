@@ -62,6 +62,28 @@ export function selectTimerPhase(state: Pick<TimerState, 'session'>): TimerPhase
   return timerPhaseOf(state.session);
 }
 
+/**
+ * 인사이트 패널의 "집중" 섹션을 지금 보여야 하는가(사용자 결정 — 대기 중에는 메인 화면에서
+ * 사라지고, 시작은 투두 항목 메뉴 "타이머 시작"으로 한다). 보여줄 것이 있는 여섯 상태만 참이다 —
+ * 완전한 대기(세션·휴식·알림·완료·에러가 전부 비어 있는)에서는 자리를 차지하지 않는다.
+ * `cycle`(오늘 끝낸 뽀모도로 수)은 대기 화면 안의 숫자일 뿐이라 여기 포함하지 않는다.
+ */
+export function selectTimerPanelVisible(
+  state: Pick<
+    TimerState,
+    'session' | 'breakSession' | 'breakDone' | 'completion' | 'notice' | 'error'
+  >,
+): boolean {
+  return (
+    state.session !== null ||
+    state.breakSession !== null ||
+    state.breakDone !== null ||
+    state.completion !== null ||
+    state.notice !== null ||
+    state.error !== null
+  );
+}
+
 /** 남은 초. 대기 중이면 0 이다. */
 export function selectRemainingSeconds(state: TimerSnapshot): number {
   return state.session === null ? 0 : focusRemainingSeconds(state.session, state.now);
