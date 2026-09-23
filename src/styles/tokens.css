@@ -205,6 +205,39 @@
   }
 }
 
+/* 할 일 행 밀도(theme.md §3-D R32) — 사용자 결정("행높이도 조절해서 한번에 보이는 할일 task가
+   더 많이 보였으면 좋겠어"). `@theme` 밖에 두는 이유는 위 --cal-* 와 같다: `todo` 목록 전용
+   밀도라 `@theme` 에 넣으면 `h-todo-row-hit-min` 같은 유틸이 생겨 이 값이 todo 담장 밖으로 새
+   나갈 길이 열린다(src/styles/AGENTS.md 규칙 1 확장 — 이 다섯 이름을 추가했다).
+
+   기존 --control-hit-min 을 좁은 화면에서 직접 낮추지 않는 이유: 그 토큰은 ShellHeader·
+   CommandPalette·EmojiPicker·ColorSwatchGroup·Timer 등 앱 전체가 공유한다 — 거기를 함께 줄이면
+   이 티켓 밖의 화면들이 건드리지 않아도 될 자리에서 손가락 타깃이 좁아진다. 새 이름을 만들어
+   `src/features/todo/` 안의 요소만 이 값을 참조하게 하면, 값을 :root 에 두어도(다른 컴포넌트가
+   이 이름을 아예 모르므로) 사실상 todo 목록에만 적용된다.
+
+   기본값(데스크탑)은 대응하는 기존 토큰과 값이 같아 데스크탑 밀도는 그대로다(사용자 결정 —
+   "마우스는 정밀하지만 손가락은 아니다", 데스크탑은 이미 3영역으로 풀렸다). */
+:root {
+  --todo-row-hit-min: 32px; /* = --control-hit-min */
+  --todo-row-py: 4px; /* = --space-1 */
+  --todo-section-pad: 12px; /* = --space-3 */
+  --todo-section-gap: 8px; /* = --space-2 */
+  --todo-group-gap: 16px; /* = --space-4 */
+}
+
+@media (max-width: 767.98px) {
+  :root {
+    /* 28px: WCAG 2.5.8(AA) 최소 24×24 CSS px 위 4px 여유. 시각 체크박스(22px)보다 크게 유지해
+       히트 영역이 시각 크기 아래로 내려가지 않는다(R32 트레이드오프 — 누르기 쉬움을 지킨다). */
+    --todo-row-hit-min: 28px;
+    --todo-row-py: 2px;
+    --todo-section-pad: 8px;
+    --todo-section-gap: 6px;
+    --todo-group-gap: 10px;
+  }
+}
+
 /* 3-G "선택됨" 표현 토큰(theme.md §3-G R17~R20). @theme inline 인 이유는 그림자와 같다 —
    값이 다른 토큰을 가리키므로 빌드 시점 리터럴로 굳으면 라이트/다크·강조색 변경을 따라가지 못한다.
    inline 은 var() 를 유틸에 그대로 흘려보내 런타임에 읽게 한다.

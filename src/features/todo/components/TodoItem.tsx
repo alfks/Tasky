@@ -162,7 +162,9 @@ export function TodoItem({
           : undefined
       }
       className={cn(
-        'flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] px-[var(--space-2)] py-[var(--space-1)]',
+        // 세로 패딩은 좁은 화면에서 --todo-row-py 로 줄어든다(theme.md §3-D R32) — 데스크탑 값은
+        // --space-1 과 같아 변화가 없다.
+        'flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] px-[var(--space-2)] py-[var(--todo-row-py)]',
         // 호버는 **앱에 이미 있는 언어 그대로** `--color-surface-2` 다(theme.md §3 표: "hover, 트랙,
         // 스켈레톤"). 본뜬 곳: `CategoryListItem.tsx`:95 · `Menu.tsx`:127 · `TodoAddRow.tsx`:126 —
         // 전부 `hover:bg-surface-2`. 행은 포커스를 받는 컨트롤이므로(todo.md §5, tabindex=0 +
@@ -178,16 +180,22 @@ export function TodoItem({
       )}
       style={color === undefined ? undefined : { ['--cat-color' as string]: color }}
     >
-      <div className="flex min-h-[var(--control-hit-min)] items-center gap-[var(--space-1)]">
+      {/* 행의 터치 치수는 좁은 화면에서 --todo-row-hit-min(28px, WCAG 2.5.8 하한 24px 위)으로
+          줄어든다(theme.md §3-D R32) — 데스크탑 값은 --control-hit-min 과 같은 32px 라 앱의 다른
+          컨트롤(ShellHeader·CommandPalette 등)과 다르지 않다. 세 자식(손잡이·체크박스·⋯ 메뉴)이
+          같은 토큰으로 함께 줄어야 행의 실제 높이(= max 자식 높이)가 실제로 작아진다 — 하나라도
+          --control-hit-min(32px) 그대로 남으면 그 자식이 행 높이를 다시 밀어 올린다. */}
+      <div className="flex min-h-[var(--todo-row-hit-min)] items-center gap-[var(--space-1)]">
         {canReorder ? (
           <DragHandle
             item={todo.title}
             onDragStart={handleDragStart}
             onDragEnd={() => onDragChange(null)}
             onMove={move}
+            className="size-[var(--todo-row-hit-min)]"
           />
         ) : (
-          <span aria-hidden="true" className="size-[var(--control-hit-min)] shrink-0" />
+          <span aria-hidden="true" className="size-[var(--todo-row-hit-min)] shrink-0" />
         )}
 
         <Checkbox
@@ -195,6 +203,7 @@ export function TodoItem({
           disabled={readOnly}
           labelledBy={titleId}
           onCheckedChange={toggle}
+          className="size-[var(--todo-row-hit-min)]"
         />
 
         <button
@@ -251,6 +260,7 @@ export function TodoItem({
           readOnly={readOnly}
           canReorder={canReorder}
           moveTargets={categories}
+          triggerClassName="size-[var(--todo-row-hit-min)]"
           returnFocus={returnFocus}
           onOpen={snapshotFocus}
           onEdit={() => onEditChange(todo.id, 'title')}
