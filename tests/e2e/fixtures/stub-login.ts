@@ -19,7 +19,17 @@ export function randomAccount(): Account {
   return { sub, email: `${sub}@example.com` };
 }
 
+/** Cloudflare Web Analytics 비콘(ADR-0021, index.html)은 모든 페이지 로드에서 실행된다 —
+ * 차단하지 않으면 (a) 테스트가 실통계를 오염시키고 (b) 네트워크가 막힌 이 컨테이너 밖에서도
+ * 제3자 요청에 결과가 좌우된다. `stubLogin` 은 모든 e2e 페이지의 첫 `goto` 이므로(아래
+ * `test.page` 오버라이드와 `sync.spec.ts` 의 직접 호출 둘 다) 여기 한 곳에서만 막으면 전 스펙에
+ * 적용된다. */
+async function blockAnalyticsBeacon(page: Page): Promise<void> {
+  await page.route('https://static.cloudflareinsights.com/**', (route) => route.abort());
+}
+
 export async function stubLogin(page: Page, account: Account): Promise<void> {
+  await blockAnalyticsBeacon(page);
   await page.goto(
     `/auth/stub-login?sub=${encodeURIComponent(account.sub)}&email=${encodeURIComponent(account.email)}`,
   );
@@ -43,7 +53,7 @@ export const test = base.extend<{ account: Account }>({
   },
   // `@playwright/test` 의 `page` 를 감싼다 — `{ page }` 는 이 오버라이드 이전(기본) 구현을
   // 가리킨다(Playwright fixture 오버라이드 규약). 모든 스펙이 이 파일에서 `test` 를 가져오면
-  // `page` 를 처음 쓰는 시점에 이미 로그인이 끝나 있다.
+  // `page` 를 처음 쓰는 시점에 이미 로그인이 끝나 있다(비콘 차단도 `stubLogin` 안에서 함께 된다).
   page: async ({ page, account }, provide) => {
     await stubLogin(page, account);
     await provide(page);
