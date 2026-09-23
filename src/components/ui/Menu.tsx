@@ -31,13 +31,28 @@ type MenuProps = {
   /** 렌더되자마자 첫 항목에 포커스할지. 기본 true. */
   autoFocus?: boolean;
   className?: string;
+  /**
+   * 항목 높이·안쪽 여백을 `--control-hit-min`(32px)까지 줄인다(기본 `--control-height` 36px,
+   * 사용자 결정 — "메뉴 옵션 간격이 좁아 마우스 피로도가 낮았으면"). 항목 사이에 실제 `gap` 은
+   * 원래 0 이라(줄마다 바로 붙어 있다) 줄일 여지는 각 항목의 히트 높이뿐이고, 32px 는 WCAG
+   * 2.5.8(AA) 최소 24px 위 여유이자 이 앱이 이미 "촘촘함"에 쓰는 값(`RadioOption`·행 밀도 등)과
+   * 같다 — 여기서만 새 숫자를 만들지 않는다. 항목이 유난히 많은 메뉴(todo `⋯`)에만 쓴다.
+   */
+  dense?: boolean;
 };
 
 /**
  * 키보드로 다룰 수 있는 메뉴 목록(role="menu"). 위치·바깥 클릭은 Popover 가 맡고,
  * 여기서는 항목 사이 이동(↑↓·Home/End·타이핑)과 실행만 책임진다.
  */
-export function Menu({ label, items, onClose, autoFocus = true, className }: MenuProps) {
+export function Menu({
+  label,
+  items,
+  onClose,
+  autoFocus = true,
+  className,
+  dense = false,
+}: MenuProps) {
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const typeaheadRef = useRef({ buffer: '', at: 0 });
   const [activeIndex, setActiveIndex] = useState(0);
@@ -123,7 +138,10 @@ export function Menu({ label, items, onClose, autoFocus = true, className }: Men
               : undefined
           }
           className={cn(
-            'flex h-[var(--control-height)] items-center rounded-[var(--radius-md)] px-[var(--space-3)] text-left text-base text-text',
+            'flex items-center rounded-[var(--radius-md)] text-left text-base text-text',
+            dense
+              ? 'h-[var(--control-hit-min)] px-[var(--space-2)]'
+              : 'h-[var(--control-height)] px-[var(--space-3)]',
             'hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
             item.disabled === true && 'cursor-not-allowed text-faint hover:bg-transparent',
           )}

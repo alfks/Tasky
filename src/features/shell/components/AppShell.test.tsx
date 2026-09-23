@@ -272,8 +272,15 @@ describe('에러 바운더리 (리뷰 필수항목 6)', () => {
 });
 
 describe('타이머 슬롯 (리뷰 필수항목 5 · R15)', () => {
-  it('인사이트 패널 맨 위가 집중 섹션이다 (R6 순서)', async () => {
+  it('대기 중에는 집중 섹션 자체가 없다 (사용자 결정 — 메인 화면에서 "집중" 이 사라진다)', async () => {
     await mount();
+    const headings = within(screen.getByRole('complementary')).getAllByRole('heading');
+    expect(headings.map((h) => h.textContent)).toEqual(['오늘 달성률', '카테고리별', 'D-day']);
+  });
+
+  it('세션이 있으면 인사이트 패널 맨 위가 집중 섹션이다 (R6 순서)', async () => {
+    await mount();
+    act(startRunningSession);
     const headings = within(screen.getByRole('complementary')).getAllByRole('heading');
     expect(headings.map((h) => h.textContent)).toEqual([
       '집중',

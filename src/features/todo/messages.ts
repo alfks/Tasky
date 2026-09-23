@@ -65,10 +65,11 @@ export const TODO_MESSAGES = {
   menuLabel: (title: string): string => `${title} 메뉴`,
   menuEdit: '수정',
   menuMemo: '메모 추가',
+  /** 이 투두를 대상으로 집중 타이머를 시작한다(timer.md §2 진입점, 사용자 결정 — 메인 화면
+   *  상시 "집중" 섹션 대신 항목 메뉴로 진입). */
+  menuTimer: '타이머 시작',
   menuTomorrow: '내일로',
   menuPickDate: '날짜 바꾸기…',
-  menuUp: '위로',
-  menuDown: '아래로',
   menuMoveCategory: '다른 카테고리로 옮기기',
   menuDelete: '삭제',
   /** 메모·집중 시간 표시 (R19). */

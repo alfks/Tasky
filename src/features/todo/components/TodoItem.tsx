@@ -37,6 +37,12 @@ export type TodoItemHandlers = {
   onToggled: (done: boolean) => void;
   /** 날짜 이동 토스트 (R10). */
   onMovedToDate: (todo: Todo, date: DateKey) => void;
+  /**
+   * 항목 메뉴 "타이머 시작" (timer.md §2). `todo` 는 `timer` feature 를 import 할 수 없어
+   * (`TodoItemMenu.tsx` 머리 주석과 같은 이유) 셸이 내려주는 콜백이다 — 없으면 메뉴에 그 항목이
+   * 아예 없다(`TodoItemMenu`).
+   */
+  onStartTimer?: (todo: Todo) => void;
 };
 
 type TodoItemProps = TodoItemHandlers & {
@@ -77,6 +83,7 @@ export function TodoItem({
   onAnnounce,
   onToggled,
   onMovedToDate,
+  onStartTimer,
 }: TodoItemProps) {
   const rowRef = useRef<HTMLLIElement>(null);
   const titleRef = useRef<HTMLButtonElement>(null);
@@ -258,16 +265,15 @@ export function TodoItem({
         <TodoItemMenu
           todo={todo}
           readOnly={readOnly}
-          canReorder={canReorder}
           moveTargets={categories}
           triggerClassName="size-[var(--todo-row-hit-min)]"
           returnFocus={returnFocus}
           onOpen={snapshotFocus}
           onEdit={() => onEditChange(todo.id, 'title')}
           onAddMemo={() => onEditChange(todo.id, 'memo')}
+          onStartTimer={onStartTimer === undefined ? undefined : () => onStartTimer(todo)}
           onTomorrow={() => goToDate(addDays(todo.date, 1))}
           onPickDate={() => setPickingDate(true)}
-          onMove={move}
           onChangeCategory={(id: CategoryId) => toCategory(id)}
           onRegisterRoutine={() => setRegisteringRoutine(true)}
           onDelete={() => onRequestDelete(todo, returnFocus)}

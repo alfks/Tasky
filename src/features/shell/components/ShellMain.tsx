@@ -12,6 +12,7 @@ import type { ReactNode } from 'react';
 
 import type { Category } from '@/domain/category/category';
 import type { DateKey } from '@/domain/date/date-key';
+import type { Todo } from '@/domain/todo/todo';
 
 import { useCommandStore } from '@/features/command';
 import { DayPanelBody, SKELETON_DELAY_MS } from '@/features/shell/components/ShellDayPanel';
@@ -45,6 +46,8 @@ type ShellMainProps = {
   onCreateCategory: () => void;
   /** 768px 미만의 하단 고정 `[+ 할 일]` (§2-B). */
   showBottomAdd: boolean;
+  /** 투두 항목 메뉴 "타이머 시작" (timer.md §2) — `DayPanelBody` 로 그대로 흘려보낸다. */
+  onStartTimer?: (todo: Todo) => void;
 };
 
 /**
@@ -70,6 +73,7 @@ export function ShellMain({
   header,
   onCreateCategory,
   showBottomAdd,
+  onStartTimer,
 }: ShellMainProps) {
   const noCategories = !categoriesPending && categories.length === 0;
   const runTodoNew = useTodoNewHandler();
@@ -132,6 +136,7 @@ export function ShellMain({
           failureCard={failureCard}
           todosEmpty={todosEmpty}
           onCreateCategory={onCreateCategory}
+          onStartTimer={onStartTimer}
         />
       </div>
 

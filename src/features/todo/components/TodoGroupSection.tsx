@@ -77,6 +77,7 @@ export function TodoGroupSection({
   onRequestDelete,
   onAnnounce,
   onMovedToDate,
+  onStartTimer,
 }: TodoGroupSectionProps) {
   const { reorder } = useTodoActions();
   const listRef = useRef<HTMLUListElement>(null);
@@ -173,6 +174,7 @@ export function TodoGroupSection({
     onRequestDelete,
     onAnnounce,
     onMovedToDate,
+    onStartTimer,
     onToggled: handleToggled,
   };
   // 지워진 카테고리라도 이름·색을 찾았으면(category R22 로 가리지 않은 한, ADR-0014) 그대로 쓴다

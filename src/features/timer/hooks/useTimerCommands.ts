@@ -5,11 +5,15 @@
 // T-19 가 실제로 `command → timer` 를 넣었다가 `timer → todo → command` 로 터진 그 자리다.
 //
 // **거는 곳은 `TimerChip` 한 군데다.** 헤더에 항상 마운트되고(대기 중에는 아무것도 그리지 않을 뿐),
-// 패널(`TimerPanelSection`)은 인사이트가 컬럼이거나 오버레이일 때만 산다 — 패널에 걸면 좁은 화면에서
-// 명령이 사라진다. `useTimerRuntime` 에 걸지 않는 이유는 그 훅이 참조 수 방식이라 칩·패널·셸
-// 셋에서 불리고, 그러면 같은 id 가 세 번 등록돼 개발 모드에서 던진다.
+// 패널(`TimerPanelSection`)은 보여줄 것이 있을 때만 산다(사용자 결정, `selectTimerPanelVisible`) —
+// 패널에 걸면 대기 중에는 명령이 사라진다. `useTimerRuntime` 에 걸지 않는 이유는 그 훅이 참조 수
+// 방식이라 칩·패널·셸 셋에서 불리고, 그러면 같은 id 가 세 번 등록돼 개발 모드에서 던진다.
 //
 // 실행의 결과는 화면에 보인다 — 세션이 생기면 헤더 칩(`⏱ 24:59`)이 나타나고 중지하면 사라진다.
+//
+// **뽀모도로·소리·길이 프리셋(`PRESET_COMMANDS`)도 여기서 등록한다** — 대기 화면(`TimerSetup`)이
+// 메인 화면에서 사라지면서(사용자 결정) 그 화면 안의 사전 설정이 접근할 곳을 잃어, 팔레트가
+// 유일한 통로가 됐다.
 import { useEffect } from 'react';
 
 import { useCommandStore, type Command } from '@/features/command';
@@ -20,6 +24,69 @@ import { useTimerStore } from '@/features/timer/store/timer-store';
 function phase(): TimerPhase {
   return selectTimerPhase(useTimerStore.getState());
 }
+
+/**
+ * 뽀모도로·소리·길이 프리셋 여섯 개(사용자 결정 — 대기 화면(`TimerSetup`)이 메인 화면에서
+ * 사라지면서, 그 화면 안에 있던 사전 설정도 팔레트로만 남는다). 각 쌍은 지금 값과 **반대쪽만**
+ * 보여 `when` 이 곧 지금 값을 말해 준다(대기/실행/일시정지/중지 넷이 서로 다른 국면에서만 보이는
+ * 것과 같은 어법). 시작 전에만 뜻이 있는 것이 아니라 실행 중에도 다음 시작을 위해 바꿀 수 있다 —
+ * `setMinutes`·`setSoundOff`·`setPomodoro` 자체가 지금 도는 세션에 영향을 주지 않는 "다음 값"
+ * 이라서다(timer R1).
+ */
+const PRESET_COMMANDS: readonly Command[] = [
+  {
+    id: 'timer.pomodoro.on',
+    label: '뽀모도로 켜기',
+    keywords: ['휴식', 'pomodoro'],
+    when: () => !useTimerStore.getState().pomodoro,
+    run: () => {
+      useTimerStore.getState().setPomodoro(true);
+    },
+  },
+  {
+    id: 'timer.pomodoro.off',
+    label: '뽀모도로 끄기',
+    keywords: ['휴식', 'pomodoro'],
+    when: () => useTimerStore.getState().pomodoro,
+    run: () => {
+      useTimerStore.getState().setPomodoro(false);
+    },
+  },
+  {
+    id: 'timer.sound.on',
+    label: '완료 소리 켜기',
+    keywords: ['알림', 'sound'],
+    when: () => useTimerStore.getState().soundOff,
+    run: () => {
+      useTimerStore.getState().setSoundOff(false);
+    },
+  },
+  {
+    id: 'timer.sound.off',
+    label: '완료 소리 끄기',
+    keywords: ['무음', 'sound'],
+    when: () => !useTimerStore.getState().soundOff,
+    run: () => {
+      useTimerStore.getState().setSoundOff(true);
+    },
+  },
+  {
+    id: 'timer.minutes.25',
+    label: '집중 길이 25분',
+    when: () => useTimerStore.getState().minutes !== 25,
+    run: () => {
+      useTimerStore.getState().setMinutes(25);
+    },
+  },
+  {
+    id: 'timer.minutes.50',
+    label: '집중 길이 50분',
+    when: () => useTimerStore.getState().minutes !== 50,
+    run: () => {
+      useTimerStore.getState().setMinutes(50);
+    },
+  },
+];
 
 /**
  * 지금 할 수 없는 전이는 팔레트에 내지 않는다(`when`) — 대기 중에 "일시정지" 를 고르면 스토어가
@@ -68,6 +135,7 @@ export const TIMER_COMMANDS: readonly Command[] = [
       await useTimerStore.getState().stop();
     },
   },
+  ...PRESET_COMMANDS,
 ];
 
 /** `TimerChip` 이 한 번 부른다. 칩이 사라지면(= 헤더가 없는 화면) 명령도 사라진다. */
