@@ -16,6 +16,12 @@ function addBar(height: number | null): HTMLElement | null {
   return bar;
 }
 
+/** `observeBottomBar` 가 다음 프레임으로 모아 계산한다(rAF 배칭) — 프레임 하나를 넘긴다. */
+async function nextFrame(): Promise<void> {
+  await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 beforeEach(() => {
   document.body.innerHTML = '';
 });
@@ -43,7 +49,7 @@ describe('observeBottomBar', () => {
     const seen: number[] = [];
     const stop = observeBottomBar(document, (px) => seen.push(px));
     addBar(53);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await nextFrame();
     stop();
     expect(seen.at(-1)).toBe(53);
   });
@@ -53,8 +59,22 @@ describe('observeBottomBar', () => {
     const seen: number[] = [];
     const stop = observeBottomBar(document, (px) => seen.push(px));
     bar?.remove();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await nextFrame();
     stop();
     expect(seen.at(-1)).toBe(0);
+  });
+
+  it('같은 프레임 안의 mutation 여러 번은 한 번의 재계산으로 모은다(성능 — rAF 배칭)', async () => {
+    const seen: number[] = [];
+    const stop = observeBottomBar(document, (px) => seen.push(px));
+    const before = seen.length;
+    addBar(53);
+    document.body.append(document.createElement('span'));
+    document.body.append(document.createElement('span'));
+    await nextFrame();
+    stop();
+    // 초기 호출(0) 뒤, 이 프레임에서 쌓인 세 번의 mutation 이 재계산 **한 번**만 더한다.
+    expect(seen.length - before).toBe(1);
+    expect(seen.at(-1)).toBe(53);
   });
 });

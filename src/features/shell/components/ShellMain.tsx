@@ -80,17 +80,22 @@ export function ShellMain({
   // 누를 대상이 없을 때는 비활성이다 — 눌러도 아무 일 없는 버튼을 화면의 유일한 버튼으로 두지 않는다.
   const canAddTodo = todoAreaLive && !showTodoSkeleton && runTodoNew !== undefined;
   // 하단 막대가 목록 스크롤 영역의 마지막 줄을 가리지 않게, 그 막대의 **실측** 높이만큼
-  // padding-bottom 을 더 준다(리뷰 Major — 실측 재현: 360px·카테고리 2개·할 일 9개·배너 닫음에서
-  // 마지막 행 체크박스 중심이 `elementFromPoint` 로 막대에 잡혔다. flex 배치 자체는 막대와 스크롤
-  // 영역을 정확히 나누지만, 그 경계까지 목록을 다 내려도 마지막 줄이 경계에 딱 붙어 있어 막대가
-  // 시작되는 자리와 구분이 안 됐다 — 이 여지가 그 틈을 준다). 막대가 없으면(≥768) 0이라 변화 없다.
+  // padding-bottom 을 준다. **최종 리뷰가 "flex 형제라 겹칠 수 없으니 불필요하지 않은가"를
+  // 물었다 — 실측으로 확인하니 여전히 필요했다**(`lib/bottom-bar.ts` 머리주석에 실측 근거).
+  // 다만 그 위에 얹던 여분의 `--space-3`(12px, 아래 padding-top 과 맞추려던 것)는 뺐다 — 순수하게
+  // 중복이었고, 빼도 회귀 테스트(`tests/e2e/narrow-viewport.spec.ts` 의 "마지막 할 일 행이…")가
+  // 여전히 통과한다(최종 리뷰 Minor — 360px 죽은 공간 12px 감소).
   const bottomBarOffset = useBottomBarOffset();
+  // 막대가 없으면(≥768, narrow) 여분을 얹을 대상 자체가 없다 — 위 padding-top 과 같은 기본
+  // 여백(`--space-3`)만 남긴다. 막대가 있으면 그 실측 높이 그대로가 padding-bottom 이다.
+  const scrollAreaPaddingBottom = bottomBarOffset > 0 ? `${bottomBarOffset}px` : 'var(--space-3)';
   // 손대지 않은 첫 화면에서 마지막 행이 "거의 다 보이는데 살짝만 잘린" 애매한 상태로 뜨는 것을
-  // 막는다 — padding-bottom(위)은 스크롤 **끝**에만 여지를 주므로 이 경우는 못 잡는다
+  // 막는다 — padding-bottom(아래)은 스크롤 **끝**에만 여지를 주므로 이 경우는 못 잡는다
   // (`lib/scroll-clip-guard.ts` 머리주석에 전체 인과가 있다). `showBottomAdd` 일 때만 건다 — 막대가
-  // 없는 화면(≥768)은 이 애매함이 생길 자리 자체가 없다.
+  // 없는 화면(≥768)은 이 애매함이 생길 자리 자체가 없다. `date` 를 넘겨 날짜가 바뀌면(목록이
+  // 통째로 바뀌면) 다시 판정하게 한다(`useGuardAmbiguousClip` 머리주석 — 최종 리뷰 Minor).
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  useGuardAmbiguousClip(scrollAreaRef, showBottomAdd);
+  useGuardAmbiguousClip(scrollAreaRef, showBottomAdd, date);
 
   return (
     <main
@@ -117,7 +122,7 @@ export function ShellMain({
       <div
         ref={scrollAreaRef}
         className="mx-auto min-h-0 w-full max-w-[760px] flex-1 overflow-y-auto px-[var(--space-4)] pt-[var(--space-3)] md:max-w-[560px]"
-        style={{ paddingBottom: `calc(var(--space-3) + ${bottomBarOffset}px)` }}
+        style={{ paddingBottom: scrollAreaPaddingBottom }}
       >
         <DayPanelBody
           date={date}
