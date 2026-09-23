@@ -23,7 +23,7 @@ import { ShellErrorBoundary } from '@/features/shell/components/ShellErrorBounda
 import { ShellGlobals } from '@/features/shell/components/ShellGlobals';
 import { ShellHeader } from '@/features/shell/components/ShellHeader';
 import { INSIGHT_PANEL_ID, ShellInsights } from '@/features/shell/components/ShellInsights';
-import { SHELL_MAIN_ID, ShellMain } from '@/features/shell/components/ShellMain';
+import { ShellMain } from '@/features/shell/components/ShellMain';
 import { ShellOverlays } from '@/features/shell/components/ShellOverlays';
 import { ShellSidebar } from '@/features/shell/components/ShellSidebar';
 import { SkipLink } from '@/features/shell/components/SkipLink';
@@ -39,6 +39,7 @@ import { useToastStack } from '@/features/shell/hooks/useToastStack';
 import { useTodoDropToDate } from '@/features/shell/hooks/useTodoDropToDate';
 import { useTopNoticeOffset } from '@/features/shell/hooks/useTopNoticeOffset';
 import { hasBottomAddButton, hasDayPanelColumn } from '@/features/shell/lib/layout';
+import { SHELL_MAIN_ID } from '@/features/shell/lib/main-id';
 import { APP_NAME } from '@/features/shell/lib/title';
 import { useShellStorageStore } from '@/features/shell/store/shell-storage-store';
 import { useShellToastStore } from '@/features/shell/store/shell-toast-store';
@@ -200,11 +201,16 @@ function ShellBody() {
       />
       {/*
         문서의 `h1` 은 언제나 하나다. 사이드바가 컬럼이면 `ShellSidebar` 가, 아니면 `ShellHeader`
-        가 이미 갖고 있다(calendar-layout.md R6, ☰ 오른쪽) — 단 `ShellHeader` 는 저장소 열기
-        실패(`failureCard`) 상태에서는 통째로 숨는다(§2-C 에러, `header` 변수 참고). 그 갈래에서만
-        여기서 대신 낸다(sr-only — 실패 화면에는 보이는 제목을 더할 자리가 없다).
+        가 이미 갖고 있다(calendar-layout.md R6, ☰ 오른쪽) — 단 `ShellHeader` 는 다음 두 갈래에서
+        통째로 숨는다: 저장소 열기 실패(`failureCard`, §2-C 에러, `header` 변수 참고)와 통계 화면
+        (`reportsOpen` — `ReportsScreen` 하나만 렌더되고 그 제목은 h2 다, stats.md). 그 두 갈래에서만
+        여기서 대신 낸다(sr-only — 두 화면 모두 보이는 제목을 더할 자리가 없다). 이 조건을
+        `reportsOpen` 을 빼고 좁히면(리뷰 Major) 통계를 연 순간 문서에 `h1` 이 0개가 된다 —
+        `AppShell.test.tsx` 가 그 상태를 고정한다.
       */}
-      {sidebarIsColumn || failureCard === null ? null : <h1 className="sr-only">{APP_NAME}</h1>}
+      {sidebarIsColumn || (failureCard === null && !reportsOpen) ? null : (
+        <h1 className="sr-only">{APP_NAME}</h1>
+      )}
 
       <div className="flex min-h-0 flex-1 gap-[var(--space-6)] px-[var(--space-4)] py-[var(--space-3)]">
         {sidebarIsColumn ? (

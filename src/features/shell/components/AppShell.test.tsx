@@ -164,6 +164,19 @@ describe('랜드마크와 골격 (R1·R10)', () => {
     await mount();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
   });
+
+  // 리뷰 Major(2차 라운드) — `reportsOpen` 이면 `ShellHeader`(h1 보유)도 `ShellMain` 도 렌더되지
+  // 않고 `ReportsScreen` 하나만 남는데, 그 제목은 h2 다(stats.md). 기본 상태(드로어, 실패 없음)
+  // 에서 h1 조건이 `sidebarIsColumn || failureCard === null` 이면 이 상태에서 h1 이 0개가 된다 —
+  // 이 테스트가 그 회귀를 고정한다.
+  it('h1 은 통계 화면이 열린 상태에서도 문서에 하나뿐이다', async () => {
+    await mount();
+    act(() => {
+      useReportsStore.getState().openReports();
+    });
+    expect(await screen.findByRole('heading', { level: 2 })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+  });
 });
 
 describe('토스트 뷰포트 통합 (R8 · 리뷰 필수항목 1)', () => {
