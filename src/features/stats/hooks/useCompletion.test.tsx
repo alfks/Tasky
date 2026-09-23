@@ -1,4 +1,4 @@
-// `useCompletion` · `useCategoryBars` — 스토어 상태가 달성률로 이어지는지 (R1·R6, §2 상태).
+// `useCompletion` — 스토어 상태가 달성률로 이어지는지 (R1·R6, §2 상태).
 //
 // 픽스처는 비대칭이다: 카테고리마다 완료/전체를 다르게 둬야 done 과 total 을 맞바꾸거나
 // 그룹 순서를 뒤집어도 같은 값이 나오는 일이 없다.
@@ -11,7 +11,7 @@ import type { Todo } from '@/domain/todo/todo';
 import { setRepositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
-import { useCategoryBars, useCompletion } from '@/features/stats/hooks/useCompletion';
+import { useCompletion } from '@/features/stats/hooks/useCompletion';
 import { useTodoActions, useTodoStore } from '@/features/todo';
 import type { TodoLoadStatus } from '@/features/todo';
 import { makeCategory } from '@/test/fixtures/category';
@@ -108,25 +108,5 @@ describe('useCompletion (R1~R3)', () => {
     });
 
     expect(result.current.summary).toMatchObject({ done: 1, total: 3, percent: 33 });
-  });
-});
-
-describe('useCategoryBars (R5)', () => {
-  it('카테고리마다 자기 투두만 세고 화면 순서로 준다', () => {
-    seed(fixtureTodos());
-
-    // 인자를 뒤집어 넘긴다 — 입력 순서를 그대로 흘리면 운동이 먼저 나온다.
-    const { result } = renderHook(() => useCategoryBars([EXERCISE, STUDY]));
-
-    expect(result.current.map((bar) => [bar.label, bar.done, bar.total])).toEqual([
-      ['공부', 1, 3],
-      ['운동', 2, 2],
-    ]);
-  });
-
-  it('조회에 실패하면 막대도 사라진다', () => {
-    seed(fixtureTodos(), 'error');
-
-    expect(renderHook(() => useCategoryBars([STUDY, EXERCISE])).result.current).toEqual([]);
   });
 });

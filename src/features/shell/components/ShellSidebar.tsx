@@ -9,6 +9,7 @@ import type { Category } from '@/domain/category/category';
 import type { CategoryId } from '@/domain/ids';
 
 import { BackupLauncher } from '@/features/backup';
+import { DdayPanelSection } from '@/features/calendar';
 import { CategoryList } from '@/features/category';
 import { useRemovalReturnFocus } from '@/features/shell/hooks/useRemovalReturnFocus';
 import { APP_NAME } from '@/features/shell/lib/title';
@@ -137,6 +138,14 @@ export function ShellSidebar({
         className={cn('min-h-0 shrink overflow-y-auto', framed ? CARD_CLASS : null)}
       >
         <CategoryList onSelect={onSelectCategory} onRemove={onRemoveCategory} />
+      </div>
+
+      {/*
+        D-day (calendar.md §2) — 카테고리쪽 사이드바로 옮겨졌다: 카테고리 목록 카드 바로 아래,
+        도구 줄 위(사용자 결정). 인사이트 패널에는 더 이상 D-day 섹션이 없다(`ShellInsights.tsx`).
+      */}
+      <div className={cn('min-h-0 shrink overflow-y-auto', framed ? CARD_CLASS : null)}>
+        <DdayPanelSection />
       </div>
 
       {/*

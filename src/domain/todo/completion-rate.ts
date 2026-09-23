@@ -35,8 +35,7 @@ export function completionRate(todos: readonly Todo[]): number | null {
  * 표시용 퍼센트 (R2). `done === total` 일 때만 100 이고, 반올림이 100 이 되는 경우(199/200)는 99 로 낮춘다.
  * 링 각도는 이 값이 아니라 `completionRate` 의 반올림 전 값으로 그린다 (R3).
  */
-export function completionPercent(todos: readonly Todo[]): number | null {
-  const { done, total } = completionCounts(todos);
+export function percentFromCounts({ done, total }: CompletionCounts): number | null {
   if (total === 0) {
     return null;
   }
@@ -44,6 +43,11 @@ export function completionPercent(todos: readonly Todo[]): number | null {
     return 100;
   }
   return Math.min(99, Math.round((done / total) * 100));
+}
+
+/** {@link percentFromCounts} 를 `todos` 에서 바로 센다 — 세는 일 자체는 `completionCounts` 하나뿐이다. */
+export function completionPercent(todos: readonly Todo[]): number | null {
+  return percentFromCounts(completionCounts(todos));
 }
 
 /**

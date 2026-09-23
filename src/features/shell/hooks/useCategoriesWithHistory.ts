@@ -1,14 +1,15 @@
 // `categories`(활성+종료, `useCategories()`)에 없는 categoryId 를 참조하는 투두가 메모리에 있으면
 // tombstone 을 마저 읽어 붙인다 (ADR-0014, category R17·R22).
 //
-// **왜 셸에서 한 번만 계산하나.** 본문 목록(`selectGroups`)과 달성률 막대(`CategoryBars`)가 같은
-// 값을 받아야 "삭제된 카테고리" 그룹의 이름·색이 두 곳에서 갈리지 않는다 — 각자 조회하면 한쪽만
-// tombstone 을 못 찾고 실패하는 날 화면 두 곳이 서로 다른 이름을 보여준다. `AppShell` 은 feature 들이
-// 처음 서로를 보는 자리라(app-shell.md, 파일 머리말) 여기서 `todo` 스토어와 `category` 저장소를
-// 함께 참조해도 feature 간 결합이 늘지 않는다 — 각 feature 는 여전히 서로를 모른다.
+// **왜 셸에서 한 번만 계산하나.** 본문 목록(`selectGroups`)을 그리는 여러 자리가 같은 값을 받아야
+// "삭제된 카테고리" 그룹의 이름·색이 갈리지 않는다 — 각자 조회하면 한쪽만 tombstone 을 못 찾고
+// 실패하는 날 화면마다 다른 이름을 보여준다. `AppShell` 은 feature 들이 처음 서로를 보는 자리라
+// (app-shell.md, 파일 머리말) 여기서 `todo` 스토어와 `category` 저장소를 함께 참조해도 feature 간
+// 결합이 늘지 않는다 — 각 feature 는 여전히 서로를 모른다.
 //
-// **사이드바·선택지·팔레트에는 이 결과를 넘기지 않는다** — `categories.list()` 원본을 그대로 쓴다
-// (category R17 "사이드바·선택지·팔레트에 없음"). 이 훅은 본문 목록·인사이트 패널 전용이다.
+// **선택지·팔레트에는 이 결과를 넘기지 않는다** — `categories.list()` 원본을 그대로 쓴다
+// (category R17 "선택지·팔레트에 없음"). 인사이트 패널에는 더 이상 카테고리를 보여주는 섹션이
+// 없다(카테고리별 달성률은 이제 각 그룹 헤더에서 보인다) — 그 프롭도 걷어냈다.
 import { useEffect, useState } from 'react';
 
 import type { Category } from '@/domain/category/category';

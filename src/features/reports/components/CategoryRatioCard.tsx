@@ -64,7 +64,7 @@ function CategoryBarRow({ bar }: { bar: CategoryBarView }) {
       >
         <span
           aria-hidden="true"
-          // review m3 — `stats/CategoryBars.tsx` 의 같은 막대와 전환이 갈려 있었다(빠진 트랜지션).
+          // review m3 — 인사이트 패널의 옛 카테고리별 막대(폐지, todo.md R23)와 전환이 갈려 있었다(빠진 트랜지션).
           className={cn(
             'block h-full rounded-[var(--radius-full)] bg-[var(--cat-color,var(--color-faint))] transition-[width] duration-[var(--motion-base)] ease-[var(--motion-ease)]',
           )}

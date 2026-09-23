@@ -275,19 +275,14 @@ describe('타이머 슬롯 (리뷰 필수항목 5 · R15)', () => {
   it('대기 중에는 집중 섹션 자체가 없다 (사용자 결정 — 메인 화면에서 "집중" 이 사라진다)', async () => {
     await mount();
     const headings = within(screen.getByRole('complementary')).getAllByRole('heading');
-    expect(headings.map((h) => h.textContent)).toEqual(['오늘 달성률', '카테고리별', 'D-day']);
+    expect(headings.map((h) => h.textContent)).toEqual(['오늘 달성률']);
   });
 
   it('세션이 있으면 인사이트 패널 맨 위가 집중 섹션이다 (R6 순서)', async () => {
     await mount();
     act(startRunningSession);
     const headings = within(screen.getByRole('complementary')).getAllByRole('heading');
-    expect(headings.map((h) => h.textContent)).toEqual([
-      '집중',
-      '오늘 달성률',
-      '카테고리별',
-      'D-day',
-    ]);
+    expect(headings.map((h) => h.textContent)).toEqual(['집중', '오늘 달성률']);
   });
 
   it('세션이 없으면 헤더 칩은 렌더되지 않는다 (R15 "자리 차지 없음")', async () => {
@@ -813,7 +808,7 @@ describe('삭제된 카테고리의 이름·색 복원 배선 (category R17·R22
     deletedAt: '2026-09-01T00:00:00.000Z',
   });
 
-  it('본문 목록·인사이트 패널이 같은 tombstone 이름·색을 보여준다', async () => {
+  it('본문 목록이 tombstone 이름·색을 보여준다', async () => {
     await seed(
       [
         makeTodo({ seq: 1, categoryId: STUDY.id, date: TODAY }),
@@ -829,9 +824,6 @@ describe('삭제된 카테고리의 이름·색 복원 배선 (category R17·R22
 
     const group = await screen.findByRole('region', { name: '요리 (삭제됨)' });
     expect(group).toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.getByRole('complementary')).toHaveTextContent('요리 (삭제됨)'),
-    );
   });
 
   it('사이드바·선택지에는 여전히 나오지 않는다', async () => {

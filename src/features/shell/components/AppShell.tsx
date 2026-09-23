@@ -260,11 +260,7 @@ function ShellBody() {
                   aria-label="오늘 요약"
                   className="min-h-0 flex-1 outline-none"
                 >
-                  <ShellInsights
-                    categories={categoriesWithHistory}
-                    panelId={INSIGHT_PANEL_ID}
-                    onCollapse={panels.collapseInsight}
-                  />
+                  <ShellInsights panelId={INSIGHT_PANEL_ID} onCollapse={panels.collapseInsight} />
                 </aside>
               ) : null}
             </div>

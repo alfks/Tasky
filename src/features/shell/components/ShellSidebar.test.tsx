@@ -136,6 +136,25 @@ describe('"루틴" 진입점', () => {
   );
 });
 
+describe('D-day (사용자 결정 — 카테고리쪽 사이드바로 옮겨옴)', () => {
+  it('카테고리 목록 아래, 도구 줄 위에 D-day 섹션이 있다', () => {
+    render(
+      <ShellSidebar
+        showTitle
+        sidebarPinned={false}
+        onTogglePinned={vi.fn()}
+        categories={[운동]}
+        onSelectCategory={vi.fn()}
+        onRemoveCategory={vi.fn()}
+        exportBackup={exportBackup}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { level: 2, name: 'D-day' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '+ D-day 추가' })).toBeInTheDocument();
+  });
+});
+
 describe('사이드바 고정 토글 (calendar-layout.md §1-A · R23~R24, 리뷰 Major 2·4)', () => {
   it('showTitle·showPinToggle 둘 다 아니면(드로어인데 wide 도 아닐 때) 렌더되지 않는다', () => {
     render(
