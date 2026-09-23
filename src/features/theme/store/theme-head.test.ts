@@ -192,4 +192,26 @@ describe('index.html 배선(R13·pwa R9)', () => {
     const tag = /<script[^>]*>/.exec(head)?.[0] ?? '';
     expect(tag).toBe('<script>');
   });
+
+  it('Cloudflare Web Analytics 비콘은 <head> 의 첫 스크립트가 아니다 — 동기 테마 스크립트가 먼저다(ADR-0021)', () => {
+    const firstHeadScript = /<script[^>]*>/.exec(head)?.[0] ?? '';
+    expect(firstHeadScript).not.toContain('cloudflareinsights');
+  });
+
+  it('Cloudflare Web Analytics 비콘은 <body> 에서 앱 진입 모듈 스크립트 뒤에 정확히 1건 나온다(ADR-0021)', () => {
+    const beaconMatches = [
+      ...html.matchAll(
+        /<script[^>]*src="https:\/\/static\.cloudflareinsights\.com\/beacon\.min\.js"[^>]*>/g,
+      ),
+    ];
+    expect(beaconMatches).toHaveLength(1);
+    const tag = beaconMatches[0]?.[0] ?? '';
+    expect(tag).toContain('defer');
+    expect(tag).toMatch(/"token":\s*"d5be062eb83c46b9b9f5eb621f7a1342"/);
+
+    const entryAt = html.search(/<script[^>]+type="module"[^>]+src="[^"]+"/);
+    const beaconAt = html.indexOf(tag);
+    expect(entryAt).toBeGreaterThan(-1);
+    expect(beaconAt).toBeGreaterThan(entryAt);
+  });
 });

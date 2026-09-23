@@ -26,6 +26,7 @@
 | [ADR-0018](./decisions/ADR-0018-sync-local-schema-and-ports.md)                | 동기화 로컬 스키마(v4) — 아웃박스·슬롯 id·`fillFloor`·포트 분리(ADR-0017 워터마크 구조를 부분 대체)                              | accepted                             | 2026-09-21 | `src/infra/indexeddb/db.ts`, `src/domain/routine/**`, `src/domain/sync/**`, `src/domain/backup/**`, `src/repositories/*.contract.ts`         |
 | [ADR-0019](./decisions/ADR-0019-worker-d1-auth.md)                             | Cloudflare Worker + D1 — 구글 OAuth·세션 쿠키·`/api/sync`·계정 삭제 타이밍(다른 기기는 401 이 아니라 410 으로 구분)              | **partially superseded by ADR-0020** | 2026-09-21 | `worker/**`, `wrangler.jsonc`, `tsconfig.worker.json`, `vitest.config.ts`, `vite.config.ts`, `scripts/deploy.sh`                             |
 | [ADR-0020](./decisions/ADR-0020-multi-device-sessions.md)                      | 다기기 세션 — 세션 전량 폐기는 재가입 경로에서만, 취소는 명시적 `logout-others` 로(ADR-0019 결정 5 근거를 부분 대체)             | accepted                             | 2026-09-21 | `worker/auth/**`, `src/repositories/sync-transport.ts`, `src/infra/sync/http-transport.ts`, `src/features/sync/**`, `tests/e2e/sync.spec.ts` |
+| [ADR-0021](./decisions/ADR-0021-cloudflare-web-analytics.md)                   | 방문 수 계측 — Cloudflare Web Analytics 비콘을 `index.html` 에 직접(공개 토큰 하드코딩, 구현과 같은 PR)                          | accepted                             | 2026-09-23 | `index.html`, `public/privacy.html`, `README.md`, `.env.example`                                                                             |
 
 ## 예정(초안 필요 시 번호 예약 없이 작성)
 

@@ -209,6 +209,49 @@ if (doc !== '') {
   if (preloaded.length === 0)
     note('index.html 에 동적 청크의 modulepreload 가 없습니다 (ADR-0013 규칙 8).');
   for (const url of dynamicChunks) note(`${url} 이 index.html 의 어디에서도 참조되지 않습니다.`);
+
+  // Cloudflare Web Analytics 비콘(ADR-0021): 정확히 한 번, 지정된 src·token 그대로 나가야 하고,
+  // defer 스크립트와 모듈 스크립트는 실행 큐를 공유하므로 진입 모듈 스크립트보다 뒤에 있어야
+  // 부팅(AuthGate/LoginScreen)을 지연시키지 않는다(async 라면 큐를 안 타므로 순서 무관하게 안전).
+  const beaconMatches = [
+    ...doc.matchAll(
+      /<script[^>]*src="https:\/\/static\.cloudflareinsights\.com\/beacon\.min\.js"[^>]*>/g,
+    ),
+  ];
+  if (beaconMatches.length !== 1) {
+    note(
+      `index.html 에 Cloudflare Web Analytics 비콘 스크립트가 정확히 1개가 아닙니다(발견 ${beaconMatches.length}개, ADR-0021).`,
+    );
+  } else {
+    const tag = beaconMatches[0][0];
+    if (!/"token":\s*"d5be062eb83c46b9b9f5eb621f7a1342"/.test(tag))
+      note('index.html 의 Cloudflare Web Analytics 비콘 태그에 예상 token 이 없습니다.');
+    // data-cf-beacon 의 속성값(JSON 문자열) 안에는 defer·async 라는 단어가 나오지 않지만, 속성
+    // 이름만으로 판정하려면 값을 먼저 떼어내야 혼동이 없다.
+    const tagWithoutBeaconAttr = tag.replace(/data-cf-beacon='[^']*'/, '');
+    const isAsync = /\basync\b/.test(tagWithoutBeaconAttr);
+    const isDefer = /\bdefer\b/.test(tagWithoutBeaconAttr);
+    if (!isAsync && !isDefer)
+      note('index.html 의 Cloudflare Web Analytics 비콘 태그가 async 도 defer 도 아닙니다.');
+    if (!isAsync) {
+      const entryAt = doc.search(/<script[^>]+type="module"[^>]+src="[^"]+"/);
+      const beaconAt = doc.indexOf(tag);
+      if (entryAt === -1) note('index.html 에서 진입 모듈 스크립트를 찾지 못했습니다.');
+      else if (beaconAt < entryAt)
+        note(
+          'Cloudflare Web Analytics 비콘(defer)이 진입 모듈 스크립트보다 앞에 있습니다 — 부팅이 비콘 요청에 막힐 수 있습니다.',
+        );
+    }
+  }
+  // theme-head.test.ts 가 "첫 스크립트는 동기 테마 스크립트"를 지킨다 — 여기서는 비콘이
+  // 그 자리를 뺏지 않았는지만 겹쳐 확인한다.
+  const headStart = doc.search(/<head[\s>]/);
+  const head = doc.slice(headStart === -1 ? 0 : headStart, doc.indexOf('</head>'));
+  const firstHeadScript = /<script[^>]*>/.exec(head)?.[0] ?? '';
+  if (firstHeadScript.includes('cloudflareinsights'))
+    note(
+      'Cloudflare Web Analytics 비콘이 <head> 의 첫 스크립트입니다 — 동기 테마 스크립트가 밀렸습니다.',
+    );
 }
 
 // --- 진입 청크 예산(ADR-0013 규칙 7 · 재검토 트리거) ---------------------------

@@ -157,8 +157,15 @@ Dexie(IndexedDB, 지연 로드) · Serwist(PWA) · Vitest · Playwright · pnpm 
 
 **지금 배포본 기준입니다:**
 
-- 모든 데이터는 **여러분 브라우저의 IndexedDB** 에 있습니다. 어디로도 전송되지 않습니다.
-- 분석·추적 스크립트가 없습니다.
+- 여러분이 적은 데이터는 **여러분 브라우저의 IndexedDB** 에 있습니다. 서버로 전송되지 않습니다.
+- 추적 스크립트는 없습니다. 다만 앱 화면을 열 때마다(로그인 여부와 무관하게) **Cloudflare Web
+  Analytics** 가 쿠키·기기 식별자 없이 익명 페이지뷰 신호(주소의 경로와 쿼리 문자열·리퍼러·브라우저
+  종류·기기 종류와 운영체제·로딩 속도, 그리고 Cloudflare 가 IP 로 추정한 대략적인 국가)를 Cloudflare 로
+  보냅니다 — 방문 수와 속도를 보기 위해서이고, Tasky 가 보는 것은 나라별·기기별 합계 같은 집계 통계뿐이며
+  방문 한 건의 IP 주소나 할 일 내용·이메일 같은 개인 정보는 담기지 않습니다. 앱 안에 끄는 스위치는 아직
+  없고, 브라우저의 추적 방지가 `static.cloudflareinsights.com` 을 막아도 앱은 그대로 동작합니다. 자세한
+  항목은 [개인정보처리방침](./public/privacy.html) 2절, 결정 근거는
+  [ADR-0021](./docs/decisions/ADR-0021-cloudflare-web-analytics.md).
 - 브라우저 데이터를 지우면 할 일도 함께 사라집니다. **백업 기능으로 내보내 두는 것을 권합니다.**
 
 **동기화가 켜지면 달라집니다.** 여러 기기 동기화를 위해 구글 로그인을 필수로 두고, 서버(Cloudflare D1)가
@@ -186,3 +193,6 @@ Dexie(IndexedDB, 지연 로드) · Serwist(PWA) · Vitest · Playwright · pnpm 
 
 - **Pretendard** — SIL Open Font License 1.1 — https://github.com/orioncactus/pretendard
   (공식 배포 릴리스에서 서브셋, 전문은 `public/fonts/OFL.txt`)
+- **Cloudflare Web Analytics** — 앱 화면(`index.html`)이 `static.cloudflareinsights.com` 의 비콘
+  스크립트를 불러옵니다. 번들에 포함되지 않는 외부 런타임 스크립트이고, Cloudflare 가 받는 정보는
+  [Cloudflare 개인정보처리방침](https://www.cloudflare.com/privacypolicy/)을 따릅니다.

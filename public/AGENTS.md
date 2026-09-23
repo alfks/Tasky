@@ -14,7 +14,7 @@
 4. `_headers` — Cloudflare Workers Static Assets 가 읽는 캐시 헤더. Vite 가 이 디렉토리를 `dist/client` 로 그대로 복사하므로 이 파일이 곧 산출물이다(생성본과 합쳐지지 않는다). Worker 코드가 없는 정적 자산 전용 배포라(ADR-0013) **모든 응답이 여기 규칙의 적용 대상**이다. 번들 자산 규칙 `/assets/*` 는 `vite.config.ts` 의 `build.assetsDir` 과 한 쌍이다 — `scripts/check-dist.mjs` 가 매 빌드 산출물 파일 하나하나가 이 글롭에 덮이는지 대조하므로 한쪽만 바꾸면 빌드가 실패한다.
 5. `fonts/`는 `scripts/subset-font.sh`로만 갱신(손으로 고치지 않는다), woff2 1개 + `OFL.txt`만. 파일명의 내용 해시와 `_headers` 의 `/fonts/*` 1년 immutable 은 **한 쌍**이다 — 해시 없는 이름으로 되돌리면 1년 동안 낡은 폰트가 나간다(`docs/specs/theme.md` R14). 관할: fonts/
 
-6. `privacy.html` — 구글 OAuth 앱 심사가 요구하는 개인정보처리방침 URL(`/privacy.html`). **외부 스크립트·추적기 금지**(문서 자신이 "추적하지 않는다"고 말한다). 수집 항목·보관·삭제 경로가 바뀌는 변경(`docs/specs/sync.md` §4·§6, D1 스키마)은 이 문서와 시행일도 같이 고친다.
+6. `privacy.html` — 구글 OAuth 앱 심사가 요구하는 개인정보처리방침 URL(`/privacy.html`). **외부 스크립트·추적기 금지**(문서 자신이 "이 페이지에는 분석 스크립트가 없다"고 말한다 — 앱 화면 `index.html` 의 Cloudflare Web Analytics 비콘도 여기에는 넣지 않는다, ADR-0021). 수집 항목·보관·삭제 경로가 바뀌는 변경(`docs/specs/sync.md` §4·§6, D1 스키마)과 **밖으로 보내는 신호가 바뀌는 변경**(비콘 추가·제거·항목 변경)은 이 문서와 시행일도 같이 고친다.
 
 ## 검증
 
