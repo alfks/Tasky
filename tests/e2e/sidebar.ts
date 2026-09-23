@@ -36,7 +36,7 @@ export async function openSidebarDrawer(
   } else {
     await page.getByRole('button', { name: '카테고리 열기' }).click();
   }
-  const drawer = page.getByRole('dialog', { name: /Tasky/ });
+  const drawer = page.getByRole('dialog', { name: 'Tasky', exact: true });
   await expect(drawer).toBeVisible();
   return drawer;
 }

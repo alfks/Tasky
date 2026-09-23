@@ -5,16 +5,25 @@
 // 원칙: **규칙 문자열이 있는지**가 아니라 **실제 산출물이 그 규칙에 덮이는지**를 본다.
 // 규칙 문자열만 보던 시절에는 `build.assetsDir` 를 'assets' 아닌 값으로 바꿔도 초록불이었고,
 // 그 순간 해시 자산 전부가 1년 immutable 을 조용히 잃었다(리뷰 변이 M12).
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import { gzipSync } from 'node:zlib';
+
+import {
+  BASELINE_PATH,
+  currentBranch,
+  deltaReport,
+  parsePrArg,
+  readBaseline,
+  writeBaseline,
+} from './bundle-baseline.mjs';
 
 const DIST = 'dist/client';
 const errors = [];
 const note = (m) => errors.push(m);
 let summary = '진입 청크 미검사';
 const UPDATE_BASELINE = process.argv.includes('--update-baseline');
-const BASELINE_PATH = 'scripts/bundle-baseline.json';
+const PR_NUMBER = parsePrArg(process.argv);
 
 // --- 프리캐시 목록(specs/pwa.md R3·R10) ---------------------------------------
 // serwist 가 만든 sw.js 안의 매니페스트를 그대로 읽는다(빌드 로그 파싱이 아니다).
@@ -312,44 +321,24 @@ if (doc !== '' && entryFile === undefined) {
   // 기준값은 `scripts/bundle-baseline.json`(신뢰 가능한 소스는 이 파일 하나, git 에 커밋된다)에
   // 둔다 — 값을 바꾸려면(즉 새 기준을 인정하려면) `node scripts/check-dist.mjs --update-baseline`
   // 을 사람이 명시적으로 돌려야 한다(자동 갱신 금지 — 그러면 delta 가 항상 0 이 되어 무의미해진다).
-  let baseline = null;
-  if (existsSync(BASELINE_PATH)) {
-    try {
-      baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf-8'));
-    } catch (error) {
-      note(`${BASELINE_PATH} 를 읽지 못했습니다(JSON 파싱 실패): ${String(error)}`);
-    }
-  }
+  // 로직 자체(파일 읽기·쓰기·WARN 판정)는 `bundle-baseline.mjs` — 여기 두면 이 파일이 300줄
+  // 상한(eslint max-lines)을 넘는다.
+  let baseline = readBaseline(note);
   let deltaNote = '';
   if (UPDATE_BASELINE) {
-    const next = {
+    baseline = writeBaseline({
       entryClosureGzip: closureGzip,
-      recordedAt: new Date().toISOString().slice(0, 10),
-      note: 'node scripts/check-dist.mjs --update-baseline 로 갱신됨 — scripts/AGENTS.md 참고.',
-    };
-    writeFileSync(BASELINE_PATH, `${JSON.stringify(next, null, 2)}\n`);
+      networkGzip,
+      prNumber: PR_NUMBER,
+      branch: currentBranch(),
+    });
     process.stdout.write(
-      `기준값 갱신: 진입 폐포 gzip ${closureGzip} B 를 ${BASELINE_PATH} 에 새 기준으로 저장했습니다.\n`,
+      `기준값 갱신: 진입 폐포 gzip ${closureGzip} B · 네트워크 합 ${networkGzip} B 를 ` +
+        `${BASELINE_PATH} 에 새 기준으로 저장했습니다` +
+        `${PR_NUMBER === null ? '(PR 번호 미기재 — 머지 후 --pr=<n> 으로 다시 갱신하세요)' : `(#${PR_NUMBER})`}.\n`,
     );
-    baseline = next;
-  } else if (baseline === null) {
-    // 규칙(scripts/AGENTS.md #6): 검사 대상이 없을 때 조용히 통과시키지 않는다 — 최소 WARN.
-    console.warn(
-      `WARN: ${BASELINE_PATH} 가 없어 진입 폐포 delta 를 비교하지 못했습니다 — ` +
-        'node scripts/check-dist.mjs --update-baseline 로 만드세요.',
-    );
-  } else if (typeof baseline.entryClosureGzip === 'number') {
-    const delta = closureGzip - baseline.entryClosureGzip;
-    const sign = delta >= 0 ? '+' : '';
-    deltaNote = ` · 진입 폐포 delta ${sign}${delta} B(기준 ${baseline.entryClosureGzip} B, ${baseline.recordedAt})`;
-    if (delta >= 2_000) {
-      console.warn(
-        `WARN: 진입 폐포 gzip 이 기준(${baseline.recordedAt}, ${baseline.entryClosureGzip} B) 대비 ` +
-          `${sign}${delta} B 늘었습니다(상한 초과는 아닙니다) — PR 본문에 무엇이 늘었는지 근거를 ` +
-          '적으세요(calendar-layout.md §7). 근거가 붙었으면 이 경고는 무시해도 되고, 새 값을 ' +
-          '기준으로 인정하려면 node scripts/check-dist.mjs --update-baseline 을 돌리세요.',
-      );
-    }
+  } else {
+    deltaNote = deltaReport(baseline, closureGzip, networkGzip);
   }
 
   // --- 동기화 가짜 서버·검증 벡터 마커(T94_LAZY_BOUNDARY.md §C-8②) ---------------------------

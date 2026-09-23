@@ -1,7 +1,7 @@
 // src/styles 는 .css 만 허용(아키텍처 규칙, src/styles/AGENTS.md 규칙 5) 이라
 // 토큰 값을 검사하는 테스트는 여기(src/test/)에 둔다.
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -501,4 +501,77 @@ describe('디자인 토큰: 접근성 대비(R9)', () => {
       expect(contrastRatio(onAccent, dark)).toBeGreaterThanOrEqual(4.5);
     },
   );
+});
+
+// R2 리뷰 2라운드 Minor: 담장 토큰(--cal-*·--todo-*)은 @theme 밖에 둬서 유틸 생성만 막았을 뿐,
+// 각 담장 밖 컴포넌트가 var(--cal-…)/var(--todo-…) 를 직접 참조하는 것 자체는 막지 못했다 —
+// 지금 지켜지는 것은 규약일 뿐 우연이다. 아래 두 테스트가 그 규약을 검사로 바꾼다.
+describe('디자인 토큰: 모바일 타이포 8단계(§3-D R30)', () => {
+  // 모바일 재정의 블록은 "@media (max-width: 767.98px) {" 마커가 tokens.css 안에 셋(달력·타이포·
+  // todo 행) 있어 그 문자열만으로는 찾을 수 없다 — 타이포 블록 바로 앞의 유일한 주석 문구를
+  // 마커로 써서 정확히 그 블록만 잡는다. parseDecls 는 중괄호 깊이를 보지 않고 정규식만 돌리므로
+  // "@media { :root { … } }" 를 통째로 넘겨도 안의 --text-* 선언을 그대로 뽑는다.
+  const mobileText = parseDecls(extractBlock(CSS, '모바일 전역 글자 축소'));
+
+  it('--text-xs 는 모바일에서 재정의되지 않고 12px 그대로다(본문 판독성 하한)', () => {
+    expect(mobileText.has('text-xs')).toBe(false);
+    expect(base.get('text-xs')).toBe('12px');
+  });
+
+  it('모바일 8단계(xs~3xl)가 엄격히 증가한다', () => {
+    const order = ['xs', 'sm', 'base', 'md', 'lg', 'xl', '2xl', '3xl'];
+    const px = (suffix: string): number => {
+      // xs 는 모바일 블록에 없으므로 base(라이트, 변경 없음)에서 읽는다.
+      const raw = suffix === 'xs' ? base.get('text-xs') : mobileText.get(`text-${suffix}`);
+      if (raw === undefined) throw new Error(`토큰 없음: text-${suffix}(모바일)`);
+      return Number.parseFloat(raw);
+    };
+    const values = order.map(px);
+    for (let i = 1; i < values.length; i += 1) {
+      expect(values[i], `${order[i - 1]} → ${order[i]}`).toBeGreaterThan(values[i - 1] as number);
+    }
+  });
+});
+
+describe('디자인 토큰: 담장 토큰(--cal-*·--todo-*) 참조가 담장 밖으로 새지 않는다', () => {
+  const FEATURES_ROOT = join(process.cwd(), 'src/features');
+
+  /** src/features 아래 .ts/.tsx 파일 전부의 [features-상대 경로(디렉토리 판정용), 내용] 쌍. */
+  function collectFeatureFiles(): [string, string][] {
+    const out: [string, string][] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) {
+          walk(full);
+        } else if (/\.tsx?$/.test(entry)) {
+          out.push([relative(FEATURES_ROOT, full), readFileSync(full, 'utf-8')]);
+        }
+      }
+    };
+    walk(FEATURES_ROOT);
+    return out;
+  }
+
+  /** relPath 가 `<feature>/…` 형태로 그 feature 디렉토리 소속인지(OS 경로 구분자 무관). */
+  const isInFeature = (relPath: string, feature: string): boolean =>
+    relPath.split(sep)[0] === feature;
+
+  const files = collectFeatureFiles();
+
+  it('--cal- 참조는 features/date-strip 안에만 있다(calendar-layout.md §2 담장)', () => {
+    const offenders = files
+      .filter(([relPath]) => !isInFeature(relPath, 'date-strip'))
+      .filter(([, text]) => text.includes('--cal-'))
+      .map(([relPath]) => relPath);
+    expect(offenders).toEqual([]);
+  });
+
+  it('--todo- 참조는 features/todo 안에만 있다(theme.md §3-D R32 담장)', () => {
+    const offenders = files
+      .filter(([relPath]) => !isInFeature(relPath, 'todo'))
+      .filter(([, text]) => text.includes('--todo-'))
+      .map(([relPath]) => relPath);
+    expect(offenders).toEqual([]);
+  });
 });
