@@ -59,7 +59,10 @@ describe('calendar-layout.md §3. 월 표시를 누르면 년·월 피커가 열
     fireEvent.click(monthButton());
     const placeholder = document.querySelector('[aria-busy="true"]');
     expect(placeholder).not.toBeNull();
-    expect(placeholder).toHaveClass('w-[280px]', 'h-[220px]');
+    // w-full: 이 자리표시자는 패널(Popover, w-[280px])의 콘텐츠 상자를 채우는 자식이지 패널
+    // 자체가 아니다 — 자식이 또 280px 를 주장하면 패딩·테두리만큼 밖으로 삐져나온다(2차 리뷰
+    // Major). 높이 256px 은 YearMonthPicker 실제 내용의 실측 합(그 파일 자리표시자 주석 참고).
+    expect(placeholder).toHaveClass('w-full', 'h-[256px]');
 
     expect(await screen.findByRole('radiogroup', { name: '월 선택' })).toBeInTheDocument();
   });

@@ -73,6 +73,26 @@ describe('R16. 열리면 포커스는 선택된 달의 월 버튼이다', () => 
   });
 });
 
+describe('2차 리뷰 Major — 패널 폭 이중 지정 방지', () => {
+  it('루트에 w-[280px] 를 다시 넣지 않는다(부모 Popover 콘텐츠 상자를 w-full 로 채운다)', () => {
+    renderPicker();
+    // Popover 패널 자체도 role="group"(팝오버 aria-label) 이라 — 그 안의 첫 자식(YearMonthPicker
+    // 의 실제 루트)을 짚어야 년 스테퍼 줄의 role="group" 과 헷갈리지 않는다.
+    const panel = screen.getByRole('group', { name: '연도와 월 선택' });
+    const root = panel.firstElementChild;
+    expect(root).not.toBeNull();
+    expect(root?.className ?? '').not.toContain('w-[280px]');
+    expect(root?.className ?? '').toContain('w-full');
+  });
+});
+
+describe('2차 리뷰 Minor — 년 텍스트 이중 노출 방지', () => {
+  it('시각 스팬은 aria-hidden 이고 접근 가능한 텍스트는 sr-only 노드 하나뿐이다', () => {
+    renderPicker();
+    expect(yearText()).toHaveAttribute('aria-hidden', 'true');
+  });
+});
+
 describe('R17. 역할과 접근 이름', () => {
   it('팝오버는 "연도와 월 선택", 낭독용 년 텍스트는 aria-live=polite, 월 격자는 "월 선택" 라디오그룹이다', () => {
     renderPicker();
@@ -107,8 +127,12 @@ describe('R17. 역할과 접근 이름', () => {
   });
 });
 
-describe('다른 해를 보고 있으면 포커스 중인 달이 checked 다(리뷰 Minor — "선택 없음" 라디오그룹 방지)', () => {
-  it('[다음 해] 를 눌러도 라디오 하나는 항상 aria-checked=true 다', async () => {
+describe('다른 해에서는 checked·강조가 포커스를 따라가지 않는다(2차 리뷰 Minor — 되돌림)', () => {
+  // 배경: 1차 리뷰는 "다른 해에서 12개 라디오가 전부 checked=false" 를 Minor 로 지적했고, 그
+  // 답으로 포커스 중인 달을 checked 로 삼았었다. 2차 리뷰는 그 쪽이 더 나쁘다고 봤다 — 확정하지
+  // 않았는데 화살표로 훑기만 해도 checked·강조 채움이 움직여 "선택됨" 처럼 보이고 들린다.
+  // ARIA radiogroup 은 선택된 라디오가 없는 상태를 허용하므로, 실제 선택(selectedDate)만 켠다.
+  it('[다음 해] 를 눌러도 어떤 라디오도 aria-checked=true 가 아니다', async () => {
     const user = userEvent.setup();
     renderPicker({ selectedDate: '2026-09-17', today: '2026-09-17' });
 
@@ -117,24 +141,34 @@ describe('다른 해를 보고 있으면 포커스 중인 달이 checked 다(리
     const checked = screen
       .getAllByRole('radio')
       .filter((radio) => radio.getAttribute('aria-checked') === 'true');
-    expect(checked).toHaveLength(1);
-    // 실제 선택(selectedDate)의 달(9월)과 여전히 같다 — 년만 바뀌고 포커스 중인 달은 그대로다.
-    expect(checked[0]).toHaveAccessibleName('9월');
+    expect(checked).toHaveLength(0);
   });
 
-  it('다른 해에서 화살표로 다른 달에 포커스하면 checked 도 그 달로 옮겨간다', async () => {
+  it('다른 해에서 화살표로 포커스를 옮겨도 checked 는 계속 전부 false 다', async () => {
     const user = userEvent.setup();
     renderPicker({ selectedDate: '2026-09-17', today: '2020-01-01' });
 
     // 년 스테퍼 버튼 클릭은 DOM 포커스를 그 버튼으로 옮긴다 — 이어지는 방향키가 월 격자에
-    // 닿으려면 먼저 라디오로 포커스를 되돌려야 한다(PageUp/PageDown 처럼 라디오 위에서 직접
-    // 년을 바꾸는 경로는 포커스가 그대로라 이 단계가 필요 없다).
+    // 닿으려면 먼저 라디오로 포커스를 되돌려야 한다.
     await user.click(screen.getByRole('button', { name: '다음 해' }));
     monthRadio('9월').focus();
     await user.keyboard('{ArrowRight}');
 
-    expect(monthRadio('10월')).toHaveAttribute('aria-checked', 'true');
+    // 포커스(roving tabindex)는 여전히 옮겨간다 — checked·강조만 따라가지 않는다.
+    expect(monthRadio('10월')).toHaveFocus();
+    expect(monthRadio('10월')).toHaveAttribute('aria-checked', 'false');
     expect(monthRadio('9월')).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('원래 해로 돌아오면 selectedDate 의 달만 다시 checked 다', async () => {
+    const user = userEvent.setup();
+    renderPicker({ selectedDate: '2026-09-17', today: '2026-09-17' });
+
+    await user.click(screen.getByRole('button', { name: '다음 해' }));
+    expect(monthRadio('9월')).toHaveAttribute('aria-checked', 'false');
+
+    await user.click(screen.getByRole('button', { name: '이전 해' }));
+    expect(monthRadio('9월, 이번 달')).toHaveAttribute('aria-checked', 'true');
   });
 });
 

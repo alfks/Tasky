@@ -169,10 +169,21 @@ function YearMonthJump({
         <Suspense
           fallback={
             // 실제 패널 크기의 자리표시자(리뷰 Minor) — `null` 이면 첫 열림에서 패널 높이가
-            // ~26px 로 측정돼 Popover 의 하단 클램프 계산이 틀어진다. 치수는 R18 패널 폭 280px +
-            // 실측 내용 높이(년 줄·이번 달 버튼·4행 월 격자) 근사값이다. `aria-busy` 는 콘텐츠가
-            // 아직 채워지지 않았음을 알린다 — 시각 언어를 새로 더하지 않으므로 빈 박스로 둔다.
-            <div aria-busy="true" className="h-[220px] w-[280px]" />
+            // ~26px 로 측정돼 Popover 의 하단 클램프 계산이 틀어진다.
+            // 폭은 `w-full` — 이 div 는 `Popover` 의 콘텐츠 상자(`p-[--space-3]`·`border` 안쪽) 를
+            // 그대로 채우는 자리이지, 패널 자체가 아니다(R18 의 280px 는 패널 바깥 치수 — 자식이
+            // 다시 280px 를 주장하면 패딩·테두리만큼 밖으로 삐져나온다, 아래 `YearMonthPicker`
+            // 머리 주석과 같은 계산·같은 사고, 2차 리뷰 Major).
+            // 높이 256px = `YearMonthPicker` 실제 내용의 실측 합(2026-09-23, 토큰값 그대로 계산):
+            //   년 줄(`IconButton` = --control-hit-min 32) 32
+            //   + 세로 gap(--space-3) 12
+            //   + [이번 달] 버튼(`Button size="sm"` = --control-hit-min) 32
+            //   + 세로 gap(--space-3) 12
+            //   + 월 격자 4행(--control-height 36) + 3간(--space-2 8) = 4*36 + 3*8 = 168
+            //   = 32 + 12 + 32 + 12 + 168 = 256
+            // `aria-busy` 는 콘텐츠가 아직 채워지지 않았음을 알린다 — 시각 언어를 새로 더하지
+            // 않으므로 빈 박스로 둔다.
+            <div aria-busy="true" className="h-[256px] w-full" />
           }
         >
           <LazyYearMonthPicker

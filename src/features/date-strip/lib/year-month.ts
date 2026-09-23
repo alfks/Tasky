@@ -6,10 +6,10 @@
 // 범위 끝은 **년 스테퍼**(이전 해/다음 해)에서만 갈린다(calendar-layout.md R15).
 //
 // "일 유지 + 말일 자르기" 규칙은 여기서 다시 짜지 않는다 — `month.ts` 가 그 규칙의 단일 소스라
-// `withYearMonth` 는 그 파일의 `daysInMonth`·`shiftMonthWithinRange` 위에 얹는다.
+// `withYearMonth` 는 그 파일의 `shiftMonthWithinRange` 위에 얹는다.
 import type { DateKey } from '@/domain/date/date-key';
 
-import { daysInMonth, shiftMonthWithinRange } from '@/features/date-strip/lib/month';
+import { shiftMonthWithinRange } from '@/features/date-strip/lib/month';
 import { MAX_DATE_KEY, MIN_DATE_KEY } from '@/features/date-strip/lib/week';
 
 /** 이동 가능 범위의 첫 해 (week.ts 의 `MIN_DATE_KEY` 에서 뽑는다 — 숫자를 복제하지 않는다). */
@@ -30,9 +30,6 @@ export function yearMonthOf(date: DateKey): YearMonth {
 export function monthLabel(month: number): string {
   return `${month}월`;
 }
-
-/** `year`년 `month`월(1-based)의 마지막 날짜(28~31, 윤년 포함). 단일 소스는 `month.ts`. */
-export { daysInMonth };
 
 /**
  * `date` 의 일(日)을 유지한 채 `target` 년·월로 옮긴다 (R15). 목적지 달에 없는 날(1/31 → 2월)은

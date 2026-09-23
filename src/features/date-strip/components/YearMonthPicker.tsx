@@ -116,7 +116,11 @@ export function YearMonthPicker({ selectedDate, today, onSelect }: YearMonthPick
   const canGoNextYear = focus.year < MAX_YEAR;
 
   return (
-    <div className="flex w-[280px] flex-col gap-[var(--space-3)]">
+    // `w-[280px]` 를 여기 두지 않는다(리뷰 Major) — 패널 폭 280px(R18)은 이 컴포넌트를 감싸는
+    // `Popover` 의 바깥 치수다. `Popover` 는 `border-box` 라 패널의 콘텐츠 상자는
+    // 280 − padding(--space-3 12px)×2 − border(1px)×2 = 254px 뿐이고, 이 자식이 또 280px 를
+    // 주장하면 254px 상자 밖으로 26px 삐져나온다. 부모가 이미 정한 폭을 그대로 채우면 된다.
+    <div className="flex w-full flex-col gap-[var(--space-3)]">
       <div role="group" className="flex items-center justify-between">
         <IconButton
           label="이전 해"
@@ -125,7 +129,12 @@ export function YearMonthPicker({ selectedDate, today, onSelect }: YearMonthPick
         >
           <Chevron direction="left" />
         </IconButton>
-        <span className="text-xl leading-none font-bold text-text tabular-nums">{focus.year}</span>
+        {/* 스크린리더 가상 커서로 훑을 때 이 값이 sr-only 노드와 나란히 두 번 읽히지 않도록
+            시각 스팬은 접근 트리에서 뺀다(리뷰 Minor) — 접근 가능한 텍스트는 아래 sr-only
+            노드 하나뿐이다. */}
+        <span aria-hidden="true" className="text-xl leading-none font-bold text-text tabular-nums">
+          {focus.year}
+        </span>
         {/* 화면에 보이는 년 숫자와 달리 이 노드만 디바운스된 값을 낭독한다(ANNOUNCE_DEBOUNCE_MS). */}
         <span aria-live="polite" className="sr-only">
           {announcedYear}
@@ -157,14 +166,20 @@ export function YearMonthPicker({ selectedDate, today, onSelect }: YearMonthPick
         )}
       >
         {MONTHS.map((month) => {
-          // 다른 해를 보고 있을 때는 selectedYm 이 이 화면 어디에도 없어 12개 라디오가 전부
-          // aria-checked="false" 가 되는 사고가 났다(리뷰 Minor — "선택 없음" 라디오그룹은
-          // 스크린리더가 읽기 어렵다). roving tabindex 의 진입점(`focus.month`)과 일치시켜, 다른
-          // 해에서는 **포커스 중인 달**을 checked 로 둔다 — 화살표로 훑는 동안은 checked 도 같이
-          // 따라가지만(선택 아님·포커스만 이동해도 checked 가 바뀜), 적어도 그룹에 checked 가
-          // 하나도 없는 상태는 생기지 않는다. 실제 확정은 여전히 클릭/Enter(`commit`) 하나뿐이다.
-          const isSelectedMonth =
-            focus.year === selectedYm.year ? month === selectedYm.month : month === focus.month;
+          // [2차 리뷰로 되돌림] 1차 리뷰는 "다른 해에서 12개 라디오가 전부 checked=false" 를
+          // Minor 로 지적해, 그 자리를 roving tabindex 의 진입점(`focus.month`)으로 채웠었다.
+          // 2차 리뷰는 그 수정이 **더 나쁘다**고 봤다 — 화살표로 훑기만 해도(확정 전인데)
+          // checked 와 강조 채움이 따라가, 이 위젯이 "포커스"와 "선택"이라는 서로 다른 두 의미를
+          // 하나의 시각·청각 신호로 뭉뚱그려 버렸다(같은 해에서는 안 그러다가 해가 바뀌면 그러니
+          // 위젯 하나가 두 가지 규칙을 갖는 셈이기도 했다). ARIA Authoring Practices 의
+          // radiogroup 패턴은 "선택된 라디오가 없는" 상태를 허용한다(그룹이 아직 아무것도
+          // 대표하지 않는 경우) — 그래서 되돌린다: checked·강조 채움은 **실제 선택**(selectedYm)
+          // 하고만 일치할 때만 켠다. 다른 해를 보는 동안은 열두 달 전부 unchecked·무채움이고,
+          // 그것이 "아직 이 해에서 아무것도 선택하지 않았다"는 사실과 맞다. 키보드 roving 은
+          // 이 값과 무관하게 `tabIndex`(아래)로 계속 `focus.month` 를 따라간다 — 포커스 이동과
+          // 선택 표시를 이렇게 분리했다(테스트: YearMonthPicker.test.tsx
+          // "다른 해에서는 포커스가 옮겨도 checked·강조가 바뀌지 않는다").
+          const isSelectedMonth = focus.year === selectedYm.year && month === selectedYm.month;
           const isCurrentMonth = focus.year === todayYm.year && month === todayYm.month;
           return (
             <button

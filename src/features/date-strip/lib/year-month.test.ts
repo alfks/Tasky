@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
+// `daysInMonth` 는 `year-month.ts` 가 재수출하지 않는다(리뷰 Nit — 프로덕션 사용처가 없는
+// 재수출이었다) — 단일 소스인 `month.ts` 에서 바로 가져온다.
+import { daysInMonth } from '@/features/date-strip/lib/month';
 import {
   MAX_YEAR,
   MIN_YEAR,
-  daysInMonth,
   monthLabel,
   moveMonthFocus,
   shiftYear,
