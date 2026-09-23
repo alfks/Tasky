@@ -21,7 +21,7 @@ describe('CategoryRatioCard (completion-rate.md R5 패턴 재사용)', () => {
     expect(bar).toHaveAttribute('aria-valuetext', '4개 중 2개 완료');
   });
 
-  it('채움 막대가 stats/CategoryBars.tsx 와 같은 전환을 쓴다(review m3 — 전에는 여기만 빠져 있었다)', () => {
+  it('채움 막대가 폭 전환을 쓴다(review m3 — 전에는 여기만 빠져 있었다)', () => {
     const category = makeCategory({ name: '공부' });
     render(
       <CategoryRatioCard

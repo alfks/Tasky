@@ -2,18 +2,17 @@
 
 // 인사이트 패널 (app-shell.md §2-A · R1 `aside` · R6 섹션 순서 고정).
 //
-// 섹션 순서는 **집중 → 달성률 → 카테고리별 → 단축키** 로 고정이다(R6). 각 섹션의 내용은 그 feature
-// 가 그리고, 여기서는 순서·카드 껍질·접기만 맡는다. Phase 2 의 캘린더·통계 위젯도 이 목록에 낀다.
+// 섹션 순서는 **집중 → 달성률 → 단축키** 로 고정이다(R6). 카테고리별 막대는 폐지됐다 — 그 값은
+// 이제 각 카테고리 그룹 헤더(카테고리 이름 옆, `TodoGroupSection`)에서 보인다(사용자 결정). D-day는
+// 카테고리쪽 사이드바로 옮겨졌다(`ShellSidebar.tsx`) — 이 패널에는 더는 없다. 각 섹션의 내용은 그
+// feature 가 그리고, 여기서는 순서·카드 껍질·접기만 맡는다.
 //
 // **집중은 이 중 유일하게 "있을 때만" 그려지는 섹션이다**(사용자 결정, R6 갱신) — 보여줄 상태가
 // 없으면(대기) 아예 마운트하지 않는다. 그려질 때는 여전히 맨 앞이라 순서 자체는 바뀌지 않는다.
 import type { ReactNode } from 'react';
 
-import type { Category } from '@/domain/category/category';
-
-import { DdayPanelSection } from '@/features/calendar';
 import { useCommandStore } from '@/features/command';
-import { CategoryPanelSection, CompletionPanelSection } from '@/features/stats';
+import { CompletionPanelSection } from '@/features/stats';
 import { selectTimerPanelVisible, TimerPanelSection, useTimerStore } from '@/features/timer';
 
 import { Button } from '@/components/ui/Button';
@@ -38,7 +37,6 @@ const CARD_CLASS =
 export const INSIGHT_PANEL_ID = 'shell-insight-panel';
 
 type ShellInsightsProps = {
-  categories: readonly Category[];
   /** 컬럼으로 서 있을 때만 `[접기]` 가 있다. 오버레이 안에서는 ✕ 가 그 일을 한다(R6·R7). */
   onCollapse?: () => void;
   /** 접기 버튼이 제어하는 패널의 id. 컬럼일 때만 준다. */
@@ -50,7 +48,7 @@ function Card({ children }: { children: ReactNode }) {
   return <div className={CARD_CLASS}>{children}</div>;
 }
 
-export function ShellInsights({ categories, onCollapse, panelId, className }: ShellInsightsProps) {
+export function ShellInsights({ onCollapse, panelId, className }: ShellInsightsProps) {
   const openHelp = useCommandStore((state) => state.openHelp);
   // 대기 중(세션·휴식·알림·완료·에러가 전부 비었을 때)에는 이 섹션 자체를 그리지 않는다(사용자
   // 결정 — "집중 부분이 메인 화면에서 없어졌으면 좋겠다"). 시작은 이제 항목 메뉴 "타이머 시작"
@@ -66,12 +64,6 @@ export function ShellInsights({ categories, onCollapse, panelId, className }: Sh
       {timerPanelVisible ? <TimerPanelSection className="shadow-sm" /> : null}
       <Card>
         <CompletionPanelSection />
-      </Card>
-      <Card>
-        <CategoryPanelSection categories={categories} />
-      </Card>
-      <Card>
-        <DdayPanelSection />
       </Card>
 
       <div className="mt-auto flex shrink-0 items-center justify-between gap-[var(--space-2)] pt-[var(--space-3)]">

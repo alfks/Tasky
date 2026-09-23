@@ -1,11 +1,13 @@
 // 카테고리 비율 카드의 장식(이름·이모지·색)만 담당한다. **집계는 여기서 하지 않는다** — `summarizeByCategory`
 // (completion-rate.ts, stats.md R3)의 결과를 그대로 받아 표시용 필드만 붙인다.
 //
-// `src/features/stats/completion-view.ts` 의 `toCategoryBars` 와 하는 일이 같지만, `stats` 의
-// 배럴은 `useCompletion` 훅을 통해 `@/features/todo` 를 끌고 들어온다(그 훅이 투두 스토어를
-// 구독한다) — `todo → command` 로 이어져 `command → reports → stats → todo → command` 순환이
-// 된다(`CommandPaletteCommands.tsx` 머리 주석의 표와 같은 문제). 그래서 이 작은 장식 함수만
-// domain 값 위에 별도로 둔다. 계산 자체(`summarizeByCategory`)는 절대 다시 하지 않는다.
+// 예전에는 `src/features/stats/completion-view.ts` 의 `toCategoryBars` 와 하는 일이 같았다(그
+// 함수는 인사이트 패널의 "카테고리별" 막대 섹션이 폐지되며 함께 걷혔다 — 사용자 결정, todo.md
+// R23). 그때도 `stats` 의 배럴에서 직접 가져올 수는 없었다: `useCompletion` 훅을 통해
+// `@/features/todo` 를 끌고 들어와(그 훅이 투두 스토어를 구독한다) `todo → command` 로 이어져
+// `command → reports → stats → todo → command` 순환이 됐다(`CommandPaletteCommands.tsx` 머리
+// 주석의 표와 같은 문제). 그래서 이 작은 장식 함수는 지금도 domain 값 위에 별도로 둔다. 계산
+// 자체(`summarizeByCategory`)는 절대 다시 하지 않는다.
 //
 // review m3(design review 라운드1) — 공용 위치로 올리는 세 갈래를 검토하고 전부 기각했다:
 //   1) `src/components/ui/` 로 (행 렌더링까지) 승격 — `components/AGENTS.md` 규칙4가 "세 번째

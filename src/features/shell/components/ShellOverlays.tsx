@@ -155,7 +155,7 @@ export function ShellOverlays({
       >
         {/*
           오버레이 안에서도 패널은 **같은 모습**이어야 한다. 대화상자 본문은 높이가 내용만큼이라
-          그냥 두면 `[단축키 ?]` 를 아래로 미는 `mt-auto` 가 먹지 않아 `카테고리별` 바로 밑에
+          그냥 두면 `[단축키 ?]` 를 아래로 미는 `mt-auto` 가 먹지 않아 `오늘 달성률` 바로 밑에
           붙는다(리뷰 Minor). 최소 높이를 줘서 컬럼과 같은 배치가 되게 한다.
         */}
         <aside
@@ -163,7 +163,7 @@ export function ShellOverlays({
           aria-label="오늘 요약"
           className="flex h-full min-h-[60vh] flex-col"
         >
-          <ShellInsights categories={categories} />
+          <ShellInsights />
         </aside>
       </Dialog>
 

@@ -1,27 +1,20 @@
-// 달성률 화면 모델 — completion-rate.md R1~R5 와 §5 문구.
+// 달성률 화면 모델 — completion-rate.md R1~R4 와 §5 문구.
 //
 // 픽스처를 일부러 비대칭으로 둔다(1/3·2/2·0/1·1/2·3/4): 양쪽에 같은 수를 넣으면 done 과 total 을
 // 맞바꿔도, 순서를 뒤집어도 같은 값이 나와 테스트가 아무것도 검사하지 않는다.
 import { describe, expect, it } from 'vitest';
 
-import type { Category } from '@/domain/category/category';
 import type { Todo } from '@/domain/todo/todo';
 
 import {
   EMPTY_RING_LABEL,
-  categoryBarValueText,
   completionAnnouncement,
   completionCountText,
   completionPercentText,
   completionRingLabel,
   summarizeCompletion,
-  toCategoryBars,
 } from '@/features/stats/completion-view';
-import { makeCategory } from '@/test/fixtures/category';
 import { makeTodo } from '@/test/fixtures/todo';
-
-/** id 오름차순이면 맨 앞에 오는 값 — 표시 순서(R5)가 id 순서와 다른지 검사한다. */
-const GONE_ID = '00000000-0000-4000-8000-000000000009';
 
 /** `done` 개 완료 + `total - done` 개 미완료. seq 로 id 가 갈려 같은 카테고리에 겹치지 않는다. */
 function todosFor(categoryId: string, done: number, total: number, offset: number): Todo[] {
@@ -103,86 +96,5 @@ describe('표시 문구 (§5)', () => {
     expect(completionAnnouncement(summarizeCompletion(todosFor('c', 2, 3, 1)))).not.toContain(
       '다 했어요',
     );
-  });
-});
-
-/** 활성 2 + 종료 1 + 삭제 1 + 이름조차 없는 것 1. 비율이 전부 달라 순서가 섞이면 드러난다. */
-function scenario(): { categories: Category[]; todos: Todo[] } {
-  const first = makeCategory({ seq: 8, order: 0, name: '공부', emoji: '📚' });
-  const second = makeCategory({ seq: 7, order: 1, name: '운동' });
-  const empty = makeCategory({ seq: 6, order: 2, name: '집안일' });
-  const closed = makeCategory({
-    seq: 2,
-    name: '독서',
-    status: 'completed',
-    closedAt: '2026-01-01T00:00:00.000Z',
-  });
-  const removed = makeCategory({ seq: 1, name: '옛것', deletedAt: '2026-01-02T00:00:00.000Z' });
-
-  return {
-    categories: [first, second, empty, closed, removed],
-    todos: [
-      ...todosFor(first.id, 1, 3, 1),
-      ...todosFor(second.id, 2, 2, 10),
-      ...todosFor(closed.id, 0, 1, 20),
-      ...todosFor(removed.id, 1, 2, 30),
-      ...todosFor(GONE_ID, 3, 4, 40),
-    ],
-  };
-}
-
-describe('toCategoryBars (R5)', () => {
-  it('활성 order → 종료 → 삭제됨 → 이름 모를 것 순으로 나온다', () => {
-    const { categories, todos } = scenario();
-
-    // 인자를 뒤집어 넘긴다 — 입력 순서를 그대로 흘리면 여기서 깨진다.
-    const bars = toCategoryBars(todos, [...categories].reverse());
-
-    expect(bars.map((bar) => bar.label)).toEqual([
-      '공부',
-      '운동',
-      '독서',
-      '옛것 (삭제됨)',
-      '삭제된 카테고리',
-    ]);
-  });
-
-  it('그날 투두가 없는 카테고리는 막대를 만들지 않는다', () => {
-    const { categories, todos } = scenario();
-
-    expect(toCategoryBars(todos, categories).map((bar) => bar.label)).not.toContain('집안일');
-  });
-
-  it('막대 비율은 카테고리마다 done/total 그대로다', () => {
-    const { categories, todos } = scenario();
-
-    expect(
-      toCategoryBars(todos, categories).map((bar) => [bar.done, bar.total, bar.ratio]),
-    ).toEqual([
-      [1, 3, 1 / 3],
-      [2, 2, 1],
-      [0, 1, 0],
-      [1, 2, 0.5],
-      [3, 4, 0.75],
-    ]);
-  });
-
-  it('이모지와 색은 카테고리에서 오고, 카테고리 행이 없으면 색이 비어 있다', () => {
-    const { categories, todos } = scenario();
-    const bars = toCategoryBars(todos, categories);
-
-    expect(bars[0]).toMatchObject({ emoji: '📚', color: categories[0].color });
-    expect(bars[1].emoji).toBeUndefined();
-    expect(bars[4].color).toBeUndefined();
-  });
-
-  it('투두가 하나도 없으면 막대도 없다', () => {
-    expect(toCategoryBars([], scenario().categories)).toEqual([]);
-  });
-
-  it('막대 값 문구는 전체와 완료 수를 함께 읽는다', () => {
-    const bars = toCategoryBars(scenario().todos, scenario().categories);
-
-    expect(categoryBarValueText(bars[0])).toBe('3개 중 1개 완료');
   });
 });
