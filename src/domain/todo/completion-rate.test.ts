@@ -4,6 +4,7 @@ import {
   completionCounts,
   completionPercent,
   completionRate,
+  percentFromCounts,
   summarizeByCategory,
 } from '@/domain/todo/completion-rate';
 
@@ -41,6 +42,19 @@ describe('completionPercent (R2)', () => {
 
   it('반올림이 100 이 되어도 전부 완료가 아니면 99 로 낮춘다', () => {
     expect(completionPercent(withDone(1000, 999))).toBe(99);
+  });
+});
+
+describe('percentFromCounts (R2) — completionPercent 와 같은 계산을 counts 에서 바로', () => {
+  it('total 0 이면 정의되지 않는다', () => {
+    expect(percentFromCounts({ done: 0, total: 0 })).toBeNull();
+  });
+
+  it('todos 로 셌을 때와 같은 값이다(카테고리 그룹 헤더가 이 경로를 쓴다)', () => {
+    expect(percentFromCounts({ done: 1, total: 3 })).toBe(completionPercent(withDone(3, 1)));
+    expect(percentFromCounts({ done: 200, total: 200 })).toBe(
+      completionPercent(withDone(200, 200)),
+    );
   });
 });
 

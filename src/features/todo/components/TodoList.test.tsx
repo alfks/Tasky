@@ -129,6 +129,14 @@ describe('배치 (R7·R15)', () => {
     expect(screen.getByRole('region', { name: '운동' })).toHaveTextContent('0/1');
   });
 
+  it('카테고리 이름 옆에 그 카테고리의 달성률을 퍼센트로 보여준다(사용자 결정 — 옛 인사이트 패널 카테고리별 막대에서 옮겨옴)', async () => {
+    화면();
+    await 목록이보일때까지();
+
+    expect(screen.getByRole('region', { name: '공부' })).toHaveTextContent('67%');
+    expect(screen.getByRole('region', { name: '운동' })).toHaveTextContent('0%');
+  });
+
   it('활성 카테고리 order 순으로 그룹을 놓고 삭제된 카테고리는 맨 뒤에 둔다', async () => {
     화면();
     await 목록이보일때까지();
