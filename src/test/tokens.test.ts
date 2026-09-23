@@ -503,9 +503,6 @@ describe('디자인 토큰: 접근성 대비(R9)', () => {
   );
 });
 
-// R2 리뷰 2라운드 Minor: 담장 토큰(--cal-*·--todo-*)은 @theme 밖에 둬서 유틸 생성만 막았을 뿐,
-// 각 담장 밖 컴포넌트가 var(--cal-…)/var(--todo-…) 를 직접 참조하는 것 자체는 막지 못했다 —
-// 지금 지켜지는 것은 규약일 뿐 우연이다. 아래 두 테스트가 그 규약을 검사로 바꾼다.
 describe('디자인 토큰: 모바일 타이포 8단계(§3-D R30)', () => {
   // 모바일 재정의 블록은 "@media (max-width: 767.98px) {" 마커가 tokens.css 안에 셋(달력·타이포·
   // todo 행) 있어 그 문자열만으로는 찾을 수 없다 — 타이포 블록 바로 앞의 유일한 주석 문구를
@@ -533,31 +530,44 @@ describe('디자인 토큰: 모바일 타이포 8단계(§3-D R30)', () => {
   });
 });
 
+// R2 리뷰 2라운드 Minor: 담장 토큰(--cal-*·--todo-*)은 @theme 밖에 둬서 유틸 생성만 막았을 뿐,
+// 각 담장 밖 컴포넌트가 var(--cal-…)/var(--todo-…) 를 직접 참조하는 것 자체는 막지 못했다 —
+// 지금 지켜지는 것은 규약일 뿐 우연이다. 아래 두 테스트가 그 규약을 검사로 바꾼다.
+//
+// 최종 리뷰 Nit: 처음 버전은 `src/features` 만 walk 해서 `src/components/ui`·`src/app`·순수
+// `.css` 파일에서의 참조는 애초에 눈에 들어오지 않았다 — 담장을 "검사"로 바꾼 취지가 반만 살았다.
+// 이제 `src` 전체(.ts/.tsx/.css)를 훑고, 소유 디렉토리 두 곳만 그 토큰에 한해 예외로 둔다. 토큰을
+// **정의하는** `src/styles/tokens.css` 와, 담장 토큰 이름을 예시로만 언급하는 이 테스트 파일 자신은
+// "담장 밖 참조"를 찾는 대상이 아니므로 애초에 walk 대상에서 뺀다.
 describe('디자인 토큰: 담장 토큰(--cal-*·--todo-*) 참조가 담장 밖으로 새지 않는다', () => {
-  const FEATURES_ROOT = join(process.cwd(), 'src/features');
+  const SRC_ROOT = join(process.cwd(), 'src');
+  const EXCLUDED = new Set([tokensPath, join(process.cwd(), 'src/test/tokens.test.ts')]);
 
-  /** src/features 아래 .ts/.tsx 파일 전부의 [features-상대 경로(디렉토리 판정용), 내용] 쌍. */
-  function collectFeatureFiles(): [string, string][] {
+  /** src 전체(.ts/.tsx/.css)의 [src-상대 경로(디렉토리 판정용), 내용] 쌍. 정의 파일과 이 테스트
+   * 파일 자신은 EXCLUDED 로 뺀다(위 설명). */
+  function collectSrcFiles(): [string, string][] {
     const out: [string, string][] = [];
     const walk = (dir: string): void => {
       for (const entry of readdirSync(dir)) {
         const full = join(dir, entry);
         if (statSync(full).isDirectory()) {
           walk(full);
-        } else if (/\.tsx?$/.test(entry)) {
-          out.push([relative(FEATURES_ROOT, full), readFileSync(full, 'utf-8')]);
+        } else if (/\.(tsx?|css)$/.test(entry) && !EXCLUDED.has(full)) {
+          out.push([relative(SRC_ROOT, full), readFileSync(full, 'utf-8')]);
         }
       }
     };
-    walk(FEATURES_ROOT);
+    walk(SRC_ROOT);
     return out;
   }
 
-  /** relPath 가 `<feature>/…` 형태로 그 feature 디렉토리 소속인지(OS 경로 구분자 무관). */
-  const isInFeature = (relPath: string, feature: string): boolean =>
-    relPath.split(sep)[0] === feature;
+  /** relPath 가 `features/<feature>/…` 형태로 그 feature 디렉토리 소속인지(OS 경로 구분자 무관). */
+  const isInFeature = (relPath: string, feature: string): boolean => {
+    const [top, second] = relPath.split(sep);
+    return top === 'features' && second === feature;
+  };
 
-  const files = collectFeatureFiles();
+  const files = collectSrcFiles();
 
   it('--cal- 참조는 features/date-strip 안에만 있다(calendar-layout.md §2 담장)', () => {
     const offenders = files

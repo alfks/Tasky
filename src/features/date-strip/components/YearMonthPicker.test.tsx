@@ -112,10 +112,26 @@ describe('R17. 역할과 접근 이름', () => {
     expect(monthRadio('12월')).toHaveAttribute('aria-checked', 'false');
   });
 
-  it('범위 끝에서 년 스테퍼가 disabled 다(R15)', () => {
+  it('범위 끝에서 년 스테퍼가 aria-disabled 다 — 포커스를 유지한다(R15, 최종 리뷰 Nit)', async () => {
+    // 네이티브 disabled 였다면 이 버튼은 toBeEnabled() 에서 false 가 나왔을 것이다 — aria-disabled
+    // 로 바꿔 계속 포커스 가능함을 함께 고정한다(disabled 는 element.disabled 만 본다, aria-disabled
+    // 는 보지 않는다 — @testing-library/jest-dom 구현).
+    const user = userEvent.setup();
     renderPicker({ selectedDate: '1970-05-10', today: '1970-05-10' });
-    expect(screen.getByRole('button', { name: '이전 해' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '다음 해' })).toBeEnabled();
+    const prevButton = screen.getByRole('button', { name: '이전 해' });
+    const nextButton = screen.getByRole('button', { name: '다음 해' });
+
+    expect(prevButton).toHaveAttribute('aria-disabled', 'true');
+    expect(prevButton).toBeEnabled();
+    expect(nextButton).toHaveAttribute('aria-disabled', 'false');
+
+    prevButton.focus();
+    await user.keyboard('{Enter}');
+
+    // 클릭(Enter)해도 값이 바뀌지 않고, 무엇보다 포커스가 body 로 빠지지 않는다 — 방금 그 버튼에
+    // 그대로 남는다.
+    expect(yearText()).toHaveTextContent('1970');
+    expect(prevButton).toHaveFocus();
   });
 
   it('강제 색 모드에서도 "이번 달" 링이 테두리로 남는다(리뷰 Nit)', () => {

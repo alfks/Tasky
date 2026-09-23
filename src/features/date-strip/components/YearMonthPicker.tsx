@@ -124,8 +124,21 @@ export function YearMonthPicker({ selectedDate, today, onSelect }: YearMonthPick
       <div role="group" className="flex items-center justify-between">
         <IconButton
           label="이전 해"
-          disabled={!canGoPrevYear}
-          onClick={() => setFocus((current) => shiftYear(current, -1))}
+          // 최종 리뷰 Nit: 경계(MIN_YEAR)에서 네이티브 `disabled` 를 쓰면 "방금 누른 그 버튼"이
+          // 클릭 직후 접근 트리에서 사라져 포커스가 body 로 떨어진다 — 키보드 사용자가 위치를
+          // 잃는다. `aria-disabled` + 클릭 no-op 으로 바꿔 버튼은 계속 포커스 가능한 채로 두고,
+          // 시각 비활성은 새 색을 만들지 않고 기존 `disabled:opacity-50`/`disabled:cursor-not-allowed`
+          // 와 같은 값을 그대로 일반 유틸로(가짜 pseudo 없이) 적용한다. `pointer-events-none` 은
+          // 마우스 hover 도 함께 죽여 `hover:enabled:` 잔상(진짜로는 비활성인데 hover 배경이 켜지는
+          // 것)을 막는다 — 키보드 Enter/Space 는 pointer-events 의 영향을 받지 않으므로 onClick
+          // 쪽 가드가 그 경로를 막는다. 테스트: YearMonthPicker.test.tsx
+          // "범위 끝에서 년 스테퍼가 aria-disabled 다 — 포커스를 유지한다".
+          aria-disabled={!canGoPrevYear}
+          className={cn(!canGoPrevYear && 'pointer-events-none cursor-not-allowed opacity-50')}
+          onClick={() => {
+            if (!canGoPrevYear) return;
+            setFocus((current) => shiftYear(current, -1));
+          }}
         >
           <Chevron direction="left" />
         </IconButton>
@@ -141,8 +154,12 @@ export function YearMonthPicker({ selectedDate, today, onSelect }: YearMonthPick
         </span>
         <IconButton
           label="다음 해"
-          disabled={!canGoNextYear}
-          onClick={() => setFocus((current) => shiftYear(current, 1))}
+          aria-disabled={!canGoNextYear}
+          className={cn(!canGoNextYear && 'pointer-events-none cursor-not-allowed opacity-50')}
+          onClick={() => {
+            if (!canGoNextYear) return;
+            setFocus((current) => shiftYear(current, 1));
+          }}
         >
           <Chevron direction="right" />
         </IconButton>
