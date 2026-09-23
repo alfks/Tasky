@@ -224,10 +224,13 @@ if (doc !== '') {
     );
   } else {
     const tag = beaconMatches[0][0];
-    if (!/data-cf-beacon='\{"token": "d5be062eb83c46b9b9f5eb621f7a1342"\}'/.test(tag))
+    if (!/"token":\s*"d5be062eb83c46b9b9f5eb621f7a1342"/.test(tag))
       note('index.html 의 Cloudflare Web Analytics 비콘 태그에 예상 token 이 없습니다.');
-    const isAsync = /\basync\b/.test(tag);
-    const isDefer = /\bdefer\b/.test(tag);
+    // data-cf-beacon 의 속성값(JSON 문자열) 안에는 defer·async 라는 단어가 나오지 않지만, 속성
+    // 이름만으로 판정하려면 값을 먼저 떼어내야 혼동이 없다.
+    const tagWithoutBeaconAttr = tag.replace(/data-cf-beacon='[^']*'/, '');
+    const isAsync = /\basync\b/.test(tagWithoutBeaconAttr);
+    const isDefer = /\bdefer\b/.test(tagWithoutBeaconAttr);
     if (!isAsync && !isDefer)
       note('index.html 의 Cloudflare Web Analytics 비콘 태그가 async 도 defer 도 아닙니다.');
     if (!isAsync) {
@@ -242,7 +245,8 @@ if (doc !== '') {
   }
   // theme-head.test.ts 가 "첫 스크립트는 동기 테마 스크립트"를 지킨다 — 여기서는 비콘이
   // 그 자리를 뺏지 않았는지만 겹쳐 확인한다.
-  const head = doc.slice(doc.indexOf('<head>'), doc.indexOf('</head>'));
+  const headStart = doc.search(/<head[\s>]/);
+  const head = doc.slice(headStart === -1 ? 0 : headStart, doc.indexOf('</head>'));
   const firstHeadScript = /<script[^>]*>/.exec(head)?.[0] ?? '';
   if (firstHeadScript.includes('cloudflareinsights'))
     note(

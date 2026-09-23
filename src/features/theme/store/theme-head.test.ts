@@ -194,7 +194,6 @@ describe('index.html 배선(R13·pwa R9)', () => {
   });
 
   it('Cloudflare Web Analytics 비콘은 <head> 의 첫 스크립트가 아니다 — 동기 테마 스크립트가 먼저다(ADR-0021)', () => {
-    expect(head).not.toMatch(/^<script[^>]*cloudflareinsights/);
     const firstHeadScript = /<script[^>]*>/.exec(head)?.[0] ?? '';
     expect(firstHeadScript).not.toContain('cloudflareinsights');
   });
@@ -208,7 +207,7 @@ describe('index.html 배선(R13·pwa R9)', () => {
     expect(beaconMatches).toHaveLength(1);
     const tag = beaconMatches[0]?.[0] ?? '';
     expect(tag).toContain('defer');
-    expect(tag).toContain('data-cf-beacon=\'{"token": "d5be062eb83c46b9b9f5eb621f7a1342"}\'');
+    expect(tag).toMatch(/"token":\s*"d5be062eb83c46b9b9f5eb621f7a1342"/);
 
     const entryAt = html.search(/<script[^>]+type="module"[^>]+src="[^"]+"/);
     const beaconAt = html.indexOf(tag);

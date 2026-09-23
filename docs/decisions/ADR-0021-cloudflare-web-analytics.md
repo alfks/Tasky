@@ -6,7 +6,7 @@
 - 날짜: 2026-09-23
 - 관련: `index.html`(비콘), `.env.example` §8, `public/privacy.html` 2절, README "데이터와 프라이버시", 가드
   `src/features/theme/store/theme-head.test.ts`·`scripts/check-dist.mjs`, e2e 차단 `tests/e2e/fixtures/stub-login.ts`,
-  ADR-0013 · ADR-0015(로그인 필수 — 로그인 화면도 방문에 포함)
+  ADR-0013 · ADR-0015(로그인 필수)
 
 ## 맥락
 
@@ -40,10 +40,10 @@
 
 - 좋은 점: 개인 식별 없이 방문 수·리퍼러·성능을 본다. 앱 코드·스키마·번들 변경 0.
 - 감수하는 점:
-  - 번들 예산 밖의 **외부 런타임 스크립트** 하나(첫 로드 요청 1개 추가, 실패해도 앱은 영향 없음, SRI 불가).
-  - e2e 는 `stub-login.ts` 의 route abort 로 비콘을 막는다. **남은 오염은 `pnpm dev`·`pnpm start` 로컬 방문뿐**
-    → **후속: 프로덕션 빌드에서만 주입**(Vite `%VITE_*%` 치환이나 `transformIndexHtml` — 싸고 작은 변경).
-  - 오프라인 PWA 세션은 비콘이 못 나가 **과소 집계**된다.
+  - 번들 예산 밖의 **외부 런타임 스크립트** 하나(첫 로드 요청 1개 추가, 실패해도 앱은 영향 없음, SRI 불가). 오프라인
+    PWA 세션은 비콘이 못 나가 **과소 집계**된다.
+  - e2e 는 `stub-login.ts` 의 route abort 로 비콘을 막는다. **남은 오염은 `pnpm dev`·`pnpm start` 로컬 방문뿐** →
+    **후속: 프로덕션 빌드에서만 주입**(Vite `%VITE_*%` 치환이나 `transformIndexHtml`).
 
 ## 지켜야 할 규칙 (검증 가능한 문장 — 리뷰 판정 근거)
 
@@ -51,10 +51,10 @@
 2. 비콘이 보내는 항목이 바뀌면 `public/privacy.html` 2절과 시행일을 같은 PR 에서 고친다.
 3. **CSP 를 도입하면** `script-src` 에 `https://static.cloudflareinsights.com`, `connect-src` 에
    `https://cloudflareinsights.com` 을 허용한다 — 빠지면 비콘이 조용히 죽는다.
-4. 토큰을 `.env`·시크릿으로 옮기지 않는다(공개 값). 바꾸면 `.env.example` §8 의 참고 항목도 맞춘다.
+4. 토큰을 `.env`·시크릿으로 옮기지 않는다(공개 값). 바꾸면 `index.html`(비콘 태그)·`scripts/check-dist.mjs`
+   (빌드 가드)·`src/features/theme/store/theme-head.test.ts`(소스 가드)·`.env.example` §8(참고 항목) 네 곳을 한 PR 에서 같이 고친다.
 
 ## 재검토 트리거
 
 - 커스텀 도메인을 붙일 때: 존 자동 주입·same-origin `/cdn-cgi/rum` 전환 검토(SRI 불가한 무버전 외부 스크립트 제거 기회).
-- 사용자별·기기별 지표(리텐션 등)가 필요해질 때 — 그때는 이 비콘으로는 안 되고 방침을 먼저 바꿔야 한다.
-- CSP 도입 시(규칙 3).
+- 사용자별·기기별 지표(리텐션 등)가 필요해질 때 — 그때는 이 비콘으로는 안 되고 방침을 먼저 바꿔야 한다. CSP 도입 시(규칙 3)도 마찬가지로 재검토한다.
