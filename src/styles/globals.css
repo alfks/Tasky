@@ -37,3 +37,15 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* iOS Safari 는 포커스된 입력 요소의 font-size 가 16px 미만이면 그 요소로 뷰포트를 강제로
+   확대한다("할 일 추가" 입력칸 포커스 시 화면이 확대되던 원인). 모바일 타이포 스케일은
+   --text-base 가 13px(tokens.css "모바일 전역 글자 축소")이라 이 조건에 걸린다. 디자인
+   스케일은 그대로 두고 입력 요소의 렌더 font-size만 16px 이상으로 고정해 확대를 막는다. */
+@media (max-width: 767.98px) {
+  input,
+  select,
+  textarea {
+    font-size: max(16px, var(--text-base)) !important;
+  }
+}
