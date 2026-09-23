@@ -5,7 +5,7 @@
 // 달라진다. 완료 2건의 `doneAt` 도 `order` 와 **반대로** 두어 두 정렬 키를 섞으면 드러난다.
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { Category } from '@/domain/category/category';
 import type { Persistable } from '@/domain/meta';
@@ -259,7 +259,8 @@ describe('삭제된 카테고리의 이름·색 복원 (category R22)', () => {
     expect(screen.queryByRole('region', { name: '삭제된 카테고리' })).toBeNull();
     const group = screen.getByRole('region', { name: '요리 (삭제됨)' });
     expect(within(group).getByText('김치찌개')).toBeInTheDocument();
-    const dot = group.querySelector('span[aria-hidden="true"]');
+    // 색 점만 인라인 `style` 을 갖는다 — 접기 토글(R22)의 아이콘도 `aria-hidden` 이라 속성으로 더 좁힌다.
+    const dot = group.querySelector('span[aria-hidden="true"][style]');
     expect(dot).toHaveStyle({ backgroundColor: '#ffd27c' });
   });
 
@@ -368,5 +369,67 @@ describe('입력 행 검증 문구 (§2-C)', () => {
     });
     expect(문구('공부')).toHaveTextContent('');
     expect(input).toHaveAttribute('aria-invalid', 'false');
+  });
+});
+
+describe('그룹 접기/펼치기 (R22)', () => {
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  /** 헤더의 접기/펼치기 토글. 접힌 채면 이름이 "펼치기", 펼친 채면 "접기" 다. */
+  function 토글(그룹이름: string, 동작: '접기' | '펼치기' = '접기'): HTMLElement {
+    return within(screen.getByRole('region', { name: 그룹이름 })).getByRole('button', {
+      name: `${그룹이름} ${동작}`,
+    });
+  }
+
+  it('기본은 펼쳐진 채라 항목이 보인다', async () => {
+    화면();
+    await 목록이보일때까지();
+
+    expect(토글('공부')).toHaveAttribute('aria-expanded', 'true');
+    expect(행들('공부')).toEqual(['수학', '국어', '영어']);
+  });
+
+  it('접으면 항목이 사라지고 완료/전체 카운트는 남는다', async () => {
+    const user = userEvent.setup();
+    화면();
+    await 목록이보일때까지();
+
+    await user.click(토글('공부'));
+
+    const group = screen.getByRole('region', { name: '공부' });
+    expect(within(group).queryByRole('checkbox')).toBeNull();
+    expect(group).toHaveTextContent('2/3');
+    expect(within(group).getByRole('button', { name: '공부 펼치기' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('다시 누르면 펼쳐진다 — 다른 그룹은 영향받지 않는다', async () => {
+    const user = userEvent.setup();
+    화면();
+    await 목록이보일때까지();
+
+    await user.click(토글('공부'));
+    await user.click(토글('공부', '펼치기'));
+
+    expect(행들('공부')).toEqual(['수학', '국어', '영어']);
+    expect(행들('운동')).toEqual(['달리기']);
+  });
+
+  it('접은 상태가 새로고침(재마운트) 뒤에도 유지된다', async () => {
+    const user = userEvent.setup();
+    const { unmount } = 화면();
+    await 목록이보일때까지();
+
+    await user.click(토글('공부'));
+    unmount();
+
+    화면();
+    await screen.findByRole('checkbox', { name: '달리기' });
+    expect(within(screen.getByRole('region', { name: '공부' })).queryByRole('checkbox')).toBeNull();
   });
 });

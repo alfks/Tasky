@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
 
 import type { Category } from '@/domain/category/category';
@@ -20,6 +20,8 @@ import { useReducedMotion } from '@/features/todo/components/useReducedMotion';
 import { useTodoActions } from '@/features/todo/hooks/useTodoActions';
 import { TODO_MESSAGES as M } from '@/features/todo/messages';
 import type { TodoGroup } from '@/features/todo/store/todo-selectors';
+
+import { IconButton } from '@/components/ui/IconButton';
 
 import { cn } from '@/lib/cn';
 
@@ -44,6 +46,9 @@ type TodoGroupSectionProps = Omit<TodoItemHandlers, 'onToggled'> & {
   draggingFrom: CategoryId | null;
   /** 다른 카테고리의 투두를 이 그룹에 떨어뜨렸다 (R20). 옮기기와 되돌리기 토스트는 호출부가 한다. */
   onDropToCategory: (todoId: string, categoryId: CategoryId) => void;
+  /** 이 그룹이 접혀 있는가 (R22). 기본은 펼침 — 상태는 `TodoList` 가 카테고리별로 쥐고 있다. */
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 };
 
 /** 렌더 순서(id)를 실제 투두로. `sequence` 는 그룹 전체를 담고 있어 한 번만 훑으면 된다. */
@@ -73,6 +78,8 @@ export function TodoGroupSection({
   onDragChange,
   draggingFrom,
   onDropToCategory,
+  collapsed,
+  onToggleCollapse,
   onEditChange,
   onRequestDelete,
   onAnnounce,
@@ -83,6 +90,7 @@ export function TodoGroupSection({
   const [dropping, setDropping] = useState(false);
   const pendingAnnounce = useRef<string | null>(null);
   const reduced = useReducedMotion();
+  const listId = useId();
 
   const current: BlockOrder = {
     incomplete: group.incomplete.map((todo) => todo.id),
@@ -208,6 +216,15 @@ export function TodoGroupSection({
       )}
     >
       <div className="flex items-center gap-[var(--space-2)] px-[var(--space-2)]">
+        <IconButton
+          aria-expanded={!collapsed}
+          aria-controls={listId}
+          onClick={onToggleCollapse}
+          label={collapsed ? M.expandGroup(name) : M.collapseGroup(name)}
+          className="text-muted"
+        >
+          {collapsed ? '▸' : '▾'}
+        </IconButton>
         <span
           aria-hidden="true"
           style={{ backgroundColor: category?.color ?? 'var(--color-faint)' }}
@@ -219,55 +236,63 @@ export function TodoGroupSection({
           {group.counts.done}/{group.counts.total}
         </span>
       </div>
-      {readOnly ? <p className="px-[var(--space-2)] text-xs text-muted">{M.readOnlyHint}</p> : null}
 
-      <ul
-        ref={listRef}
-        {...{ [LIST_FOCUS_ATTR]: name }}
-        tabIndex={-1}
-        className="relative flex list-none flex-col focus-visible:outline-none"
-      >
-        {incomplete.map((todo) => (
-          <TodoItem
-            key={todo.id}
-            todo={todo}
-            editingField={editing?.id === todo.id ? editing.field : null}
-            {...itemProps}
-          />
-        ))}
+      {collapsed ? null : (
+        <>
+          {readOnly ? (
+            <p className="px-[var(--space-2)] text-xs text-muted">{M.readOnlyHint}</p>
+          ) : null}
 
-        {readOnly ? null : (
-          <li className="py-[var(--space-1)]">
-            <TodoAddRow
-              categoryId={group.categoryId}
-              categoryName={name}
-              open={addOpen}
-              onOpenChange={onAddOpenChange}
-            />
-          </li>
-        )}
+          <ul
+            ref={listRef}
+            id={listId}
+            {...{ [LIST_FOCUS_ATTR]: name }}
+            tabIndex={-1}
+            className="relative flex list-none flex-col focus-visible:outline-none"
+          >
+            {incomplete.map((todo) => (
+              <TodoItem
+                key={todo.id}
+                todo={todo}
+                editingField={editing?.id === todo.id ? editing.field : null}
+                {...itemProps}
+              />
+            ))}
 
-        {completed.length === 0 ? null : (
-          <li className="flex items-center gap-[var(--space-2)] py-[var(--space-2)]">
-            <span aria-hidden="true" className="h-px flex-1 bg-border" />
-            <h3 className="shrink-0 text-xs text-muted">{M.doneDivider(completed.length)}</h3>
-            <span aria-hidden="true" className="h-px flex-1 bg-border" />
-          </li>
-        )}
+            {readOnly ? null : (
+              <li className="py-[var(--space-1)]">
+                <TodoAddRow
+                  categoryId={group.categoryId}
+                  categoryName={name}
+                  open={addOpen}
+                  onOpenChange={onAddOpenChange}
+                />
+              </li>
+            )}
 
-        {completed.map((todo) => (
-          <TodoItem
-            key={todo.id}
-            todo={todo}
-            editingField={editing?.id === todo.id ? editing.field : null}
-            {...itemProps}
-          />
-        ))}
-      </ul>
+            {completed.length === 0 ? null : (
+              <li className="flex items-center gap-[var(--space-2)] py-[var(--space-2)]">
+                <span aria-hidden="true" className="h-px flex-1 bg-border" />
+                <h3 className="shrink-0 text-xs text-muted">{M.doneDivider(completed.length)}</h3>
+                <span aria-hidden="true" className="h-px flex-1 bg-border" />
+              </li>
+            )}
 
-      {group.sequence.length === 0 ? (
-        <p className="px-[var(--space-2)] text-sm text-muted">{M.empty}</p>
-      ) : null}
+            {completed.map((todo) => (
+              <TodoItem
+                key={todo.id}
+                todo={todo}
+                editingField={editing?.id === todo.id ? editing.field : null}
+                {...itemProps}
+              />
+            ))}
+          </ul>
+
+          {group.sequence.length === 0 ? (
+            <p className="px-[var(--space-2)] text-sm text-muted">{M.empty}</p>
+          ) : null}
+        </>
+      )}
     </section>
   );
 }

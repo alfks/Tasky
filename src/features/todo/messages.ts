@@ -37,6 +37,9 @@ export const TODO_MESSAGES = {
   addLabel: (categoryName: string): string => `${categoryName}에 할 일 추가`,
   /** 그룹에 항목이 하나도 없을 때 (§2-C). */
   empty: '아직 할 일이 없어요',
+  /** 그룹 접기/펼치기 토글의 접근 이름 (R22) — 다음에 누르면 할 동작을 말한다. */
+  collapseGroup: (name: string): string => `${name} 접기`,
+  expandGroup: (name: string): string => `${name} 펼치기`,
   /** 완료 블록 구분선 (§2-A·§5). */
   doneDivider: (count: number): string => `완료 ${count}`,
   /** 이동이 끝난 뒤 1회 낭독 (§5). */
