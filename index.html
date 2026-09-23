@@ -45,9 +45,18 @@
     />
     <!-- prettier-ignore -->
     <script>(function(){try{var e=document.documentElement;var s=null;try{var r=window.localStorage.getItem("tasky.theme.v1");if(r)s=JSON.parse(r)}catch(_){}var m=s&&(s.theme==="light"||s.theme==="dark"||s.theme==="system")?s.theme:"system";var q=window.matchMedia;var d=m==="dark"||(m==="system"&&typeof q==="function"&&q("(prefers-color-scheme: dark)").matches);var t=d?"dark":"light";e.setAttribute("data-theme",t);e.style.setProperty("color-scheme",t);var a=s&&s.accent?s.accent[t]:null;if(typeof a==="string"&&/^#[0-9A-Fa-f]{6}$/.test(a))e.style.setProperty("--color-accent",a);var c=document.querySelector('meta[name="theme-color"]');if(c)c.setAttribute("content",d?"#141418":"#FAFAFC");}catch(_){}})();</script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/app/main.tsx"></script>
     <!--
-      Cloudflare Web Analytics 비콘. 쿠키 없이 익명 페이지뷰만 센다. 로그인 게이트(AuthGate)보다
-      앞선 이 파일에 있으므로 로그인 여부와 무관하게 모든 방문에서 실행된다. data-cf-beacon 의
+      Cloudflare Web Analytics 비콘. 쿠키 없이 익명 페이지뷰만 센다. 로그인 게이트(AuthGate)와
+      무관하게 모든 방문에서 실행되도록 <body> 에 두되, 앱 진입 모듈 스크립트 **뒤**에 둔다 —
+      Vite 빌드는 위 모듈 스크립트를 <head> 로 끌어올리므로(모든 modulepreload 링크와 함께),
+      defer 스크립트와 모듈 스크립트는 같은 순서 실행 큐를 공유해 비콘이 앞서면 느리거나 막힌
+      static.cloudflareinsights.com 요청이 앱 부팅(AuthGate/LoginScreen)을 지연시킨다. 소스에서
+      이 태그를 앱 스크립트보다 뒤에 두면 빌드 후에도 head 의 모듈 스크립트보다 뒤에 남아
+      순서 문제가 사라진다(`pnpm build` 후 dist/client/index.html 로 확인). data-cf-beacon 의
       token 은 페이지 소스에 그대로 노출되는 공개 값이라 비밀이 아니다(.env.example 참고).
     -->
     <script
@@ -55,9 +64,5 @@
       src="https://static.cloudflareinsights.com/beacon.min.js"
       data-cf-beacon='{"token": "d5be062eb83c46b9b9f5eb621f7a1342"}'
     ></script>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/app/main.tsx"></script>
   </body>
 </html>
