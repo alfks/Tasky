@@ -1,8 +1,9 @@
 import type { SocialErrorCode } from '@/domain/social/social';
 
 import { clearSessionCookie, setSessionCookie } from '../auth/cookies';
-import type { SessionOk } from '../auth/session';
+
 import type { SocialOutcome } from './actor';
+import type { SessionOk } from '../auth/session';
 
 const statuses: Record<SocialErrorCode, number> = {
   unauthorized: 401,

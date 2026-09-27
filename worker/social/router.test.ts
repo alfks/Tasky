@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { createSession, signIn } from '../auth/session';
 import { handleRequest } from '../router';
-import { createD1Fixture } from '../test/d1-harness';
 import { SOCIAL_ROUTES } from './policy';
+import { createD1Fixture } from '../test/d1-harness';
 
 import type { Env } from '../env';
 

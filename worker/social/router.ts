@@ -1,6 +1,5 @@
-import { requireSession, type SessionOk } from '../auth/session';
 import type { SocialErrorCode } from '@/domain/social/social';
-import type { Env } from '../env';
+
 import {
   actorFailure,
   createSocialActor,
@@ -15,6 +14,9 @@ import { effectiveSocialMode, routeAllowed, socialRoute, type Route } from './po
 import { handleProfile } from './profile-handler';
 import { readSocialList } from './reads';
 import { handleRelation } from './relation-handler';
+import { requireSession, type SessionOk } from '../auth/session';
+
+import type { Env } from '../env';
 
 async function spend(actor: SocialActor, env: Env, route: Route): Promise<null | SocialErrorCode> {
   const subject = await limitSubject(actor, env.SESSION_SECRET, route.subject);

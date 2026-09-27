@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { createSession } from '../auth/session';
-import { createD1Fixture } from '../test/d1-harness';
 import { createSocialActor } from './actor';
 import { transitionPair } from './pair-transition';
+import { createSession } from '../auth/session';
+import { createD1Fixture } from '../test/d1-harness';
 
 import type { Env } from '../env';
 

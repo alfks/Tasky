@@ -14,8 +14,8 @@ import {
 import { requireSession } from './auth/session';
 import { handleStubLogin } from './auth/stub';
 import { forUser } from './db/user-db';
-import { handleSync } from './sync/handler';
 import { handleSocialRequest } from './social/router';
+import { handleSync } from './sync/handler';
 
 import type { Env } from './env';
 

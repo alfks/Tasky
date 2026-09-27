@@ -1,12 +1,13 @@
-import { acceptPair } from './pair-command';
 import { blockPeer } from './block-command';
 import { consumeInvite } from './invite-command';
-import { removeFriend } from './remove-friend';
+import { acceptPair } from './pair-command';
 import { transitionPair } from './pair-transition';
+import { removeFriend } from './remove-friend';
 import { unblockPeer } from './unblock-command';
-import type { Handled } from './http';
+
 import type { SocialActor } from './actor';
 import type { CommandReply } from './commands';
+import type { Handled } from './http';
 
 function pairReply(
   result: CommandReply,
