@@ -1,14 +1,9 @@
-import type { SocialActor } from './actor';
+import type { SocialErrorCode } from '@/domain/social/social';
 
+import { actorFailure, currentProfile, type SocialActor } from './actor';
 import { sql } from '../db/sql';
 
-export type LimitBucket =
-  | 'read'
-  | 'preview'
-  | 'write'
-  | 'revoke'
-  | 'invite-create'
-  | 'post-create';
+export type LimitBucket = 'read' | 'preview' | 'write' | 'revoke' | 'invite-create' | 'post-create';
 
 const MINUTE = 60_000;
 const DAY = 86_400_000;
@@ -30,7 +25,9 @@ export async function preProfileSubject(secret: string, sub: string): Promise<st
     false,
     ['sign'],
   );
-  const signature = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(sub)));
+  const signature = new Uint8Array(
+    await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(sub)),
+  );
   return `pre:${Array.from(signature, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 }
 
@@ -71,30 +68,47 @@ export async function reserveLimit(
   return result.results.length === 1;
 }
 
+/** Every authenticated command attempt spends one frequency slot, including replay and 4xx. */
+export async function admitCommand(
+  actor: SocialActor,
+  bucket: 'write' | 'revoke',
+): Promise<SocialErrorCode | null> {
+  if (actor.profileId === null) return actorFailure(actor);
+  if (await reserveLimit(actor, `p:${actor.profileId}`, bucket)) return null;
+  if ((await currentProfile(actor)) === null) return actorFailure(actor);
+  return 'rate-limited';
+}
+
 /** At most 500 rows across all tables, including sparse/empty tables. */
 export async function collectSocialGarbage(db: D1Database, nowMs: number): Promise<number> {
   const sevenDays = 7 * DAY;
   const fortyEightHours = 2 * DAY;
   const invites = await db
-    .prepare(sql`DELETE FROM social_invites WHERE hash IN
-      (SELECT hash FROM social_invites WHERE expires_at <= ? LIMIT 500) RETURNING hash`)
+    .prepare(
+      sql`DELETE FROM social_invites WHERE hash IN
+      (SELECT hash FROM social_invites WHERE expires_at <= ? LIMIT 500) RETURNING hash`,
+    )
     .bind(nowMs - sevenDays)
     .run<{ hash: string }>();
   let removed = invites.results.length;
   if (removed < 500) {
     const commands = await db
-      .prepare(sql`DELETE FROM social_commands WHERE rowid IN
-        (SELECT rowid FROM social_commands WHERE created_at <= ? LIMIT ?) RETURNING key`)
+      .prepare(
+        sql`DELETE FROM social_commands WHERE rowid IN
+        (SELECT rowid FROM social_commands WHERE created_at <= ? LIMIT ?) RETURNING key`,
+      )
       .bind(nowMs - fortyEightHours, 500 - removed)
       .run<{ key: string }>();
     removed += commands.results.length;
   }
   if (removed < 500) {
     const limits = await db
-      .prepare(sql`DELETE FROM social_limits WHERE rowid IN
+      .prepare(
+        sql`DELETE FROM social_limits WHERE rowid IN
         (SELECT rowid FROM social_limits WHERE
           window_start + CASE WHEN bucket IN ('invite-create','post-create') THEN 86400000 ELSE 60000 END <= ?
-          LIMIT ?) RETURNING subject`)
+          LIMIT ?) RETURNING subject`,
+      )
       .bind(nowMs - fortyEightHours, 500 - removed)
       .run<{ subject: string }>();
     removed += limits.results.length;

@@ -1,10 +1,9 @@
 import { parsePeerVersionInput } from '@/domain/social/command-input';
 import { isFreshNewKey, keyTimestamp } from '@/domain/social/idempotency';
 
-import { currentProfile, type SocialActor } from './actor';
+import { actorFailure, currentProfile, type SocialActor } from './actor';
 import { fromReceipt, receiptFor, requestHash, type CommandReply } from './commands';
-import { reserveLimit } from './limits';
-
+import { admitCommand } from './limits';
 import { sql } from '../db/sql';
 
 const REQUEST_MS = 7 * 24 * 60 * 60 * 1000;
@@ -15,10 +14,12 @@ export async function acceptPair(
   key: unknown,
   dto: unknown,
 ): Promise<CommandReply> {
+  const profile = await currentProfile(actor);
+  if (profile === null) return { ok: false, code: await actorFailure(actor) };
+  const admission = await admitCommand(actor, 'write');
+  if (admission !== null) return { ok: false, code: admission };
   const input = parsePeerVersionInput(dto);
   if (!input.ok) return { ok: false, code: 'validation' };
-  const profile = await currentProfile(actor);
-  if (profile === null) return { ok: false, code: 'unavailable' };
   if (input.value.peerId === profile.id) return { ok: false, code: 'validation' };
   const timestamp = keyTimestamp(key);
   if (timestamp === null || typeof key !== 'string') return { ok: false, code: 'validation' };
@@ -26,15 +27,14 @@ export async function acceptPair(
   const old = await receiptFor(actor, key);
   if (old !== null) return fromReceipt(old, hash, 'new-request');
   if (!isFreshNewKey(timestamp, actor.nowMs)) return { ok: false, code: 'request-expired' };
-  if (!(await reserveLimit(actor, `p:${profile.id}`, 'write'))) {
-    return { ok: false, code: 'rate-limited' };
-  }
   const nonce = crypto.randomUUID();
   const { peerId, expectedVersion } = input.value;
   const lo = profile.id < peerId ? profile.id : peerId;
   const hi = profile.id < peerId ? peerId : profile.id;
   const results = await actor.db.batch([
-    actor.db.prepare(sql`INSERT INTO social_commands(actor,key,request_hash,execution_nonce,
+    actor.db
+      .prepare(
+        sql`INSERT INTO social_commands(actor,key,request_hash,execution_nonce,
         result_code,resource_id,result_version,created_at)
       SELECT me.id,?3,?4,?5,
         CASE
@@ -46,7 +46,11 @@ export async function acceptPair(
             THEN 'unavailable'
           WHEN EXISTS (SELECT 1 FROM social_pairs pair WHERE pair.lo = MIN(?1,?2)
             AND pair.hi = MAX(?1,?2) AND pair.state = 'pending'
+            AND pair.version = ?6
             AND pair.requested_at <= ?7 - 604800000) THEN 'request-expired'
+          WHEN EXISTS (SELECT 1 FROM social_pairs pair WHERE pair.lo = MIN(?1,?2)
+            AND pair.hi = MAX(?1,?2) AND pair.state = 'pending'
+            AND pair.requester = ?1) THEN 'unavailable'
           WHEN NOT EXISTS (SELECT 1 FROM social_pairs pair WHERE pair.lo = MIN(?1,?2)
             AND pair.hi = MAX(?1,?2) AND pair.state = 'pending'
             AND pair.requester = ?2 AND pair.version = ?6
@@ -62,10 +66,58 @@ export async function acceptPair(
       JOIN sessions s ON s.sub = u.sub
       WHERE me.id = ?1 AND me.sub = ?9 AND s.sid = ?10 AND s.expires_at > ?8
         AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub)
-      ON CONFLICT(actor,key) DO NOTHING`)
-      .bind(profile.id, peerId, key, hash, nonce, expectedVersion, actor.nowMs,
-        actor.nowIso, actor.sub, actor.sid),
-    actor.db.prepare(sql`UPDATE social_pairs SET state = 'accepted',requester = NULL,
+      ON CONFLICT(actor,key) DO NOTHING`,
+      )
+      .bind(
+        profile.id,
+        peerId,
+        key,
+        hash,
+        nonce,
+        expectedVersion,
+        actor.nowMs,
+        actor.nowIso,
+        actor.sub,
+        actor.sid,
+      ),
+    actor.db
+      .prepare(
+        sql`UPDATE social_pairs SET state = 'none',requester = NULL,
+        requested_at = NULL,version = version + 1
+      WHERE lo = ? AND hi = ? AND state = 'pending' AND requested_at <= ?
+        AND version = ?
+        AND version = (SELECT c.result_version - 1 FROM social_commands c
+          WHERE c.actor = ? AND c.key = ? AND c.execution_nonce = ?
+            AND c.result_code = 'request-expired' AND c.resource_id = ?)
+        AND EXISTS (SELECT 1 FROM social_commands c WHERE c.actor = ? AND c.key = ?
+          AND c.execution_nonce = ? AND c.result_code = 'request-expired'
+          AND c.resource_id = ?)
+        AND EXISTS (SELECT 1 FROM social_profiles me JOIN users u ON u.sub = me.sub
+          JOIN sessions s ON s.sub = u.sub
+          WHERE me.id = ? AND me.sub = ? AND s.sid = ? AND s.expires_at > ?
+            AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub))`,
+      )
+      .bind(
+        lo,
+        hi,
+        actor.nowMs - REQUEST_MS,
+        expectedVersion,
+        profile.id,
+        key,
+        nonce,
+        peerId,
+        profile.id,
+        key,
+        nonce,
+        peerId,
+        profile.id,
+        actor.sub,
+        actor.sid,
+        actor.nowIso,
+      ),
+    actor.db
+      .prepare(
+        sql`UPDATE social_pairs SET state = 'accepted',requester = NULL,
         requested_at = NULL,version = version + 1
       WHERE lo = ?1 AND hi = ?2 AND state = 'pending' AND requester = ?3
         AND version = ?4 AND requested_at > ?5 - 604800000
@@ -74,20 +126,55 @@ export async function acceptPair(
         AND EXISTS (SELECT 1 FROM sessions s JOIN users u ON u.sub = s.sub
           JOIN social_profiles me ON me.sub = u.sub
           WHERE s.sid = ?9 AND s.sub = ?10 AND s.expires_at > ?11 AND me.id = ?6
-            AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub))`)
-      .bind(lo, hi, peerId, expectedVersion, actor.nowMs, profile.id, key, nonce,
-        actor.sid, actor.sub, actor.nowIso),
-    actor.db.prepare(sql`SELECT c.actor,c.key,c.request_hash,c.execution_nonce,c.result_code,
+            AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub))`,
+      )
+      .bind(
+        lo,
+        hi,
+        peerId,
+        expectedVersion,
+        actor.nowMs,
+        profile.id,
+        key,
+        nonce,
+        actor.sid,
+        actor.sub,
+        actor.nowIso,
+      ),
+    actor.db
+      .prepare(
+        sql`UPDATE social_commands SET result_version = CASE
+        WHEN result_code = 'ok' AND EXISTS (SELECT 1 FROM social_pairs pair
+          WHERE pair.lo = ? AND pair.hi = ? AND pair.state = 'accepted'
+            AND pair.version = social_commands.result_version) THEN result_version
+        WHEN result_code = 'request-expired' AND EXISTS (SELECT 1 FROM social_pairs pair
+          WHERE pair.lo = ? AND pair.hi = ? AND pair.state = 'none'
+            AND pair.version = social_commands.result_version) THEN result_version
+        ELSE -1 END
+      WHERE actor = ? AND key = ? AND execution_nonce = ?
+        AND result_code IN ('ok','request-expired')
+        AND EXISTS (SELECT 1 FROM social_profiles me JOIN users u ON u.sub = me.sub
+          JOIN sessions s ON s.sub = u.sub
+          WHERE me.id = social_commands.actor AND me.sub = ?
+            AND s.sid = ? AND s.expires_at > ?
+            AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub))`,
+      )
+      .bind(lo, hi, lo, hi, profile.id, key, nonce, actor.sub, actor.sid, actor.nowIso),
+    actor.db
+      .prepare(
+        sql`SELECT c.actor,c.key,c.request_hash,c.execution_nonce,c.result_code,
         c.resource_id,c.result_version FROM social_commands c
       JOIN social_profiles me ON me.id = c.actor JOIN users u ON u.sub = me.sub
       JOIN sessions s ON s.sub = u.sub
       WHERE c.actor = ? AND c.key = ? AND me.sub = ? AND s.sid = ? AND s.expires_at > ?
-        AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub)`)
+        AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub)`,
+      )
       .bind(profile.id, key, actor.sub, actor.sid, actor.nowIso),
   ]);
-  const receipt = results[2].results[0] as Parameters<typeof fromReceipt>[0] | undefined;
+  const receipt = results[4].results[0] as Parameters<typeof fromReceipt>[0] | undefined;
+  if (receipt === undefined) return { ok: false, code: await actorFailure(actor) };
   const reply = fromReceipt(receipt ?? null, hash, nonce);
-  return reply.ok && reply.value.didApply && results[1].meta.changes !== 1
+  return reply.ok && reply.value.didApply && results[2].meta.changes !== 1
     ? { ok: false, code: 'temporary' }
     : reply;
 }
@@ -97,90 +184,17 @@ export async function expirePendingPair(actor: SocialActor, peerId: string): Pro
   if (actor.profileId === null) return false;
   const lo = actor.profileId < peerId ? actor.profileId : peerId;
   const hi = actor.profileId < peerId ? peerId : actor.profileId;
-  const result = await actor.db.prepare(sql`UPDATE social_pairs
+  const result = await actor.db
+    .prepare(
+      sql`UPDATE social_pairs
       SET state = 'none',requester = NULL,requested_at = NULL,version = version + 1
       WHERE lo = ? AND hi = ? AND state = 'pending' AND requested_at <= ?
         AND EXISTS (SELECT 1 FROM social_profiles p JOIN users u ON u.sub = p.sub
           JOIN sessions s ON s.sub = u.sub WHERE p.id = ? AND p.sub = ?
             AND s.sid = ? AND s.expires_at > ?
-            AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub))`)
+            AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub))`,
+    )
     .bind(lo, hi, actor.nowMs - REQUEST_MS, actor.profileId, actor.sub, actor.sid, actor.nowIso)
     .run();
   return result.meta.changes === 1;
-}
-
-/** Revocation has its own budget and removes reactions in both directions in the same batch. */
-export async function removeFriend(
-  actor: SocialActor,
-  key: unknown,
-  dto: unknown,
-): Promise<CommandReply> {
-  const input = parsePeerVersionInput(dto);
-  if (!input.ok) return { ok: false, code: 'validation' };
-  const profile = await currentProfile(actor);
-  if (profile === null) return { ok: false, code: 'unavailable' };
-  if (input.value.peerId === profile.id) return { ok: false, code: 'validation' };
-  const timestamp = keyTimestamp(key);
-  if (timestamp === null || typeof key !== 'string') return { ok: false, code: 'validation' };
-  const hash = await requestHash('POST', '/api/social/friends/remove', input.value);
-  const old = await receiptFor(actor, key);
-  if (old !== null) return fromReceipt(old, hash, 'new-request');
-  if (!isFreshNewKey(timestamp, actor.nowMs)) return { ok: false, code: 'request-expired' };
-  if (!(await reserveLimit(actor, `p:${profile.id}`, 'revoke'))) {
-    return { ok: false, code: 'rate-limited' };
-  }
-  const nonce = crypto.randomUUID();
-  const { peerId, expectedVersion } = input.value;
-  const lo = profile.id < peerId ? profile.id : peerId;
-  const hi = profile.id < peerId ? peerId : profile.id;
-  const results = await actor.db.batch([
-    actor.db.prepare(sql`INSERT INTO social_commands(actor,key,request_hash,execution_nonce,
-        result_code,resource_id,result_version,created_at)
-      SELECT me.id,?,?,?,CASE WHEN EXISTS
-        (SELECT 1 FROM social_pairs pair WHERE pair.lo = ? AND pair.hi = ?
-          AND pair.state = 'accepted' AND pair.version = ?) THEN 'ok' ELSE 'conflict' END,
-        ?,COALESCE((SELECT pair.version + 1 FROM social_pairs pair
-          WHERE pair.lo = ? AND pair.hi = ?),NULL),?
-      FROM social_profiles me JOIN users u ON u.sub = me.sub
-      JOIN sessions s ON s.sub = u.sub
-      WHERE me.id = ? AND me.sub = ? AND s.sid = ? AND s.expires_at > ?
-        AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub)
-      ON CONFLICT(actor,key) DO NOTHING`)
-      .bind(key, hash, nonce, lo, hi, expectedVersion, peerId, lo, hi,
-        actor.nowMs, profile.id, actor.sub, actor.sid, actor.nowIso),
-    actor.db.prepare(sql`UPDATE social_pairs SET state = 'none',requester = NULL,
-        requested_at = NULL,version = version + 1
-      WHERE lo = ? AND hi = ? AND state = 'accepted' AND version = ?
-        AND EXISTS (SELECT 1 FROM social_commands c WHERE c.actor = ? AND c.key = ?
-          AND c.execution_nonce = ? AND c.result_code = 'ok')
-        AND EXISTS (SELECT 1 FROM social_profiles me JOIN users u ON u.sub = me.sub
-          JOIN sessions s ON s.sub = u.sub
-          WHERE me.id = ? AND me.sub = ? AND s.sid = ? AND s.expires_at > ?
-            AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub))`)
-      .bind(lo, hi, expectedVersion, profile.id, key, nonce,
-        profile.id, actor.sub, actor.sid, actor.nowIso),
-    actor.db.prepare(sql`DELETE FROM social_reactions WHERE
-        ((reactor = ? AND post_id IN (SELECT id FROM social_posts WHERE author = ?))
-        OR (reactor = ? AND post_id IN (SELECT id FROM social_posts WHERE author = ?)))
-      AND EXISTS (SELECT 1 FROM social_commands c WHERE c.actor = ? AND c.key = ?
-        AND c.execution_nonce = ? AND c.result_code = 'ok')
-      AND EXISTS (SELECT 1 FROM social_profiles me JOIN users u ON u.sub = me.sub
-        JOIN sessions s ON s.sub = u.sub
-        WHERE me.id = ? AND me.sub = ? AND s.sid = ? AND s.expires_at > ?
-          AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub))`)
-      .bind(profile.id, peerId, peerId, profile.id, profile.id, key, nonce,
-        profile.id, actor.sub, actor.sid, actor.nowIso),
-    actor.db.prepare(sql`SELECT c.actor,c.key,c.request_hash,c.execution_nonce,c.result_code,
-        c.resource_id,c.result_version FROM social_commands c
-      JOIN social_profiles me ON me.id = c.actor JOIN users u ON u.sub = me.sub
-      JOIN sessions s ON s.sub = u.sub
-      WHERE c.actor = ? AND c.key = ? AND me.sub = ? AND s.sid = ? AND s.expires_at > ?
-        AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub)`)
-      .bind(profile.id, key, actor.sub, actor.sid, actor.nowIso),
-  ]);
-  const receipt = results[3].results[0] as Parameters<typeof fromReceipt>[0] | undefined;
-  const reply = fromReceipt(receipt ?? null, hash, nonce);
-  return reply.ok && reply.value.didApply && results[1].meta.changes !== 1
-    ? { ok: false, code: 'temporary' }
-    : reply;
 }

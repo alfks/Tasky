@@ -1,8 +1,9 @@
 import { parseNickname } from '@/domain/social/input';
 import type { ProfileView, SocialErrorCode } from '@/domain/social/social';
 
-import type { SessionOk } from '../auth/session';
 import { sql } from '../db/sql';
+
+import type { SessionOk } from '../auth/session';
 
 export type SocialActor = {
   readonly db: D1Database;
@@ -33,7 +34,14 @@ export async function createSocialActor(
     )
     .bind(session.sub, session.sid, nowIso)
     .first<{ id: string }>();
-  return Object.freeze({ db, sub: session.sub, sid: session.sid, profileId: profile?.id ?? null, nowMs, nowIso });
+  return Object.freeze({
+    db,
+    sub: session.sub,
+    sid: session.sid,
+    profileId: profile?.id ?? null,
+    nowMs,
+    nowIso,
+  });
 }
 
 /** The pre-profile A variant deliberately does not create a profile on sign-in. */
@@ -47,6 +55,21 @@ export async function currentAccount(actor: SocialActor): Promise<boolean> {
     .bind(actor.sid, actor.sub, actor.nowIso)
     .first<{ live: number }>();
   return row?.live === 1;
+}
+
+/** Classify a 0-row A result without interpreting it as success. */
+export async function actorFailure(actor: SocialActor): Promise<SocialErrorCode> {
+  const row = await actor.db
+    .prepare(
+      sql`SELECT CASE
+      WHEN NOT EXISTS (SELECT 1 FROM sessions s WHERE s.sid = ?2 AND s.sub = ?1
+        AND s.expires_at > ?3) THEN 'unauthorized'
+      WHEN EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = ?1) THEN 'account-deleted'
+      ELSE 'unavailable' END AS code`,
+    )
+    .bind(actor.sub, actor.sid, actor.nowIso)
+    .first<{ code: SocialErrorCode }>();
+  return row?.code ?? 'unavailable';
 }
 
 export async function currentProfile(actor: SocialActor): Promise<ProfileView | null> {
@@ -92,7 +115,7 @@ export async function createProfile(
     )
     .bind(actor.sub, actor.sid, actor.nowIso)
     .first<ProfileView>();
-  return row ? { ok: true, value: row } : { ok: false, code: 'unavailable' };
+  return row ? { ok: true, value: row } : { ok: false, code: await actorFailure(actor) };
 }
 
 /** A and both sides of F are rechecked in the same snapshot as the post body. */
@@ -119,4 +142,12 @@ export async function visiblePost(
     .bind(actor.profileId, actor.sub, postId, actor.sid, actor.nowIso)
     .first<{ id: string; author: string; text: string }>();
   return row ?? null;
+}
+
+export async function readVisiblePost(
+  actor: SocialActor,
+  postId: string,
+): Promise<SocialOutcome<{ id: string; author: string; text: string }>> {
+  const row = await visiblePost(actor, postId);
+  return row === null ? { ok: false, code: await actorFailure(actor) } : { ok: true, value: row };
 }
