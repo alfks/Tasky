@@ -44,6 +44,7 @@ async function seedExisting(
 }
 
 describe('SERVER_RULE_VECTORS — 실 D1', () => {
+  // 마이그레이션과 19개 실 D1 벡터를 순차 검증하는 fixture 한도(제품 성능 기준 아님).
   it('벡터 각각이 D1 위에서 같은 결과를 낸다(도메인 판정과 SQL 결과가 일치)', async () => {
     const fx = await createD1Fixture();
     try {
@@ -98,7 +99,7 @@ describe('SERVER_RULE_VECTORS — 실 D1', () => {
     } finally {
       await fx.dispose();
     }
-  });
+  }, 30_000);
 });
 
 describe('seq — 단조 증가 · 배치 내 유일', () => {
