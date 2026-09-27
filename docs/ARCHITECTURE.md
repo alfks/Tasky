@@ -90,6 +90,9 @@ Tasky/
 ├── public/             → public/AGENTS.md              아이콘·manifest.webmanifest·fonts/·_headers
 ├── tests/e2e/          → tests/AGENTS.md              Playwright 스모크(11 스펙 35건)
 ├── tests/feel/         → tests/feel/AGENTS.md         사용감 계측 도구(러너 없음 — docs/FEEL_REPORT.md)
+├── worker/             → worker/AGENTS.md            기존 auth/sync/account/db + social/ D1 투영
+│   ├── db/migrations/  → worker/db/migrations/AGENTS.md  0001 개인·0002 소셜
+│   └── social/         → worker/social/AGENTS.md     actor·receipt/CAS·한도/GC·삭제 primitive
 └── src/                → src/AGENTS.md
     ├── app/            → src/app/AGENTS.md            SPA 진입점(main.tsx)·providers·단일 라우트 화면
     ├── components/     → src/components/AGENTS.md     ui/ 프리미티브(Button, Checkbox, Popover…)
@@ -193,7 +196,7 @@ type FocusSession = Meta & {
 | 확장                | 예약 위치                                                                                                                                                                                                                                                             | MVP에서 지킬 것                                                                                                                                                               |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 클라우드 동기화     | **로컬 스키마(v4: `syncOutbox`·`syncState`)·순수 판정(`src/domain/sync/**`)·루틴 슬롯 id·`fillFloor`는 T-92 에서 이미 착수됨(ADR-0018).** 남은 것: `src/infra/sync/`(어댑터 + 충돌 정책), `repositories/sync-repository.ts`·`sync-transport.ts`(포트·구현, T-92 후속) | `Meta` 유지·`touch` 경유·소프트 삭제(ADR-0005·0007), 레포지토리 외부에서 Dexie 참조 금지, ID 클라이언트 생성. 서버 순번(`seq`)은 `Meta`에 필드로 추가하지 않는다(ADR-0015 §2) |
-| SNS(친구·피드·반응) | 순수 계약 `src/domain/social/`와 포트 `src/repositories/social-repository.ts`는 T-1에서 추가. 후속 `src/features/social/`·`src/infra/social/`·`worker/social/`는 구현 예정                                                                                            | `Todo`·개인 sync/backup을 유지하고 별도 서버 공유 사본·actor 권한 포트로 구현([ADR-0022](decisions/ADR-0022-social-projection-and-authorization.md))                          |
+| SNS(친구·피드·반응) | 순수 계약/포트는 T-1, `worker/social/` D1 primitive는 T-2. HTTP 22경로·화면·저장소 구현은 후속 티켓 | `Todo`·개인 sync/backup을 유지하고 별도 서버 공유 사본·actor 권한 포트로 구현([ADR-0022](decisions/ADR-0022-social-projection-and-authorization.md)) |
 | 루틴/반복 투두      | `src/domain/todo/recurrence.ts`                                                                                                                                                                                                                                       | `Todo.date`는 인스턴스 날짜로 유지(템플릿과 분리)                                                                                                                             |
 | 다중 프로필/계정    | `Settings.id`를 프로필 id로(지금은 `'default'`) + `todos`/`categories`에 프로필 키                                                                                                                                                                                    | 단일 프로필 가정, DB 이름 `tasky` 고정. 인덱스가 전부 `[date+…]` 접두이므로 도입 시 전 인덱스 재작성 — 착수 전 ADR 필수                                                       |
 | 서버 컴포넌트 활용  | `src/app`                                                                                                                                                                                                                                                             | 로컬 우선이므로 데이터는 전부 클라이언트. 서버 컴포넌트는 셸/메타데이터만                                                                                                     |
@@ -215,4 +218,4 @@ type FocusSession = Meta & {
 - [ADR-0010](./decisions/ADR-0010-vinext-build-and-cloudflare-workers.md) 빌드 스택 Vinext + 배포 Cloudflare Workers (**superseded by ADR-0013**)
 - [ADR-0013](./decisions/ADR-0013-plain-vite-react-and-lazy-dexie.md) 순수 Vite + React SPA · Dexie 지연 로드 · 정적 자산 전용 Workers 배포
 
-Phase 3의 서버/클라이언트 경계와 SQL 계약: [social-design.md](social-design.md). 파일별 구현·배선 순서: [phase3-implementation-plan.md](phase3-implementation-plan.md). 현재 social은 순수 계약과 포트까지이며 서버·화면·운영은 후속 티켓이다.
+Phase 3의 서버/클라이언트 경계와 SQL 계약: [social-design.md](social-design.md). 파일별 구현·배선 순서: [phase3-implementation-plan.md](phase3-implementation-plan.md). 현재 social은 순수 계약·포트·D1 primitive까지이며 HTTP 배선·화면·운영은 후속 티켓이다.

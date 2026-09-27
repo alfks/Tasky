@@ -2,7 +2,7 @@
 
 # Phase 3 상세 설계: 친구와 공유 사본
 
-- 설계 기준: main `8e48a1bf`, 2026-09-28. **구현 예정**. 제품 규칙: [social.md](specs/social.md). 결정: [ADR-0022](decisions/ADR-0022-social-projection-and-authorization.md).
+- 설계 기준: main `8e48a1bf`, 2026-09-28. T-1 순수 계약과 T-2 D1 primitive를 구현 중이며 HTTP/화면 배선은 후속이다. 제품 규칙: [social.md](specs/social.md). 결정: [ADR-0022](decisions/ADR-0022-social-projection-and-authorization.md).
 - 첫 출시: 제한된 초대 시범 운영. 현재/미래 친구에게 명시적으로 공유한 문장만 공개한다. 공개 모집의 선행 조건은 [구현 계획](phase3-implementation-plan.md).
 
 ## 1. 현재 코드에서 이어 쓰는 것
@@ -68,7 +68,7 @@ API는 별명·소셜 id만 내보내고 구글 sub/email/avatar·세션 id·원
 
 ## 4. D1 테이블 계약
 
-새 migration `0002_social.sql`(발행 시 다음 빈 번호 확인)을 추가한다. 아래 타입은 SQLite TEXT/INTEGER, 모든 id/time/state는 NOT NULL(명시한 nullable 제외).
+`0002_social.sql`은 개인 `0001_init.sql`을 수정하지 않고 추가한다. 아래 타입은 SQLite TEXT/INTEGER, 모든 id/time/state는 NOT NULL(명시한 nullable 제외).
 새 소셜 시간은 서버 UTC 밀리초 정수, `happened_on`은 유효한 `YYYY-MM-DD` 문자열. FK는 방어 장치이며 account delete는 명시 삭제도 한다. 기존 sessions.expires_at은 ISO TEXT이므로 A는 같은 서버 now를 ISO UTC로 변환해 비교하고, 소셜 ms 값과 직접 비교하지 않는다.
 
 | 테이블           | 컬럼·제약                                                                                                                                                                           | 추가 인덱스                                 |
@@ -83,6 +83,7 @@ API는 별명·소셜 id만 내보내고 구글 sub/email/avatar·세션 id·원
 | social_limits    | subject TEXT; bucket; window_start; count; PRIMARY KEY(subject,bucket,window_start), FK 없음                                                                                        | `(window_start)`                            |
 
 위 소셜 FK는 `ON DELETE CASCADE`를 사용하되 sessions에는 추가하지 않는다. CHECK의 열거값은 SQLite 문자열 리터럴로 인용한다.
+`deleted_users.execution_nonce`는 nullable additive 열이다. 기존 marker의 NULL은 과거 삭제 흐름을 보존하고, 새 latch는 서버 생성 nonce를 기록한다.
 `none` pair의 tombstone은 오래된 version으로 관계가 복원되는 것을 막는다. post 삭제 후에는 해당 id의 수정 API가 없으므로 tombstone이 필요 없고 id를 재사용하지 않는다.
 
 ## 5. 실제 가능한 원자성·멱등성
@@ -153,6 +154,8 @@ WHERE lo=:lo AND hi=:hi AND EXISTS(/* 이 nonce의 ok receipt */);
 | POST `/posts/delete`                                             | `{id}`                                      | `{deleted:true}` (이미 없으면 안전한 성공, 타인 존재 여부 비노출)                            |
 | POST `/reactions/set`                                            | `{postId,active:boolean}`                   | `{postId,active}`                                                                            |
 
+서버 mode의 기본값은 `off`다. profile 생성·별명 변경은 `enabled`에서만 허용한다. 초대 preview는 `read-only`에서 조회 가능하지만 `off`에서는 503이다. 초대 revoke는 철회 작업이므로 `read-only`와 `off`에서도 허용한다. 실제 mode 검사와 HTTP 응답 배선은 후속 티켓 소유다.
+
 PostView는 `{id,author:{id,nickname},text,happenedOn,createdAt,reactionCount,myReaction}`. 본문에 HTML/Markdown은 없고 일반 텍스트로만 렌더링한다.
 별명은 trim·NFC 후 최소 1자/최대 20 Unicode code points, 공유 문장은 최소 1자/최대 280 code points. 제어문자/줄바꿈/방향 전환 제어문자 거절, URL도 단순 텍스트로만 표시한다.
 `happenedOn`은 1970년부터 2099년까지의 유효 날짜. 클라이언트 선택 날짜를 쓰고 viewer 시간대로 바꾸지 않는다. 게시 정렬 시각은 서버 시각이다.
@@ -184,7 +187,7 @@ ACL 읽기는 `env.DB`의 primary 경로를 사용한다. Sessions API/read repl
 
 ## 8. 삭제·정리·한도·운영
 
-account delete의 기존 batch에서 deleted_users 기록 이후 profiles 삭제 전 다음을 명시 삭제한다: 작성 post의 반응 + 본인의 반응 → posts → 양방향 pairs/blocks → owner 또는 used_by가 본인인 invites → commands/limits(프로필 id 및 아래 pre subject) → profile → 기존 entities/devices/users.
+계정 삭제 latch의 첫 문장은 현재 sid/sub/expiry/users/미삭제 조건으로 `deleted_users`를 `INSERT ... SELECT ... ON CONFLICT DO NOTHING` 한다. marker에 서버 nonce를 기록하며 중복 호출은 기존 marker를 덮지 않는다. 이어지는 모든 DELETE는 같은 sub+nonce marker로 가드한다. 순서는 작성 post의 반응 + 본인의 반응 → posts → 양방향 pairs/blocks → owner 또는 used_by가 본인인 invites → commands/limits(프로필 id 및 아래 pre subject) → profile → 기존 entities/devices/users다. 마지막 SELECT와 첫 INSERT 적용 행수를 모두 확인해 0행을 204로 취급하지 않는다. `worker/social/deletion.ts`에 단일 batch primitive가 있고, 기존 `worker/account/delete.ts`의 HTTP 배선은 P3-03에서 교체한다.
 다른 sessions의 지연 삭제는 유지한다. old sid로 대기 중이던 소셜 요청은 A의 sid/profile 조건에 막히며 재가입 시 옛 소셜 id를 재사용하지 않는다.
 계정 삭제 테스트에는 friend가 읽는 중 삭제·삭제 직후 동일 sub 재가입·옛 요청 재전송을 포함한다. 데이터 삭제가 하나라도 실패하면 전체 batch가 롤백된다.
 
@@ -202,9 +205,11 @@ account delete의 기존 batch에서 deleted_users 기록 이후 profiles 삭제
 | GC             | 만료 invite 7일 후, receipt 48시간 후, limit window 종료 48시간 후; 1회 최대 500행 |
 
 한도는 `social_limits` 조건부 upsert/command guard를 같은 batch에 넣어 전역 계정 단위로 강제한다. subject는 프로필 존재 시 `p:<id>`, 생성 전 /me·profile·preview는 `pre:<HMAC-SHA256(SESSION_SECRET,sub)>`이고 FK 없이 저장한다. /me·profile·preview는 프로필 생성 뒤에도 pre subject만 계속 사용해 전환으로 우회하지 못하게 한다. 다른 API는 p subject를 쓴다(한 요청에 subject 두 개를 증가시키지 않는다). 계정 삭제는 두 subject를 지우고 TTL GC도 동일 적용한다. 읽기 limiter는 별도 원자적 조건부 UPSERT RETURNING으로 승인 뒤 조회한다.
+현재 T-2의 `reserveLimit`는 조건부 UPSERT와 RETURNING을 제공한다. HTTP에서 route별 pre/p 선택 및 모든 명령의 호출을 배선하는 일은 P3-03/P3-04에 남는다.
 빈도 limiter는 command receipt 처리 전에 원자적으로 승인/증가하고 초과는 429(새 receipt 없음), 성공 생성량/보유량 상한은 command의 422 limit-reached receipt로 확정한다. 분/일 window는 서버 UTC fixed window; 경계에서 최대 두 window 분량 burst 가능. rejected 4xx도 요청 빈도에는 포함, 생성 건수는 성공만 증가한다. profile 없는 preview에도 위 pre subject limiter를 적용하고 raw sub를 로그에 남기지 않는다.
 PoP별 Workers rate-limit은 보조 과부하 방어로만 고려한다. 기능 철회를 일반 생성량 한도가 막지 않게 예산을 분리한다. 대규모 공격을 해결했다고 주장하지 않는다.
 GC는 scheduled Worker로 작은 batch를 반복하고 오류 시 재시도한다. FK 순서·인덱스·계정 삭제 최악 비용은 출시 전 원격 D1에서 측정한다.
+T-2의 `collectSocialGarbage`는 호출당 세 테이블 합계 최대 500행을 지운다. scheduled entry 배선은 P3-04 소유다.
 
 로그는 request id·route 분류·결과 코드·지연·D1 rows_read/rows_written만, text/nickname/token/sub/email/sid/body는 금지한다. 인증값이나 원문 URL을 에러 tracker에 붙이지 않는다.
 초기 내부 시범은 운영자가 초대한 계정 allowlist로 제한한다. 피드 더 보기의 차단과 운영 문의 경로를 제공하고, 운영 문의에 글 본문을 자동 첨부하지 않는다.
