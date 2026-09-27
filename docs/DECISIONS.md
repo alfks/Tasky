@@ -27,8 +27,8 @@
 | [ADR-0019](./decisions/ADR-0019-worker-d1-auth.md)                             | Cloudflare Worker + D1 — 구글 OAuth·세션 쿠키·`/api/sync`·계정 삭제 타이밍(다른 기기는 401 이 아니라 410 으로 구분)              | **partially superseded by ADR-0020** | 2026-09-21 | `worker/**`, `wrangler.jsonc`, `tsconfig.worker.json`, `vitest.config.ts`, `vite.config.ts`, `scripts/deploy.sh`                             |
 | [ADR-0020](./decisions/ADR-0020-multi-device-sessions.md)                      | 다기기 세션 — 세션 전량 폐기는 재가입 경로에서만, 취소는 명시적 `logout-others` 로(ADR-0019 결정 5 근거를 부분 대체)             | accepted                             | 2026-09-21 | `worker/auth/**`, `src/repositories/sync-transport.ts`, `src/infra/sync/http-transport.ts`, `src/features/sync/**`, `tests/e2e/sync.spec.ts` |
 | [ADR-0021](./decisions/ADR-0021-cloudflare-web-analytics.md)                   | 방문 수 계측 — Cloudflare Web Analytics 비콘을 `index.html` 에 직접(공개 토큰 하드코딩, 구현과 같은 PR)                          | accepted                             | 2026-09-23 | `index.html`, `public/privacy.html`, `README.md`, `.env.example`                                                                             |
+| [ADR-0022](./decisions/ADR-0022-social-projection-and-authorization.md)        | 개인 동기화와 공유 사본·서버 권한 분리(Phase 3, 구현 예정)                                                                       | accepted                             | 2026-09-28 | 소셜 프로필·관계·공유·반응·계정 삭제·온라인 포트                                                                                             |
 
 ## 예정(초안 필요 시 번호 예약 없이 작성)
 
 - **툼스톤 GC(`users.gc_floor`)** — `gc_floor` 계산과 `entities` 물리 삭제를 한 커밋에 넣는 후속(T-101, [PHASE2_TICKET_BACKLOG.md](./PHASE2_TICKET_BACKLOG.md) 후속 백로그). 구현할 때 ADR-0019 를 개정하거나 새 ADR 로 결정(세션·기기 행 정리 시점 포함)을 남긴다. ADR-0018·ADR-0019 는 위 표대로 이미 accepted 다 — 예전에 여기 있던 "ADR-0018 파일만 아직 없다" 는 #121 로 해소됐다.
-- SNS 데이터 모델(Phase 3).
