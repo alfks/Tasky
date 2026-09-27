@@ -108,12 +108,14 @@ describe('shared domain vectors observed through real D1', () => {
         'R5 수신자만 수락',
         'R5 발신자 수락 불가',
         'R5 stale 수락은 version 불변',
+        'R5 차단 actor의 stale 수락 비노출',
+        'R5 차단 peer의 matching 수락 비노출',
         'R5 친구 삭제는 none tombstone과 반응 삭제',
         'R6 차단은 pair 없어도 version 증가',
         'R4 만료 요청은 수락 불가',
       ].includes(vector.name),
     );
-    expect(cases.length).toBe(6);
+    expect(cases.length).toBe(8);
     for (const vector of cases) {
       const fx = await createD1Fixture();
       try {
@@ -125,6 +127,16 @@ describe('shared domain vectors observed through real D1', () => {
               'INSERT INTO social_pairs(lo,hi,state,requester,version,requested_at) VALUES (?,?,?,?,?,?)',
             )
             .bind(pair.lo, pair.hi, pair.state, pair.requesterId, pair.version, pair.requestedAt)
+            .run();
+        }
+        if (vector.facts.isBlockedByActor || vector.facts.isBlockedByPeer) {
+          await fx.db
+            .prepare('INSERT INTO social_blocks(blocker,blocked,created_at) VALUES (?,?,?)')
+            .bind(
+              vector.facts.isBlockedByActor ? ACTOR_A : ACTOR_B,
+              vector.facts.isBlockedByActor ? ACTOR_B : ACTOR_A,
+              VECTOR_NOW,
+            )
             .run();
         }
         const actor = await createSocialActor(fx.db, A, VECTOR_NOW);

@@ -82,6 +82,9 @@ export function planPairChange(facts: PairFacts): PairPlan {
       clearReactions: true,
     };
   }
+  if (action !== 'unblock' && (facts.isBlockedByActor || facts.isBlockedByPeer)) {
+    return { ok: false, code: 'unavailable' };
+  }
   if (facts.expectedVersion !== undefined && facts.expectedVersion !== pair.version) {
     return { ok: false, code: 'conflict' };
   }
@@ -96,7 +99,6 @@ export function planPairChange(facts: PairFacts): PairPlan {
       clearReactions: false,
     };
   }
-  if (facts.isBlockedByActor || facts.isBlockedByPeer) return { ok: false, code: 'unavailable' };
   if (action === 'request') {
     if (isPendingExpired(pair, nowMs)) return { ok: false, code: 'request-expired' };
     if (pair.state === 'pending') return { ok: false, code: 'request-pending' };
