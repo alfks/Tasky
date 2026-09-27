@@ -63,11 +63,11 @@
 
 ## worker/ (T-93 — `src/` 밖의 두 번째 진입점, ADR-0019)
 
-| 경로      | 한 줄                                                                                                                                 | AGENTS.md          | 언제 읽어야 하는가                            |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------------- |
-| `worker/` | Cloudflare Worker(구글 OAuth·세션 쿠키·`/api/sync`·D1·계정 삭제·소셜 D1). `worker/AGENTS.md` 가 `auth/`·`sync/`·`account/`·`db/`·`social/` 관할 선언 | `worker/AGENTS.md` | `worker/**` 의 어떤 파일이든 읽거나 고치기 전 |
-| `worker/social/` | 현재 actor 검증·조건부 명령·한도/GC·삭제 latch. HTTP 경로 배선 전 | `worker/social/AGENTS.md` | 소셜 D1 SQL과 Miniflare 테스트 변경 전 |
-| `worker/db/migrations/0002_social.sql` | 소셜 8테이블과 삭제 nonce의 additive migration | `worker/db/migrations/AGENTS.md` | 소셜 스키마·계정 삭제 변경 전 |
+| 경로                                   | 한 줄                                                                                                                                                | AGENTS.md                        | 언제 읽어야 하는가                            |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | --------------------------------------------- |
+| `worker/`                              | Cloudflare Worker(구글 OAuth·세션 쿠키·`/api/sync`·D1·계정 삭제·소셜 D1). `worker/AGENTS.md` 가 `auth/`·`sync/`·`account/`·`db/`·`social/` 관할 선언 | `worker/AGENTS.md`               | `worker/**` 의 어떤 파일이든 읽거나 고치기 전 |
+| `worker/social/`                       | 현재 actor 검증·조건부 명령·한도/GC·삭제 latch. HTTP 경로 배선 전                                                                                    | `worker/social/AGENTS.md`        | 소셜 D1 SQL과 Miniflare 테스트 변경 전        |
+| `worker/db/migrations/0002_social.sql` | 소셜 8테이블과 삭제 nonce의 additive migration                                                                                                       | `worker/db/migrations/AGENTS.md` | 소셜 스키마·계정 삭제 변경 전                 |
 
 ## 빠른 질문표
 
