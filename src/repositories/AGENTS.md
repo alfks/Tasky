@@ -4,7 +4,7 @@
 
 ## 목적
 
-저장소 **계약**(인터페이스 5종), 테스트·개발용 memory 구현, 두 구현에 공통으로 돌리는 **계약 스위트**,
+저장소 **계약**, 테스트·개발용 memory 구현, 구현마다 공통으로 돌리는 **계약 스위트**,
 런타임 주입 컨테이너(`container.ts`: `getRepositories() / setRepositories()`).
 
 ## 파일 지도
@@ -14,6 +14,7 @@
 | `*-repository.ts`             | 엔티티 계약 4종(`Todo`·`Category`·`Settings`·`FocusSession`) + `dataset-repository.ts`                             |
 | `sync-repository.ts`          | `SyncRepository` 계약(ADR-0018) — 아웃박스·`syncState`. `Repositories.sync` 슬롯                                   |
 | `sync-transport.ts`           | `SyncTransport` 계약(ADR-0018) — **저장소가 아니다**, `container.ts` 의 별도 슬롯                                  |
+| `social-repository*.ts`       | 온라인 소셜 포트·구현별 계약 스위트(ADR-0022). actor 인자 없음, 스위트는 테스트 전용                               |
 | `container.ts`                | 조립 지점(배럴이 아니다 — ADR-0006). 구현을 import 하지 않는다. `sync`·`setSyncTransport` 포함                     |
 | `ordering.ts`                 | 계약이 고정하는 정렬 중 도메인에 자리가 없는 것(집중 세션·검색 결과)                                               |
 | `repository-error.ts`         | `RepositoryError` — 도메인 규칙 위반(`DomainError`)과 구분되는 저장소 실패                                         |
@@ -27,9 +28,9 @@
 
 ## 규칙
 
-1. 시그니처 변경 = ADR + memory·indexeddb 구현 동시 수정 + 계약 스위트·`READS` 매핑 갱신. 한 PR.
+1. 개인 저장소 시그니처 변경 = ADR + memory·indexeddb 구현 동시 수정 + 계약 스위트·`READS` 매핑 갱신. 한 PR.
    확정 시그니처의 단일 소스는 `docs/TECH_PLAN.md` §6 이다.
-2. **쓰기는 `upsert(Persistable<T>)` 하나뿐**이고 조회는 툼스톤을 반환하지 않는다(ADR-0007).
+2. 개인 엔티티의 **쓰기는 `upsert(Persistable<T>)` 하나뿐**이고 조회는 툼스톤을 반환하지 않는다(ADR-0007).
    교차 테이블·전량·툼스톤 읽기는 `DatasetRepository` 셋(`readAll`/`write`/`restore`)에만 있다(ADR-0009).
    레포지토리는 시각도 `rev` 도 만들지 않는다 — `at: string` 인자를 받는 메서드를 두면 그 자체가 위반이다.
 3. memory 구현의 조회는 `memory/live.ts` 헬퍼만 거친다(툼스톤 필터 한 곳).
@@ -43,6 +44,7 @@
    그래서 스위트는 `src/test/fixtures` 를 쓸 수 없고(레이어 허용 목록 밖) `contract.ts` 의 팩토리를 쓴다.
    스위트는 `describe`/`it`/`expect` 를 전역(`vitest/globals`)으로 쓰므로 **테스트 러너 안에서만**
    import 한다 — 앱 코드가 부르면 런타임에 `describe is not defined` 다.
+   소셜 구현도 `domain/social/social-vectors.ts`를 직접 사용한다(ADR-0022).
 7. 출처: `docs/conventions/code-style.md` §5·§11, ADR-0005 · ADR-0007 · ADR-0009 · ADR-0018.
 8. **`memory/sync-server.ts`·`sync-transport.ts` 는 테스트 전용**(`src/test/setup.ts` 만 import,
    앱이 부르면 가짜 서버가 번들에 실린다 — 리뷰 체크). `live.ts#put` 은 아웃박스에 적재, `putRemote`
@@ -55,6 +57,4 @@
 
 ## 검증
 
-```bash
-pnpm test src/repositories --reporter=dot 2>&1 | tail -20
-```
+`pnpm test src/repositories --reporter=dot 2>&1 | tail -20`
