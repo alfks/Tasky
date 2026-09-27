@@ -26,7 +26,7 @@
 | `pwa.md`              | 설치·오프라인·업데이트·저장소 지속성                                       | 기능 스펙                 |
 | `timer.md`            | 포커스 타이머(카운트다운·투두 연결·세션 기록·영속화)                       | 기능 스펙                 |
 
-Phase 2: `calendar.md`(D-day), `stats.md`(기간 통계), `routine.md`(todo.md R21 확장, 무기한 반복), `diary.md` 는 **구현까지 끝났다**(`implemented`). `sync.md`(구글 로그인+동기화, ADR-0015 accepted)만 `approved` 로 남아 있다 — 순수 도메인 계층(`src/domain/sync/`)과 배선은 머지됐지만 `worker/`·D1 마이그레이션·로그인 화면이 아직 없어서다. Phase 3: `social.md`(아직 만들지 않음, 라벨 `phase:2`).
+Phase 2: `calendar.md`(D-day), `stats.md`(기간 통계), `routine.md`(todo.md R21 확장, 무기한 반복), `diary.md` 는 **구현까지 끝났다**(`implemented`). `sync.md`(구글 로그인+동기화, ADR-0015 accepted)는 스펙 상태가 `approved`다. 서버·저장 계층·화면 구현과 실제 운영 검증의 최신 상태는 루트 `CLAUDE.md` 현재 상태를 따른다. Phase 3: [social.md](social.md)(`approved`, 구현 예정) — 초대한 친구·공유 사본·응원·공개 범위. 구현 계획은 [../phase3-implementation-plan.md](../phase3-implementation-plan.md). 기존 `phase:2` 라벨은 소셜에 재사용하지 않는다.
 `calendar-layout.md`(달력 밀도·3영역 재배치·년·월 피커 — `app-shell.md`·`date-strip.md`·`calendar.md`를 개정하는 설계 스펙, `approved`)는 기능 스펙이 아니라 그 셋을 고치는 자리이므로 위 표에는 없다.
 기술 계획(마일스톤·티켓 분해·스키마·테스트·성능 예산)은 [../TECH_PLAN.md](../TECH_PLAN.md) — 스펙에 중복 기재 금지.
 
