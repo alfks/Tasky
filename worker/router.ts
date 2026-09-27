@@ -15,6 +15,7 @@ import { requireSession } from './auth/session';
 import { handleStubLogin } from './auth/stub';
 import { forUser } from './db/user-db';
 import { handleSync } from './sync/handler';
+import { handleSocialRequest } from './social/router';
 
 import type { Env } from './env';
 
@@ -75,6 +76,8 @@ export async function handleRequest(request: Request, env: Env, now: string): Pr
   const { pathname } = url;
   const { method } = request;
 
+  if (pathname.startsWith('/api/social/')) return handleSocialRequest(request, env, now);
+
   if (method === 'GET' && pathname === '/auth/login') return handleLogin(request, env);
   if (method === 'GET' && pathname === '/auth/callback') return handleCallback(request, env, now);
   if (method === 'GET' && pathname === '/auth/stub-login')
@@ -114,7 +117,7 @@ export async function handleRequest(request: Request, env: Env, now: string): Pr
     if (!session.ok) return sessionErrorResponse(session);
     const sized = await enforceBodySize(request); // 본문 내용은 쓰지 않는다 — 크기 상한만 적용
     if (!sized.ok) return sized.response;
-    return handleAccountDelete(env, session.sub, session.sid, now);
+    return handleAccountDelete(env, session, now);
   }
 
   return json({ error: 'not found' }, { status: 404 });
