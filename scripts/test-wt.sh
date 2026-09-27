@@ -4,16 +4,14 @@
 # 사용법: bash scripts/test-wt.sh
 # /tmp 에 가짜 bare origin + 워킹 클론(+ 제3의 클론 "agentB")을 만들어 이 레포의 scripts/wt.sh 를
 # 그대로 복사해 넣고 주요 경로를 왕복시킨다: new · new --existing 3종 · rm 일반/스쿼시 머지 · 미머지
-# 거부/--force · 빈 커밋 거부 · 되돌려 트리가 같아진 브랜치 거부 · 원격 앞섬 거부 · 미커밋 변경 거부
-# · cherry 실패 fail-closed · 원격 조회 실패 거부 · stale ref 거부(PATH·URL 셰임) · 원격 삭제 실패
+# 거부/--force · 빈/되돌린 커밋 거부 · 원격 앞섬/조회 실패 · 미커밋 변경 · cherry 실패 · stale ref 거부
 # 보고 · flock 유무 양쪽의 동시 BOARD 갱신. 원본 레포는 절대 건드리지 않고, 끝나면(성공·실패·
-# SIGINT/SIGTERM 무관) trap 으로 임시 디렉토리를 항상 지운다. CI 에서도 수 초 안에 끝난다.
+# SIGINT/SIGTERM 무관) trap 으로 임시 디렉토리를 항상 지운다. CI 에서는 락 대기까지 수십 초가 든다.
 set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/wt-smoke.XXXXXX")"
 cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT
-
 fail=0
 ok()  { echo "OK: $1"; }
 bad() { echo "FAIL: $1"; fail=1; }
@@ -198,41 +196,43 @@ bash scripts/wt.sh rm smoke-cherry --force >"$TMP/last.log" 2>&1 || true
 echo "=== 15) 락: flock 없는 환경에서도 new 8개 동시 실행 무결 ==="
 NOFLOCK="$TMP/noflock"
 mkdir -p "$NOFLOCK"
-for bin in bash env git mkdir rm mv cp cat sed awk grep printf wc tr kill sleep dirname basename chmod; do
+for bin in bash env git mkdir rmdir rm mv cp cat sed awk grep printf wc tr kill sleep dirname basename chmod; do
   p="$(command -v "$bin" 2>/dev/null || true)"
   [ -n "$p" ] && ln -sf "$p" "$NOFLOCK/$bin"
 done
-# flock 을 일부러 넣지 않는다 — command -v flock 이 실패해야 mkdir 스핀락 경로를 탄다.
 pids=()
 for i in 1 2 3 4 5 6 7 8; do
-  ( new_with_retry "$NOFLOCK" "feature/smoke-nf$i" ) &
+  ( new_with_retry "$NOFLOCK" "feature/smoke-nf$i" ) >"$TMP/nf$i.log" 2>&1 &
   pids+=("$!")
 done
-for p in "${pids[@]}"; do wait "$p"; done
-rows="$(grep -cE 'smoke-nf[1-8]' .worktrees/BOARD.md)"
-[ "$rows" -eq 8 ] && ok "no-flock 동시 실행 후 BOARD 행 8/8 보존" || bad "no-flock 동시 실행 후 BOARD 행 손실 ($rows/8)"
-lockleft="$(find .worktrees -maxdepth 1 -name '.board.lock.d' 2>/dev/null | wc -l | tr -d ' ')"
-[ "$lockleft" -eq 0 ] && ok "no-flock 락 디렉토리 잔여물 없음" || bad "no-flock 락 디렉토리 잔존"
-
-echo "=== 16) 락: 획득 실패로 타임아웃 죽는 프로세스가 살아있는 보유자의 락을 훔치지 않음(회귀 방지) ==="
-# .board.lock.d 를 이 프로세스($$, 항상 살아있음) 소유로 미리 만들어 "다른 보유자가 쥐고 있다"를
-# 흉내낸 뒤 timeout 으로 새 프로세스를 죽인다 — 남의 락을 rmdir 하지 않아야 한다.
-if command -v timeout >/dev/null 2>&1; then
-  mkdir -p .worktrees/.board.lock.d
-  echo "$$" > .worktrees/.board.lock.d/pid
-  timeout -s TERM 2 env PATH="$NOFLOCK" bash scripts/wt.sh new feature/smoke-lockrace >"$TMP/lockrace.log" 2>&1
-  if [ -d .worktrees/.board.lock.d ] && [ "$(cat .worktrees/.board.lock.d/pid 2>/dev/null)" = "$$" ]; then
-    ok "타임아웃으로 죽은 프로세스가 살아있는 보유자의 락을 훔치지 않음"
-  else
-    bad "타임아웃으로 죽은 프로세스가 살아있는 보유자의 락(.board.lock.d)을 지웠습니다 — 락 훔치기!"
+for i in 1 2 3 4 5 6 7 8; do
+  if wait "${pids[$((i - 1))]}"; then :; else
+    rc=$?; bad "no-flock 자식 $i 실패(rc=$rc)"; sed 's/^/    /' "$TMP/nf$i.log"
   fi
-  rm -rf .worktrees/.board.lock.d
-  git worktree remove --force .worktrees/smoke-lockrace >/dev/null 2>&1 || true
-  git branch -D feature/smoke-lockrace >/dev/null 2>&1 || true
-else
-  echo "SKIP: timeout 명령이 없어 16번을 건너뜁니다."
-fi
-
+  branch="feature/smoke-nf$i"
+  rows="$(awk -F'|' -v b="$branch" '$4 ~ "^[[:space:]]*" b "[[:space:]]*$" { n++ } END { print n+0 }' .worktrees/BOARD.md)"
+  actual="$(git -C ".worktrees/smoke-nf$i" branch --show-current 2>/dev/null || true)"
+  [ "$rows" -eq 1 ] && [ "$actual" = "$branch" ] && ok "no-flock $branch BOARD·worktree 정확 1개" || bad "no-flock $branch BOARD=$rows worktree=${actual:-없음}"
+done
+assert_absent .worktrees/.board.lock.d "no-flock 정상 종료 뒤 락 없음"
+echo "=== 16) 락: 살아있거나 죽은 보유자의 락은 자동 회수하지 않음 ==="
+for owner in "$$" 99999999; do
+  label=dead; [ "$owner" = "$$" ] && label=live
+  mkdir .worktrees/.board.lock.d || { bad "$label fixture 시작 전 락 잔존"; exit 1; }
+  printf '%s\n' "$owner" > .worktrees/.board.lock.d/pid || { bad "$label fixture PID 기록 실패"; exit 1; }
+  before="$(git hash-object .worktrees/BOARD.md)"
+  if env PATH="$NOFLOCK" bash scripts/wt.sh new "feature/smoke-lock-$label" >"$TMP/lock-$label.log" 2>&1; then
+    bad "$label 보유자 락을 훔쳐 new 성공"
+  elif grep -Fq 'BOARD 락 획득 실패(20초 대기' "$TMP/lock-$label.log"; then
+    ok "$label 보유자 락을 20초 안에 fail-closed"
+  else
+    bad "$label 예상과 다른 거부"; sed 's/^/    /' "$TMP/lock-$label.log"
+  fi
+  [ -d .worktrees/.board.lock.d ] && [ "$(cat .worktrees/.board.lock.d/pid 2>/dev/null)" = "$owner" ] && [ "$(git hash-object .worktrees/BOARD.md)" = "$before" ] && ok "$label 보유자 락·BOARD 보존" || bad "$label 보유자 락·BOARD 변조"
+  rm .worktrees/.board.lock.d/pid && rmdir .worktrees/.board.lock.d || bad "$label fixture 락 정리 실패"
+  git worktree remove --force ".worktrees/smoke-lock-$label" >/dev/null 2>&1 || true
+  git branch -D "feature/smoke-lock-$label" >/dev/null 2>&1 || true
+done
 echo "=== 17) rm: 원격 삭제만 실패해도 삼키지 않고 정확히 보고한다(거짓 성공 보고 방지, 회귀 방지) ==="
 run "new(smoke-remotefail)" bash scripts/wt.sh new feature/smoke-remotefail
 ( cd .worktrees/smoke-remotefail && echo r > R.md && git add -A && git commit -q -m "feat(t): 작업" \
