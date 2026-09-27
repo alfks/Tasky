@@ -68,8 +68,13 @@ export async function blockPeer(
       SELECT ?,?,? WHERE EXISTS
         (SELECT 1 FROM social_commands c WHERE c.actor = ? AND c.key = ?
           AND c.execution_nonce = ? AND c.result_code = 'ok')
+        AND EXISTS (SELECT 1 FROM social_profiles me JOIN users u ON u.sub = me.sub
+          JOIN sessions s ON s.sub = u.sub
+          WHERE me.id = ? AND me.sub = ? AND s.sid = ? AND s.expires_at > ?
+            AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub))
       ON CONFLICT(blocker,blocked) DO NOTHING`)
-      .bind(profile.id, peerId, actor.nowMs, profile.id, key, nonce),
+      .bind(profile.id, peerId, actor.nowMs, profile.id, key, nonce,
+        profile.id, actor.sub, actor.sid, actor.nowIso),
     actor.db.prepare(sql`DELETE FROM social_reactions WHERE
         ((reactor = ? AND post_id IN (SELECT id FROM social_posts WHERE author = ?))
         OR (reactor = ? AND post_id IN (SELECT id FROM social_posts WHERE author = ?)))

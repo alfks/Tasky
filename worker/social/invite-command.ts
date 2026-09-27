@@ -88,9 +88,9 @@ export async function consumeInvite(
             WHERE i.hash = ?2 AND pair.state = 'accepted') THEN 'conflict'
           WHEN (SELECT COUNT(*) FROM social_pairs pair WHERE pair.requester = ?1
             AND pair.state = 'pending' AND pair.requested_at > ?6 - 604800000) >= 10
-            OR (SELECT COUNT(*) FROM social_pairs pair JOIN social_invites i
-              ON pair.lo = MIN(?1,i.owner) AND pair.hi = MAX(?1,i.owner)
-              WHERE i.hash = ?2 AND pair.state = 'pending' AND pair.requester <> i.owner
+            OR (SELECT COUNT(*) FROM social_pairs pair JOIN social_invites i ON i.hash = ?2
+              WHERE pair.state = 'pending' AND pair.requester <> i.owner
+                AND (pair.lo = i.owner OR pair.hi = i.owner)
                 AND pair.requested_at > ?6 - 604800000) >= 50
             THEN 'limit-reached'
           ELSE 'ok' END,
@@ -107,8 +107,13 @@ export async function consumeInvite(
     actor.db.prepare(sql`UPDATE social_invites SET status = 'used',used_by = ?
       WHERE hash = ? AND status = 'active' AND expires_at > ?
         AND EXISTS (SELECT 1 FROM social_commands c WHERE c.actor = ? AND c.key = ?
-          AND c.execution_nonce = ? AND c.result_code = 'ok')`)
-      .bind(profile.id, inviteHash, actor.nowMs, profile.id, key, nonce),
+          AND c.execution_nonce = ? AND c.result_code = 'ok')
+        AND EXISTS (SELECT 1 FROM social_profiles me JOIN users u ON u.sub = me.sub
+          JOIN sessions s ON s.sub = u.sub
+          WHERE me.id = ? AND me.sub = ? AND s.sid = ? AND s.expires_at > ?
+            AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub))`)
+      .bind(profile.id, inviteHash, actor.nowMs, profile.id, key, nonce,
+        profile.id, actor.sub, actor.sid, actor.nowIso),
     actor.db.prepare(sql`INSERT INTO social_pairs(lo,hi,state,requester,version,requested_at)
       SELECT MIN(c.actor,c.resource_id),MAX(c.actor,c.resource_id),'pending',c.actor,
         COALESCE((SELECT pair.version + 1 FROM social_pairs pair
@@ -116,10 +121,14 @@ export async function consumeInvite(
             AND pair.hi = MAX(c.actor,c.resource_id)),1),?
       FROM social_commands c WHERE c.actor = ? AND c.key = ?
         AND c.execution_nonce = ? AND c.result_code = 'ok'
+        AND EXISTS (SELECT 1 FROM social_profiles me JOIN users u ON u.sub = me.sub
+          JOIN sessions s ON s.sub = u.sub
+          WHERE me.id = ? AND me.sub = ? AND s.sid = ? AND s.expires_at > ?
+            AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub))
       ON CONFLICT(lo,hi) DO UPDATE SET state = 'pending',requester = excluded.requester,
         version = excluded.version,requested_at = excluded.requested_at
         WHERE social_pairs.state = 'none'`)
-      .bind(actor.nowMs, profile.id, key, nonce),
+      .bind(actor.nowMs, profile.id, key, nonce, profile.id, actor.sub, actor.sid, actor.nowIso),
     actor.db.prepare(sql`SELECT c.actor,c.key,c.request_hash,c.execution_nonce,c.result_code,
         c.resource_id,c.result_version FROM social_commands c
       JOIN social_profiles me ON me.id = c.actor JOIN users u ON u.sub = me.sub
