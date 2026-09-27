@@ -23,13 +23,16 @@ export async function previewInvite(
   secret: string,
   input: unknown,
 ): Promise<SocialOutcome<{ nickname: string; expiresAt: number }>> {
-  const parsed = parseTokenInput(input);
-  if (!parsed.ok) return { ok: false, code: 'validation' };
   if (!(await currentAccount(actor))) return { ok: false, code: await actorFailure(actor) };
   const subject = await limitSubject(actor, secret, 'pre');
   if (subject === null || !(await reserveLimit(actor, subject, 'preview'))) {
-    return { ok: false, code: 'rate-limited' };
+    return {
+      ok: false,
+      code: (await currentAccount(actor)) ? 'rate-limited' : await actorFailure(actor),
+    };
   }
+  const parsed = parseTokenInput(input);
+  if (!parsed.ok) return { ok: false, code: 'validation' };
   const hash = await tokenHash(parsed.value.token);
   const row = await actor.db
     .prepare(
@@ -45,7 +48,7 @@ export async function previewInvite(
     )
     .bind(actor.sid, actor.sub, hash, actor.nowMs, actor.nowIso)
     .first<{ nickname: string; expiresAt: number }>();
-  return row ? { ok: true, value: row } : { ok: false, code: 'unavailable' };
+  return row ? { ok: true, value: row } : { ok: false, code: await actorFailure(actor) };
 }
 
 /** One-use invite and pending pair are guarded by the same new nonce. */

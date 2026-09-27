@@ -1,14 +1,12 @@
 import { parseEmptyInput } from '@/domain/social/command-input';
 import { isFreshNewKey, keyTimestamp } from '@/domain/social/idempotency';
+import type { InviteCreated } from '@/domain/social/social';
 
 import { actorFailure, currentProfile, type SocialActor, type SocialOutcome } from './actor';
 import { fromReceipt, receiptFor, requestHash } from './commands';
 import { tokenHash } from './invite-command';
 import { admitCommand } from './limits';
 import { sql } from '../db/sql';
-
-type InviteCreation =
-  { token: string; expiresAt: number } | { inviteId: string; tokenUnavailable: true };
 
 const DAY = 86_400_000;
 
@@ -17,7 +15,7 @@ export async function createInvite(
   actor: SocialActor,
   key: unknown,
   input: unknown,
-): Promise<SocialOutcome<InviteCreation>> {
+): Promise<SocialOutcome<InviteCreated>> {
   const profile = await currentProfile(actor);
   if (profile === null) return { ok: false, code: await actorFailure(actor) };
   const admission = await admitCommand(actor, 'write');

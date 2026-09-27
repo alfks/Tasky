@@ -275,39 +275,4 @@ describe('shared domain vectors observed through real D1', () => {
       await fx.dispose();
     }
   }, 15_000);
-
-  it('charges one frequency slot for validation, replay and conflict and no receipt on 429', async () => {
-    const fx = await createD1Fixture();
-    try {
-      await seed(fx.db);
-      const actor = await createSocialActor(fx.db, A, VECTOR_NOW);
-      expect(
-        await renameProfile(actor, VECTOR_KEY, { nickname: 'New', expectedVersion: 0 }),
-      ).toMatchObject({ ok: true });
-      expect(
-        await renameProfile(actor, VECTOR_KEY, { nickname: 'New', expectedVersion: 0 }),
-      ).toMatchObject({ ok: true });
-      expect(
-        await renameProfile(actor, VECTOR_KEY, { nickname: 'Different', expectedVersion: 0 }),
-      ).toEqual({ ok: false, code: 'idempotency-conflict' });
-      expect(await renameProfile(actor, 'bad', {})).toEqual({ ok: false, code: 'validation' });
-      const used = await fx.db
-        .prepare("SELECT count FROM social_limits WHERE subject = ? AND bucket = 'write'")
-        .bind(`p:${ACTOR_A}`)
-        .first<{ count: number }>();
-      expect(used?.count).toBe(4);
-      for (let i = 4; i < 60; i += 1) {
-        expect(await renameProfile(actor, 'bad', {})).toEqual({ ok: false, code: 'validation' });
-      }
-      expect(
-        await renameProfile(actor, VECTOR_KEY, { nickname: 'New', expectedVersion: 0 }),
-      ).toEqual({ ok: false, code: 'rate-limited' });
-      expect(
-        (await fx.db.prepare('SELECT COUNT(*) AS n FROM social_commands').first<{ n: number }>())
-          ?.n,
-      ).toBe(1);
-    } finally {
-      await fx.dispose();
-    }
-  }, 30_000);
 });

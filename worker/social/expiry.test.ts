@@ -236,8 +236,8 @@ describe('pending expiry in a real D1 transaction', () => {
         });
         if (!acceptFirst) {
           expect(
-            (await acceptPair(actor, acceptKey, { peerId: ACTOR_B, expectedVersion: 3 })).ok,
-          ).toBe(false);
+            await acceptPair(actor, acceptKey, { peerId: ACTOR_B, expectedVersion: 3 }),
+          ).toEqual({ ok: false, code: 'conflict' });
         }
         expect(await pair(fx.db)).toMatchObject({
           state: 'pending',

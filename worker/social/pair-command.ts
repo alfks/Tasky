@@ -41,6 +41,8 @@ export async function acceptPair(
           WHEN NOT EXISTS (SELECT 1 FROM social_profiles peer JOIN users pu ON pu.sub = peer.sub
             WHERE peer.id = ?2 AND NOT EXISTS
               (SELECT 1 FROM deleted_users pd WHERE pd.sub = pu.sub)) THEN 'unavailable'
+          WHEN EXISTS (SELECT 1 FROM social_pairs pair WHERE pair.lo = MIN(?1,?2)
+            AND pair.hi = MAX(?1,?2) AND pair.version <> ?6) THEN 'conflict'
           WHEN EXISTS (SELECT 1 FROM social_blocks b WHERE
             (b.blocker = ?1 AND b.blocked = ?2) OR (b.blocker = ?2 AND b.blocked = ?1))
             THEN 'unavailable'
@@ -177,24 +179,4 @@ export async function acceptPair(
   return reply.ok && reply.value.didApply && results[2].meta.changes !== 1
     ? { ok: false, code: 'temporary' }
     : reply;
-}
-
-/** Expiration is a versioned none tombstone on the next related write. */
-export async function expirePendingPair(actor: SocialActor, peerId: string): Promise<boolean> {
-  if (actor.profileId === null) return false;
-  const lo = actor.profileId < peerId ? actor.profileId : peerId;
-  const hi = actor.profileId < peerId ? peerId : actor.profileId;
-  const result = await actor.db
-    .prepare(
-      sql`UPDATE social_pairs
-      SET state = 'none',requester = NULL,requested_at = NULL,version = version + 1
-      WHERE lo = ? AND hi = ? AND state = 'pending' AND requested_at <= ?
-        AND EXISTS (SELECT 1 FROM social_profiles p JOIN users u ON u.sub = p.sub
-          JOIN sessions s ON s.sub = u.sub WHERE p.id = ? AND p.sub = ?
-            AND s.sid = ? AND s.expires_at > ?
-            AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub))`,
-    )
-    .bind(lo, hi, actor.nowMs - REQUEST_MS, actor.profileId, actor.sub, actor.sid, actor.nowIso)
-    .run();
-  return result.meta.changes === 1;
 }
