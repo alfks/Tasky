@@ -10,7 +10,7 @@ import type { CommandReply } from './commands';
 
 function pairReply(
   result: CommandReply,
-  state: 'none' | 'accepted' | 'pending',
+  state?: 'none' | 'accepted' | 'pending',
   status = 200,
 ): Handled {
   return result.ok
@@ -21,7 +21,7 @@ function pairReply(
           data: {
             peerId: result.value.resourceId,
             pairVersion: result.value.resultVersion,
-            state,
+            ...(state === undefined ? {} : { state }),
           },
         },
       }
@@ -35,7 +35,7 @@ export async function handleRelation(
   key: string | null,
 ): Promise<Handled> {
   if (path === '/api/social/requests')
-    return pairReply(await consumeInvite(actor, key, body), 'pending', 201);
+    return pairReply(await consumeInvite(actor, key, body), undefined, 201);
   if (path === '/api/social/requests/accept')
     return pairReply(await acceptPair(actor, key, body), 'accepted');
   if (path === '/api/social/requests/decline')

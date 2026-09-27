@@ -55,13 +55,15 @@ export async function handleSocialRequest(
   const route = socialRoute(request.method, url.pathname);
   if (!route) return socialError('unavailable', nowMs);
   if (route.method === 'POST' && !validOrigin(request)) return socialError('csrf', nowMs);
+  let verified: SessionOk | undefined;
   try {
     const session = await requireSession(request, env, now);
     if (!session.ok)
       return socialError(session.status === 410 ? 'account-deleted' : 'unauthorized', nowMs);
+    verified = session;
     return await handleAuthenticated(request, env, nowMs, url, route, session);
   } catch {
-    return socialError('temporary', nowMs);
+    return socialError('temporary', nowMs, verified);
   }
 }
 

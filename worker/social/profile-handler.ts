@@ -3,13 +3,13 @@ import type { SocialMode } from '@/domain/social/social';
 
 import {
   actorFailure,
-  createProfile,
+  createProfileWithStatus,
   currentAccount,
   currentProfile,
   type SocialActor,
 } from './actor';
 import { renameProfile } from './commands';
-import { handled, type Handled } from './http';
+import type { Handled } from './http';
 
 export async function handleProfile(
   actor: SocialActor,
@@ -20,13 +20,22 @@ export async function handleProfile(
 ): Promise<Handled> {
   if (path === '/api/social/me') {
     if (!(await currentAccount(actor))) return { ok: false, code: await actorFailure(actor) };
-    return { ok: true, value: { data: { profile: await currentProfile(actor), mode } } };
+    const profile = await currentProfile(actor);
+    if (!(await currentAccount(actor))) return { ok: false, code: await actorFailure(actor) };
+    if (actor.profileId !== null && profile === null)
+      return { ok: false, code: await actorFailure(actor) };
+    return { ok: true, value: { data: { profile, mode } } };
   }
   if (path === '/api/social/profile') {
     const parsed = parseProfileInput(body);
     if (!parsed.ok) return { ok: false, code: 'validation' };
-    const result = await createProfile(actor, parsed.value.nickname);
-    return handled(result, actor.profileId === null ? 201 : 200);
+    const result = await createProfileWithStatus(actor, parsed.value.nickname);
+    return result.ok
+      ? {
+          ok: true,
+          value: { data: result.value.profile, status: result.value.didInsert ? 201 : 200 },
+        }
+      : result;
   }
   const result = await renameProfile(actor, key, body);
   return result.ok

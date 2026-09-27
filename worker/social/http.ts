@@ -55,6 +55,10 @@ export function socialError(
     'Cache-Control': 'private, no-store',
     Vary: 'Cookie',
   });
+  if (code === 'rate-limited')
+    headers.set('Retry-After', String(Math.ceil((60_000 - (nowMs % 60_000)) / 1_000)));
+  if (code === 'social-disabled') headers.set('Retry-After', '60');
+  if (code === 'temporary') headers.set('Retry-After', '30');
   if (code === 'account-deleted') headers.set('Set-Cookie', clearSessionCookie());
   else if (session?.refreshedCookie)
     headers.set('Set-Cookie', setSessionCookie(session.refreshedCookie));

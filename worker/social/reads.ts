@@ -2,7 +2,13 @@ import { parsePageInput } from '@/domain/social/input';
 import { effectiveInviteStatus } from '@/domain/social/invite';
 import type { Page } from '@/domain/social/social';
 
-import { actorFailure, currentProfile, type SocialActor, type SocialOutcome } from './actor';
+import {
+  actorFailure,
+  currentAccount,
+  currentProfile,
+  type SocialActor,
+  type SocialOutcome,
+} from './actor';
 import { sql } from '../db/sql';
 
 const friends = sql`SELECT peer.id,peer.nickname,pair.version AS pairVersion
@@ -101,6 +107,10 @@ export async function readSocialList(
           ? actor.db.prepare(invites).bind(...shared)
           : actor.db.prepare(blocks).bind(...shared);
   const result = await statement.all<Row>();
+  if (result.results.length === 0) {
+    if (!(await currentAccount(actor))) return { ok: false, code: await actorFailure(actor) };
+    if (!(await currentProfile(actor))) return { ok: false, code: 'unavailable' };
+  }
   const rows = result.results.slice(0, page.value.limit!);
   const items = rows.map((row) =>
     path === '/api/social/requests'

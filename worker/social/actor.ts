@@ -91,12 +91,21 @@ export async function createProfile(
   actor: SocialActor,
   nicknameInput: unknown,
 ): Promise<SocialOutcome<ProfileView>> {
+  const result = await createProfileWithStatus(actor, nicknameInput);
+  return result.ok ? { ok: true, value: result.value.profile } : result;
+}
+
+/** HTTP 201/200 follows the conditional INSERT row count, not a pre-read guess. */
+export async function createProfileWithStatus(
+  actor: SocialActor,
+  nicknameInput: unknown,
+): Promise<SocialOutcome<{ profile: ProfileView; didInsert: boolean }>> {
   const parsed = parseNickname(nicknameInput);
   if (!parsed.ok) return { ok: false, code: 'validation' };
   const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
     byte.toString(16).padStart(2, '0'),
   ).join('');
-  await actor.db
+  const inserted = await actor.db
     .prepare(
       sql`INSERT INTO social_profiles(id,sub,nickname,version,created_at)
        SELECT ?,u.sub,?,0,? FROM users u JOIN sessions s ON s.sub = u.sub
@@ -115,7 +124,9 @@ export async function createProfile(
     )
     .bind(actor.sub, actor.sid, actor.nowIso)
     .first<ProfileView>();
-  return row ? { ok: true, value: row } : { ok: false, code: await actorFailure(actor) };
+  return row
+    ? { ok: true, value: { profile: row, didInsert: inserted.meta.changes === 1 } }
+    : { ok: false, code: await actorFailure(actor) };
 }
 
 /** A and both sides of F are rechecked in the same snapshot as the post body. */
