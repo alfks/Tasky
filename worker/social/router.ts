@@ -21,7 +21,7 @@ async function spend(actor: SocialActor, env: Env, route: Route): Promise<null |
   if (subject === null) return actorFailure(actor);
   if (await reserveLimit(actor, subject, route.bucket)) return null;
   if (!(await currentAccount(actor))) return actorFailure(actor);
-  if (route.subject === 'profile' && !(await currentProfile(actor))) return 'unavailable';
+  if (route.subject === 'profile' && !(await currentProfile(actor))) return actorFailure(actor);
   return 'rate-limited';
 }
 
@@ -35,7 +35,7 @@ async function dispatch(
   mode: 'off' | 'read-only' | 'enabled',
 ): Promise<Handled> {
   if (route.method === 'GET' && route.path !== '/api/social/me') {
-    const result = await readSocialList(actor, route.path, url);
+    const result = await readSocialList(actor, route.path, url, env.SESSION_SECRET);
     return result.ok ? { ok: true, value: { data: result.value } } : result;
   }
   if (route.path === '/api/social/me' || route.path.startsWith('/api/social/profile'))

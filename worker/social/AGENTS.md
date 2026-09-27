@@ -27,6 +27,9 @@ CSRF→세션→모드→8 KiB transport→primitive 순서를 소유한다.
    실패는 인증 전 403, 모드 차단은 인증 뒤 본문 읽기 전 503이다. transport 오류는 해당
    route bucket을 한 번 예약하고 primitive는 호출하지 않는다. 정상 요청의 primitive 내부
    admission을 HTTP에서 다시 과금하지 않는다.
+8. 관리 목록은 `cursor.ts`의 actor·scope 바인딩 HMAC 커서만 받는다. 첫 페이지의 15분
+   만료 시각을 다음 페이지에 유지하고, 검증 실패는 목록 SQL 전에 validation으로 끝낸다.
+   목록 정렬은 peer id 또는 invite hash 오름차순이다.
 
 ## 검증
 

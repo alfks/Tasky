@@ -186,7 +186,7 @@ PostView는 `{id,author:{id,nickname},text,happenedOn,createdAt,reactionCount,my
 친구 최대 50명+자신으로 조회 fan-in을 제한한다. author별 인덱스 cursor seek 후 최대 pageSize+1 후보를 읽고 SQL CTE의 global top-k로 병합한다(최대 51×51=2,601 후보). 마지막 A/F 필터와 본문 SELECT는 한 SQL 스냅샷이며 actor·cursor bind는 재사용해 D1 100개 바인딩 상한 내로 만든다. EXPLAIN QUERY PLAN과 실제 rows_read로 인덱스 적용을 확인한다. `OFFSET`은 쓰지 않는다. 첫 페이지 서버 high-water `(createdAt,id)`와 마지막 항목 tuple을 cursor에 넣어 이후 `(createdAt,id)<last`만 읽는다.
 cursor는 HMAC 서명된 `{v,actorId,scope,upper,last,expiresAt}`이며 15분 유효. 다른 actor/scope에 재사용 불가. 같은 ms의 새 UUID가 upper 이하일 수 있으므로 완전한 스냅샷은 보장하지 않는다.
 클라이언트는 한 페이지(기본 20, 최대 50개)만 메모리/DOM에 유지하고 `[다음 기록]`은 누적하지 않고 페이지 전체를 교체한다. 이전 페이지는 cursor 스택만 기억해 `[이전 기록]` 때 서버에서 다시 읽는다. 페이지 이탈 시 본문/반응/선택 카드를 폐기하며 응답에 id 중복이 있으면 제거한다. 최신 갱신은 첫 페이지로 돌아가 cursor 스택도 비운다. 삭제로 빈 페이지여도 nextCursor가 있으면 다음 기록을 허용한다. cursor 만료 시 첫 페이지부터 새로 읽고 안내한다.
-친구/요청/차단/초대 목록은 각각 정렬된 id 또는 `(created_at,id)` 커서로 동일 actor/scope/기한 검증을 적용한다.
+친구/요청/차단/초대 관리 목록은 각각 peer id 또는 invite hash 오름차순으로 조회하고 `id > last` keyset을 쓴다. 커서는 HMAC-SHA256 서명된 opaque base64url `{v:1,actorId,scope,upper:null,last,expiresAt}`이다. `scope`는 friends, requests:incoming, requests:outgoing, invites, blocks 중 하나이고 현재 프로필·목록 종류에 묶인다. 최초 발급부터 15분 뒤 만료되며 다음 페이지에서 기한을 연장하지 않는다. 잘못된 형식·서명·범위·기한은 400이다. 관리 목록에는 high-water가 없으므로 페이지 사이 추가·삭제된 항목을 고정하는 스냅샷은 아니다. 피드의 tuple/high-water 커서는 후속 P3-04 범위다.
 
 ACL 읽기는 `env.DB`의 primary 경로를 사용한다. Sessions API/read replica를 소셜 읽기에 추가하지 않는다. 허용 검사와 본문 읽기는 한 SQL 스냅샷 안에서 결합한다.
 철회 commit 뒤 시작된 DB 읽기는 내용을 반환하지 않는다. **철회 이전에 승인된 응답·이미 렌더링된 내용의 즉시 회수는 보장할 수 없다**.

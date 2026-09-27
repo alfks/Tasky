@@ -9,6 +9,7 @@ import {
   type SocialActor,
   type SocialOutcome,
 } from './actor';
+import { decodeListCursor, encodeListCursor, type ListScope } from './cursor';
 import { sql } from '../db/sql';
 
 const friends = sql`SELECT peer.id,peer.nickname,pair.version AS pairVersion
@@ -61,13 +62,14 @@ const blocks = sql`SELECT peer.id,peer.nickname,COALESCE(pair.version,0) AS pair
 
 type Row = Record<string, string | number> & { id?: string; inviteId?: string };
 
-export async function readSocialList(
+type ListPage = { scope: ListScope; cursor: string; limit: number; expiresAt?: number };
+
+async function parseListPage(
   actor: SocialActor,
   path: string,
   url: URL,
-): Promise<SocialOutcome<Page<unknown>>> {
-  const profile = await currentProfile(actor);
-  if (profile === null) return { ok: false, code: await actorFailure(actor) };
+  secret: string,
+): Promise<ListPage | null> {
   const direction = url.searchParams.get('direction');
   const allowed =
     path === '/api/social/requests' ? ['direction', 'cursor', 'limit'] : ['cursor', 'limit'];
@@ -75,43 +77,82 @@ export async function readSocialList(
     [...url.searchParams.keys()].some((key) => !allowed.includes(key)) ||
     (path === '/api/social/requests' && direction !== 'incoming' && direction !== 'outgoing')
   )
-    return { ok: false, code: 'validation' };
+    return null;
   const raw = {
     ...(url.searchParams.has('cursor') ? { cursor: url.searchParams.get('cursor') } : {}),
     ...(url.searchParams.has('limit') ? { limit: Number(url.searchParams.get('limit')) } : {}),
   };
   const page = parsePageInput(raw);
-  if (!page.ok) return { ok: false, code: 'validation' };
-  const cursor = page.value.cursor ?? '';
-  const valid = path === '/api/social/invites' ? /^[0-9a-f]{64}$/u : /^[0-9a-f]{32}$/u;
-  if (cursor && !valid.test(cursor)) return { ok: false, code: 'validation' };
-  const shared = [profile.id, cursor, actor.sub, actor.sid, actor.nowIso, page.value.limit! + 1];
+  if (!page.ok || actor.profileId === null) return null;
+  const scope: ListScope =
+    path === '/api/social/requests'
+      ? direction === 'incoming'
+        ? 'requests:incoming'
+        : 'requests:outgoing'
+      : path === '/api/social/friends'
+        ? 'friends'
+        : path === '/api/social/invites'
+          ? 'invites'
+          : 'blocks';
+  const decoded =
+    page.value.cursor === undefined
+      ? null
+      : await decodeListCursor(secret, page.value.cursor, actor.profileId, scope, actor.nowMs);
+  if (page.value.cursor !== undefined && decoded === null) return null;
+  return {
+    scope,
+    cursor: decoded?.last ?? '',
+    limit: page.value.limit ?? 20,
+    ...(decoded === null ? {} : { expiresAt: decoded.expiresAt }),
+  };
+}
+
+async function fetchRows(
+  actor: SocialActor,
+  profileId: string,
+  path: string,
+  page: ListPage,
+): Promise<Row[]> {
+  const shared = [profileId, page.cursor, actor.sub, actor.sid, actor.nowIso, page.limit + 1];
   const statement =
     path === '/api/social/friends'
-      ? actor.db.prepare(friends).bind(profile.id, ...shared)
+      ? actor.db.prepare(friends).bind(profileId, ...shared)
       : path === '/api/social/requests'
         ? actor.db
             .prepare(requests)
             .bind(
-              profile.id,
-              profile.id,
-              direction,
+              profileId,
+              profileId,
+              page.scope === 'requests:outgoing' ? 'outgoing' : 'incoming',
               actor.nowMs - 604800000,
-              cursor,
+              page.cursor,
               actor.sub,
               actor.sid,
               actor.nowIso,
-              page.value.limit! + 1,
+              page.limit + 1,
             )
         : path === '/api/social/invites'
           ? actor.db.prepare(invites).bind(...shared)
           : actor.db.prepare(blocks).bind(...shared);
-  const result = await statement.all<Row>();
-  if (result.results.length === 0) {
+  return (await statement.all<Row>()).results;
+}
+
+export async function readSocialList(
+  actor: SocialActor,
+  path: string,
+  url: URL,
+  secret: string,
+): Promise<SocialOutcome<Page<unknown>>> {
+  const profile = await currentProfile(actor);
+  if (profile === null) return { ok: false, code: await actorFailure(actor) };
+  const page = await parseListPage(actor, path, url, secret);
+  if (page === null) return { ok: false, code: 'validation' };
+  const result = await fetchRows(actor, profile.id, path, page);
+  if (result.length === 0) {
     if (!(await currentAccount(actor))) return { ok: false, code: await actorFailure(actor) };
-    if (!(await currentProfile(actor))) return { ok: false, code: 'unavailable' };
+    if (!(await currentProfile(actor))) return { ok: false, code: await actorFailure(actor) };
   }
-  const rows = result.results.slice(0, page.value.limit!);
+  const rows = result.slice(0, page.limit);
   const items = rows.map((row) =>
     path === '/api/social/requests'
       ? {
@@ -132,11 +173,16 @@ export async function readSocialList(
         : { id: row.id, nickname: row.nickname, pairVersion: row.pairVersion },
   );
   const last = rows.at(-1);
+  const lastId = last?.id ?? last?.inviteId;
+  const nextCursor =
+    result.length > rows.length && lastId
+      ? await encodeListCursor(secret, profile.id, page.scope, lastId, actor.nowMs, page.expiresAt)
+      : null;
   return {
     ok: true,
     value: {
       items,
-      nextCursor: result.results.length > rows.length ? (last?.id ?? last?.inviteId ?? null) : null,
+      nextCursor,
     },
   };
 }
