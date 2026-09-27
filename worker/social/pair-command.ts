@@ -41,11 +41,11 @@ export async function acceptPair(
           WHEN NOT EXISTS (SELECT 1 FROM social_profiles peer JOIN users pu ON pu.sub = peer.sub
             WHERE peer.id = ?2 AND NOT EXISTS
               (SELECT 1 FROM deleted_users pd WHERE pd.sub = pu.sub)) THEN 'unavailable'
-          WHEN EXISTS (SELECT 1 FROM social_pairs pair WHERE pair.lo = MIN(?1,?2)
-            AND pair.hi = MAX(?1,?2) AND pair.version <> ?6) THEN 'conflict'
           WHEN EXISTS (SELECT 1 FROM social_blocks b WHERE
             (b.blocker = ?1 AND b.blocked = ?2) OR (b.blocker = ?2 AND b.blocked = ?1))
             THEN 'unavailable'
+          WHEN EXISTS (SELECT 1 FROM social_pairs pair WHERE pair.lo = MIN(?1,?2)
+            AND pair.hi = MAX(?1,?2) AND pair.version <> ?6) THEN 'conflict'
           WHEN EXISTS (SELECT 1 FROM social_pairs pair WHERE pair.lo = MIN(?1,?2)
             AND pair.hi = MAX(?1,?2) AND pair.state = 'pending'
             AND pair.version = ?6
