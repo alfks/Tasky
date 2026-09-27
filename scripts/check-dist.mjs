@@ -13,6 +13,7 @@ import {
   BASELINE_PATH,
   currentBranch,
   deltaReport,
+  entryClosure,
   parsePrArg,
   readBaseline,
   writeBaseline,
@@ -289,24 +290,6 @@ if (doc !== '') {
 // **어떻게 재는가**: 진입 파일에서 `from"./chunk.js"`(ES 모듈 정적 import — 이 빌드의 동적
 // import()는 항상 백틱 템플릿 리터럴을 쓰므로 겹치지 않는다, 실측)로 참조된 청크를 모으고,
 // 그 청크들도 재귀적으로 같은 방식으로 훑어 정적 의존 전체(폐포)를 구한다.
-function staticImportTargets(source) {
-  return [...source.matchAll(/\bfrom"\.\/([\w.-]+\.js)"/g)].map((m) => `/assets/${m[1]}`);
-}
-function entryClosure(entryFile, allFiles) {
-  const byUrl = new Map(allFiles.map((f) => [f.url, f]));
-  const seen = new Set([entryFile.url]);
-  const queue = [entryFile];
-  while (queue.length > 0) {
-    const file = queue.shift();
-    for (const url of staticImportTargets(readFileSync(file.path, 'utf-8'))) {
-      if (seen.has(url)) continue;
-      seen.add(url);
-      const next = byUrl.get(url);
-      if (next !== undefined) queue.push(next);
-    }
-  }
-  return [...seen].map((url) => byUrl.get(url)).filter((f) => f !== undefined);
-}
 // ENTRY_BUDGET 164,000: 리뷰 라운드1(R2-C, 2026-09-22)이 백엔드·프론트 둘 다 Major 로 지적한
 // 항목 — 직전 기준 158,221(T-94/#129 머지 직후 실측)에서 이 브랜치(3영역 배선·사이드바 고정·
 // 헤더 h1)가 +1,536 B 를 더해 159,757(`pnpm build` 직접 재측정, 2026-09-22)까지 올랐고, 옛
