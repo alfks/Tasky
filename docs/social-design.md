@@ -155,7 +155,17 @@ WHERE lo=:lo AND hi=:hi AND EXISTS(/* 이 nonce의 ok receipt */);
 | POST `/posts/delete`                                             | `{id}`                                      | `{deleted:true}` (이미 없으면 안전한 성공, 타인 존재 여부 비노출)                            |
 | POST `/reactions/set`                                            | `{postId,active:boolean}`                   | `{postId,active}`                                                                            |
 
-서버 mode의 기본값은 `off`다. profile 생성·별명 변경은 `enabled`에서만 허용한다. 초대 preview는 `read-only`에서 조회 가능하지만 `off`에서는 503이다. 초대 revoke는 철회 작업이므로 `read-only`와 `off`에서도 허용한다. 실제 mode 검사와 HTTP 응답 배선은 후속 티켓 소유다.
+서버 mode의 기본값은 `off`다. `SOCIAL_MODE`는 `off|read-only|enabled`만 인정하며 누락·오류는 `off`다. `SOCIAL_ALLOWLIST`는 내부 `sub`의 비어 있지 않은 JSON 문자열 배열만 인정하고 wildcard·이메일·누락·오류는 전체 `off`로 닫는다. 비대상 계정도 매 요청 `off`다. `/me`에는 이 계정의 effective mode만 공개한다. 배포 설정에는 `SOCIAL_MODE=off`만 넣고 실활성화는 후속 운영 결정이다.
+
+| effective mode | 허용 경로                                                                                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `off`          | GET `me/friends/requests/invites/blocks`, POST `invites/revoke`, `requests/decline`, `requests/cancel`, `friends/remove`, `blocks/set`(차단·해제), 계정 삭제 |
+| `read-only`    | `off` 허용 경로와 POST `invites/preview`                                                                                                                     |
+| `enabled`      | 위 경로와 POST `profile`, `profile/name`, `invites`, `requests`, `requests/accept`                                                                           |
+
+POST는 동일 Origin과 `X-Tasky: 1`을 세션 조회 전에 검사한다(실패 403, 본문·빈도 미사용). 세션 검증 뒤 effective mode가 경로를 차단하면 503으로 본문을 읽지 않고 빈도도 쓰지 않는다. 그 다음 `Content-Type: application/json`과 **스트림 8 KiB 상한**으로 JSON을 읽는다. 인증된 content type 오류 415, 구문 오류 400, 크기 초과 413은 각각 해당 route bucket을 한 번 조건부 예약한 뒤 primitive 호출 없이 응답한다. 초과 한도 429가 transport 오류보다 우선한다. 예약 0행은 현재 actor를 다시 확인해 401/410/404/429를 구분한다. JSON 구조·필드·값의 의미 검증 실패는 primitive 안에서 처리하며 동일 요청을 HTTP에서 두 번 과금하지 않는다. 알 수 없는 path/method는 임의 bucket 없이 404다.
+
+모든 소셜 성공·오류는 `{data,serverTime}` 또는 `{error:{code},serverTime}`와 `Cache-Control: private, no-store`·`Vary: Cookie`를 사용한다. 현재 sid의 삭제 marker가 있으면 410과 쿠키 삭제가 슬라이딩 갱신 쿠키보다 우선한다.
 
 PostView는 `{id,author:{id,nickname},text,happenedOn,createdAt,reactionCount,myReaction}`. 본문에 HTML/Markdown은 없고 일반 텍스트로만 렌더링한다.
 별명은 trim·NFC 후 최소 1자/최대 20 Unicode code points, 공유 문장은 최소 1자/최대 280 code points. 제어문자/줄바꿈/방향 전환 제어문자 거절, URL도 단순 텍스트로만 표시한다.
@@ -188,7 +198,7 @@ ACL 읽기는 `env.DB`의 primary 경로를 사용한다. Sessions API/read repl
 
 ## 8. 삭제·정리·한도·운영
 
-계정 삭제 latch의 첫 문장은 현재 sid/sub/expiry/users/미삭제 조건으로 `deleted_users`를 `INSERT ... SELECT ... ON CONFLICT DO NOTHING` 한다. marker에 서버 nonce를 기록하며 중복 호출은 기존 marker를 덮지 않는다. 이어지는 모든 DELETE는 같은 sub+nonce marker로 가드한다. 순서는 작성 post의 반응 + 본인의 반응 → posts → 양방향 pairs/blocks → owner 또는 used_by가 본인인 invites → commands/limits(프로필 id 및 아래 pre subject) → profile → 기존 entities/devices/users다. 마지막 SELECT와 첫 INSERT 적용 행수를 모두 확인해 0행을 204로 취급하지 않는다. `worker/social/deletion.ts`에 단일 batch primitive가 있고, 기존 `worker/account/delete.ts`의 HTTP 배선은 P3-03에서 교체한다.
+계정 삭제 latch의 첫 문장은 현재 sid/sub/expiry/users/미삭제 조건으로 `deleted_users`를 `INSERT ... SELECT ... ON CONFLICT DO NOTHING` 한다. marker에 서버 nonce를 기록하며 중복 호출은 기존 marker를 덮지 않는다. 이어지는 모든 DELETE는 같은 sub+nonce marker로 가드한다. 순서는 작성 post의 반응 + 본인의 반응 → posts → 양방향 pairs/blocks → owner 또는 used_by가 본인인 invites → commands/limits(프로필 id 및 아래 pre subject) → profile → 기존 entities/devices/users다. 마지막 SELECT와 첫 INSERT 적용 행수를 모두 확인해 0행을 204로 취급하지 않는다. `worker/account/delete.ts`는 이 단일 batch primitive를 호출하고 성공 뒤 현재 sid만 폐기하며, 실패한 latch는 현재 sid·marker로 401/410을 다시 분류한다.
 다른 sessions의 지연 삭제는 유지한다. old sid로 대기 중이던 소셜 요청은 A의 sid/profile 조건에 막히며 재가입 시 옛 소셜 id를 재사용하지 않는다.
 계정 삭제 테스트에는 friend가 읽는 중 삭제·삭제 직후 동일 sub 재가입·옛 요청 재전송을 포함한다. 데이터 삭제가 하나라도 실패하면 전체 batch가 롤백된다.
 
@@ -206,7 +216,7 @@ ACL 읽기는 `env.DB`의 primary 경로를 사용한다. Sessions API/read repl
 | GC             | 만료 invite 7일 후, receipt 48시간 후, limit window 종료 48시간 후; 1회 최대 500행 |
 
 한도는 `social_limits` 조건부 upsert/command guard를 같은 batch에 넣어 전역 계정 단위로 강제한다. subject는 프로필 존재 시 `p:<id>`, 생성 전 /me·profile·preview는 `pre:<HMAC-SHA256(SESSION_SECRET,sub)>`이고 FK 없이 저장한다. /me·profile·preview는 프로필 생성 뒤에도 pre subject만 계속 사용해 전환으로 우회하지 못하게 한다. 다른 API는 p subject를 쓴다(한 요청에 subject 두 개를 증가시키지 않는다). 계정 삭제는 두 subject를 지우고 TTL GC도 동일 적용한다. 읽기 limiter는 별도 원자적 조건부 UPSERT RETURNING으로 승인 뒤 조회한다.
-현재 T-2의 `reserveLimit`는 조건부 UPSERT와 RETURNING을 제공한다. `createInvite`는 대표 성공 생성량 계약으로 receipt·초대 hash·UTC 일간 생성 counter를 단일 batch에 묶고, active 5개/하루 20회 초과는 422 receipt를 남긴다. 같은 key 재시도는 원문 token 없이 invite id만 돌려주며 생성 counter를 다시 올리지 않는다. HTTP에서 route별 pre/p 선택 및 나머지 명령의 호출을 배선하는 일은 P3-03/P3-04에 남는다.
+`reserveLimit`는 조건부 UPSERT와 RETURNING을 제공한다. `createInvite`는 대표 성공 생성량 계약으로 receipt·초대 hash·UTC 일간 생성 counter를 단일 batch에 묶고, active 5개/하루 20회 초과는 422 receipt를 남긴다. 같은 key 재시도는 원문 token 없이 invite id만 돌려주며 생성 counter를 다시 올리지 않는다. 16 관계 경로의 route별 pre/p 선택은 `worker/social/policy.ts`와 `router.ts`에 있다. 게시글·응원·피드 6경로는 후속 P3-04 범위다.
 빈도 limiter는 현재 actor 인증 직후 DTO/key 검증·receipt 조회 전에 요청당 정확히 한 번 원자적으로 승인/증가하고 초과는 429(새 receipt 없음), 성공 생성량/보유량 상한은 command의 422 limit-reached receipt로 확정한다. replay·hash conflict·만료/잘못된 key와 확정 4xx도 빈도에 포함하고, 생성 건수는 성공만 증가한다. 분/일 window는 서버 UTC fixed window; 경계에서 최대 두 window 분량 burst 가능. profile 없는 preview에도 위 pre subject limiter를 적용하고 raw sub를 로그에 남기지 않는다. 후속 HTTP 배선은 같은 bucket을 다시 증가시키지 않는다.
 PoP별 Workers rate-limit은 보조 과부하 방어로만 고려한다. 기능 철회를 일반 생성량 한도가 막지 않게 예산을 분리한다. 대규모 공격을 해결했다고 주장하지 않는다.
 GC는 scheduled Worker로 작은 batch를 반복하고 오류 시 재시도한다. FK 순서·인덱스·계정 삭제 최악 비용은 출시 전 원격 D1에서 측정한다.

@@ -5,7 +5,8 @@
 ## 목적
 
 Phase 3의 서버 전용 D1 소셜 투영. `src/domain/social/**`의 순수 계약을 재사용하고,
-현재 세션·사용자·프로필을 SQL에서 재확인한다. HTTP 배선은 후속 티켓 소유다.
+현재 세션·사용자·프로필을 SQL에서 재확인한다. `router.ts`가 16 HTTP 경로의
+CSRF→세션→모드→8 KiB transport→primitive 순서를 소유한다.
 
 ## 규칙
 
@@ -22,6 +23,10 @@ Phase 3의 서버 전용 D1 소셜 투영. `src/domain/social/**`의 순수 계�
 5. SQL은 `sql` 태그 리터럴과 `.bind()`만 쓴다. `scripts/check-worker-sql.sh`가 새 영역을
    별도로 검사한다. 테스트는 실제 Miniflare D1과 모든 migration을 사용한다.
 6. 계정 삭제는 nonce latch와 명시 삭제 batch를 쓰며 다른 sessions는 유지한다.
+7. `policy.ts`에서 매 요청 effective mode를 fail closed로 결정한다. Origin·`X-Tasky`
+   실패는 인증 전 403, 모드 차단은 인증 뒤 본문 읽기 전 503이다. transport 오류는 해당
+   route bucket을 한 번 예약하고 primitive는 호출하지 않는다. 정상 요청의 primitive 내부
+   admission을 HTTP에서 다시 과금하지 않는다.
 
 ## 검증
 
