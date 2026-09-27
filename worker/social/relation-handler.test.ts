@@ -71,6 +71,7 @@ describe('social relationship HTTP and D1', () => {
       );
       expect(sent.status).toBe(201);
       const sentData = (await sent.json()) as { data: { pairVersion: number } };
+      expect(Object.keys(sentData.data).sort()).toEqual(['pairVersion', 'peerId']);
       const incoming = await handleRequest(request('/requests?direction=incoming', a), env, NOW);
       expect((await incoming.json()) as object).toMatchObject({
         data: { items: [{ peer: { nickname: 'B' }, pairVersion: sentData.data.pairVersion }] },
