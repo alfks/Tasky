@@ -12,7 +12,8 @@ import {
 import { decodeListCursor, encodeListCursor, type ListScope } from './cursor';
 import { sql } from '../db/sql';
 
-const friends = sql`SELECT peer.id,peer.nickname,pair.version AS pairVersion
+function prepareFriends(actor: SocialActor) {
+  return actor.db.prepare(sql`SELECT peer.id,peer.nickname,pair.version AS pairVersion
   FROM social_pairs pair JOIN social_profiles peer ON peer.id = CASE
     WHEN pair.lo = ? THEN pair.hi ELSE pair.lo END
   JOIN users pu ON pu.sub = peer.sub JOIN social_profiles me ON me.id = ?
@@ -23,9 +24,11 @@ const friends = sql`SELECT peer.id,peer.nickname,pair.version AS pairVersion
     AND NOT EXISTS (SELECT 1 FROM social_blocks b WHERE
       (b.blocker = me.id AND b.blocked = peer.id) OR
       (b.blocker = peer.id AND b.blocked = me.id))
-  ORDER BY peer.id LIMIT ?`;
+  ORDER BY peer.id LIMIT ?`);
+}
 
-const requests = sql`SELECT peer.id,peer.nickname,pair.version AS pairVersion,
+function prepareRequests(actor: SocialActor) {
+  return actor.db.prepare(sql`SELECT peer.id,peer.nickname,pair.version AS pairVersion,
   pair.requested_at + 604800000 AS expiresAt
   FROM social_pairs pair JOIN social_profiles peer ON peer.id = CASE
     WHEN pair.lo = ? THEN pair.hi ELSE pair.lo END
@@ -39,17 +42,21 @@ const requests = sql`SELECT peer.id,peer.nickname,pair.version AS pairVersion,
     AND NOT EXISTS (SELECT 1 FROM social_blocks b WHERE
       (b.blocker = me.id AND b.blocked = peer.id) OR
       (b.blocker = peer.id AND b.blocked = me.id))
-  ORDER BY peer.id LIMIT ?`;
+  ORDER BY peer.id LIMIT ?`);
+}
 
-const invites = sql`SELECT i.hash AS inviteId,i.status,i.expires_at AS expiresAt
+function prepareInvites(actor: SocialActor) {
+  return actor.db.prepare(sql`SELECT i.hash AS inviteId,i.status,i.expires_at AS expiresAt
   FROM social_invites i JOIN social_profiles me ON me.id = i.owner
   JOIN users u ON u.sub = me.sub JOIN sessions s ON s.sub = u.sub
   WHERE i.owner = ? AND i.hash > ? AND me.sub = ? AND s.sid = ?
     AND s.expires_at > ? AND NOT EXISTS
       (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub)
-  ORDER BY i.hash LIMIT ?`;
+  ORDER BY i.hash LIMIT ?`);
+}
 
-const blocks = sql`SELECT peer.id,peer.nickname,COALESCE(pair.version,0) AS pairVersion
+function prepareBlocks(actor: SocialActor) {
+  return actor.db.prepare(sql`SELECT peer.id,peer.nickname,COALESCE(pair.version,0) AS pairVersion
   FROM social_blocks b JOIN social_profiles peer ON peer.id = b.blocked
   JOIN users pu ON pu.sub = peer.sub JOIN social_profiles me ON me.id = b.blocker
   JOIN users u ON u.sub = me.sub JOIN sessions s ON s.sub = u.sub
@@ -58,7 +65,8 @@ const blocks = sql`SELECT peer.id,peer.nickname,COALESCE(pair.version,0) AS pair
   WHERE b.blocker = ? AND peer.id > ? AND me.sub = ? AND s.sid = ?
     AND s.expires_at > ? AND NOT EXISTS
       (SELECT 1 FROM deleted_users d WHERE d.sub IN (u.sub,pu.sub))
-  ORDER BY peer.id LIMIT ?`;
+  ORDER BY peer.id LIMIT ?`);
+}
 
 type Row = Record<string, string | number> & { id?: string; inviteId?: string };
 
@@ -116,24 +124,22 @@ async function fetchRows(
   const shared = [profileId, page.cursor, actor.sub, actor.sid, actor.nowIso, page.limit + 1];
   const statement =
     path === '/api/social/friends'
-      ? actor.db.prepare(friends).bind(profileId, ...shared)
+      ? prepareFriends(actor).bind(profileId, ...shared)
       : path === '/api/social/requests'
-        ? actor.db
-            .prepare(requests)
-            .bind(
-              profileId,
-              profileId,
-              page.scope === 'requests:outgoing' ? 'outgoing' : 'incoming',
-              actor.nowMs - 604800000,
-              page.cursor,
-              actor.sub,
-              actor.sid,
-              actor.nowIso,
-              page.limit + 1,
-            )
+        ? prepareRequests(actor).bind(
+            profileId,
+            profileId,
+            page.scope === 'requests:outgoing' ? 'outgoing' : 'incoming',
+            actor.nowMs - 604800000,
+            page.cursor,
+            actor.sub,
+            actor.sid,
+            actor.nowIso,
+            page.limit + 1,
+          )
         : path === '/api/social/invites'
-          ? actor.db.prepare(invites).bind(...shared)
-          : actor.db.prepare(blocks).bind(...shared);
+          ? prepareInvites(actor).bind(...shared)
+          : prepareBlocks(actor).bind(...shared);
   return (await statement.all<Row>()).results;
 }
 

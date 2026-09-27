@@ -6,7 +6,8 @@ import { fromReceipt, receiptFor, requestHash, type CommandReply } from './comma
 import { admitCommand } from './limits';
 import { sql } from '../db/sql';
 
-const insertReceipt = sql`INSERT INTO social_commands(actor,key,request_hash,execution_nonce,
+function prepareInsertReceipt(actor: SocialActor) {
+  return actor.db.prepare(sql`INSERT INTO social_commands(actor,key,request_hash,execution_nonce,
   result_code,resource_id,result_version,created_at)
   SELECT me.id,?,?,?,CASE
     WHEN NOT EXISTS (SELECT 1 FROM social_blocks b WHERE b.blocker = me.id
@@ -18,30 +19,37 @@ const insertReceipt = sql`INSERT INTO social_commands(actor,key,request_hash,exe
   FROM social_profiles me JOIN users u ON u.sub = me.sub JOIN sessions s ON s.sub = u.sub
   WHERE me.id = ? AND me.sub = ? AND s.sid = ? AND s.expires_at > ?
     AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub)
-  ON CONFLICT(actor,key) DO NOTHING`;
+  ON CONFLICT(actor,key) DO NOTHING`);
+}
 
-const bumpPair = sql`UPDATE social_pairs SET version = version + 1 WHERE
+function prepareBumpPair(actor: SocialActor) {
+  return actor.db.prepare(sql`UPDATE social_pairs SET version = version + 1 WHERE
   lo = MIN(?,?) AND hi = MAX(?,?) AND state = 'none' AND version = ?
   AND EXISTS (SELECT 1 FROM social_commands c WHERE c.actor = ? AND c.key = ?
     AND c.execution_nonce = ? AND c.result_code = 'ok')
   AND EXISTS (SELECT 1 FROM social_profiles me JOIN users u ON u.sub = me.sub
     JOIN sessions s ON s.sub = u.sub WHERE me.id = ? AND me.sub = ?
     AND s.sid = ? AND s.expires_at > ?
-    AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub))`;
+    AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub))`);
+}
 
-const clearBlock = sql`DELETE FROM social_blocks WHERE blocker = ? AND blocked = ?
+function prepareClearBlock(actor: SocialActor) {
+  return actor.db.prepare(sql`DELETE FROM social_blocks WHERE blocker = ? AND blocked = ?
   AND EXISTS (SELECT 1 FROM social_commands c WHERE c.actor = ? AND c.key = ?
     AND c.execution_nonce = ? AND c.result_code = 'ok')
   AND EXISTS (SELECT 1 FROM social_profiles me JOIN users u ON u.sub = me.sub
     JOIN sessions s ON s.sub = u.sub WHERE me.id = ? AND me.sub = ?
     AND s.sid = ? AND s.expires_at > ?
-    AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub))`;
+    AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub))`);
+}
 
-const selectReceipt = sql`SELECT c.actor,c.key,c.request_hash,c.execution_nonce,c.result_code,
+function prepareSelectReceipt(actor: SocialActor) {
+  return actor.db.prepare(sql`SELECT c.actor,c.key,c.request_hash,c.execution_nonce,c.result_code,
   c.resource_id,c.result_version FROM social_commands c JOIN social_profiles me ON me.id = c.actor
   JOIN users u ON u.sub = me.sub JOIN sessions s ON s.sub = u.sub
   WHERE c.actor = ? AND c.key = ? AND me.sub = ? AND s.sid = ? AND s.expires_at > ?
-    AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub)`;
+    AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = u.sub)`);
+}
 
 export async function unblockPeer(
   actor: SocialActor,
@@ -70,55 +78,49 @@ export async function unblockPeer(
   const version = input.value.expectedVersion!;
   const nonce = crypto.randomUUID();
   const result = await actor.db.batch([
-    actor.db
-      .prepare(insertReceipt)
-      .bind(
-        key,
-        hash,
-        nonce,
-        peer,
-        peer,
-        peer,
-        version,
-        peer,
-        peer,
-        peer,
-        actor.nowMs,
-        profile.id,
-        actor.sub,
-        actor.sid,
-        actor.nowIso,
-      ),
-    actor.db
-      .prepare(bumpPair)
-      .bind(
-        profile.id,
-        peer,
-        profile.id,
-        peer,
-        version,
-        profile.id,
-        key,
-        nonce,
-        profile.id,
-        actor.sub,
-        actor.sid,
-        actor.nowIso,
-      ),
-    actor.db
-      .prepare(clearBlock)
-      .bind(
-        profile.id,
-        peer,
-        profile.id,
-        key,
-        nonce,
-        profile.id,
-        actor.sub,
-        actor.sid,
-        actor.nowIso,
-      ),
-    actor.db.prepare(selectReceipt).bind(profile.id, key, actor.sub, actor.sid, actor.nowIso),
+    prepareInsertReceipt(actor).bind(
+      key,
+      hash,
+      nonce,
+      peer,
+      peer,
+      peer,
+      version,
+      peer,
+      peer,
+      peer,
+      actor.nowMs,
+      profile.id,
+      actor.sub,
+      actor.sid,
+      actor.nowIso,
+    ),
+    prepareBumpPair(actor).bind(
+      profile.id,
+      peer,
+      profile.id,
+      peer,
+      version,
+      profile.id,
+      key,
+      nonce,
+      profile.id,
+      actor.sub,
+      actor.sid,
+      actor.nowIso,
+    ),
+    prepareClearBlock(actor).bind(
+      profile.id,
+      peer,
+      profile.id,
+      key,
+      nonce,
+      profile.id,
+      actor.sub,
+      actor.sid,
+      actor.nowIso,
+    ),
+    prepareSelectReceipt(actor).bind(profile.id, key, actor.sub, actor.sid, actor.nowIso),
   ]);
   const receipt = result[3].results[0] as Parameters<typeof fromReceipt>[0] | undefined;
   if (!receipt) return { ok: false, code: await actorFailure(actor) };
