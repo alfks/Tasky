@@ -16,7 +16,8 @@ CREATE TABLE social_pairs (
   requested_at INTEGER,
   PRIMARY KEY (lo, hi),
   CHECK (lo < hi),
-  CHECK ((state = 'pending' AND requester IN (lo,hi) AND requested_at IS NOT NULL)
+  CHECK ((state = 'pending' AND requester IS NOT NULL AND requester IN (lo,hi)
+    AND requested_at IS NOT NULL)
     OR (state <> 'pending' AND requester IS NULL AND requested_at IS NULL))
 );
 CREATE INDEX social_pairs_hi_state_lo ON social_pairs(hi,state,lo);
@@ -67,7 +68,7 @@ CREATE TABLE social_commands (
   execution_nonce TEXT NOT NULL,
   result_code TEXT NOT NULL,
   resource_id TEXT,
-  result_version INTEGER,
+  result_version INTEGER CHECK (result_version IS NULL OR result_version >= 0),
   created_at INTEGER NOT NULL,
   PRIMARY KEY (actor, key)
 );
