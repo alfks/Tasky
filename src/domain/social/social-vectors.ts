@@ -124,6 +124,7 @@ const BASE_PAIR_FACTS: PairFacts = {
   actorFriendCount: 0,
   peerFriendCount: 0,
 };
+const BLOCKED_ACCEPT: PairFacts = { ...BASE_PAIR_FACTS, pair: PENDING, action: 'accept' };
 export type PairVector = { name: string; facts: PairFacts; expected: PairPlan };
 export const SOCIAL_PAIR_VECTORS: readonly PairVector[] = [
   {
@@ -161,9 +162,24 @@ export const SOCIAL_PAIR_VECTORS: readonly PairVector[] = [
     expected: { ok: false, code: 'conflict' },
   },
   {
+    name: 'R5 차단 actor의 stale 수락 비노출',
+    facts: { ...BLOCKED_ACCEPT, isBlockedByActor: true, expectedVersion: 2 },
+    expected: { ok: false, code: 'unavailable' },
+  },
+  {
+    name: 'R5 차단 peer의 matching 수락 비노출',
+    facts: { ...BLOCKED_ACCEPT, isBlockedByPeer: true, expectedVersion: 3 },
+    expected: { ok: false, code: 'unavailable' },
+  },
+  {
     name: 'R5 친구 삭제는 none tombstone과 반응 삭제',
     facts: { ...BASE_PAIR_FACTS, pair: ACCEPTED, action: 'remove', expectedVersion: 3 },
     expected: { ok: true, pair: { ...NONE, version: 4 }, clearReactions: true },
+  },
+  {
+    name: 'R5 차단된 none 친구 삭제 비노출',
+    facts: { ...BASE_PAIR_FACTS, action: 'remove', isBlockedByActor: true, expectedVersion: 3 },
+    expected: { ok: false, code: 'unavailable' },
   },
   {
     name: 'R6 차단은 pair 없어도 version 증가',

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 읽기 조건: worker/** 의 SQL 을 고치거나, 이 검사가 실패했을 때.
 #
-# 두 검사를 한다:
+# 세 검사를 한다:
 #
 # 1) worker/db/** 전용(SYNC_DESIGN.md §②-5 항목 2 그대로): `sql`…`` 태그로 감싼 문장(worker/db/sql.ts
 #    참고)에 `WHERE` 가 있으면 `sub = ?` 바인딩이 있어야 한다 — 사용자 격리를 코드 리뷰가 아니라 이
@@ -18,6 +18,8 @@
 #    SQL 은 검사 자체가 못 봤다(T-93 리뷰 라운드 2 실측 — 템플릿 보간으로 진짜 SQLi 를 주입해도
 #    통과했다). 지금 코드는 전부 `.bind()` 를 쓰므로 실제 취약점은 0건이고, 이 검사는 미래 회귀만
 #    막는다.
+# 3) worker/social/** production은 모든 prepare 인자를 보간 없는 sql 태그로 제한한다.
+#    social actor 경로에 동적 문자열 SQL을 새로 넣으면 이 좁은 검사가 실패한다.
 #
 # 명시 허용목록: WORKER_SQL_ALLOWLIST 에 "파일경로:그 줄에 포함된 부분 문자열"을 한 줄씩 추가하면
 # 그 줄만 검사 2)에서 건너뛴다(지금은 비어 있다 — 새 예외가 필요할 때만 채운다).
@@ -36,6 +38,35 @@ if [ ! -d worker ]; then
 fi
 
 bad=0
+
+# --- 검사 3: worker/social/** 는 정적 sql`` 리터럴만 허용 ---
+if [ -d worker/social ]; then
+  social_files="$(find worker/social -name '*.ts' ! -name '*.test.ts')"
+  for f in $social_files; do
+    node -e '
+const fs = require("fs");
+const source = fs.readFileSync(process.argv[1], "utf8");
+let bad = 0;
+const re = /\.prepare\(\s*/g;
+let match;
+while ((match = re.exec(source))) {
+  const rest = source.slice(match.index + match[0].length);
+  const line = source.slice(0, match.index).split("\n").length;
+  if (!rest.startsWith("sql`")) {
+    console.log(`FAIL: ${process.argv[1]}:${line} — social prepare에는 sql 태그 리터럴만 허용`);
+    bad = 1;
+    continue;
+  }
+  const end = rest.indexOf("`", 4);
+  if (end < 0 || rest.slice(4, end).includes("${")) {
+    console.log(`FAIL: ${process.argv[1]}:${line} — social SQL 보간 금지`);
+    bad = 1;
+  }
+}
+process.exit(bad);
+' "$f" || bad=1
+  done
+fi
 
 # --- 검사 1: worker/db/** sql`` 블록의 sub = ? 바인딩 ---
 if [ -d worker/db ]; then

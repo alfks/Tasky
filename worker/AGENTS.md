@@ -4,8 +4,9 @@
 
 ## 목적
 
-Cloudflare Worker(구글 OAuth·세션 쿠키·`/api/sync`·D1·계정 삭제, docs/specs/sync.md §4·§6,
-ADR-0019). `src/` 밖의 **두 번째 진입점**이다 — `src/` 레이어 체계(ADR-0006)에 속하지 않는다.
+Cloudflare Worker(구글 OAuth·세션 쿠키·`/api/sync`·D1·계정 삭제·소셜 D1 투영,
+docs/specs/sync.md §4·§6, ADR-0019·0022). `src/` 밖의 **두 번째 진입점**이다 — `src/`
+레이어 체계(ADR-0006)에 속하지 않는다.
 `docs/DIRECTORY_MAP.md`·`docs/ARCHITECTURE.md` §1 표의 `worker` 행이 단일 소스.
 
 ## 관할: auth/
@@ -15,6 +16,8 @@ ADR-0019). `src/` 밖의 **두 번째 진입점**이다 — `src/` 레이어 체
 ## 관할: account/
 
 ## 관할: db/
+
+## 관할: social/
 
 파일 배치·규칙은 각 하위 디렉토리 자신의 `AGENTS.md` 가 전담한다(중복 금지) — `db/migrations/`·
 `test/` 는 그 아래 또 자기 `AGENTS.md` 를 갖는다(`관할:`은 직계 자식만 면제한다).
