@@ -1,4 +1,4 @@
-// 읽기 조건: 번들 델타 리포트(scripts/bundle-baseline.json 비교) 로직을 바꿀 때.
+// 읽기 조건: 진입 청크의 정적 의존 폐포 탐색 또는 번들 델타 리포트(scripts/bundle-baseline.json 비교)를 바꿀 때.
 // check-dist.mjs 하나에 다 있으면 그 파일이 300줄 상한(eslint max-lines)을 넘는다 — 로직을
 // 옮긴 이유는 오직 그것뿐이라 여기 있는 함수는 check-dist.mjs 가 부르는 용도로만 존재한다.
 import { execFileSync } from 'node:child_process';
@@ -95,4 +95,24 @@ export function deltaReport(baseline, closureGzip, networkGzip) {
     }
   }
   return out;
+}
+
+// 진입 청크의 정적 import만 재귀 탐색한다. 탐색 규칙의 근거는 check-dist.mjs의 예산 절 참고.
+function staticImportTargets(source) {
+  return [...source.matchAll(/\bfrom"\.\/([\w.-]+\.js)"/g)].map((m) => `/assets/${m[1]}`);
+}
+export function entryClosure(entryFile, allFiles) {
+  const byUrl = new Map(allFiles.map((f) => [f.url, f]));
+  const seen = new Set([entryFile.url]);
+  const queue = [entryFile];
+  while (queue.length > 0) {
+    const file = queue.shift();
+    for (const url of staticImportTargets(readFileSync(file.path, 'utf-8'))) {
+      if (seen.has(url)) continue;
+      seen.add(url);
+      const next = byUrl.get(url);
+      if (next !== undefined) queue.push(next);
+    }
+  }
+  return [...seen].map((url) => byUrl.get(url)).filter((f) => f !== undefined);
 }
