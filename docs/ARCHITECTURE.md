@@ -2,7 +2,7 @@
 
 # Tasky 아키텍처 맵
 
-코드가 아직 없으므로 이 문서는 **앞으로 만들 구조**의 단일 소스다. 구현이 이 문서와 달라지면 ADR + 이 문서 갱신이 한 PR에 있어야 한다.
+이 문서는 현재 구조와 승인된 후속 확장 지점을 함께 기록한다. 구현이 이 문서와 달라지면 ADR + 이 문서 갱신이 한 PR에 있어야 한다.
 디렉토리별 세부 규칙은 각 노드의 `AGENTS.md`에만 있다(여기에 중복하지 않는다).
 
 ## 1. 레이어와 의존 방향
@@ -19,9 +19,11 @@ flowchart TB
   subgraph DOMAIN["도메인 레이어  (src/domain)  — 외부 패키지 0"]
     EN["엔티티 · 값 객체 (Todo, Category, DateKey, Theme)"]
     RU["규칙 · 순수 함수 (validate, completionRate, reorder, touch/markDeleted → Persistable)"]
+    SO["social/ — 공개 DTO·권한·관계·멱등 순수 계약 (개인 Meta 제외)"]
   end
   subgraph PORT["레포지토리 인터페이스  (src/repositories)"]
     RI["TodoRepository · CategoryRepository · SettingsRepository · FocusSessionRepository (upsert(Persistable) + 조회) · DatasetRepository (readAll/write/restore)"]
+    SR["SocialRepository — 온라인 actor-bound 계약 (후속 구현)"]
     RM["memory/* (테스트용 구현)"]
     RC["container.ts — Repositories 컨테이너, get/setRepositories()"]
   end
@@ -37,6 +39,7 @@ flowchart TB
   IDB -- implements --> RI
   RM -- implements --> RI
   RI --> EN
+  SR --> SO
   RU --> EN
   SYNC -. Phase 2 .-> RI
   classDef ext stroke-dasharray: 5 5,stroke:#888;
@@ -105,10 +108,12 @@ Tasky/
     │   ├── reports/      기간 통계(달성률·스트릭·히트맵)
     │   └── shell/        앱 셸·레이아웃·토스트 스택 — **조립 지점이지 feature 가 아니다**
     ├── domain/         → src/domain/AGENTS.md         (배럴 없음)
-    │   ├── todo/  category/  date/  theme/  focus/  backup/  dday/  diary/  routine/  sync/(순수 규칙만 — 서버 LWW·클라이언트 병합·아웃박스·와이어)
+    │   ├── todo/  category/  date/  theme/  focus/  backup/  dday/  diary/  routine/  sync/(서버 LWW·클라이언트 병합·아웃박스·와이어)
+    │   ├── social/         공개 DTO·입력·관계/초대/응원 전이·권한/멱등·공통 벡터(개인 Meta 밖)
     │   └── meta.ts(Meta, Persistable, createMeta/touch/markDeleted/adopt)  ids.ts  dataset.ts  errors.ts
     ├── repositories/   → src/repositories/AGENTS.md
     │   ├── todo-repository.ts  category-repository.ts  settings-repository.ts  focus-session-repository.ts  dataset-repository.ts  dday-repository.ts  diary-repository.ts  routine-repository.ts  sync-repository.ts  sync-transport.ts
+    │   ├── social-repository.ts  social-repository.contract.ts(온라인 포트·구현별 테스트 계약)
     │   ├── memory/           in-memory 구현(테스트) + live.ts(툼스톤 필터 헬퍼)
     │   ├── container.ts      컨테이너(get/setRepositories)
     │   └── write-plan.ts     데이터셋 쓰기 1단계(해석·검증) — memory·indexeddb 두 구현이 공용
@@ -188,7 +193,7 @@ type FocusSession = Meta & {
 | 확장                | 예약 위치                                                                                                                                                                                                                                                             | MVP에서 지킬 것                                                                                                                                                               |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 클라우드 동기화     | **로컬 스키마(v4: `syncOutbox`·`syncState`)·순수 판정(`src/domain/sync/**`)·루틴 슬롯 id·`fillFloor`는 T-92 에서 이미 착수됨(ADR-0018).** 남은 것: `src/infra/sync/`(어댑터 + 충돌 정책), `repositories/sync-repository.ts`·`sync-transport.ts`(포트·구현, T-92 후속) | `Meta` 유지·`touch` 경유·소프트 삭제(ADR-0005·0007), 레포지토리 외부에서 Dexie 참조 금지, ID 클라이언트 생성. 서버 순번(`seq`)은 `Meta`에 필드로 추가하지 않는다(ADR-0015 §2) |
-| SNS(친구·피드·반응) | `src/features/social/`, `src/domain/social/`                                                                                                                                                                                                                          | `Todo`·개인 sync/backup을 유지하고 별도 서버 공유 사본·actor 권한 포트로 구현([ADR-0022](decisions/ADR-0022-social-projection-and-authorization.md), 설계 승인·구현 예정)     |
+| SNS(친구·피드·반응) | 순수 계약 `src/domain/social/`와 포트 `src/repositories/social-repository.ts`는 T-1에서 추가. 후속 `src/features/social/`·`src/infra/social/`·`worker/social/`는 구현 예정                                                                                            | `Todo`·개인 sync/backup을 유지하고 별도 서버 공유 사본·actor 권한 포트로 구현([ADR-0022](decisions/ADR-0022-social-projection-and-authorization.md))                          |
 | 루틴/반복 투두      | `src/domain/todo/recurrence.ts`                                                                                                                                                                                                                                       | `Todo.date`는 인스턴스 날짜로 유지(템플릿과 분리)                                                                                                                             |
 | 다중 프로필/계정    | `Settings.id`를 프로필 id로(지금은 `'default'`) + `todos`/`categories`에 프로필 키                                                                                                                                                                                    | 단일 프로필 가정, DB 이름 `tasky` 고정. 인덱스가 전부 `[date+…]` 접두이므로 도입 시 전 인덱스 재작성 — 착수 전 ADR 필수                                                       |
 | 서버 컴포넌트 활용  | `src/app`                                                                                                                                                                                                                                                             | 로컬 우선이므로 데이터는 전부 클라이언트. 서버 컴포넌트는 셸/메타데이터만                                                                                                     |
@@ -210,4 +215,4 @@ type FocusSession = Meta & {
 - [ADR-0010](./decisions/ADR-0010-vinext-build-and-cloudflare-workers.md) 빌드 스택 Vinext + 배포 Cloudflare Workers (**superseded by ADR-0013**)
 - [ADR-0013](./decisions/ADR-0013-plain-vite-react-and-lazy-dexie.md) 순수 Vite + React SPA · Dexie 지연 로드 · 정적 자산 전용 Workers 배포
 
-Phase 3의 서버/클라이언트 경계와 SQL 계약: [social-design.md](social-design.md). 파일별 구현·배선 순서: [phase3-implementation-plan.md](phase3-implementation-plan.md). 위 social 디렉토리는 아직 구현되지 않은 확장 지점이다.
+Phase 3의 서버/클라이언트 경계와 SQL 계약: [social-design.md](social-design.md). 파일별 구현·배선 순서: [phase3-implementation-plan.md](phase3-implementation-plan.md). 현재 social은 순수 계약과 포트까지이며 서버·화면·운영은 후속 티켓이다.
