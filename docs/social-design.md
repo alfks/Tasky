@@ -165,7 +165,11 @@ WHERE lo=:lo AND hi=:hi AND EXISTS(/* 이 nonce의 ok receipt */);
 
 POST는 동일 Origin과 `X-Tasky: 1`을 세션 조회 전에 검사한다(실패 403, 본문·빈도 미사용). 세션 검증 뒤 effective mode가 경로를 차단하면 503으로 본문을 읽지 않고 빈도도 쓰지 않는다. 그 다음 `Content-Type: application/json`과 **스트림 8 KiB 상한**으로 JSON을 읽는다. 인증된 content type 오류 415, 구문 오류 400, 크기 초과 413은 각각 해당 route bucket을 한 번 조건부 예약한 뒤 primitive 호출 없이 응답한다. 초과 한도 429가 transport 오류보다 우선한다. 예약 0행은 현재 actor를 다시 확인해 401/410/404/429를 구분한다. JSON 구조·필드·값의 의미 검증 실패는 primitive 안에서 처리하며 동일 요청을 HTTP에서 두 번 과금하지 않는다. 알 수 없는 path/method는 임의 bucket 없이 404다.
 
+429는 현재 UTC 분 창이 끝날 때까지의 초를 `Retry-After`로 돌려준다. mode 차단 503은 60초, 일시 D1 오류 503은 30초다. 새 key로 다시 시도하지 않고 같은 key를 유지한다.
+
 모든 소셜 성공·오류는 `{data,serverTime}` 또는 `{error:{code},serverTime}`와 `Cache-Control: private, no-store`·`Vary: Cookie`를 사용한다. 현재 sid의 삭제 marker가 있으면 410과 쿠키 삭제가 슬라이딩 갱신 쿠키보다 우선한다.
+
+decline/cancel의 만료 pending은 최초 새 유효 key/hash와 현재 A, 정확한 peer·requester·expectedVersion·deadline, 같은 execution nonce의 `request-expired` receipt일 때만 `none` tombstone(v+1)으로 정리한다. 이 예외는 expired 오류 응답을 성공으로 바꾸지 않으며 replay·stale CAS·잘못된 requester·권한 상실에는 적용하지 않는다.
 
 PostView는 `{id,author:{id,nickname},text,happenedOn,createdAt,reactionCount,myReaction}`. 본문에 HTML/Markdown은 없고 일반 텍스트로만 렌더링한다.
 별명은 trim·NFC 후 최소 1자/최대 20 Unicode code points, 공유 문장은 최소 1자/최대 280 code points. 제어문자/줄바꿈/방향 전환 제어문자 거절, URL도 단순 텍스트로만 표시한다.

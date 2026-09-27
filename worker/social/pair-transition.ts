@@ -12,13 +12,17 @@ const insertReceipt = sql`INSERT INTO social_commands(actor,key,request_hash,exe
     WHEN NOT EXISTS (SELECT 1 FROM social_profiles peer JOIN users pu ON pu.sub = peer.sub
       WHERE peer.id = ? AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = pu.sub))
       THEN 'unavailable'
-    WHEN NOT EXISTS (SELECT 1 FROM social_pairs pair WHERE pair.lo = MIN(me.id,?)
-      AND pair.hi = MAX(me.id,?) AND pair.state = 'pending' AND pair.requester = ?)
+    WHEN EXISTS (SELECT 1 FROM social_blocks b WHERE
+      (b.blocker = me.id AND b.blocked = ?) OR (b.blocker = ? AND b.blocked = me.id))
       THEN 'unavailable'
+    WHEN EXISTS (SELECT 1 FROM social_pairs pair WHERE pair.lo = MIN(me.id,?)
+      AND pair.hi = MAX(me.id,?) AND pair.version <> ?) THEN 'conflict'
     WHEN NOT EXISTS (SELECT 1 FROM social_pairs pair WHERE pair.lo = MIN(me.id,?)
-      AND pair.hi = MAX(me.id,?) AND pair.version = ?) THEN 'conflict'
+      AND pair.hi = MAX(me.id,?) AND pair.state = 'pending') THEN 'conflict'
     WHEN EXISTS (SELECT 1 FROM social_pairs pair WHERE pair.lo = MIN(me.id,?)
       AND pair.hi = MAX(me.id,?) AND pair.requested_at <= ?) THEN 'request-expired'
+    WHEN NOT EXISTS (SELECT 1 FROM social_pairs pair WHERE pair.lo = MIN(me.id,?)
+      AND pair.hi = MAX(me.id,?) AND pair.requester = ?) THEN 'unavailable'
     ELSE 'ok' END, ?, (SELECT pair.version + 1 FROM social_pairs pair
       WHERE pair.lo = MIN(me.id,?) AND pair.hi = MAX(me.id,?)), ?
   FROM social_profiles me JOIN users u ON u.sub = me.sub JOIN sessions s ON s.sub = u.sub
@@ -31,7 +35,8 @@ const updatePair = sql`UPDATE social_pairs SET state = 'none',requester = NULL,
   WHERE lo = MIN(?,?) AND hi = MAX(?,?) AND state = 'pending'
     AND requester = ? AND version = ?
     AND EXISTS (SELECT 1 FROM social_commands c WHERE c.actor = ? AND c.key = ?
-      AND c.execution_nonce = ? AND c.result_code = 'ok')
+      AND c.execution_nonce = ? AND (c.result_code = 'ok' OR
+        (c.result_code = 'request-expired' AND social_pairs.requested_at <= ?)))
     AND EXISTS (SELECT 1 FROM social_profiles me JOIN users u ON u.sub = me.sub
       JOIN sessions s ON s.sub = u.sub WHERE me.id = ? AND me.sub = ?
       AND s.sid = ? AND s.expires_at > ?
@@ -77,13 +82,17 @@ export async function transitionPair(
         peer,
         peer,
         peer,
-        requester,
         peer,
         peer,
         input.value.expectedVersion,
         peer,
         peer,
+        peer,
+        peer,
         actor.nowMs - 604800000,
+        peer,
+        peer,
+        requester,
         peer,
         peer,
         peer,
@@ -105,6 +114,7 @@ export async function transitionPair(
         profile.id,
         key,
         nonce,
+        actor.nowMs - 604800000,
         profile.id,
         actor.sub,
         actor.sid,
