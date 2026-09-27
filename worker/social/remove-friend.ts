@@ -33,7 +33,11 @@ export async function removeFriend(
       .prepare(
         sql`INSERT INTO social_commands(actor,key,request_hash,execution_nonce,
         result_code,resource_id,result_version,created_at)
-      SELECT me.id,?,?,?,CASE WHEN EXISTS
+      SELECT me.id,?,?,?,CASE
+        WHEN EXISTS (SELECT 1 FROM social_blocks b WHERE
+          (b.blocker = me.id AND b.blocked = ?) OR (b.blocker = ? AND b.blocked = me.id))
+          THEN 'unavailable'
+        WHEN EXISTS
         (SELECT 1 FROM social_pairs pair WHERE pair.lo = ? AND pair.hi = ?
           AND pair.state = 'accepted' AND pair.version = ?) THEN 'ok' ELSE 'conflict' END,
         ?,COALESCE((SELECT pair.version + 1 FROM social_pairs pair
@@ -48,6 +52,8 @@ export async function removeFriend(
         key,
         hash,
         nonce,
+        peerId,
+        peerId,
         lo,
         hi,
         expectedVersion,

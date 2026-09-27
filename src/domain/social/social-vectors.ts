@@ -177,6 +177,11 @@ export const SOCIAL_PAIR_VECTORS: readonly PairVector[] = [
     expected: { ok: true, pair: { ...NONE, version: 4 }, clearReactions: true },
   },
   {
+    name: 'R5 차단된 none 친구 삭제 비노출',
+    facts: { ...BASE_PAIR_FACTS, action: 'remove', isBlockedByActor: true, expectedVersion: 3 },
+    expected: { ok: false, code: 'unavailable' },
+  },
+  {
     name: 'R6 차단은 pair 없어도 version 증가',
     facts: { ...BASE_PAIR_FACTS, pair: undefined, action: 'block' },
     expected: { ok: true, pair: { ...NONE, version: 1 }, setBlock: true, clearReactions: true },

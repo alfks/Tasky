@@ -4,6 +4,7 @@ import { ACTOR_A, ACTOR_B, VECTOR_KEY, VECTOR_NOW } from '@/domain/social/social
 
 import { createSocialActor } from './actor';
 import { acceptPair } from './pair-command';
+import { removeFriend } from './remove-friend';
 import { createD1Fixture } from '../test/d1-harness';
 
 const A = { ok: true as const, sub: 'user-a', sid: 'sid-a', expiresAt: '2099-01-01T00:00:00.000Z' };
@@ -66,6 +67,24 @@ describe('blocked pair result visibility', () => {
             .bind(ACTOR_A, key)
             .first<{ result_code: string }>();
           expect(receipt?.result_code).toBe('unavailable');
+        }
+        await fx.db
+          .prepare(
+            "UPDATE social_pairs SET state = 'none',requester = NULL,requested_at = NULL WHERE lo = ? AND hi = ?",
+          )
+          .bind(ACTOR_A, ACTOR_B)
+          .run();
+        for (const expectedVersion of [3, 2]) {
+          const key = `v1.${VECTOR_NOW}.0000000000000000000000000000003${expectedVersion}`;
+          expect(await removeFriend(actor, key, { peerId: ACTOR_B, expectedVersion })).toEqual({
+            ok: false,
+            code: 'unavailable',
+          });
+          const pair = await fx.db
+            .prepare('SELECT state,version FROM social_pairs WHERE lo = ? AND hi = ?')
+            .bind(ACTOR_A, ACTOR_B)
+            .first<{ state: string; version: number }>();
+          expect(pair).toMatchObject({ state: 'none', version: 3 });
         }
       } finally {
         await fx.dispose();

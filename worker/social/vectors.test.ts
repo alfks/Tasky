@@ -111,11 +111,12 @@ describe('shared domain vectors observed through real D1', () => {
         'R5 차단 actor의 stale 수락 비노출',
         'R5 차단 peer의 matching 수락 비노출',
         'R5 친구 삭제는 none tombstone과 반응 삭제',
+        'R5 차단된 none 친구 삭제 비노출',
         'R6 차단은 pair 없어도 version 증가',
         'R4 만료 요청은 수락 불가',
       ].includes(vector.name),
     );
-    expect(cases.length).toBe(8);
+    expect(cases.length).toBe(9);
     for (const vector of cases) {
       const fx = await createD1Fixture();
       try {
