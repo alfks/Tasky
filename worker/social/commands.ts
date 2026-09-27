@@ -27,7 +27,7 @@ function bytesHex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export async function requestHash(method: string, path: string, dto: Record<string, string | number>): Promise<string> {
+export async function requestHash(method: string, path: string, dto: Record<string, string | number | boolean | null>): Promise<string> {
   const canonical = canonicalCommandRequest(method, path, 1, dto);
   return bytesHex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical))));
 }

@@ -8,8 +8,9 @@ import { createProfile, createSocialActor, visiblePost } from './actor';
 import { renameProfile } from './commands';
 import { deleteAccountProjection } from './deletion';
 import { collectSocialGarbage, limitSubject, reserveLimit } from './limits';
-import { acceptPair, expirePendingPair } from './pair-command';
+import { acceptPair, expirePendingPair, removeFriend } from './pair-command';
 import { consumeInvite, previewInvite } from './invite-command';
+import { blockPeer } from './block-command';
 
 const A = { ok: true as const, sub: 'user-a', sid: 'sid-a', expiresAt: '2099-01-01T00:00:00.000Z' };
 const B = { ok: true as const, sub: 'user-b', sid: 'sid-b', expiresAt: '2099-01-01T00:00:00.000Z' };
@@ -196,4 +197,53 @@ describe('Phase 3 D1 projection', () => {
       expect(await consumeInvite(actor, `v1.${VECTOR_NOW}.00000000000000000000000000000008`, { token })).toEqual({ ok: false, code: 'unavailable' });
     } finally { await fx.dispose(); }
   }, 15_000);
+
+  it('removes a friend and both directions of reaction without stale retry effects', async () => {
+    const fx = await createD1Fixture();
+    try {
+      await seed(fx.db);
+      await seedProfiles(fx.db);
+      await fx.db.prepare("INSERT INTO social_pairs(lo,hi,state,version) VALUES (?,?,'accepted',3)")
+        .bind(ACTOR_A, ACTOR_B).run();
+      await fx.db.batch([
+        fx.db.prepare('INSERT INTO social_posts(id,author,text,happened_on,created_at) VALUES (?,?,?,?,?)')
+          .bind('post-a', ACTOR_A, 'a', '2027-01-01', VECTOR_NOW),
+        fx.db.prepare('INSERT INTO social_posts(id,author,text,happened_on,created_at) VALUES (?,?,?,?,?)')
+          .bind('post-b', ACTOR_B, 'b', '2027-01-01', VECTOR_NOW),
+      ]);
+      await fx.db.batch([
+        fx.db.prepare('INSERT INTO social_reactions(post_id,reactor,created_at) VALUES (?,?,?)')
+          .bind('post-a', ACTOR_B, VECTOR_NOW),
+        fx.db.prepare('INSERT INTO social_reactions(post_id,reactor,created_at) VALUES (?,?,?)')
+          .bind('post-b', ACTOR_A, VECTOR_NOW),
+      ]);
+      const actor = await createSocialActor(fx.db, A, VECTOR_NOW);
+      const result = await removeFriend(actor, VECTOR_KEY, { peerId: ACTOR_B, expectedVersion: 3 });
+      expect(result).toEqual({ ok: true, value: { resourceId: ACTOR_B, resultVersion: 4, didApply: true } });
+      expect(await count(fx.db, 'social_reactions')).toBe(0);
+      expect((await fx.db.prepare('SELECT state,version FROM social_pairs').first<{ state: string; version: number }>())).toMatchObject({ state: 'none', version: 4 });
+      expect(await removeFriend(actor, VECTOR_KEY, { peerId: ACTOR_B, expectedVersion: 3 })).toEqual({ ok: true, value: { resourceId: ACTOR_B, resultVersion: 4, didApply: false } });
+    } finally { await fx.dispose(); }
+  });
+
+  it('blocks without a prior pair and advances its tombstone version', async () => {
+    const fx = await createD1Fixture();
+    try {
+      await seed(fx.db);
+      await seedProfiles(fx.db);
+      const actor = await createSocialActor(fx.db, A, VECTOR_NOW);
+      expect(await blockPeer(actor, VECTOR_KEY, { peerId: ACTOR_B, blocked: true })).toEqual({
+        ok: true, value: { resourceId: ACTOR_B, resultVersion: 1, didApply: true },
+      });
+      expect((await fx.db.prepare('SELECT state,version FROM social_pairs').first<{ state: string; version: number }>())).toMatchObject({ state: 'none', version: 1 });
+      expect((await fx.db.prepare('SELECT blocker FROM social_blocks').first<{ blocker: string }>())?.blocker).toBe(ACTOR_A);
+      expect(await blockPeer(actor, VECTOR_KEY, { peerId: ACTOR_B, blocked: true })).toEqual({
+        ok: true, value: { resourceId: ACTOR_B, resultVersion: 1, didApply: false },
+      });
+      const newKey = `v1.${VECTOR_NOW}.00000000000000000000000000000006`;
+      expect(await blockPeer(actor, newKey, { peerId: ACTOR_B, blocked: true })).toEqual({
+        ok: true, value: { resourceId: ACTOR_B, resultVersion: 2, didApply: true },
+      });
+    } finally { await fx.dispose(); }
+  });
 });
