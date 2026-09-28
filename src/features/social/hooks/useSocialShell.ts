@@ -21,6 +21,7 @@ export function useSocialShell(mainId: string, reportsOpen: boolean) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const wasOpen = useRef(false);
+  const returnFocusPending = useRef(false);
 
   const openSocial = useCallback((closeReports: () => void) => {
     const opener = document.activeElement;
@@ -53,7 +54,13 @@ export function useSocialShell(mainId: string, reportsOpen: boolean) {
   useEffect(
     () =>
       onSocialInvalidation((reason) => {
-        if (reason === 'auth' || reason === 'account' || reason === 'revoked' || reason === 'cross-tab') forceClose();
+        if (
+          reason === 'auth' ||
+          reason === 'account' ||
+          reason === 'revoked' ||
+          reason === 'cross-tab'
+        )
+          forceClose();
       }),
     [forceClose],
   );
@@ -74,23 +81,28 @@ export function useSocialShell(mainId: string, reportsOpen: boolean) {
     };
   }, [open, component, loadAttempt]);
   useEffect(() => {
-    if (open && !wasOpen.current) {
-      wasOpen.current = true;
-      const handle = requestAnimationFrame(() =>
-        headingRef.current?.focus({ preventScroll: true }),
-      );
-      return () => cancelAnimationFrame(handle);
+    if (!open) return;
+    const handle = requestAnimationFrame(() => headingRef.current?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(handle);
+  }, [open]);
+  useEffect(() => {
+    if (wasOpen.current && !open) returnFocusPending.current = true;
+    wasOpen.current = open;
+    if (open || reportsOpen) {
+      // 새 친구 화면이나 Reports가 포커스를 소유하면 옛 복귀 예약을 폐기한다.
+      returnFocusPending.current = false;
+      return;
     }
-    if (!open && wasOpen.current && !reportsOpen) {
-      wasOpen.current = false;
+    if (returnFocusPending.current) {
       const handle = requestAnimationFrame(() => {
+        if (!returnFocusPending.current) return;
+        returnFocusPending.current = false;
         const opener = openerRef.current;
         if (opener?.isConnected) opener.focus({ preventScroll: true });
         else document.getElementById(mainId)?.focus({ preventScroll: true });
       });
       return () => cancelAnimationFrame(handle);
     }
-    wasOpen.current = open;
   }, [open, reportsOpen, mainId]);
 
   return {
