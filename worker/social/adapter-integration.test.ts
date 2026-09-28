@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import type { SocialRepository } from '@/repositories/social-repository';
+
 import { createHttpSocialRepository } from '@/infra/social/http-repository';
 
 import { SESSION_COOKIE } from '../auth/cookies';
 import { ORIGIN, NOW, key, withServer } from '../test/social-adapter-integration-fixture';
 
-import type { SocialRepository } from '@/repositories/social-repository';
 import type { Env } from '../env';
 import type { Client, Server } from '../test/social-adapter-integration-fixture';
 

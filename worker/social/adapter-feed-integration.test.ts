@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import type { SocialRepository } from '@/repositories/social-repository';
+
 import { createHttpSocialRepository } from '@/infra/social/http-repository';
 
 import { SESSION_COOKIE } from '../auth/cookies';
 import { NOW, ORIGIN, key, withServer } from '../test/social-adapter-integration-fixture';
 
-import type { SocialRepository } from '@/repositories/social-repository';
 import type { Client, Server } from '../test/social-adapter-integration-fixture';
 
 const IDS = { a: 'a'.repeat(32), b: 'b'.repeat(32), c: 'c'.repeat(32) };
@@ -171,7 +172,6 @@ async function modeAndReaction(ctx: Context, p1: string, p2: string): Promise<vo
   server.env.SOCIAL_MODE = 'enabled';
   await b.repo.setReaction({ postId: p1, active: true }, { key: key(206) });
 }
-
 async function offModeAndRestore(ctx: Context, p1: string, p2: string): Promise<void> {
   const { a, b, server } = ctx;
   server.env.SOCIAL_MODE = 'off';
