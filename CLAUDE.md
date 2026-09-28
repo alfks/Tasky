@@ -2,7 +2,7 @@
 
 # Tasky — 루트 헌법
 
-**Tasky**: 레퍼런스 앱(국내 인기 감성 투두 앱)의 GUI/UX/기능을 매우 흡사하게 재현하는 **감성 투두/일정 관리 데스크탑 웹앱**. React SPA(Vite) + TypeScript + PWA, **로컬 우선(IndexedDB, repository 패턴)**. SNS(친구·피드·반응)는 Phase 3([설계 승인·구현 예정](docs/specs/social.md)).
+**Tasky**: 레퍼런스 앱(국내 인기 감성 투두 앱)의 GUI/UX/기능을 매우 흡사하게 재현하는 **감성 투두/일정 관리 데스크탑 웹앱**. React SPA(Vite) + TypeScript + PWA, **로컬 우선(IndexedDB, repository 패턴)**. SNS(친구·피드·반응)는 Phase 3([설계 승인, 서버 계약 구현·화면/운영 검증 진행 중](docs/specs/social.md)).
 1차 MVP: 날짜 스트립 + 카테고리별 투두 CRUD + 체크/달성률 + 테마/색상.
 
 > **현재 상태(단일 소스 — 상태가 바뀌면 여기만 고친다)**
@@ -87,6 +87,8 @@ bash scripts/check-author.sh main         # main 이후 커밋 author 검증
 bash scripts/check-agents-md.sh           # AGENTS.md 누락 검사
 bash scripts/check-arch.sh                # 레이어 경계 린트 + 아키텍처 2차 패스(스캐폴딩 후)
 node scripts/make-icons.mjs               # PWA 아이콘 4종 재생성(그림 원본은 assets/seal-sheet.png — 코드로 다시 그리지 않는다, pwa.md R2-a)
+node scripts/social-load.mjs              # Phase 3 로컬 부하 계획만 출력(기본값은 네트워크·파일 쓰기 없음)
+node scripts/social-load.mjs --prepare /tmp/tasky-social-smoke --actors 1 --friends 1 --posts 1 --duration-ms 100 --interval-ms 100 --rounds 1  # 합성 로컬 fixture 생성; 실행·정리 절차는 docs/phase3-social-operations.md
 pnpm dev | pnpm build | pnpm test -- <pattern>
 pnpm start                                # 빌드 산출물(dist/client)을 wrangler dev 로 로컬 서빙(서비스워커 확인용)
 pnpm build && pnpm run deploy:dry-run     # CI 배포와 **같은 명령**을 --dry-run 으로(업로드 파일 목록 확인). 자격증명 불필요 — `--dry-run` 은 네트워크를 타지 않아 스크립트가 자격증명 검사를 건너뛴다. 단 빌드 산출물은 있어야 한다

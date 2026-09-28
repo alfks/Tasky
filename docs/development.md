@@ -21,26 +21,36 @@ pnpm check              # PR 전 필수 게이트 (11개 검사)
 
 ## 명령어
 
-| 명령                      | 하는 일                                                                                                                    |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm dev`                | 개발 서버                                                                                                                  |
-| `pnpm build`              | 프로덕션 빌드 + 서비스워커 + 산출물 계약 검사                                                                              |
-| `pnpm start`              | 빌드 산출물을 `wrangler dev` 로 서빙(서비스워커 확인용)                                                                    |
-| `pnpm check`              | `scripts/check.sh` — 금지어·`.env`·AGENTS.md·author·워크트리·아키텍처·worker/db SQL 사용자 격리·lint·typecheck·format·test |
-| `pnpm test`               | 단위 테스트(vitest). `tests/**` 는 포함하지 않는다                                                                         |
-| `pnpm test:e2e`           | E2E(Playwright, 프로덕션 빌드를 띄워서 실행)                                                                               |
-| `pnpm run deploy:dry-run` | 배포 배선 확인(자격증명 불필요)                                                                                            |
+| 명령                           | 하는 일                                                                                                                           |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm dev`                     | 개발 서버                                                                                                                         |
+| `pnpm build`                   | 프로덕션 빌드 + 서비스워커 + 산출물 계약 검사                                                                                     |
+| `pnpm start`                   | 빌드 산출물을 `wrangler dev` 로 서빙(서비스워커 확인용)                                                                           |
+| `pnpm check`                   | `scripts/check.sh` — 금지어·`.env`·AGENTS.md·author·워크트리·아키텍처·worker/db SQL 사용자 격리·lint·typecheck·format·test        |
+| `pnpm test`                    | 단위 테스트(vitest). `tests/**` 는 포함하지 않는다                                                                                |
+| `pnpm test:e2e`                | E2E(Playwright, 프로덕션 빌드를 띄워서 실행)                                                                                      |
+| `pnpm run deploy:dry-run`      | 배포 배선 확인(자격증명 불필요)                                                                                                   |
+| `node scripts/social-load.mjs` | Phase 3 로컬 합성 피드 부하 계획만 출력. fixture·명시적 loopback 실행·정리는 [운영 준비 절차](./phase3-social-operations.md) 참고 |
 
 `pnpm deploy` 는 **pnpm 내장 명령**이라 이 레포의 스크립트가 돌지 않는다 — 반드시 `pnpm run deploy`.
 
 `pnpm build`가 재는 번들 예산(값은 [TECH_PLAN.md](./TECH_PLAN.md) §8)의 검사는 **`pnpm check`에
-포함되지 않는다** — `scripts/check.sh`(`pnpm check`)는 arch·worker-sql·lint·typecheck·format·test
-6개만 돌고 `pnpm build` 자체를 부르지 않는다. 이 검사는 **`pnpm build`의 마지막 단계**
+포함되지 않는다** — `scripts/check.sh`(`pnpm check`)는 guard 4개, 워크트리 검사 1개,
+arch·worker-sql·lint·typecheck·format·test 6개를 돌고 `pnpm build` 자체를 부르지 않는다.
+번들 예산 검사는 **`pnpm build`의 마지막 단계**
 (`node scripts/check-dist.mjs`)로만 돈다 — CI가 현재 미작동이라(CLAUDE.md "현재 상태" 블록) 실질
 트리거는 사람이 PR 전에 직접 `pnpm build`를 돌리는 것뿐이다. 올릴 때의 정책(언제·어디서·왜
-올리는지)은 `scripts/check-dist.mjs`의 `ENTRY_BUDGET`·`NETWORK_BUDGET` 주석이 단일 소스다 — 여기서
-다시 적지 않는다. **계측 이름이 T-94(#129)에서 바뀌었다** — "진입 청크 단독"이 아니라 **"진입
-폐포(진입 + 정적 위성 청크) 합"** 이 `ENTRY_BUDGET`(R2-C, 2026-09-22 이후 예산 164,000)과 비교된다.
+올리는지)은 `scripts/check-dist.mjs`의 `ENTRY_BUDGET`·`NETWORK_BUDGET` 주석이 단일 소스다.
+**계측 이름이 T-94(#129)에서 바뀌었다** — "진입 청크 단독"이 아니라 **"진입 폐포(진입 + 정적
+위성 청크) 합"** 을 `ENTRY_BUDGET`과 비교한다.
+
+2026-09-28 사용자 승인으로 Phase 3 친구 화면에 필요한 진입 폐포 한도를 164,000 B에서
+**168,000 B**로, 첫 로드 JS 합 한도를 210,000 B에서 **230,000 B**로 조정했다. 증가한 예산은
+각각 4,000 B와 20,000 B이며, 이전 한도에서 실패한 T-7 `9bb1d7e`의 실측은 각각
+165,971 B와 227,146 B였다. T-7 제품 소스 `7a1a41a4`와 T-8 검증 소스를 합친 깨끗한
+트리에서 `pnpm build`가 **165,974 B / 227,265 B**로 통과했다(여유 2,026 B / 2,735 B).
+기준값 대비 증가는 각각 5,344 B / 21,671 B로 WARN이며, 상한 변경 근거와 비용은
+[ADR-0013](./decisions/ADR-0013-plain-vite-react-and-lazy-dexie.md) 및 `scripts/check-dist.mjs`에 남긴다.
 
 **상한 게이트만으로는 여유가 조용히 바닥날 때까지 신호가 없었다(R2-C, 리뷰 라운드1 Major)** —
 그래서 `pnpm build`는 매번 진입 폐포 gzip을 `scripts/bundle-baseline.json`의 기준값과 비교해
@@ -154,6 +164,7 @@ Unregister 로 푼다. 시크릿 창에서도 옛 화면이면 위의 낡은 `di
 - Phase 2 구현 티켓 백로그(스냅샷): [PHASE2_TICKET_BACKLOG.md](./PHASE2_TICKET_BACKLOG.md) — 실제 단일 소스는 `.worktrees/tickets/`(로컬, 커밋 안 됨)이고 이 문서는 세션 간 인수인계용 기록
 - 코드 컨벤션: [conventions/code-style.md](./conventions/code-style.md) · git: [conventions/git-workflow.md](./conventions/git-workflow.md)
 - 사용감 실측 기록: [FEEL_REPORT.md](./FEEL_REPORT.md)
+- Phase 3 로컬 검증·운영 준비: [phase3-social-operations.md](./phase3-social-operations.md)
 
 ## 로드맵
 
