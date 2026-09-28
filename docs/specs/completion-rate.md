@@ -43,13 +43,13 @@
 - R5. ~~카테고리별 막대~~ — 폐지(사용자 결정). 카테고리별 값은 이제 각 카테고리 그룹 헤더(이름 옆)에 퍼센트로 보인다: `todo.md` R23.
 - R6. 값 갱신은 토글 후 50ms 안(낙관적 갱신과 동일 프레임).
 - R7. 헤더 링 40px·굵기 4px, 패널 링 120px·굵기 10px. 숫자 `--text-lg`(헤더), `--text-3xl`(패널).
-- R8. 달성률·`document.title`(app-shell R9)·날짜 스트립 ✓ 배지(date-strip R8)는 **같은 계산**을 쓴다. 세 곳이 부르는 **진입점은 둘**이다 — 하루치 `completionCounts`(헤더 링·탭 제목)와 날짜 범위 `summarizeDays`(스트립 배지, §4). 진입점이 둘이어도 **세는 일은 `completionCounts` 하나가 한다**: `summarizeDay` 의 `total`·`doneCount` 는 그 결과를 그대로 쓰고, `isAllDone` 은 점(dots) 유무가 아니라 그 수에만 묶인다. 그래서 불변식은 **"같은 날짜의 같은 투두 목록을 두 경로에 넣으면"** 성립한다 — `summarizeDay(todos,…).total === completionCounts(todos).total`, `doneCount === done`, `isAllDone === (completionRate(todos) === 1)`(투두 0개면 비율이 `null` 이라 배지도 없고, 그날 투두가 전부 색을 못 찾은 카테고리라 점이 0개여도 배지는 수를 따른다). 고정: `src/domain/todo/completion-invariant.test.ts`.
-  - **화면에 뜬 두 값이 항상 같다는 뜻은 아직 아니다.** 헤더 링·탭 제목은 스토어 낙관 갱신으로 토글 즉시 움직이는데(R6) `useWeekSummaries` 는 `weekStart` 가 바뀔 때만 저장소를 읽어 **토글 뒤 스트립 배지가 낡은 값으로 남는다.** 계산이 갈라져서가 아니라 한쪽 입력이 낡아서다 — 주 요약 무효화는 **T-56** 이 맡는다. 그때까지 이 규칙의 "원천" 은 같은 목록을 넣었을 때의 조건부 보장이다.
+- R8. 달성률과 날짜 스트립 ✓ 배지(date-strip R8)는 **같은 계산**을 쓴다. 두 곳이 부르는 **진입점은 둘**이다 — 하루치 `completionCounts`(헤더 링)와 날짜 범위 `summarizeDays`(스트립 배지, §4). 진입점이 둘이어도 **세는 일은 `completionCounts` 하나가 한다**: `summarizeDay` 의 `total`·`doneCount` 는 그 결과를 그대로 쓰고, `isAllDone` 은 점(dots) 유무가 아니라 그 수에만 묶인다. 그래서 불변식은 **"같은 날짜의 같은 투두 목록을 두 경로에 넣으면"** 성립한다 — `summarizeDay(todos,…).total === completionCounts(todos).total`, `doneCount === done`, `isAllDone === (completionRate(todos) === 1)`(투두 0개면 비율이 `null` 이라 배지도 없고, 그날 투두가 전부 색을 못 찾은 카테고리라 점이 0개여도 배지는 수를 따른다). 일반 브라우저 탭 제목은 달성률과 무관하게 `Tasky`로 고정한다(app-shell R9). 고정: `src/domain/todo/completion-invariant.test.ts`.
+  - **화면에 뜬 두 값이 항상 같다는 뜻은 아직 아니다.** 헤더 링은 스토어 낙관 갱신으로 토글 즉시 움직이는데(R6) `useWeekSummaries` 는 `weekStart` 가 바뀔 때만 저장소를 읽어 **토글 뒤 스트립 배지가 낡은 값으로 남는다.** 계산이 갈라져서가 아니라 한쪽 입력이 낡아서다 — 주 요약 무효화는 **T-56** 이 맡는다. 그때까지 이 규칙의 "원천" 은 같은 목록을 넣었을 때의 조건부 보장이다.
 
 ## 4. 데이터
 
 - domain 순수 함수(`src/domain/todo/completion-rate.ts`): `completionCounts(todos) → { done, total }`, `completionRate(todos) → number | null`, `percentFromCounts({ done, total }) → number | null`(R2 표기 — counts 에서 바로), `completionPercent(todos) → number | null`(`completionCounts` + `percentFromCounts` 를 잇는다), `summarizeByCategory(todos, categories) → { categoryId, done, total }[]`(더는 이 스펙이 쓰지 않는다 — `todo.md` R23 은 `TodoGroup.counts` 를 그대로 `percentFromCounts` 에 넣는다).
-- 날짜 범위 요약은 여기 있지 않다: `summarizeDays(days, todos, categories) → Map<DateKey, DaySummary>`(`src/domain/todo/day-summary.ts`, `DaySummary = { total, doneCount, isAllDone, dots, overflowCount }`). 헤더 링·탭 제목이 쓰는 것은 위의 `completionCounts` 이고, 날짜 스트립 ✓ 배지(R8)가 쓰는 것은 `summarizeDays` 의 `isAllDone` 이다 — 둘 다 같은 목록을 같은 방식으로 센다.
+- 날짜 범위 요약은 여기 있지 않다: `summarizeDays(days, todos, categories) → Map<DateKey, DaySummary>`(`src/domain/todo/day-summary.ts`, `DaySummary = { total, doneCount, isAllDone, dots, overflowCount }`). 헤더 링이 쓰는 것은 위의 `completionCounts` 이고, 날짜 스트립 ✓ 배지(R8)가 쓰는 것은 `summarizeDays` 의 `isAllDone` 이다 — 둘 다 같은 목록을 같은 방식으로 센다.
 - 타입 변경 없음.
 - 레포지토리 메서드 없음(todo.md의 조회 결과를 사용).
 
@@ -66,6 +66,6 @@
 ## 7. 완료 조건
 
 - [ ] R1~R4, R8 단위 테스트(경계: 0/0, 1/3=33%, 2/3=67%, 199/200=99%, 200/200=100%).
-- [ ] 토글 → 링·숫자·타이틀·스트립 배지가 함께 갱신되는 통합 테스트 1개.
+- [ ] 토글 → 링·숫자·스트립 배지가 함께 갱신되는 통합 테스트 1개.
 - [ ] 100% 펄스가 로드 시에는 발생하지 않는 테스트(R4).
 - [ ] 라이트/다크 스크린샷(0%, 60%, 100%).

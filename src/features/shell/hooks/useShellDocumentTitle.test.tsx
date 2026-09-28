@@ -9,7 +9,7 @@ import { useTimerStore } from '@/features/timer';
 import { makeFocusSession } from '@/test/fixtures/focus-session';
 
 const TODAY = '2026-09-16' as DateKey;
-const SHELL_TITLE = '9월 16일 (수) · 1/2 · Tasky';
+const SHELL_TITLE = 'Tasky';
 
 function Probe() {
   useShellDocumentTitle(TODAY, { done: 1, total: 2 });
@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe('useShellDocumentTitle', () => {
-  it('마운트하면 R9 제목을 쓴다', () => {
+  it('마운트하면 앱 이름만 쓴다', () => {
     render(<Probe />);
     expect(document.title).toBe(SHELL_TITLE);
   });
