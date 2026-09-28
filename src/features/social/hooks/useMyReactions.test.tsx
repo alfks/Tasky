@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { SocialResponse } from '@/domain/social/social';
@@ -6,6 +6,7 @@ import type { SocialResponse } from '@/domain/social/social';
 import { setSocialRepository } from '@/repositories/container';
 import type { SocialRepository } from '@/repositories/social-repository';
 
+import { SocialMyReactionsPanel } from '@/features/social/components/SocialMyReactionsPanel';
 import { useMyReactions } from '@/features/social/hooks/useMyReactions';
 import {
   activateSocialSession,
@@ -80,5 +81,18 @@ describe('보낸 응원 off 자기 관리', () => {
       expect(await result.current.cancel(POST)).toBe(true);
     });
     expect(setReaction.mock.calls[1][1].key).toBe(firstKey);
+  });
+
+  it('상위 새로고침은 한 번만 재조회하고 상태 렌더로 반복되지 않는다', async () => {
+    const myReactions = vi.fn(async () => response({ items: [], nextCursor: null }));
+    setSocialRepository({ myReactions } as unknown as SocialRepository);
+    render(<SocialMyReactionsPanel enabled refreshNonce={1} />);
+    await waitFor(() => expect(screen.getByText('아직 보낸 응원이 없어요.')).toBeInTheDocument());
+    expect(myReactions).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(myReactions).toHaveBeenCalledTimes(2);
   });
 });
