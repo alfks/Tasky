@@ -7,11 +7,14 @@ import {
   currentProfile,
   type SocialActor,
 } from './actor';
+import { readFeedPage } from './feed-read';
 import { socialError, socialJson, readSocialBody, validOrigin, type Handled } from './http';
 import { handleInvite } from './invite-handler';
 import { limitSubject, reserveLimit } from './limits';
 import { effectiveSocialMode, routeAllowed, socialRoute, type Route } from './policy';
+import { handlePost } from './post-handler';
 import { handleProfile } from './profile-handler';
+import { handleReaction } from './reaction-handler';
 import { readSocialList } from './reads';
 import { handleRelation } from './relation-handler';
 import { requireSession, type SessionOk } from '../auth/session';
@@ -36,6 +39,11 @@ async function dispatch(
   key: string | null,
   mode: 'off' | 'read-only' | 'enabled',
 ): Promise<Handled> {
+  if (route.path === '/api/social/feed' || route.path === '/api/social/posts/mine') {
+    const scope = route.path === '/api/social/feed' ? 'feed' : 'posts:mine';
+    const result = await readFeedPage(actor, url, env.SESSION_SECRET, scope);
+    return result.ok ? { ok: true, value: { data: result.value } } : result;
+  }
   if (route.method === 'GET' && route.path !== '/api/social/me') {
     const result = await readSocialList(actor, route.path, url, env.SESSION_SECRET);
     return result.ok ? { ok: true, value: { data: result.value } } : result;
@@ -44,6 +52,8 @@ async function dispatch(
     return handleProfile(actor, route.path, body, key, mode);
   if (route.path.startsWith('/api/social/invites'))
     return handleInvite(actor, route.path, body, key, env.SESSION_SECRET);
+  if (route.path.startsWith('/api/social/posts')) return handlePost(actor, route.path, body, key);
+  if (route.path === '/api/social/reactions/set') return handleReaction(actor, body, key);
   return handleRelation(actor, route.path, body, key);
 }
 
@@ -90,6 +100,15 @@ async function handleAuthenticated(
         : socialError('validation', nowMs, session, parsed.status);
     }
     body = parsed.body;
+  }
+  if (route.path === '/api/social/reactions/set') {
+    const remove =
+      typeof body === 'object' &&
+      body !== null &&
+      !Array.isArray(body) &&
+      (body as { active?: unknown }).active === false;
+    if (!remove && !routeAllowed(mode, 'enabled'))
+      return socialError('social-disabled', nowMs, session);
   }
   if (!route.primitiveAdmission) {
     const admission = await spend(actor, env, route);

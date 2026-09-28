@@ -5,7 +5,7 @@
 ## 목적
 
 Phase 3의 서버 전용 D1 소셜 투영. `src/domain/social/**`의 순수 계약을 재사용하고,
-현재 세션·사용자·프로필을 SQL에서 재확인한다. `router.ts`가 16 HTTP 경로의
+현재 세션·사용자·프로필을 SQL에서 재확인한다. `router.ts`가 22 HTTP 경로의
 CSRF→세션→모드→8 KiB transport→primitive 순서를 소유한다.
 
 ## 규칙
@@ -30,6 +30,12 @@ CSRF→세션→모드→8 KiB transport→primitive 순서를 소유한다.
 8. 관리 목록은 `cursor.ts`의 actor·scope 바인딩 HMAC 커서만 받는다. 첫 페이지의 15분
    만료 시각을 다음 페이지에 유지하고, 검증 실패는 목록 SQL 전에 validation으로 끝낸다.
    목록 정렬은 peer id 또는 invite hash 오름차순이다.
+9. feed와 posts:mine은 같은 HMAC codec의 tuple upper/last를 쓰고, 친구 최대 50명+자신의
+   작성자별 인덱스 후보를 제한한 정적 SQL 한 문장에서 ACL·본문·페이지 반응 수를 읽는다.
+   validate는 ID만 반환한다. 공유 생성은 receipt·post·UTC 일간 counter를 한 batch에 둔다.
+10. reactions/set은 bounded transport 뒤 최상위 `active === false`만 revoke로 판별한다.
+    action을 알 수 없는 transport 오류는 `off`에서도 write bucket 한 번이며, 정상 명령의
+    primitive admission을 router에서 중복 실행하지 않는다.
 
 ## 검증
 

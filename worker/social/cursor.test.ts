@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { decodeListCursor, encodeListCursor } from './cursor';
+import { decodeFeedCursor, decodeListCursor, encodeFeedCursor, encodeListCursor } from './cursor';
 
 const SECRET = 'cursor-secret';
 const NOW = 1_800_000_000_000;
@@ -94,5 +94,55 @@ describe('signed relation-list cursor', () => {
     expect((await decodeListCursor(SECRET, invite, A, 'invites', NOW))?.last).toBe(INVITE);
     await expect(encodeListCursor(SECRET, A, 'invites', B, NOW)).rejects.toThrow();
     await expect(encodeListCursor(SECRET, A, 'friends', INVITE, NOW)).rejects.toThrow();
+  });
+});
+
+describe('signed feed tuple cursor', () => {
+  const upper = { createdAt: NOW, id: B };
+  const last = { createdAt: NOW - 1, id: A };
+
+  it('actor·scope와 첫 페이지 기한에 묶이고 관리 목록과 분리된다', async () => {
+    const first = await encodeFeedCursor(SECRET, A, 'feed', upper, last, NOW);
+    expect(first).not.toContain(B);
+    const decoded = await decodeFeedCursor(SECRET, first, A, 'feed', NOW + 100);
+    expect(decoded).toEqual({
+      v: 1,
+      actorId: A,
+      scope: 'feed',
+      upper,
+      last,
+      expiresAt: NOW + 900_000,
+    });
+    const next = await encodeFeedCursor(
+      SECRET,
+      A,
+      'feed',
+      upper,
+      { createdAt: NOW - 2, id: B },
+      NOW + 100,
+      decoded!.expiresAt,
+    );
+    expect((await decodeFeedCursor(SECRET, next, A, 'feed', NOW + 899_999))?.expiresAt).toBe(
+      NOW + 900_000,
+    );
+    expect(await decodeFeedCursor(SECRET, next, A, 'feed', NOW + 900_000)).toBeNull();
+    expect(await decodeFeedCursor(SECRET, first, B, 'feed', NOW)).toBeNull();
+    expect(await decodeFeedCursor(SECRET, first, A, 'posts:mine', NOW)).toBeNull();
+    expect(await decodeListCursor(SECRET, first, A, 'friends', NOW)).toBeNull();
+  });
+
+  it('서명됐어도 tuple 역전·초과필드·시간 범위가 잘못되면 거절한다', async () => {
+    const validFeed = { v: 1, actorId: A, scope: 'feed', upper, last, expiresAt: NOW + 900_000 };
+    for (const payload of [
+      { ...validFeed, last: { createdAt: NOW + 1, id: A } },
+      { ...validFeed, last: { createdAt: NOW, id: 'f'.repeat(32) } },
+      { ...validFeed, upper: { createdAt: NOW, id: 'not-an-id' } },
+      { ...validFeed, upper: { ...upper, extra: 1 } },
+      { ...validFeed, expiresAt: NOW + 900_001 },
+    ])
+      expect(await decodeFeedCursor(SECRET, await forge(payload), A, 'feed', NOW)).toBeNull();
+    const first = await encodeFeedCursor(SECRET, A, 'feed', upper, last, NOW);
+    expect(await decodeFeedCursor('other-secret', first, A, 'feed', NOW)).toBeNull();
+    await expect(encodeFeedCursor(SECRET, A, 'feed', last, upper, NOW)).rejects.toThrow();
   });
 });

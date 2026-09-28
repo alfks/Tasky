@@ -40,6 +40,7 @@
       "migrations_dir": "worker/db/migrations",
     },
   ],
+  "triggers": { "crons": ["0 * * * *"] },
   "vars": {
     "GOOGLE_CLIENT_ID": "430669646782-29td1hskagbod68cr8k082hur51ph9gt.apps.googleusercontent.com",
     "SOCIAL_MODE": "off",

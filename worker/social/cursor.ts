@@ -11,6 +11,17 @@ export type ListCursor = {
   expiresAt: number;
 };
 
+export type FeedScope = 'feed' | 'posts:mine';
+export type FeedTuple = { createdAt: number; id: string };
+export type FeedCursor = {
+  v: 1;
+  actorId: string;
+  scope: FeedScope;
+  upper: FeedTuple;
+  last: FeedTuple;
+  expiresAt: number;
+};
+
 const PREFIX = new TextEncoder().encode('tasky:social-cursor:v1\0');
 const TTL_MS = 900_000;
 const MAX_LENGTH = 2048;
@@ -25,6 +36,7 @@ const SCOPES: readonly ListScope[] = [
   'invites',
   'blocks',
 ];
+const FEED_SCOPES: readonly FeedScope[] = ['feed', 'posts:mine'];
 
 function b64url(bytes: Uint8Array): string {
   let raw = '';
@@ -88,18 +100,53 @@ function validShape(
   );
 }
 
-export async function encodeListCursor(
-  secret: string,
+function validTuple(value: unknown): value is FeedTuple {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const tuple = value as Record<string, unknown>;
+  return (
+    Object.keys(tuple).sort().join(',') === 'createdAt,id' &&
+    typeof tuple.createdAt === 'number' &&
+    Number.isSafeInteger(tuple.createdAt) &&
+    tuple.createdAt >= 0 &&
+    typeof tuple.id === 'string' &&
+    PROFILE_ID.test(tuple.id)
+  );
+}
+
+function notAfter(last: FeedTuple, upper: FeedTuple): boolean {
+  return (
+    last.createdAt < upper.createdAt || (last.createdAt === upper.createdAt && last.id <= upper.id)
+  );
+}
+
+function validFeedShape(
+  value: unknown,
   actorId: string,
-  scope: ListScope,
-  last: string,
+  scope: FeedScope,
   nowMs: number,
-  expiresAt = nowMs + TTL_MS,
-): Promise<string> {
-  const payload: ListCursor = { v: 1, actorId, scope, upper: null, last, expiresAt };
-  if (!Number.isSafeInteger(nowMs) || !validShape(payload, actorId, scope, nowMs))
-    throw new Error('Invalid cursor data');
-  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+): value is FeedCursor {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const dto = value as Record<string, unknown>;
+  const keys = Object.keys(dto).sort();
+  if (keys.length !== KEYS.length || keys.some((key, i) => key !== KEYS[i])) return false;
+  return (
+    dto.v === 1 &&
+    dto.actorId === actorId &&
+    PROFILE_ID.test(actorId) &&
+    dto.scope === scope &&
+    FEED_SCOPES.includes(scope) &&
+    validTuple(dto.upper) &&
+    validTuple(dto.last) &&
+    notAfter(dto.last, dto.upper) &&
+    typeof dto.expiresAt === 'number' &&
+    Number.isSafeInteger(dto.expiresAt) &&
+    dto.expiresAt > nowMs &&
+    dto.expiresAt <= nowMs + TTL_MS
+  );
+}
+
+async function signCursor(secret: string, value: ListCursor | FeedCursor): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
   const mac = new Uint8Array(
     await crypto.subtle.sign('HMAC', await hmacKey(secret), signedBytes(bytes)),
   );
@@ -108,19 +155,8 @@ export async function encodeListCursor(
   return encoded;
 }
 
-export async function decodeListCursor(
-  secret: string,
-  raw: unknown,
-  actorId: string,
-  scope: ListScope,
-  nowMs: number,
-): Promise<ListCursor | null> {
-  if (
-    typeof raw !== 'string' ||
-    raw.length > MAX_LENGTH ||
-    raw.split('.').length !== 2 ||
-    !Number.isSafeInteger(nowMs)
-  )
+async function verifyCursor(secret: string, raw: unknown): Promise<unknown | null> {
+  if (typeof raw !== 'string' || raw.length > MAX_LENGTH || raw.split('.').length !== 2)
     return null;
   const [body, sig] = raw.split('.');
   const payload = fromB64url(body);
@@ -134,11 +170,61 @@ export async function decodeListCursor(
       signedBytes(payload),
     );
     if (!verified) return null;
-    const value: unknown = JSON.parse(
-      new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(payload),
-    );
-    return validShape(value, actorId, scope, nowMs) ? value : null;
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(payload));
   } catch {
     return null;
   }
+}
+
+export async function encodeListCursor(
+  secret: string,
+  actorId: string,
+  scope: ListScope,
+  last: string,
+  nowMs: number,
+  expiresAt = nowMs + TTL_MS,
+): Promise<string> {
+  const payload: ListCursor = { v: 1, actorId, scope, upper: null, last, expiresAt };
+  if (!Number.isSafeInteger(nowMs) || !validShape(payload, actorId, scope, nowMs))
+    throw new Error('Invalid cursor data');
+  return signCursor(secret, payload);
+}
+
+export async function decodeListCursor(
+  secret: string,
+  raw: unknown,
+  actorId: string,
+  scope: ListScope,
+  nowMs: number,
+): Promise<ListCursor | null> {
+  if (!Number.isSafeInteger(nowMs)) return null;
+  const value = await verifyCursor(secret, raw);
+  return validShape(value, actorId, scope, nowMs) ? value : null;
+}
+
+export async function encodeFeedCursor(
+  secret: string,
+  actorId: string,
+  scope: FeedScope,
+  upper: FeedTuple,
+  last: FeedTuple,
+  nowMs: number,
+  expiresAt = nowMs + TTL_MS,
+): Promise<string> {
+  const payload: FeedCursor = { v: 1, actorId, scope, upper, last, expiresAt };
+  if (!Number.isSafeInteger(nowMs) || !validFeedShape(payload, actorId, scope, nowMs))
+    throw new Error('Invalid cursor data');
+  return signCursor(secret, payload);
+}
+
+export async function decodeFeedCursor(
+  secret: string,
+  raw: unknown,
+  actorId: string,
+  scope: FeedScope,
+  nowMs: number,
+): Promise<FeedCursor | null> {
+  if (!Number.isSafeInteger(nowMs)) return null;
+  const value = await verifyCursor(secret, raw);
+  return validFeedShape(value, actorId, scope, nowMs) ? value : null;
 }

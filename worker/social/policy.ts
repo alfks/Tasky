@@ -29,6 +29,13 @@ const routes: readonly Route[] = [
   ['POST', '/friends/remove', 'off', 'revoke', 'profile', true],
   ['GET', '/blocks', 'off', 'read', 'profile', false],
   ['POST', '/blocks/set', 'off', 'revoke', 'profile', true],
+  ['GET', '/feed', 'read-only', 'read', 'profile', false],
+  ['POST', '/posts/validate', 'read-only', 'read', 'profile', false],
+  ['GET', '/posts/mine', 'off', 'read', 'profile', false],
+  ['POST', '/posts', 'enabled', 'write', 'profile', true],
+  ['POST', '/posts/delete', 'off', 'revoke', 'profile', true],
+  // Transport failures use write; a parsed active:false switches to revoke in the primitive.
+  ['POST', '/reactions/set', 'off', 'write', 'profile', true],
 ].map(([method, path, minMode, bucket, subject, primitiveAdmission]) => ({
   method,
   path: `/api/social${path}`,
