@@ -57,6 +57,7 @@ export type MemorySocialState = {
   invites: Map<string, MemoryInvite>;
   posts: Map<SocialId, MemoryPost>;
   reactions: Set<string>;
+  reactionTimes: Map<string, number>;
   receipts: Map<string, Receipt>;
   pendingCommands: Map<string, Promise<unknown>>;
   cursors: Map<string, CursorReceipt>;
@@ -75,6 +76,7 @@ export function createSocialState(now: () => number, mode: SocialMode): MemorySo
     invites: new Map(),
     posts: new Map(),
     reactions: new Set(),
+    reactionTimes: new Map(),
     receipts: new Map(),
     pendingCommands: new Map(),
     cursors: new Map(),

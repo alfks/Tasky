@@ -32,6 +32,7 @@ const routes: readonly Route[] = [
   ['GET', '/feed', 'read-only', 'read', 'profile', false],
   ['POST', '/posts/validate', 'read-only', 'read', 'profile', false],
   ['GET', '/posts/mine', 'off', 'read', 'profile', false],
+  ['GET', '/reactions/mine', 'off', 'read', 'profile', false],
   ['POST', '/posts', 'enabled', 'write', 'profile', true],
   ['POST', '/posts/delete', 'off', 'revoke', 'profile', true],
   // Transport failures use write; a parsed active:false switches to revoke in the primitive.

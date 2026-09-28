@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { decodeFeedCursor, decodeListCursor, encodeFeedCursor, encodeListCursor } from './cursor';
+import {
+  decodeFeedCursor,
+  decodeListCursor,
+  encodeFeedCursor,
+  encodeListCursor,
+  ownReactionCursorActorId,
+} from './cursor';
 
 const SECRET = 'cursor-secret';
 const NOW = 1_800_000_000_000;
@@ -42,6 +48,23 @@ const valid = {
 };
 
 describe('signed relation-list cursor', () => {
+  it('본인 응원 cursor는 프로필·세션·scope를 모두 묶는다', async () => {
+    const current = await ownReactionCursorActorId(SECRET, A, 'sid-one');
+    const otherSession = await ownReactionCursorActorId(SECRET, A, 'sid-two');
+    const otherActor = await ownReactionCursorActorId(SECRET, B, 'sid-one');
+    expect(current).not.toBe(otherSession);
+    expect(current).not.toBe(otherActor);
+    const raw = await encodeListCursor(SECRET, current, 'reactions:mine', B, NOW);
+    expect(await decodeListCursor(SECRET, raw, current, 'reactions:mine', NOW)).toMatchObject({
+      last: B,
+    });
+    expect(await decodeListCursor(SECRET, raw, otherSession, 'reactions:mine', NOW)).toBeNull();
+    expect(await decodeListCursor(SECRET, raw, otherActor, 'reactions:mine', NOW)).toBeNull();
+    expect(await decodeListCursor(SECRET, raw, current, 'friends', NOW)).toBeNull();
+    expect(
+      await decodeListCursor(SECRET, raw, current, 'reactions:mine', NOW + 900_000),
+    ).toBeNull();
+  });
   it('정상 chain은 actor/scope에 묶이고 15분 기한을 연장하지 않는다', async () => {
     const first = await encodeListCursor(SECRET, A, 'friends', B, NOW);
     expect(first).not.toContain(B);

@@ -47,6 +47,8 @@ export type PostView = {
   reactionCount: number;
   myReaction: boolean;
 };
+/** 본인 응원 철회용 식별자와 누른 시각. 타인 게시글의 본문이나 작성자는 포함하지 않는다. */
+export type OwnReactionView = { postId: SocialId; createdAt: number };
 export type Page<T> = { items: readonly T[]; nextCursor: string | null };
 export type PageInput = { cursor?: string; limit?: number };
 export type SocialResponse<T> = { data: T; serverTime: number };

@@ -5,6 +5,7 @@ import type {
   FriendshipFacts,
   Page,
   PageInput,
+  OwnReactionView,
   PostInput,
   PostView,
   SocialId,
@@ -104,6 +105,24 @@ export function mine(state: MemorySocialState, sub: string, input?: PageInput): 
   );
 }
 
+export function myReactions(
+  state: MemorySocialState,
+  sub: string,
+  input?: PageInput,
+): Page<OwnReactionView> {
+  const self = actor(state, sub);
+  const items = [...state.reactions]
+    .filter((key) => key.startsWith(`${self.id}:`))
+    .map((key) => ({ key, post: state.posts.get(key.slice(self.id.length + 1)) }))
+    .flatMap(({ key, post }) =>
+      post !== undefined && post.authorId !== self.id && canRead(state, sub, post)
+        ? [{ postId: post.id, createdAt: state.reactionTimes.get(key) ?? 0 }]
+        : [],
+    )
+    .sort((a, b) => a.postId.localeCompare(b.postId));
+  return keyPage(state, self.id, 'reactions:mine', items, input, (item) => item.postId);
+}
+
 export function validate(
   state: MemorySocialState,
   sub: string,
@@ -139,7 +158,10 @@ export function deletePost(state: MemorySocialState, sub: string, id: SocialId):
   if (post === undefined || post.authorId !== self.id) return;
   state.posts.delete(id);
   for (const key of state.reactions) {
-    if (key.endsWith(`:${id}`)) state.reactions.delete(key);
+    if (key.endsWith(`:${id}`)) {
+      state.reactions.delete(key);
+      state.reactionTimes.delete(key);
+    }
   }
 }
 
@@ -163,6 +185,11 @@ export function setReaction(
     active,
   );
   if (!result.ok) return fail(result.code, state.now());
-  if (result.nextActive) state.reactions.add(key);
-  else state.reactions.delete(key);
+  if (result.nextActive) {
+    state.reactions.add(key);
+    if (!state.reactionTimes.has(key)) state.reactionTimes.set(key, state.now());
+  } else {
+    state.reactions.delete(key);
+    state.reactionTimes.delete(key);
+  }
 }

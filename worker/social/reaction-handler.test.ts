@@ -71,6 +71,16 @@ describe('reaction route mode and transport admission', () => {
         .prepare('INSERT INTO social_reactions(post_id,reactor,created_at) VALUES(?,?,?)')
         .bind(POST, A, NOW)
         .run();
+      const ownBefore = await handleRequest(
+        new Request(`${ORIGIN}/api/social/reactions/mine`, { headers: { Cookie: cookie } }),
+        env,
+        ISO,
+      );
+      expect(ownBefore.status).toBe(200);
+      expect(ownBefore.headers.get('Cache-Control')).toBe('private, no-store');
+      expect(await ownBefore.json()).toMatchObject({
+        data: { items: [{ postId: POST, createdAt: NOW }], nextCursor: null },
+      });
       const path = '/reactions/set';
       const remove = await handleRequest(
         request(path, cookie, JSON.stringify({ postId: POST, active: false }), key('1')),
@@ -79,6 +89,12 @@ describe('reaction route mode and transport admission', () => {
       );
       expect(remove.status).toBe(200);
       expect(await remove.json()).toMatchObject({ data: { postId: POST, active: false } });
+      const ownAfter = await handleRequest(
+        new Request(`${ORIGIN}/api/social/reactions/mine`, { headers: { Cookie: cookie } }),
+        env,
+        ISO,
+      );
+      expect(await ownAfter.json()).toMatchObject({ data: { items: [], nextCursor: null } });
       const blocked = await handleRequest(
         request(path, cookie, JSON.stringify({ postId: POST, active: true }), key('2')),
         env,
@@ -99,6 +115,7 @@ describe('reaction route mode and transport admission', () => {
         .bind(`p:${A}`)
         .all<{ bucket: string; count: number }>();
       expect(limits.results).toEqual([
+        { bucket: 'read', count: 2 },
         { bucket: 'revoke', count: 1 },
         { bucket: 'write', count: 3 },
       ]);
@@ -138,6 +155,7 @@ describe('reaction route mode and transport admission', () => {
         .bind(`p:${A}`)
         .all<{ bucket: string; count: number }>();
       expect(final.results).toEqual([
+        { bucket: 'read', count: 2 },
         { bucket: 'revoke', count: 2 },
         { bucket: 'write', count: 60 },
       ]);

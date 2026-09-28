@@ -37,6 +37,7 @@ import {
   deletePost,
   feed,
   mine,
+  myReactions,
   setReaction,
   validate,
 } from '@/repositories/memory/social/posts';
@@ -218,6 +219,7 @@ function createMemorySocialRepository(state: MemorySocialState, sub: string): So
       return answer(state, { allowedIds: validate(state, sub, parsed.ids) });
     },
     myPosts: async (input) => answer(state, mine(state, sub, input)),
+    myReactions: async (input) => answer(state, myReactions(state, sub, input)),
     createPost: async (input, { key }) => {
       const parsed = valid(state, parsePostInput(input));
       return command(state, sub, key, await signature('posts', parsed), () => ({

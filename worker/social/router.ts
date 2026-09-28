@@ -15,6 +15,7 @@ import { effectiveSocialMode, routeAllowed, socialRoute, type Route } from './po
 import { handlePost } from './post-handler';
 import { handleProfile } from './profile-handler';
 import { handleReaction } from './reaction-handler';
+import { readOwnReactions } from './reaction-read';
 import { readSocialList } from './reads';
 import { handleRelation } from './relation-handler';
 import { requireSession, type SessionOk } from '../auth/session';
@@ -42,6 +43,10 @@ async function dispatch(
   if (route.path === '/api/social/feed' || route.path === '/api/social/posts/mine') {
     const scope = route.path === '/api/social/feed' ? 'feed' : 'posts:mine';
     const result = await readFeedPage(actor, url, env.SESSION_SECRET, scope);
+    return result.ok ? { ok: true, value: { data: result.value } } : result;
+  }
+  if (route.path === '/api/social/reactions/mine') {
+    const result = await readOwnReactions(actor, url, env.SESSION_SECRET);
     return result.ok ? { ok: true, value: { data: result.value } } : result;
   }
   if (route.method === 'GET' && route.path !== '/api/social/me') {
