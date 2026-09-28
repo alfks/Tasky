@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createHttpSocialRepository } from '@/infra/social/http-repository';
 
 import { createSocialActor } from './actor';
-import { OWN_REACTION_READ_SQL, readOwnReactions } from './reaction-read';
+import { readOwnReactions } from './reaction-read';
 import { createD1Fixture } from '../test/d1-harness';
 import { key, withServer } from '../test/social-adapter-integration-fixture';
 
@@ -160,8 +160,21 @@ describe('본인 응원 목록 D1 읽기', () => {
           SECRET,
         ),
       ).toEqual({ ok: false, code: 'validation' });
+      const captured = { query: '' };
+      const monitoredDb = new Proxy(fx.db, {
+        get(target, property) {
+          if (property === 'prepare')
+            return (query: string) => {
+              if (query.includes('FROM social_reactions r')) captured.query = query;
+              return target.prepare(query);
+            };
+          return Reflect.get(target, property, target);
+        },
+      });
+      await readOwnReactions({ ...current, db: monitoredDb }, url(), SECRET);
+      if (captured.query === '') throw new Error('Production reaction query was not prepared');
       const plan = await fx.db
-        .prepare(`EXPLAIN QUERY PLAN ${OWN_REACTION_READ_SQL}`)
+        .prepare(`EXPLAIN QUERY PLAN ${captured.query}`)
         .bind(A, '', A, 'user-a', 'sid-a', current.nowIso, 21)
         .all<{ detail: string }>();
       expect(plan.results.map((row) => row.detail).join(' ')).toContain(
