@@ -223,6 +223,10 @@ const SRC_SYNTAX = [
   NO_OBJECT_MUTATE,
   ...NO_META_WRITE,
 ];
+/** 독립 소셜 게시물 DTO의 시각은 개인 엔티티 Meta가 아니다. 다른 Meta 필드 규칙은 유지한다. */
+const SOCIAL_POST_DTO_SYNTAX = SRC_SYNTAX.filter(
+  (rule) => !rule.selector.includes("[key.name='createdAt']"),
+);
 /** 도메인 결정성(ADR-0005 규칙 2). meta.ts 예외 블록도 반드시 이 배열을 그대로 쓴다 — flat config 는 규칙 단위 덮어쓰기라 빠뜨리면 통째로 사라진다 */
 const DOMAIN_DETERMINISM = [
   {
@@ -523,6 +527,27 @@ const config = [
       label: 'infra',
       allow: ALLOW.infra,
       patterns: [TEST_FILE, onlyPackages('infra', PACKAGES.infra), NO_DB_IMPORT],
+    }),
+  },
+  {
+    // 공개 소셜 응답의 createdAt 구성만 허용한다. 개인 Meta·브랜드·변이·import 검사는 그대로다.
+    files: ['src/infra/social/decode.ts'],
+    rules: layerRules({
+      target: './src/infra',
+      label: 'infra',
+      allow: ALLOW.infra,
+      patterns: [TEST_FILE, onlyPackages('infra', PACKAGES.infra), NO_DB_IMPORT],
+      syntax: SOCIAL_POST_DTO_SYNTAX,
+    }),
+  },
+  {
+    files: ['src/repositories/memory/social/posts.ts'],
+    rules: layerRules({
+      target: './src/repositories',
+      label: 'repositories',
+      allow: ALLOW.repositories,
+      patterns: [TEST_FILE, onlyPackages('repositories', PACKAGES.repositories)],
+      syntax: SOCIAL_POST_DTO_SYNTAX,
     }),
   },
   {

@@ -26,57 +26,8 @@ WT_DIR="$ROOT/.worktrees"
 BOARD="$WT_DIR/BOARD.md"
 BRANCH_RE='^(feature|fix|refactor|docs|chore|test)/[a-z0-9]+(-[a-z0-9]+)*$'
 
-# --- BOARD.md 락: flock 있으면 flock, 없으면 mkdir 스핀락(POSIX, 외부 도구 불필요) ---
-# mkdir 폴백은 락 디렉토리 안에 보유자 PID를 적어 두고, 반납은 "자기가 잡은 락"일 때만 한다
-# (그래야 락 획득에 실패한 프로세스가 EXIT trap 에서 남의 락을 rmdir 하지 않는다).
-# stale 여부는 자동 판정·회수하지 않는다(PID 재사용·보유자 교체 사이 TOCTOU).
-_board_lock_dir="$WT_DIR/.board.lock.d"
-_board_lock_fd=""
-_board_lock_held=""
-board_lock_acquire() {
-  mkdir -p "$WT_DIR"
-  if command -v flock >/dev/null 2>&1; then
-    exec 9>"$WT_DIR/.board.flock"
-    flock -w 20 9 || { echo "ERROR: BOARD 락 획득 실패(20초 대기, flock)"; exit 1; }
-    _board_lock_fd=9
-    _board_lock_held=flock
-  else
-    local tries=0
-    until mkdir "$_board_lock_dir" 2>/dev/null; do
-      tries=$((tries + 1))
-      [ "$tries" -le 200 ] || {
-        echo "ERROR: BOARD 락 획득 실패(20초 대기, mkdir 락, 보유자 PID $(cat "$_board_lock_dir/pid" 2>/dev/null || echo '알 수 없음'))" >&2
-        echo "  stale 여부와 보유자 종료를 수동 확인하세요: $_board_lock_dir/pid" >&2
-        exit 1
-      }
-      sleep 0.1
-    done
-    printf '%s\n' "$$" > "$_board_lock_dir/pid" || { echo "ERROR: BOARD 락 PID 기록 실패; 락 상태를 수동 확인하세요" >&2; exit 1; }
-    _board_lock_held=mkdir
-  fi
-}
-board_lock_release() {
-  # 이 프로세스가 실제로 획득한 락만 반납한다 — 획득에 실패했거나 아직 시도하지 않은 경우는 no-op.
-  local held="$_board_lock_held" fd="$_board_lock_fd"
-  _board_lock_held=""
-  _board_lock_fd=""
-  [ -n "$held" ] || return 0
-  if [ "$held" = flock ]; then
-    flock -u "$fd" 2>/dev/null || true
-    exec 9>&- 2>/dev/null || true
-  else
-    if [ "$(cat "$_board_lock_dir/pid" 2>/dev/null || true)" != "$$" ]; then
-      echo "ERROR: BOARD 락 소유자 PID 불일치; 락을 보존합니다" >&2
-      return 1
-    fi
-    if ! rm "$_board_lock_dir/pid" || ! rmdir "$_board_lock_dir"; then
-      echo "ERROR: BOARD 락 해제 실패; 남은 락을 수동 확인하세요" >&2
-      return 1
-    fi
-  fi
-}
-# 정상 종료·에러 종료 어느 쪽이든 락을 반드시 반납한다(들고 있지 않으면 조용히 no-op).
-trap board_lock_release EXIT
+# BOARD 락 구현과 GNU mkdir 검증은 별도 파일에 둔다.
+source "$ROOT/scripts/wt-lock.sh"
 
 ensure_board() {
   mkdir -p "$WT_DIR/tickets" "$WT_DIR/handoffs" "$WT_DIR/reviews"
@@ -153,6 +104,7 @@ cmd_new() {
     echo "  아니라면 브랜치 이름을 다르게 지으세요(디렉토리명은 type을 뺀 <name> 이므로 name이 겹치면 충돌합니다)."
     exit 1
   fi
+  board_lock_prepare
   ensure_board
   git fetch origin main --quiet 2>/dev/null || echo "WARN: origin fetch 실패(오프라인?) — 로컬 main 기준으로 진행"
   local base="main"
@@ -262,6 +214,7 @@ cmd_rm() {
     fi
   fi
 
+  board_lock_prepare
   if [ "$flag" = "--force" ]; then
     git worktree remove --force "$dir"
   else

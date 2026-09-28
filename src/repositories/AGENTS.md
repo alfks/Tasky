@@ -28,15 +28,13 @@
 
 ## 규칙
 
-1. 개인 저장소 시그니처 변경 = ADR + memory·indexeddb 구현 동시 수정 + 계약 스위트·`READS` 매핑 갱신. 한 PR.
-   확정 시그니처의 단일 소스는 `docs/TECH_PLAN.md` §6 이다.
+1. 개인 저장소 시그니처 변경 = ADR + memory·indexeddb 구현 동시 수정 + 계약 스위트·`READS` 매핑 갱신. 한 PR. 확정 시그니처의 단일 소스는 `docs/TECH_PLAN.md` §6 이다.
 2. 개인 엔티티의 **쓰기는 `upsert(Persistable<T>)` 하나뿐**이고 조회는 툼스톤을 반환하지 않는다(ADR-0007).
    교차 테이블·전량·툼스톤 읽기는 `DatasetRepository` 셋(`readAll`/`write`/`restore`)에만 있다(ADR-0009).
    레포지토리는 시각도 `rev` 도 만들지 않는다 — `at: string` 인자를 받는 메서드를 두면 그 자체가 위반이다.
 3. memory 구현의 조회는 `memory/live.ts` 헬퍼만 거친다(툼스톤 필터 한 곳).
    `allRows`·`replaceRows` 는 `DatasetRepository` 구현 **전용** 통로다.
-4. 컨테이너 기본값 없음: `getRepositories()` 는 미설정 시 throw(조립 누락을 조기 발견).
-   런타임 조립은 `src/app/providers.tsx`, 테스트 조립은 `src/test/setup.ts`.
+4. 컨테이너 기본값 없음: `getRepositories()` 는 미설정 시 throw(조립 누락을 조기 발견). 런타임 조립은 `src/app/providers.tsx`, 테스트 조립은 `src/test/setup.ts`.
 5. `SettingsRepository.get()` 은 행이 없으면 `undefined` 다 — **레포지토리는 기본값을 만들지 않는다**.
    기본 행은 도메인 `createSettings(deps)` 로 만들어 호출처가 `upsert` 한다(ADR-0005, TECH_PLAN §6).
 6. 계약 스위트는 `*.contract.ts`(테스트 파일이 아님)에 두고 구현별 `*.contract.test.ts` 가 부른다.
@@ -52,6 +50,8 @@
    `planClientMerge`·`reconcileAck` 만 import 한다 — `wire.ts`·`server-rules.ts` 값은 금지(§C-6).
 
 ## 관할: memory/
+
+온라인 소셜 포트는 개인 `Repositories` 묶음 밖의 별도 주입 슬롯이다. `memory/social-repository.ts`는 테스트 전용으로 앱 번들에 넣지 않는다. 클라이언트 지연 adapter는 세션 dispatch를 시작 전과 완료 뒤 확인한다.
 
 `src/repositories/memory/` 에는 별도 `AGENTS.md` 를 두지 않는다(이 문서가 관할, 특히 규칙 3).
 

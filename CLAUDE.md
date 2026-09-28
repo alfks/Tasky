@@ -78,6 +78,8 @@ bash scripts/setup.sh                     # 최초 1회: author config + 훅 + p
 bash scripts/wt.sh new feature/<name>     # 워크트리 생성(+브랜치) → .worktrees/<name>
 bash scripts/wt.sh list                   # 워크트리/보드 상태
 bash scripts/wt.sh rm <name>              # 머지 후 워크트리+브랜치 정리
+bash scripts/test-wt-reader.sh            # mkdir 락 PID reader 결함 주입 검사(check.sh wt에도 포함)
+bash scripts/test-wt-lock.sh              # GNU mkdir 선택·동시 BOARD 락 결정적 검사(check.sh wt에도 포함)
 pnpm check                                # = bash scripts/check.sh (금지어·.env·AGENTS.md·author·wt·arch·worker-sql·lint·typecheck·format·test — 11개). PR 전 필수
 bash scripts/check-forbidden-words.sh     # 금지어 검사
 bash scripts/check-env-secrets.sh         # .env 계열이 추적/스테이징됐는지 (pre-commit 이 --staged 로도 호출)

@@ -8,7 +8,7 @@
 //
 // infra 모듈을 통째로 모킹한다: 이 테스트의 관심은 Dexie 가 아니라 **조립 지점이 무엇을 부르는가** 다.
 // `providers.tsx` 는 모듈 스코프에서 주입을 시작하므로 매 테스트마다 모듈 레지스트리를 리셋한다.
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RepositoryErrorCode } from '@/repositories/repository-error';
@@ -25,12 +25,22 @@ type RepositoryErrors = {
 const createIndexedDbRepositories = vi.fn(() => ({}) as never);
 const openIndexedDb = vi.fn(() => Promise.resolve());
 const createHttpSyncTransport = vi.fn(() => ({}) as never);
+const createHttpSocialRepository = vi.fn(() => ({}) as never);
+const socialIdentity = vi.fn(async () => ({
+  sub: 'social-user',
+  email: 'a@example.com',
+  expiresAt: '2027-01-01T00:00:00.000Z',
+}));
 
 vi.mock('@/infra/indexeddb/repositories', () => ({ createIndexedDbRepositories, openIndexedDb }));
 vi.mock('@/infra/sync/http-transport', () => ({ createHttpSyncTransport }));
+vi.mock('@/infra/social/http-repository', () => ({ createHttpSocialRepository }));
 vi.mock('@/repositories/container', () => ({
   setRepositories: vi.fn(),
   setSyncTransport: vi.fn(),
+  setSocialRepository: vi.fn(),
+  getRepositories: () => ({ sync: { getState: async () => ({ userSub: 'social-user' }) } }),
+  getSyncTransport: () => ({ me: socialIdentity }),
 }));
 
 /**
@@ -42,19 +52,30 @@ vi.mock('@/repositories/container', () => ({
  */
 async function mountProviders(fail?: (errors: RepositoryErrors) => unknown): Promise<void> {
   vi.resetModules();
-  if (fail !== undefined) {
-    const errors = await import('@/repositories/repository-error');
-    const error = fail(errors);
-    openIndexedDb.mockImplementation(() => Promise.reject(error));
+  const { onSocialInvalidation } = await import('@/features/social');
+  let bridgeReady = false;
+  const stopReady = onSocialInvalidation((reason) => {
+    if (reason === 'provider') bridgeReady = true;
+  });
+  try {
+    if (fail !== undefined) {
+      const errors = await import('@/repositories/repository-error');
+      const error = fail(errors);
+      openIndexedDb.mockImplementation(() => Promise.reject(error));
+    }
+    const { Providers } = await import('@/app/providers');
+    render(<Providers>본문</Providers>);
+    if (fail === undefined) await waitFor(() => expect(bridgeReady).toBe(true));
+  } finally {
+    stopReady();
   }
-  const { Providers } = await import('@/app/providers');
-  render(<Providers>본문</Providers>);
 }
 
 beforeEach(() => {
   createIndexedDbRepositories.mockClear();
   openIndexedDb.mockClear();
   openIndexedDb.mockImplementation(() => Promise.resolve());
+  socialIdentity.mockClear();
 });
 
 afterEach(() => {
@@ -72,7 +93,56 @@ describe('Providers 의 저장소 배선', () => {
       ).toHaveBeenCalledTimes(1);
     });
     expect(createIndexedDbRepositories).toHaveBeenCalledTimes(1);
+    expect(createHttpSocialRepository).not.toHaveBeenCalled();
     expect(await screen.findByText('본문')).toBeInTheDocument();
+  });
+
+  it('오프라인 차단 중 로그인 종료도 별도 auth 철회로 전달한다', async () => {
+    await mountProviders();
+    await screen.findByText('본문');
+    const { useSyncStore } = await import('@/features/sync');
+    const { onSocialInvalidation } = await import('@/features/social');
+    const reasons: string[] = [];
+    const stop = onSocialInvalidation((reason) => reasons.push(reason));
+    try {
+      act(() => useSyncStore.setState({ phase: 'ready', online: true, email: 'a@example.com' }));
+      reasons.length = 0;
+      act(() => useSyncStore.setState({ online: false }));
+      act(() => useSyncStore.setState({ phase: 'login' }));
+      expect(reasons).toEqual(['offline', 'auth']);
+      reasons.length = 0;
+      act(() => useSyncStore.setState({ phase: 'ready', online: true, email: 'b@example.com' }));
+      act(() => useSyncStore.setState({ email: 'c@example.com' }));
+      expect(reasons).toEqual([]);
+    } finally {
+      stop();
+    }
+  });
+
+  it('email 표시 변경은 신원 철회가 아니며 계정 전환 안내 해제 뒤 재검증한다', async () => {
+    await mountProviders();
+    await screen.findByText('본문');
+    const { useSyncStore } = await import('@/features/sync');
+    const { activateSocialSession, deactivateSocialSession, onSocialInvalidation } =
+      await import('@/features/social');
+    const reasons: string[] = [];
+    const stop = onSocialInvalidation((reason) => reasons.push(reason));
+    try {
+      act(() => useSyncStore.setState({ phase: 'ready', online: true, email: 'a@example.com' }));
+      await activateSocialSession();
+      expect(socialIdentity).toHaveBeenCalledTimes(1);
+      reasons.length = 0;
+      act(() => useSyncStore.setState({ email: 'display@example.com' }));
+      expect(reasons).toEqual([]);
+      expect(socialIdentity).toHaveBeenCalledTimes(1);
+      act(() => useSyncStore.setState({ accountSwitchedNotice: true }));
+      expect(reasons).toContain('account');
+      act(() => useSyncStore.setState({ accountSwitchedNotice: false, email: 'new@example.com' }));
+      await waitFor(() => expect(socialIdentity).toHaveBeenCalledTimes(2));
+    } finally {
+      stop();
+      deactivateSocialSession();
+    }
   });
 
   it('스키마 업그레이드 실패는 본문 대신 "새로 저장할 수 없다" 안내를 띄운다', async () => {

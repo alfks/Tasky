@@ -67,7 +67,7 @@ git config user.name alfks
 git config user.email millie020524@gmail.com
 git remote add origin "$TMP/origin.git"
 mkdir -p scripts
-cp "$ROOT/scripts/wt.sh" scripts/wt.sh
+cp "$ROOT/scripts/wt.sh" "$ROOT/scripts/wt-lock.sh" scripts/
 chmod +x scripts/wt.sh
 echo "smoke" > README.md
 git add -A && git commit -q -m "chore(t): 초기 커밋"
@@ -196,7 +196,7 @@ bash scripts/wt.sh rm smoke-cherry --force >"$TMP/last.log" 2>&1 || true
 echo "=== 15) 락: flock 없는 환경에서도 new 8개 동시 실행 무결 ==="
 NOFLOCK="$TMP/noflock"
 mkdir -p "$NOFLOCK"
-for bin in bash env git mkdir rmdir rm mv cp cat sed awk grep printf wc tr kill sleep dirname basename chmod; do
+for bin in bash env git mkdir gnumkdir rmdir rm mv cp cat sed awk grep printf wc tr kill sleep dirname basename chmod; do
   p="$(command -v "$bin" 2>/dev/null || true)"
   [ -n "$p" ] && ln -sf "$p" "$NOFLOCK/$bin"
 done

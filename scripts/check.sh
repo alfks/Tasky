@@ -37,7 +37,7 @@ step_lint()            { if has_pnpm; then pnpm lint; else skip_pnpm; fi; }
 step_typecheck()       { if has_pnpm; then pnpm typecheck; else skip_pnpm; fi; }
 step_test()            { if has_pnpm; then pnpm test -- --reporter=dot; else skip_pnpm; fi; }
 step_format()          { if has_pnpm; then pnpm format:check; else skip_pnpm; fi; }
-step_wt()              { bash scripts/test-wt.sh; }
+step_wt()              { bash scripts/test-wt-reader.sh && bash scripts/test-wt-lock.sh && bash scripts/test-wt.sh; }
 # package.json 이 생기고 나면(스캐폴딩 후) 위 4개(step_arch/lint/typecheck/test)를 "pnpm check"
 # 하나로 위임하는 편이 스크립트-package.json 중복을 줄인다. 지금은 package.json 자체가 없어
 # 그 스크립트가 존재하지 않으므로, 개별 pnpm 명령을 직접 호출하는 현재 형태를 유지한다.

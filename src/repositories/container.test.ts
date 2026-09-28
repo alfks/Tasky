@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   getRepositories,
+  getSocialRepository,
   getSyncTransport,
   setRepositories,
+  setSocialRepository,
   setSyncTransport,
 } from '@/repositories/container';
 import { contractDeps, contractTodo } from '@/repositories/contract';
@@ -76,6 +78,21 @@ describe('container', () => {
       setSyncTransport(transport);
 
       expect(getSyncTransport()).toBe(transport);
+    });
+  });
+
+  describe('온라인 소셜 슬롯 (개인 묶음과 별개)', () => {
+    it('주입 전에는 throw 한다', async () => {
+      vi.resetModules();
+      const fresh = await import('@/repositories/container');
+      expect(() => fresh.getSocialRepository()).toThrow();
+    });
+
+    it('주입한 포트만 돌려준다', () => {
+      const social = { me: vi.fn() } as unknown as ReturnType<typeof getSocialRepository>;
+      setSocialRepository(social);
+      expect(getSocialRepository()).toBe(social);
+      expect('social' in getRepositories()).toBe(false);
     });
   });
 });
