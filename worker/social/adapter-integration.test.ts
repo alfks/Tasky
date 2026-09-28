@@ -220,14 +220,18 @@ describe('social adapter to real Worker and Miniflare D1', () => {
       c.origin.value = ORIGIN;
       env.SOCIAL_MODE = 'read-only';
       expect((await c.repo.previewInvite({ token })).data.nickname).toBe('A');
-      const inviteCount = () =>
-        env.DB.prepare('SELECT COUNT(*) AS n FROM social_invites').first<{ n: number }>();
-      const beforeInvite = await inviteCount();
+      const inviteRows = async () =>
+        (
+          await env.DB.prepare(
+            'SELECT hash,owner,expires_at,status,used_by,created_at FROM social_invites ORDER BY hash',
+          ).all()
+        ).results;
+      const beforeInvite = await inviteRows();
       await expect(a.repo.createInvite({ key: key(21) })).rejects.toMatchObject({
         code: 'social-disabled',
         retryAfter: 60,
       });
-      expect(await inviteCount()).toEqual(beforeInvite);
+      expect(await inviteRows()).toEqual(beforeInvite);
       env.SOCIAL_MODE = 'off';
       expect((await a.repo.me()).data.mode).toBe('off');
       await expect(c.repo.previewInvite({ token })).rejects.toMatchObject({
