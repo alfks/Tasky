@@ -4,7 +4,7 @@
 
 ## 목적
 
-Cloudflare Worker(구글 OAuth·세션 쿠키·`/api/sync`·D1·계정 삭제·소셜 D1/관계 API,
+Cloudflare Worker(구글 OAuth·세션 쿠키·`/api/sync`·D1·계정 삭제·소셜 D1/관계·피드 API,
 docs/specs/sync.md §4·§6, ADR-0019·0022). `src/` 밖의 **두 번째 진입점**이다 — `src/`
 레이어 체계(ADR-0006)에 속하지 않는다.
 `docs/DIRECTORY_MAP.md`·`docs/ARCHITECTURE.md` §1 표의 `worker` 행이 단일 소스.
@@ -34,6 +34,8 @@ docs/specs/sync.md §4·§6, ADR-0019·0022). `src/` 밖의 **두 번째 진입�
    않는다).
 3. **`worker/index.ts` 만 `export default` 를 쓴다**(Worker 모듈 엔트리 계약) — 그 밖의 모든 파일은
    named export.
+4. `worker/index.ts`의 hourly scheduled 진입점은 기존 `collectSocialGarbage`를 이벤트당
+   한 번 호출하고 `ctx.waitUntil`로 수명을 보장한다. cron은 운영 초안이며 실배포하지 않는다.
 
 ## 검증
 

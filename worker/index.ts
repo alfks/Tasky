@@ -3,6 +3,7 @@
 // Worker 모듈 엔트리는 `export default { fetch }` 가 필수라 `import/no-default-export` 예외를
 // 이 파일에만 연다(eslint.config.mjs, ARCH_RULES_COMMON 의 설정 파일 예외와 같은 방식).
 import { handleRequest } from './router';
+import { collectSocialGarbage } from './social/limits';
 
 import type { Env } from './env';
 
@@ -10,6 +11,11 @@ const worker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const now = new Date().toISOString();
     return handleRequest(request, env, now);
+  },
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    const cleanup = collectSocialGarbage(env.DB, controller.scheduledTime);
+    ctx.waitUntil(cleanup);
+    await cleanup;
   },
 };
 

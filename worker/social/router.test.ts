@@ -228,7 +228,7 @@ describe('social HTTP boundary', () => {
     }
   });
 
-  it('16경로의 effective mode를 실제 HTTP에서 검사한다', async () => {
+  it('22경로의 effective mode를 실제 HTTP에서 검사한다', async () => {
     const fx = await createD1Fixture();
     try {
       const env = testEnv(fx.db);
@@ -262,7 +262,8 @@ describe('social HTTP boundary', () => {
           const res = await handleRequest(req, env, NOW);
           const blocked =
             (route.minMode === 'enabled' && mode !== 'enabled') ||
-            (route.minMode === 'read-only' && mode === 'off');
+            (route.minMode === 'read-only' && mode === 'off') ||
+            (route.path === '/api/social/reactions/set' && mode !== 'enabled');
           expect(res.status === 503, `${mode} ${route.method} ${route.path}`).toBe(blocked);
         }
       }
