@@ -12,6 +12,8 @@
 `sync-store.ts`(`syncOutbox`·`syncState` 에 닿는 유일한 파일, ADR-0018) → `*-indexeddb-repository.ts`
 (계약 6종 구현 — 엔티티 4 + dataset + sync) → `repositories.ts`(조립, `src/app/providers.tsx` 가 부른다).
 
+`social/`은 별도 온라인 HTTP 포트 구현이다. 쿠키·actor는 adapter 경계에 두고, 개인 IndexedDB나 sync 아웃박스에 공유 내용을 넣지 않는다. 실제 구현은 provider가 지연 주입한다.
+
 ## 규칙
 
 1. 스키마는 `indexeddb/db.ts` 한 곳. 변경은 `version(n+1).stores({...})` 추가로만(기존 버전 수정 금지) + ADR + 마이그레이션 테스트(fake-indexeddb로 n → n+1). 비인덱스 필드 추가는 버전업 불필요. `.upgrade(...)` 는 값 변환이 있을 때만 달고, 생략하려면 "기존 로우의 값이 바뀌지 않는다"를 테스트로 보인다(ADR-0011 규칙 3).
