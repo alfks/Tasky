@@ -93,9 +93,9 @@ Tasky/
 ├── public/             → public/AGENTS.md              아이콘·manifest.webmanifest·fonts/·_headers
 ├── tests/e2e/          → tests/AGENTS.md              Playwright 스모크(11 스펙 35건)
 ├── tests/feel/         → tests/feel/AGENTS.md         사용감 계측 도구(러너 없음 — docs/FEEL_REPORT.md)
-├── worker/             → worker/AGENTS.md            기존 auth/sync/account/db + social/ D1 투영
+├── worker/             → worker/AGENTS.md            auth/sync/account/db + social/ D1 투영·scheduled GC 진입
 │   ├── db/migrations/  → worker/db/migrations/AGENTS.md  0001 개인·0002 소셜
-│   └── social/         → worker/social/AGENTS.md     actor·receipt/CAS·한도/GC·삭제·16 관계 HTTP 경로
+│   └── social/         → worker/social/AGENTS.md     actor·receipt/CAS·한도/GC·삭제·피드/공유/응원 포함 22 HTTP 경로
 └── src/                → src/AGENTS.md
     ├── app/            → src/app/AGENTS.md            SPA 진입점(main.tsx)·providers·단일 라우트 화면
     ├── components/     → src/components/AGENTS.md     ui/ 프리미티브(Button, Checkbox, Popover…)
@@ -224,4 +224,4 @@ type FocusSession = Meta & {
 - [ADR-0010](./decisions/ADR-0010-vinext-build-and-cloudflare-workers.md) 빌드 스택 Vinext + 배포 Cloudflare Workers (**superseded by ADR-0013**)
 - [ADR-0013](./decisions/ADR-0013-plain-vite-react-and-lazy-dexie.md) 순수 Vite + React SPA · Dexie 지연 로드 · 정적 자산 전용 Workers 배포
 
-Phase 3의 서버/클라이언트 경계와 SQL 계약: [social-design.md](social-design.md). 파일별 구현·배선 순서: [phase3-implementation-plan.md](phase3-implementation-plan.md). 현재 social은 순수 계약·포트·D1 primitive·16 관계 HTTP 경로와 계정 삭제 연결, 클라이언트 fake·HTTP/세션·피드 기반까지다. 게시글·응원·피드 서버 HTTP, 실서버 통합, 화면·운영은 후속 티켓이다.
+Phase 3의 서버/클라이언트 경계와 SQL 계약: [social-design.md](social-design.md). 파일별 구현·배선 순서: [phase3-implementation-plan.md](phase3-implementation-plan.md). 현재 social은 순수 계약·포트·D1 primitive·22 HTTP 경로와 계정 삭제 연결, 클라이언트 fake·HTTP/세션·피드 기반까지다. 서버는 `worker/social/feed-read.ts`의 작성자별 인덱스 피드, `validate-posts.ts`의 본문 없는 재검증, 공유/응원 명령과 `worker/index.ts`의 scheduled GC 진입을 포함한다. 실제 어댑터→서버 통합, 화면·운영은 후속 티켓이다.
