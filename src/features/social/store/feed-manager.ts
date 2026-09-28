@@ -23,6 +23,7 @@ export type FeedSnapshot = {
   hasNew: boolean;
   leaseUntil: number;
   error: SocialErrorCode | null;
+  cursorExpired: boolean;
 };
 
 export type FeedDependencies = {
@@ -50,6 +51,7 @@ const INITIAL: FeedSnapshot = {
   hasNew: false,
   leaseUntil: 0,
   error: null,
+  cursorExpired: false,
 };
 
 export function createSocialFeedManager(
@@ -96,6 +98,7 @@ export function createSocialFeedManager(
       canShow: false,
       leaseUntil: 0,
       error: null,
+      cursorExpired: false,
       ...(purge
         ? {
             items: [],
@@ -138,7 +141,12 @@ export function createSocialFeedManager(
     );
   }
 
-  function failed(error: unknown, captured: number, allowed: () => boolean): void {
+  function failed(
+    error: unknown,
+    captured: number,
+    allowed: () => boolean,
+    cursorRequestFailed = false,
+  ): void {
     if (!current(captured, allowed)) return;
     const code = socialErrorCode(error);
     if (code === 'unauthorized' || code === 'account-deleted') {
@@ -147,12 +155,20 @@ export function createSocialFeedManager(
     }
     generation += 1;
     stopTimer();
-    update({ phase: 'error', items: [], canShow: false, leaseUntil: 0, error: code });
+    update({
+      phase: 'error',
+      items: [],
+      canShow: false,
+      leaseUntil: 0,
+      error: code,
+      cursorExpired: cursorRequestFailed && code === 'validation',
+    });
   }
 
   async function loadPage(cursor: string | null, stack: readonly (string | null)[]): Promise<void> {
     const captured = ++generation;
     const allowed = deps.capture();
+    let requestingFeed = false;
     stopTimer();
     update({
       phase: 'loading',
@@ -160,6 +176,7 @@ export function createSocialFeedManager(
       canShow: false,
       leaseUntil: 0,
       error: null,
+      cursorExpired: false,
       cursorStack: stack,
       pageIndex: stack.length - 1,
       nextCursor: null,
@@ -174,7 +191,9 @@ export function createSocialFeedManager(
         update({ phase: 'ready', profile: identity.data.profile, mode: identity.data.mode });
         return;
       }
+      requestingFeed = true;
       const response = await repo.feed(cursor === null ? undefined : { cursor });
+      requestingFeed = false;
       if (!current(captured, allowed)) return;
       const items = uniquePosts(response.data.items);
       const validationStartedAt = deps.clock.now();
@@ -184,10 +203,8 @@ export function createSocialFeedManager(
         deps.clock,
       );
       if (!current(captured, allowed)) return;
-      if (deps.clock.now() >= validationStartedAt + 35_000) {
-        failed(new Error('검증 유효 시간이 지났습니다.'), captured, allowed);
-        return;
-      }
+      if (deps.clock.now() >= validationStartedAt + 35_000)
+        return failed(new Error('검증 유효 시간이 지났습니다.'), captured, allowed);
       update({
         phase: 'ready',
         mode: identity.data.mode,
@@ -200,7 +217,7 @@ export function createSocialFeedManager(
       });
       schedulePoll();
     } catch (error) {
-      failed(error, captured, allowed);
+      failed(error, captured, allowed, requestingFeed && cursor !== null);
     }
   }
 
@@ -284,6 +301,8 @@ export function createSocialFeedManager(
       invalidate('closed');
     },
     refresh: () => loadPage(null, [null]),
+    /** 명령 뒤 현재 읽는 페이지를 다시 조회한다. 커서/이전 페이지 경로는 유지한다. */
+    refreshCurrent: () => loadPage(state.cursorStack[state.pageIndex] ?? null, state.cursorStack),
     next: () =>
       state.nextCursor === null
         ? Promise.resolve()
@@ -291,10 +310,7 @@ export function createSocialFeedManager(
     previous: () =>
       state.pageIndex === 0
         ? Promise.resolve()
-        : loadPage(
-            state.cursorStack[state.pageIndex - 1] ?? null,
-            state.cursorStack.slice(0, state.pageIndex),
-          ),
+        : loadPage(state.cursorStack[state.pageIndex - 1] ?? null, state.cursorStack.slice(0, -1)),
     validate: validateCurrent,
     invalidate,
   };

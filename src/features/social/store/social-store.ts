@@ -21,6 +21,7 @@ export type SocialStore = FeedSnapshot & {
   open: () => Promise<void>;
   close: () => void;
   refresh: () => Promise<void>;
+  refreshCurrent: () => Promise<void>;
   next: () => Promise<void>;
   previous: () => Promise<void>;
   setDraft: (text: string) => void;
@@ -72,6 +73,7 @@ export const useSocialStore = create<SocialStore>()((set, get) => ({
   open: manager.open,
   close: manager.close,
   refresh: manager.refresh,
+  refreshCurrent: manager.refreshCurrent,
   next: manager.next,
   previous: manager.previous,
   setDraft: (draft) => set({ draft }),

@@ -241,6 +241,87 @@ describe('social feed lease and generation', () => {
     expect(f.manager.getSnapshot().pageIndex).toBe(1);
   });
 
+  it('명령 후 현재 두 번째 페이지를 재조회하고 이전 경로를 유지한다', async () => {
+    const f = fixture();
+    const second = { ...post, id: 'c'.repeat(32) };
+    const reacted = { ...second, reactionCount: 1, myReaction: true };
+    f.feed
+      .mockResolvedValueOnce(answer({ items: [post], nextCursor: 'next' }))
+      .mockResolvedValueOnce(answer({ items: [second], nextCursor: null }))
+      .mockResolvedValueOnce(answer({ items: [reacted], nextCursor: null }))
+      .mockResolvedValueOnce(answer({ items: [post], nextCursor: 'next' }));
+    f.validatePosts.mockResolvedValue(answer({ allowedIds: [post.id, second.id] }));
+    await f.manager.open();
+    await settle();
+    await f.manager.next();
+    await f.manager.refreshCurrent();
+
+    expect(f.feed).toHaveBeenNthCalledWith(3, { cursor: 'next' });
+    expect(f.manager.getSnapshot().items).toEqual([reacted]);
+    expect(f.manager.getSnapshot().cursorStack).toEqual([null, 'next']);
+    expect(f.manager.getSnapshot().pageIndex).toBe(1);
+    await f.manager.previous();
+    expect(f.feed).toHaveBeenNthCalledWith(4, undefined);
+    expect(f.manager.getSnapshot().items).toEqual([post]);
+  });
+
+  it('차단으로 현재 페이지가 비어도 자동으로 첫 페이지로 옮기지 않는다', async () => {
+    const f = fixture();
+    f.feed
+      .mockResolvedValueOnce(answer({ items: [post], nextCursor: 'next' }))
+      .mockResolvedValueOnce(answer({ items: [post], nextCursor: null }))
+      .mockResolvedValueOnce(answer({ items: [], nextCursor: null }));
+    await f.manager.open();
+    await settle();
+    await f.manager.next();
+    await f.manager.refreshCurrent();
+
+    expect(f.manager.getSnapshot()).toMatchObject({
+      phase: 'ready',
+      canShow: true,
+      items: [],
+      pageIndex: 1,
+      cursorStack: [null, 'next'],
+    });
+  });
+
+  it('현재 커서가 만료되면 본문을 가리고 명시적 첫 페이지 재시작을 기다린다', async () => {
+    const f = fixture();
+    f.feed
+      .mockResolvedValueOnce(answer({ items: [post], nextCursor: 'next' }))
+      .mockResolvedValueOnce(answer({ items: [post], nextCursor: null }))
+      .mockRejectedValueOnce(Object.assign(new Error('cursor expired'), { code: 'validation' }))
+      .mockResolvedValueOnce(answer({ items: [post], nextCursor: null }));
+    await f.manager.open();
+    await settle();
+    await f.manager.next();
+    await f.manager.refreshCurrent();
+
+    expect(f.manager.getSnapshot()).toMatchObject({
+      phase: 'error',
+      canShow: false,
+      items: [],
+      pageIndex: 1,
+      error: 'validation',
+      cursorExpired: true,
+    });
+    await f.manager.refresh();
+    expect(f.manager.getSnapshot()).toMatchObject({
+      phase: 'ready',
+      pageIndex: 0,
+      cursorExpired: false,
+    });
+    f.validatePosts.mockRejectedValueOnce(
+      Object.assign(new Error('bad validation'), { code: 'validation' }),
+    );
+    await f.manager.refreshCurrent();
+    expect(f.manager.getSnapshot()).toMatchObject({
+      phase: 'error',
+      error: 'validation',
+      cursorExpired: false,
+    });
+  });
+
   it('head 조회가 늦어도 검증 요청 시작 이후 35초 lease를 다시 시작하지 않는다', async () => {
     const f = fixture();
     await f.manager.open();
