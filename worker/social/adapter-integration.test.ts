@@ -10,6 +10,7 @@ import type { Env } from '../env';
 import type { Client, Server } from '../test/social-adapter-integration-fixture';
 
 type Actor = Client & { repo: SocialRepository };
+type Ids = { aId: string; bId: string; cId: string };
 const withRepo = (client: Client): Actor => ({
   ...client,
   repo: createHttpSocialRepository(client.transport),
@@ -68,17 +69,7 @@ async function accepted(server: Server, a: Actor, b: Actor, c: Actor) {
   return { aId: aProfile.id, bId: bProfile.id, cId: cProfile.id };
 }
 
-async function revoked(
-  server: Server,
-  a: Actor,
-  b: Actor,
-  c: Actor,
-  ids: {
-    aId: string;
-    bId: string;
-    cId: string;
-  },
-) {
+async function withdrawRelations(server: Server, a: Actor, b: Actor, c: Actor, ids: Ids) {
   const removed = (
     await b.repo.removeFriend({ peerId: ids.aId, expectedVersion: 2 }, { key: key(5) })
   ).data;
@@ -104,6 +95,9 @@ async function revoked(
   ).data;
   expect(cancelled).toMatchObject({ state: 'none', pairVersion: resent.pairVersion + 1 });
   expect((await a.repo.requests('incoming')).data.items).toEqual([]);
+}
+
+async function revokeAndBlock(server: Server, a: Actor, b: Actor, ids: Ids) {
   const revokeToken = await issue(a, 12);
   const active = (await a.repo.invites()).data.items.find((i) => i.status === 'active');
   expect(active?.inviteId).toBeDefined();
@@ -132,12 +126,41 @@ async function revoked(
   expect(block?.n).toBe(1);
 }
 
+async function sessionCount(env: Env, sub: string): Promise<number | undefined> {
+  return (
+    await env.DB.prepare('SELECT COUNT(*) AS n FROM sessions WHERE sub=?')
+      .bind(sub)
+      .first<{ n: number }>()
+  )?.n;
+}
+
+async function refreshAndDelete(env: Env, clock: Server['clock'], a: Actor, b: Actor, c: Actor) {
+  const cCookie = c.jar.get(SESSION_COOKIE);
+  clock.value = new Date(Date.parse(NOW) + 24 * 86_400_000).toISOString();
+  await a.repo.me();
+  expect(a.seen.at(-1)?.cookieAction).toBe('set');
+  expect(await sessionCount(env, 'a')).toBe(1);
+  await env.DB.prepare('INSERT INTO deleted_users(sub,deleted_at) VALUES(?,?)')
+    .bind('a', clock.value)
+    .run();
+  await expect(a.repo.me()).rejects.toMatchObject({ code: 'account-deleted' });
+  expect(a.seen.at(-1)?.cookieAction).toBe('clear');
+  expect(await sessionCount(env, 'a')).toBe(0);
+  expect(await sessionCount(env, 'c')).toBe(1);
+  expect(a.jar.has(SESSION_COOKIE)).toBe(false);
+  expect(c.jar.get(SESSION_COOKIE)).toBe(cCookie);
+  expect(b.jar.has(SESSION_COOKIE)).toBe(false);
+  await expect(a.repo.me()).rejects.toMatchObject({ code: 'unauthorized' });
+  expect((await c.repo.me()).data.mode).toBe('off');
+}
+
 describe('social adapter to real Worker and Miniflare D1', () => {
   it('connects the initial 16 routes and persists relation, invite, and block effects', async () => {
     await withServer(async (server) => {
       const [a, b, c] = (await Promise.all(['a', 'b', 'c'].map(server.actor))).map(withRepo);
       const ids = await accepted(server, a, b, c);
-      await revoked(server, a, b, c, ids);
+      await withdrawRelations(server, a, b, c, ids);
+      await revokeAndBlock(server, a, b, ids);
       const seen = [a, b, c].flatMap((actor) => actor.seen);
       expect(
         seen.every(
@@ -185,35 +208,32 @@ describe('social adapter to real Worker and Miniflare D1', () => {
       b.jar.clear();
       await expect(b.repo.me()).rejects.toMatchObject({ code: 'unauthorized' });
       expect(b.seen.at(-1)?.status).toBe(401);
+      const profileCount = () =>
+        env.DB.prepare("SELECT COUNT(*) AS n FROM social_profiles WHERE sub='c'").first<{
+          n: number;
+        }>();
+      const beforeProfile = await profileCount();
       c.origin.value = 'https://other.example';
       await expect(c.repo.createProfile({ nickname: 'C' })).rejects.toMatchObject({ code: 'csrf' });
       expect(c.seen.at(-1)?.status).toBe(403);
+      expect(await profileCount()).toEqual(beforeProfile);
       c.origin.value = ORIGIN;
-      const cCookie = c.jar.get(SESSION_COOKIE);
       env.SOCIAL_MODE = 'read-only';
       expect((await c.repo.previewInvite({ token })).data.nickname).toBe('A');
+      const inviteCount = () =>
+        env.DB.prepare('SELECT COUNT(*) AS n FROM social_invites').first<{ n: number }>();
+      const beforeInvite = await inviteCount();
       await expect(a.repo.createInvite({ key: key(21) })).rejects.toMatchObject({
         code: 'social-disabled',
         retryAfter: 60,
       });
+      expect(await inviteCount()).toEqual(beforeInvite);
       env.SOCIAL_MODE = 'off';
       expect((await a.repo.me()).data.mode).toBe('off');
       await expect(c.repo.previewInvite({ token })).rejects.toMatchObject({
         code: 'social-disabled',
       });
-      clock.value = new Date(Date.parse(NOW) + 24 * 86_400_000).toISOString();
-      await a.repo.me();
-      expect(a.seen.at(-1)?.cookieAction).toBe('set');
-      await env.DB.prepare('INSERT INTO deleted_users(sub,deleted_at) VALUES(?,?)')
-        .bind('a', clock.value)
-        .run();
-      await expect(a.repo.me()).rejects.toMatchObject({ code: 'account-deleted' });
-      expect(a.seen.at(-1)?.cookieAction).toBe('clear');
-      expect(a.jar.has(SESSION_COOKIE)).toBe(false);
-      expect(c.jar.get(SESSION_COOKIE)).toBe(cCookie);
-      expect(b.jar.has(SESSION_COOKIE)).toBe(false);
-      await expect(a.repo.me()).rejects.toMatchObject({ code: 'unauthorized' });
-      expect((await c.repo.me()).data.mode).toBe('off');
+      await refreshAndDelete(env, clock, a, b, c);
     });
   }, 30_000);
 
