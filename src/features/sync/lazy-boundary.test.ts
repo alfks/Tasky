@@ -186,6 +186,23 @@ describe('sync 지연 로드 경계 — 진입 그래프 도달성', () => {
     expect(engineRel.has('domain/sync/wire.ts')).toBe(true);
     expect(engineRel.has('domain/sync/remote-rows.ts')).toBe(true);
   });
+
+  it('소셜 진입은 작은 세션 경계뿐이고 본문·HTTP·memory fake는 지연된다', () => {
+    const socialEntry = [...rel].filter((file) => file.startsWith('features/social/')).sort();
+    expect(socialEntry).toEqual([
+      'features/social/index.ts',
+      'features/social/session-lifecycle.ts',
+    ]);
+    for (const file of [
+      'features/social/store/social-store.ts',
+      'features/social/store/feed-manager.ts',
+      'infra/social/http-repository.ts',
+      'repositories/memory/social-repository.ts',
+    ])
+      expect(rel.has(file)).toBe(false);
+    const fromStore = relSet(walk('src/features/social/store/social-store.ts').reachable);
+    expect(fromStore.has('features/social/store/feed-manager.ts')).toBe(true);
+  });
 });
 
 describe('sync 지연 로드 경계 — 방향 규칙(§D-10)', () => {
@@ -201,6 +218,7 @@ describe('sync 지연 로드 경계 — 방향 규칙(§D-10)', () => {
     'command',
     'pwa',
     'reports',
+    'social',
   ];
 
   it.each(NON_ASSEMBLING_FEATURES)(

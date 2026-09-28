@@ -7,6 +7,7 @@ import type { DiaryRepository } from '@/repositories/diary-repository';
 import type { FocusSessionRepository } from '@/repositories/focus-session-repository';
 import type { RoutineRepository } from '@/repositories/routine-repository';
 import type { SettingsRepository } from '@/repositories/settings-repository';
+import type { SocialRepository } from '@/repositories/social-repository';
 import type { SyncRepository } from '@/repositories/sync-repository';
 import type { SyncTransport } from '@/repositories/sync-transport';
 import type { TodoRepository } from '@/repositories/todo-repository';
@@ -67,4 +68,18 @@ export function getSyncTransport(): SyncTransport {
     );
   }
   return currentTransport;
+}
+
+let currentSocial: SocialRepository | undefined;
+
+/** 온라인 소셜 포트는 개인 저장소 묶음이나 동기화 아웃박스에 속하지 않는다. */
+export function setSocialRepository(next: SocialRepository): void {
+  currentSocial = next;
+}
+
+export function getSocialRepository(): SocialRepository {
+  if (currentSocial === undefined) {
+    throw new Error('소셜 저장소가 주입되지 않았습니다. setSocialRepository() 를 먼저 호출하세요.');
+  }
+  return currentSocial;
 }

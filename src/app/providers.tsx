@@ -2,8 +2,25 @@
 // main.tsx 하나다. 재export 는 금지 — 레포지토리 주입 외의 일을 하면 경계가 새어나간다.
 import { useEffect, useState, type ReactNode } from 'react';
 
-import { setRepositories, setSyncTransport } from '@/repositories/container';
+import {
+  getRepositories,
+  getSyncTransport,
+  setRepositories,
+  setSocialRepository,
+  setSyncTransport,
+} from '@/repositories/container';
+import { createLazySocialRepository } from '@/repositories/lazy-social-repository';
 import { isRepositoryError } from '@/repositories/repository-error';
+
+import {
+  activateSocialSession,
+  captureSocialDispatch,
+  configureSocialVerifier,
+  invalidateSocialSession,
+  isSocialSessionActive,
+  onSocialInvalidation,
+} from '@/features/social';
+import { useSyncStore } from '@/features/sync';
 
 import { Skeleton } from '@/components/ui/Skeleton';
 
@@ -26,8 +43,119 @@ const injection: Promise<void> = Promise.all([
 ]).then(async ([{ createIndexedDbRepositories, openIndexedDb }, { createHttpSyncTransport }]) => {
   setRepositories(createIndexedDbRepositories());
   setSyncTransport(createHttpSyncTransport());
+  setSocialRepository(
+    createLazySocialRepository(async () => {
+      const { createHttpSocialRepository } = await import('@/infra/social/http-repository');
+      return createHttpSocialRepository();
+    }, captureSocialDispatch),
+  );
   await openIndexedDb();
 });
+
+let socialNonce = 0;
+
+/** 개인 로그인 표식과 실제 세션이 일치할 때만 소셜 세대를 연다. sub는 이 함수 밖으로 나가지 않는다. */
+async function verifySocialIdentity(): Promise<string | null> {
+  const before = useSyncStore.getState();
+  if (
+    before.phase !== 'ready' ||
+    !before.online ||
+    before.accountDeletedNotice ||
+    before.accountSwitchedNotice ||
+    document.hidden
+  )
+    return null;
+  const local = await getRepositories().sync.getState();
+  if (local?.userSub === undefined) return null;
+  const remote = await getSyncTransport().me();
+  const after = useSyncStore.getState();
+  if (
+    remote?.sub !== local.userSub ||
+    after.phase !== 'ready' ||
+    !after.online ||
+    after.accountDeletedNotice ||
+    after.accountSwitchedNotice ||
+    document.hidden
+  )
+    return null;
+  socialNonce += 1;
+  return `scope-${String(socialNonce)}`;
+}
+
+/** 헤더·토큰·본문 없이 다른 탭에 철회만 알린다. 소셜 화면이 닫혀 있으면 왕복을 시작하지 않는다. */
+function SocialSessionBridge() {
+  useEffect(() => {
+    const stopVerify = configureSocialVerifier(verifySocialIdentity);
+    const channel =
+      typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('tasky-social-session');
+    const stopBroadcast = onSocialInvalidation((reason) => {
+      if (reason === 'auth' || reason === 'account' || reason === 'revoked') {
+        channel?.postMessage({ kind: 'invalidate' });
+      }
+    });
+    const resume = () => {
+      if (isSocialSessionActive()) void activateSocialSession();
+    };
+    const stopSync = useSyncStore.subscribe((next, previous) => {
+      const wasBlocked =
+        previous.phase !== 'ready' ||
+        !previous.online ||
+        previous.accountDeletedNotice ||
+        previous.accountSwitchedNotice;
+      const isBlocked =
+        next.phase !== 'ready' ||
+        !next.online ||
+        next.accountDeletedNotice ||
+        next.accountSwitchedNotice;
+      if (
+        (next.phase !== previous.phase && next.phase !== 'ready') ||
+        (next.accountDeletedNotice && !previous.accountDeletedNotice) ||
+        (next.accountSwitchedNotice && !previous.accountSwitchedNotice)
+      ) {
+        invalidateSocialSession(
+          next.accountDeletedNotice || next.accountSwitchedNotice ? 'account' : 'auth',
+        );
+      } else if (!next.online && previous.online) {
+        invalidateSocialSession('offline');
+      }
+      if (!isBlocked && wasBlocked) {
+        resume();
+      }
+    });
+    const visibility = () => {
+      if (document.hidden) invalidateSocialSession('hidden');
+      else resume();
+    };
+    const focus = () => {
+      if (isSocialSessionActive()) {
+        invalidateSocialSession('recheck');
+        resume();
+      }
+    };
+    channel?.addEventListener('message', (event: MessageEvent<unknown>) => {
+      if (
+        typeof event.data !== 'object' ||
+        event.data === null ||
+        !('kind' in event.data) ||
+        event.data.kind !== 'invalidate'
+      )
+        return;
+      invalidateSocialSession('cross-tab');
+      resume();
+    });
+    document.addEventListener('visibilitychange', visibility);
+    window.addEventListener('focus', focus);
+    return () => {
+      window.removeEventListener('focus', focus);
+      document.removeEventListener('visibilitychange', visibility);
+      stopSync();
+      stopBroadcast();
+      channel?.close();
+      stopVerify();
+    };
+  }, []);
+  return null;
+}
 
 /** 스키마가 못 올라갔을 때 (TECH_PLAN §5 규칙 4). 데이터는 그대로 있고 쓰기만 막힌다. */
 const SCHEMA_FAILED_MESSAGE =
@@ -95,5 +223,10 @@ export function Providers({ children }: ProvidersProps) {
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <SocialSessionBridge />
+      {children}
+    </>
+  );
 }

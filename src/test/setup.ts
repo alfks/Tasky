@@ -5,12 +5,15 @@
 // 주입은 **파일마다** 일어난다(vitest 는 테스트 파일별로 모듈을 새로 읽는다) — 파일 사이로 상태가 새지 않는다.
 // 한 파일 안에서 격리가 필요하면 그 테스트가 `setRepositories(createMemoryRepositories())` 를 다시 부른다.
 // 계약 테스트는 이 전역 묶음을 쓰지 않고 `ContractTarget.create()` 로 매번 새 묶음을 만든다.
+import { webcrypto } from 'node:crypto';
+
 import 'fake-indexeddb/auto';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, expect } from 'vitest';
 
-import { setRepositories, setSyncTransport } from '@/repositories/container';
+import { setRepositories, setSocialRepository, setSyncTransport } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
+import { createMemorySocialServer } from '@/repositories/memory/social-repository';
 import { createMemorySyncServer } from '@/repositories/memory/sync-server';
 import { createMemorySyncTransport } from '@/repositories/memory/sync-transport';
 
@@ -26,6 +29,14 @@ setRepositories(createMemoryRepositories());
  * session))` 로 다시 주입한다(레포지토리와 같은 패턴, `container.test.ts` 참고).
  */
 setSyncTransport(createMemorySyncTransport(createMemorySyncServer(), null));
+
+/** 별도 온라인 포트. 테스트마다 actor-bound fake를 명시적으로 덮어쓸 수 있다. */
+setSocialRepository(createMemorySocialServer().forActor('test-social-actor'));
+
+/** jsdom에는 getRandomValues만 있는 버전이 있다. fake의 SHA-256은 Node WebCrypto로 보완한다. */
+if (globalThis.crypto.subtle === undefined) {
+  Object.defineProperty(globalThis, 'crypto', { configurable: true, value: webcrypto });
+}
 
 /**
  * 토스트 허브(`components/ui/Toast.tsx` 의 `hubToasts`)를 **매 테스트 앞에서** 비운다 (T-49).
