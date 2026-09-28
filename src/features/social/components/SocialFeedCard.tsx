@@ -1,11 +1,10 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 
 import type { PostView, SocialMode } from '@/domain/social/social';
 
 import { Button } from '@/components/ui/Button';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Menu } from '@/components/ui/Menu';
 import { Popover } from '@/components/ui/Popover';
 
@@ -14,8 +13,11 @@ type SocialFeedCardProps = {
   mode: SocialMode | null;
   ownProfileId: string | null;
   busy: boolean;
+  menuOpen: boolean;
   onReact: (postId: string, active: boolean) => Promise<boolean>;
-  onBlock: (peerId: string) => Promise<boolean>;
+  onToggleMenu: () => void;
+  onCloseMenu: () => void;
+  onRequestBlock: (postId: string, peerId: string) => void;
 };
 
 export function SocialFeedCard({
@@ -23,11 +25,12 @@ export function SocialFeedCard({
   mode,
   ownProfileId,
   busy,
+  menuOpen,
   onReact,
-  onBlock,
+  onToggleMenu,
+  onCloseMenu,
+  onRequestBlock,
 }: SocialFeedCardProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [confirmBlock, setConfirmBlock] = useState(false);
   const menuAnchorRef = useRef<HTMLButtonElement>(null);
   const isOwn = post.author.id === ownProfileId;
 
@@ -57,13 +60,13 @@ export function SocialFeedCard({
               ref={menuAnchorRef}
               variant="ghost"
               aria-label={`${post.author.nickname}님 공유 더 보기`}
-              onClick={() => setMenuOpen((open) => !open)}
+              onClick={onToggleMenu}
             >
               더 보기
             </Button>
             <Popover
               open={menuOpen}
-              onClose={() => setMenuOpen(false)}
+              onClose={onCloseMenu}
               anchorRef={menuAnchorRef}
               hasPopup="menu"
             >
@@ -75,31 +78,17 @@ export function SocialFeedCard({
                     label: '사용자 차단',
                     destructive: true,
                     onSelect: () => {
-                      setMenuOpen(false);
-                      setConfirmBlock(true);
+                      onCloseMenu();
+                      onRequestBlock(post.id, post.author.id);
                     },
                   },
                 ]}
-                onClose={() => setMenuOpen(false)}
+                onClose={onCloseMenu}
               />
             </Popover>
           </>
         ) : null}
       </div>
-      <ConfirmDialog
-        open={confirmBlock}
-        title={`${post.author.nickname}님을 차단할까요?`}
-        description="친구 관계와 요청이 끊기고 서로의 공유를 볼 수 없어요. 상대에게 알림은 보내지 않아요."
-        confirmLabel="차단"
-        onConfirm={() => {
-          if (!busy)
-            void onBlock(post.author.id).then((done) => {
-              if (done) setConfirmBlock(false);
-            });
-        }}
-        onCancel={() => setConfirmBlock(false)}
-        returnFocus={() => document.getElementById('social-feed-title')}
-      />
     </article>
   );
 }

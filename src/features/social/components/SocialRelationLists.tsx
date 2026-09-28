@@ -15,6 +15,15 @@ type SocialRelationListsProps = {
 };
 type PendingConfirm = { kind: 'remove'; item: FriendView } | { kind: 'block'; item: FriendView };
 
+function restoreSection(id: string): void {
+  requestAnimationFrame(() => {
+    const tab = document.getElementById('social-tab-friends');
+    if (tab?.getAttribute('aria-selected') !== 'true') return;
+    const target = document.getElementById(id) ?? tab;
+    if (!target.closest('[hidden]')) target.focus({ preventScroll: true });
+  });
+}
+
 export function SocialRelationLists({ relations, onGoFeed }: SocialRelationListsProps) {
   const { data, busy } = relations;
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
@@ -29,6 +38,7 @@ export function SocialRelationLists({ relations, onGoFeed }: SocialRelationLists
     if (done) {
       setConfirm(null);
       setNotice(confirm.kind === 'remove' ? '친구를 해제했어요.' : '사용자를 차단했어요.');
+      restoreSection('social-friends-title');
     }
   };
 
@@ -36,7 +46,7 @@ export function SocialRelationLists({ relations, onGoFeed }: SocialRelationLists
     <div className="flex flex-col gap-[var(--space-4)]">
       {notice ? <p role="status">{notice}</p> : null}
       <section aria-labelledby="social-incoming-title">
-        <h2 id="social-incoming-title" className="font-semibold">
+        <h2 id="social-incoming-title" tabIndex={-1} className="font-semibold outline-none">
           받은 요청
         </h2>
         {data.incoming.length === 0 ? (
@@ -50,14 +60,22 @@ export function SocialRelationLists({ relations, onGoFeed }: SocialRelationLists
               <span>{item.peer.nickname}</span>
               <Button
                 disabled={busy || mode !== 'enabled'}
-                onClick={() => void relations.changeRequest('accept', item)}
+                onClick={() =>
+                  void relations.changeRequest('accept', item).then((done) => {
+                    if (done) restoreSection('social-incoming-title');
+                  })
+                }
               >
                 수락
               </Button>
               <Button
                 variant="outline"
                 disabled={busy}
-                onClick={() => void relations.changeRequest('decline', item)}
+                onClick={() =>
+                  void relations.changeRequest('decline', item).then((done) => {
+                    if (done) restoreSection('social-incoming-title');
+                  })
+                }
               >
                 거절
               </Button>
@@ -75,7 +93,7 @@ export function SocialRelationLists({ relations, onGoFeed }: SocialRelationLists
         </Button>
       ) : null}
       <section aria-labelledby="social-outgoing-title">
-        <h2 id="social-outgoing-title" className="font-semibold">
+        <h2 id="social-outgoing-title" tabIndex={-1} className="font-semibold outline-none">
           보낸 요청
         </h2>
         {data.outgoing.length === 0 ? (
@@ -90,7 +108,11 @@ export function SocialRelationLists({ relations, onGoFeed }: SocialRelationLists
               <Button
                 variant="outline"
                 disabled={busy}
-                onClick={() => void relations.changeRequest('cancel', item)}
+                onClick={() =>
+                  void relations.changeRequest('cancel', item).then((done) => {
+                    if (done) restoreSection('social-outgoing-title');
+                  })
+                }
               >
                 요청 취소
               </Button>
@@ -108,7 +130,7 @@ export function SocialRelationLists({ relations, onGoFeed }: SocialRelationLists
         </Button>
       ) : null}
       <section aria-labelledby="social-friends-title">
-        <h2 id="social-friends-title" className="font-semibold">
+        <h2 id="social-friends-title" tabIndex={-1} className="font-semibold outline-none">
           친구
         </h2>
         {data.friends.length === 0 ? (
@@ -151,7 +173,7 @@ export function SocialRelationLists({ relations, onGoFeed }: SocialRelationLists
         </Button>
       ) : null}
       <section aria-labelledby="social-blocks-title">
-        <h2 id="social-blocks-title" className="font-semibold">
+        <h2 id="social-blocks-title" tabIndex={-1} className="font-semibold outline-none">
           차단한 사용자
         </h2>
         {data.blocks.length === 0 ? (
@@ -168,7 +190,10 @@ export function SocialRelationLists({ relations, onGoFeed }: SocialRelationLists
                 disabled={busy}
                 onClick={() =>
                   void relations.block(item.id, false, item.pairVersion).then((done) => {
-                    if (done) setNotice('차단을 해제했어요. 친구 관계는 복원되지 않아요.');
+                    if (done) {
+                      setNotice('차단을 해제했어요. 친구 관계는 복원되지 않아요.');
+                      restoreSection('social-blocks-title');
+                    }
                   })
                 }
               >
@@ -194,6 +219,7 @@ export function SocialRelationLists({ relations, onGoFeed }: SocialRelationLists
         confirmLabel={confirm?.kind === 'block' ? '차단' : '친구 해제'}
         onConfirm={() => void resolveConfirm()}
         onCancel={() => setConfirm(null)}
+        returnFocus={() => document.getElementById('social-friends-title')}
       />
     </div>
   );

@@ -13,6 +13,15 @@ type SocialInviteSectionProps = {
   onClearInvite: () => void;
 };
 
+function restoreInviteFocus(id = 'social-invites-title'): void {
+  requestAnimationFrame(() => {
+    const tab = document.getElementById('social-tab-friends');
+    if (tab?.getAttribute('aria-selected') !== 'true') return;
+    const target = document.getElementById(id) ?? tab;
+    if (!target.closest('[hidden]')) target.focus({ preventScroll: true });
+  });
+}
+
 export function SocialInviteSection({
   relations,
   invite,
@@ -83,6 +92,7 @@ export function SocialInviteSection({
                       if (done) {
                         onClearInvite();
                         setNotice('친구 요청을 보냈어요.');
+                        restoreInviteFocus('social-outgoing-title');
                       }
                     })
                   }
@@ -104,10 +114,13 @@ export function SocialInviteSection({
           aria-labelledby="social-invites-title"
           className="flex flex-col gap-[var(--space-2)]"
         >
-          <h2 id="social-invites-title" className="font-semibold">
+          <h2 id="social-invites-title" tabIndex={-1} className="font-semibold outline-none">
             친구 초대
           </h2>
-          <Button disabled={busy || mode !== 'enabled'} onClick={() => void relations.invite()}>
+          <Button
+            disabled={busy || mode !== 'enabled'}
+            onClick={() => void relations.invite().then(() => restoreInviteFocus())}
+          >
             초대 만들기
           </Button>
           {createdInvite && 'tokenUnavailable' in createdInvite ? (
@@ -160,7 +173,10 @@ export function SocialInviteSection({
                   disabled={busy}
                   onClick={() =>
                     void relations.revokeInvite(item.inviteId).then((done) => {
-                      if (done) setNotice('초대를 취소했어요.');
+                      if (done) {
+                        setNotice('초대를 취소했어요.');
+                        restoreInviteFocus();
+                      }
                     })
                   }
                 >

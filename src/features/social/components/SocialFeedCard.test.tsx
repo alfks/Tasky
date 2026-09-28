@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -25,8 +25,11 @@ describe('피드 카드 권한과 명시 차단', () => {
         mode="read-only"
         ownProfileId={null}
         busy={false}
+        menuOpen={false}
         onReact={onReact}
-        onBlock={vi.fn(async () => true)}
+        onToggleMenu={vi.fn()}
+        onCloseMenu={vi.fn()}
+        onRequestBlock={vi.fn()}
       />,
     );
     const cheer = screen.getByRole('button', { name: /친구님의 2026-09-28 공유 응원 2개/ });
@@ -35,25 +38,23 @@ describe('피드 카드 권한과 명시 차단', () => {
     expect(onReact).toHaveBeenCalledWith(POST.id, false);
   });
 
-  it('차단은 더 보기와 확인을 거친 뒤에만 요청한다', async () => {
-    const onBlock = vi.fn(async () => true);
+  it('카드 메뉴는 확인 intent만 부모에게 전달한다', async () => {
+    const onRequestBlock = vi.fn();
     render(
       <SocialFeedCard
         post={{ ...POST, myReaction: false }}
         mode="enabled"
         ownProfileId={null}
         busy={false}
+        menuOpen
         onReact={vi.fn(async () => true)}
-        onBlock={onBlock}
+        onToggleMenu={vi.fn()}
+        onCloseMenu={vi.fn()}
+        onRequestBlock={onRequestBlock}
       />,
     );
-    expect(onBlock).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole('button', { name: '친구님 공유 더 보기' }));
+    expect(onRequestBlock).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('menuitem', { name: '사용자 차단' }));
-    expect(onBlock).not.toHaveBeenCalled();
-    await userEvent.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', { name: '차단' }),
-    );
-    expect(onBlock).toHaveBeenCalledWith(POST.author.id);
+    expect(onRequestBlock).toHaveBeenCalledWith(POST.id, POST.author.id);
   });
 });

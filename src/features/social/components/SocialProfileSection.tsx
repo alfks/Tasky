@@ -20,7 +20,7 @@ export function SocialProfileSection({ relations }: SocialProfileSectionProps) {
       aria-labelledby="social-profile-title"
       className="rounded-[var(--radius-xl)] border border-border bg-surface p-[var(--space-4)]"
     >
-      <h2 id="social-profile-title" className="font-semibold">
+      <h2 id="social-profile-title" tabIndex={-1} className="font-semibold outline-none">
         내 별명
       </h2>
       {profile ? (
@@ -44,7 +44,19 @@ export function SocialProfileSection({ relations }: SocialProfileSectionProps) {
             onClick={() =>
               void (profile ? relations.rename(nickname) : relations.createProfile(nickname)).then(
                 (done) => {
-                  if (done) setNickname('');
+                  if (done) {
+                    setNickname('');
+                    requestAnimationFrame(() => {
+                      if (
+                        document
+                          .getElementById('social-tab-friends')
+                          ?.getAttribute('aria-selected') === 'true'
+                      )
+                        document
+                          .getElementById('social-profile-title')
+                          ?.focus({ preventScroll: true });
+                    });
+                  }
                 },
               )
             }

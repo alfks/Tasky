@@ -62,7 +62,7 @@ export function SocialMyPostsPanel({
           기록 공유
         </Button>
       </div>
-      {posts.mode !== 'enabled' ? (
+      {posts.phase === 'ready' && posts.mode !== 'enabled' ? (
         <p className="text-sm text-muted">
           지금은 새 공유를 만들 수 없어요. 기존 공유 조회와 삭제는 사용할 수 있어요.
         </p>
