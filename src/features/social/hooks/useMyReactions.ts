@@ -112,7 +112,7 @@ export function useMyReactions(enabled: boolean) {
     busy,
     pageIndex: cursorStack.length - 1,
     nextCursor,
-    refresh: () => load(),
+    refresh: load,
     retry: () => load(cursorStack.at(-1) ?? null, cursorStack),
     next: () =>
       nextCursor === null ? Promise.resolve(false) : load(nextCursor, [...cursorStack, nextCursor]),

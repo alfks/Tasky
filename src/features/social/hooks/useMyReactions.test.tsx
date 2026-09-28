@@ -43,8 +43,11 @@ describe('보낸 응원 off 자기 관리', () => {
       .mockResolvedValueOnce(response({ items: [], nextCursor: null }));
     const setReaction = vi.fn(async () => response({ postId: POST, active: false }));
     setSocialRepository({ myReactions, setReaction } as unknown as SocialRepository);
-    const { result } = renderHook(() => useMyReactions(true));
+    const { result, rerender } = renderHook(() => useMyReactions(true));
     await waitFor(() => expect(result.current.phase).toBe('ready'));
+    const refresh = result.current.refresh;
+    rerender();
+    expect(result.current.refresh).toBe(refresh);
     expect(result.current.items).toEqual([{ postId: POST, createdAt: NOW }]);
     await act(async () => {
       expect(await result.current.cancel(POST)).toBe(true);
