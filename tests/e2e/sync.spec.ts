@@ -1,24 +1,10 @@
 // 읽기 조건: 동기화 흐름(로그인·엔진·계정 블록·계정 삭제 안내)을 고칠 때.
 //
-// 실제 Worker(로컬 wrangler dev + D1)와 두 브라우저 **컨텍스트**("기기 둘")로 왕복한다 — 같은
-// 컨텍스트의 두 탭은 쿠키·IndexedDB 를 공유하는 같은 기기라 동기화를 재현하지 못한다
-// (tests/AGENTS.md 규칙 3 의 다기기 버전).
-//
-// **"두 기기, 같은 계정" 은 진짜 두 번째 `stubLogin` 으로 만든다.** 예전에는
-// `worker/auth/handlers.ts#handleCallback`·`worker/auth/stub.ts#handleStubLogin` 이 새 로그인마다
-// 그 sub 의 세션을 **무조건** 전량 폐기해(`DELETE FROM sessions WHERE sub = ?`), 둘째 기기가
-// 로그인하는 순간 첫째 기기가 로그아웃됐다(사용자가 보고한 바로 그 증상) — 그래서 이 스펙은 한 번만
-// 로그인한 세션 쿠키를 둘째 컨텍스트에 복사하거나, D1 에서 세션 행을 직접 되살리는 우회로 "두 기기"를
-// 흉내냈고, 그 우회 자체가 실제 제품의 한계를 가린다고 스스로 적어 두었다. **그 한계는 이제 고쳤다**
-// (`worker/auth/session.ts#signIn`, ADR-0020): 세션 전량 폐기는 `deleted_users` 에 그 sub 의 표식이
-// 있을 때(계정을 삭제했다가 같은 구글 계정으로 재가입하는 경로)만 실행되고, 평범한 로그인은 다른
-// 기기의 세션을 건드리지 않는다. 그래서 아래 시나리오는 전부 두 컨텍스트에서 각각 `stubLogin` 을
-// 부르는 진짜 두 번째 로그인이다 — 쿠키 복사·D1 되살리기 헬퍼는 더 이상 없다.
-//
-// 이 파일은 `@playwright/test` 를 **직접** 쓴다(`./fixtures/stub-login` 의 `test` 가 아니다) —
-// 그 fixture 는 `page` 를 건드리기 전에 자동으로 로그인시키는데, 아래 시나리오는 무쿠키 상태를
-// 직접 검증해야 해서 자동 로그인이 방해가 된다. 대신 그 파일의 `randomAccount`/`stubLogin`
-// 헬퍼만 가져다 쓴다.
+// 실제 Worker(wrangler dev + D1)와 두 브라우저 컨텍스트로 왕복한다. 같은 컨텍스트의
+// 두 탭은 쿠키·IndexedDB를 공유하므로 별도 기기가 아니다(tests/AGENTS.md 규칙 3).
+// 각 컨텍스트에서 같은 계정으로 stubLogin한다. ADR-0020 이후 일반 재로그인은 기존 세션을
+// 폐기하지 않는다. 쿠키 복사나 D1 세션 복원 없이 두 기기의 동기화를 검사한다.
+// 무쿠키 상태도 확인하므로 자동 로그인 fixture 대신 @playwright/test를 직접 사용한다.
 import { expect, test } from '@playwright/test';
 
 import { randomAccount, stubLogin } from './fixtures/stub-login';
@@ -42,10 +28,28 @@ async function waitForShell(page: Page): Promise<void> {
  * `MEMORY_MODE_TEXT` 선례와 같은 방식). */
 const statusLine = (page: Page) => page.getByText(/^(●|○)\s/);
 
+function waitForAppliedTodo(page: Page, title: string) {
+  return page.waitForResponse(async (response) => {
+    if (response.request().method() !== 'POST' || !response.url().endsWith('/api/sync'))
+      return false;
+    if (!response.ok()) return false;
+    const request = response.request().postDataJSON() as {
+      changes?: { tbl: string; id: string; row?: { title?: string } }[];
+    };
+    const ids = request.changes
+      ?.filter((change) => change.tbl === 'todos' && change.row?.title === title)
+      .map((change) => change.id);
+    if (!ids?.length) return false;
+    const body = (await response.json()) as { applied?: { tbl: string; id: string }[] };
+    return body.applied?.some((row) => row.tbl === 'todos' && ids.includes(row.id)) ?? false;
+  });
+}
+
 test.describe('동기화: 두 기기(sync.md R5·R6)', () => {
   test('A 가 만든 카테고리·투두가 B 의 visibilitychange 로 보인다(30초를 기다리지 않는다)', async ({
     browser,
   }) => {
+    test.setTimeout(120_000);
     const account = randomAccount();
     const ctxA = await browser.newContext();
     const ctxB = await browser.newContext();
@@ -56,13 +60,14 @@ test.describe('동기화: 두 기기(sync.md R5·R6)', () => {
     await waitForShell(pageA);
     await waitForShell(pageB);
 
+    const todoUpload = waitForAppliedTodo(pageA, TODO);
     await createCategory(pageA, CATEGORY);
     const groupA = pageA.getByRole('region', { name: CATEGORY });
     await groupA.getByRole('button', { name: '+ 할 일 추가' }).click();
     await pageA.getByRole('textbox', { name: `${CATEGORY}에 할 일 추가` }).fill(TODO);
     await pageA.keyboard.press('Enter');
     await expect(groupA.getByRole('checkbox', { name: TODO })).toBeVisible();
-
+    await todoUpload;
     // 트리거 전에는 B 에 아직 없다 — 아래 단언이 "가만히 둬도 결국 보인다"(폴링 30초)가 아니라
     // **visibilitychange 트리거 덕분**임을 대조한다.
     await expect(pageB.getByRole('region', { name: CATEGORY })).toHaveCount(0);
@@ -72,6 +77,26 @@ test.describe('동기화: 두 기기(sync.md R5·R6)', () => {
     await expect(
       pageB.getByRole('region', { name: CATEGORY }).getByRole('checkbox', { name: TODO }),
     ).toBeVisible();
+
+    // 친구 화면 왕복 뒤에도 개인 동기화 엔진이 다시 B의 쓰기를 받아야 한다.
+    const drawerA = await openSidebarDrawer(pageA);
+    await drawerA.getByRole('button', { name: '친구', exact: true }).click();
+    if (await drawerA.isVisible()) await pageA.keyboard.press('Escape');
+    await expect(pageA.getByRole('tablist', { name: '친구 화면' })).toBeVisible();
+    await pageA.getByRole('button', { name: '내 할 일로' }).click();
+    const groupB = pageB.getByRole('region', { name: CATEGORY });
+    const returnUpload = waitForAppliedTodo(pageB, '전환 뒤 추가');
+    await groupB.getByRole('button', { name: '+ 할 일 추가' }).click();
+    await pageB.getByRole('textbox', { name: `${CATEGORY}에 할 일 추가` }).fill('전환 뒤 추가');
+    await pageB.keyboard.press('Enter');
+    await expect(groupB.getByRole('checkbox', { name: '전환 뒤 추가' })).toBeVisible();
+    await returnUpload;
+    const drawerB = await openSidebarDrawer(pageB);
+    await expect(statusLine(pageB)).toHaveText('● 동기화됨', { timeout: 15_000 });
+    await pageB.keyboard.press('Escape');
+    await expect(drawerB).toHaveCount(0);
+    await pageA.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await expect(groupA.getByRole('checkbox', { name: '전환 뒤 추가' })).toBeVisible();
 
     await ctxA.close();
     await ctxB.close();

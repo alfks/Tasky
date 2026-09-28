@@ -7,11 +7,12 @@
 Playwright E2E(`tests/e2e/`). **합격/불합격을 내는** 유일한 브라우저 테스트다. 값을 찍어 보고서에
 옮기는 계측 도구는 `tests/feel/`(별도 AGENTS.md) — 성격이 다르니 섞지 않는다.
 
-## 여기 있는 것 (12개 스펙 · 45건 — ADR-0020 다기기 세션 수정(리뷰 반영 포함) 기준, `pnpm exec playwright test --list`)
+## 여기 있는 것 (14개 스펙 · 49건 — Phase 3 소셜 로컬 검증 기준, `pnpm exec playwright test --list`)
 
 `selection-ring` 9 · `hover-and-focus` 9 · `sync` 7 · `smoke` 3 · `cross-category-drag` 3 ·
-`category-reorder` 3 · `pomodoro` 3 · `emoji-picker` 3 · `month-view` 2 · `narrow-viewport` 1 ·
-`reports-overflow` 1 · `routine-manager-menu` 1. **스펙을 더하거나 지우면 이 줄과 건수를 같은 PR 에서 고친다.**
+`category-reorder` 3 · `pomodoro` 3 · `emoji-picker` 3 · `month-view` 3 · `narrow-viewport` 2 ·
+`reports-overflow` 1 · `routine-manager-menu` 1 · `year-month-picker` 1 · `social` 1.
+**스펙을 더하거나 지우면 이 줄과 건수를 같은 PR 에서 고친다.**
 앞의 둘은 "선택됨"·호버·포커스 표시(theme §3-G R17~R20·R29)를 계산된 스타일로(규칙 1), `narrow-viewport` 는 폭 360·375·390
 가로 스크롤 없음(app-shell R11)을 실제 박스로, `routine-manager-menu` 는 대화상자 안 팝오버가 눌리는지를
 `elementFromPoint` 로 재는 z-index 회귀 가드다. 러너는 `playwright.config.ts`, CI 잡은 `.github/workflows/e2e.yml`.
