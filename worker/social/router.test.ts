@@ -228,7 +228,7 @@ describe('social HTTP boundary', () => {
     }
   });
 
-  it('22경로의 effective mode를 실제 HTTP에서 검사한다', async () => {
+  it('26경로의 effective mode를 실제 HTTP에서 검사한다', async () => {
     const fx = await createD1Fixture();
     try {
       const env = testEnv(fx.db);

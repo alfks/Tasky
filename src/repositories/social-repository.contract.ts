@@ -84,6 +84,9 @@ export function runSocialRepositoryContract(target: SocialContractTarget): void 
       expect(feed[0].text).toBe('완료');
       await bob.setReaction({ postId: post.id, active: true }, { key: key(nowMs, 5) });
       expect((await alice.feed()).data.items[0].reactionCount).toBe(1);
+      expect((await bob.myReactions()).data.items).toEqual([{ postId: post.id, createdAt: nowMs }]);
+      await bob.setReaction({ postId: post.id, active: false }, { key: key(nowMs, 6) });
+      expect((await bob.myReactions()).data.items).toEqual([]);
       expect((await outsider.feed()).data.items).toEqual([]);
     });
 

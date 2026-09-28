@@ -54,6 +54,7 @@ export function clearPairReactions(state: MemorySocialState, a: SocialId, b: Soc
     const authorId = state.posts.get(postId)?.authorId;
     if ((reactorId === a && authorId === b) || (reactorId === b && authorId === a)) {
       state.reactions.delete(key);
+      state.reactionTimes.delete(key);
     }
   }
 }

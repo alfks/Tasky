@@ -12,6 +12,7 @@ import {
   invite,
   inviteCreated,
   me,
+  ownReaction,
   page,
   pair,
   post,
@@ -127,6 +128,10 @@ export function createHttpSocialRepository(transport: typeof fetch = fetch): Soc
       }),
     myPosts: (input) =>
       send('/posts/mine', (value) => page(value, post), {
+        query: pageQuery(input),
+      }),
+    myReactions: (input) =>
+      send('/reactions/mine', (value) => page(value, ownReaction), {
         query: pageQuery(input),
       }),
     createPost: (input, { key }) =>

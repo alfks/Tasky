@@ -140,6 +140,13 @@ const ROUTES: readonly RouteCase[] = [
   },
   { name: 'myPosts', method: 'GET', path: '/posts/mine', data: EMPTY, call: (r) => r.myPosts() },
   {
+    name: 'myReactions',
+    method: 'GET',
+    path: '/reactions/mine?cursor=next&limit=20',
+    data: { items: [{ postId: ID_A, createdAt: NOW }], nextCursor: null },
+    call: (r) => r.myReactions({ cursor: 'next', limit: 20 }),
+  },
+  {
     name: 'createPost',
     method: 'POST',
     path: '/posts',
@@ -272,6 +279,15 @@ describe('소셜 HTTP 저장소', () => {
     });
     const extra = new Response(JSON.stringify({ data: EMPTY, serverTime: NOW, sub: 'private' }));
     await expect(createHttpSocialRepository(async () => extra).feed()).rejects.toMatchObject({
+      code: 'temporary',
+    });
+    const leaked = result({
+      items: [{ postId: ID_A, createdAt: NOW, text: 'private' }],
+      nextCursor: null,
+    });
+    await expect(
+      createHttpSocialRepository(async () => leaked).myReactions(),
+    ).rejects.toMatchObject({
       code: 'temporary',
     });
   });

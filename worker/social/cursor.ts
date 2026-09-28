@@ -1,6 +1,6 @@
 /** Opaque relation-list cursor. Feed tuple cursors are a later, separate scope. */
 export type ListScope =
-  'friends' | 'requests:incoming' | 'requests:outgoing' | 'invites' | 'blocks';
+  'friends' | 'requests:incoming' | 'requests:outgoing' | 'invites' | 'blocks' | 'reactions:mine';
 
 export type ListCursor = {
   v: 1;
@@ -35,6 +35,7 @@ const SCOPES: readonly ListScope[] = [
   'requests:outgoing',
   'invites',
   'blocks',
+  'reactions:mine',
 ];
 const FEED_SCOPES: readonly FeedScope[] = ['feed', 'posts:mine'];
 
@@ -64,6 +65,19 @@ async function hmacKey(secret: string): Promise<CryptoKey> {
     false,
     ['sign', 'verify'],
   );
+}
+
+/** 본인 응원 cursor만 프로필과 현재 로그인 세션에 결합한다. sid는 payload에 넣지 않는다. */
+export async function ownReactionCursorActorId(
+  secret: string,
+  profileId: string,
+  sid: string,
+): Promise<string> {
+  if (!PROFILE_ID.test(profileId) || !/^[A-Za-z0-9_-]+$/u.test(sid))
+    throw new Error('Invalid reaction cursor actor');
+  const bytes = new TextEncoder().encode(`tasky:reaction-list-actor:v1\0${profileId}\0${sid}`);
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', await hmacKey(secret), bytes));
+  return Array.from(mac.slice(0, 16), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function signedBytes(payload: Uint8Array): Uint8Array {
