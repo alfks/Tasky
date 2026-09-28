@@ -115,4 +115,10 @@ describe('index.html: SPA 셸 배선 — 지워도 빌드가 초록인 줄들', 
   it('<title> 이 있다', () => {
     expect(html).toMatch(/<title>Tasky<\/title>/);
   });
+
+  it('설치형 앱과 같은 아이콘을 favicon 으로 쓴다', () => {
+    expect(html).toMatch(
+      /<link[^>]+rel="icon"[^>]+type="image\/png"[^>]+sizes="192x192"[^>]+href="\/icon-192\.png"/,
+    );
+  });
 });

@@ -21,7 +21,7 @@
 ## 3. 규칙
 
 - R1. Lighthouse "Installable" 통과: `manifest`(name "Tasky", short_name "Tasky", `display: standalone`, `start_url: /`, `theme_color: #7CC6FF`, `background_color: #FAFAFC`, 아이콘 192/512 + maskable 512), HTTPS, 서비스워커.
-- R1-a. iOS 홈 화면 아이콘: `index.html` 이 `<link rel="apple-touch-icon" href="/icon-apple-touch-180.png">` 를 낸다. iOS 는 manifest 의 아이콘보다 이 링크를 먼저 보고, 없으면 **페이지 스크린샷**을 아이콘으로 쓴다. 파일을 따로 두는 이유는 크기가 아니라 **알파**다 — iOS 는 이 아이콘의 투명 픽셀을 검정으로 합성하므로 모서리가 투명한 192/512 를 가리키면 둥근 모서리 자리에 검은 삼각형이 남는다. 그래서 180×180 **불투명**(배경색 위에 합성) 사본이어야 하고, `scripts/check-dist.mjs` 가 매 빌드 크기·알파·문서 링크·프리캐시 포함을 확인한다.
+- R1-a. 문서 아이콘: `index.html` 이 탭·북마크용 `<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">`와 iOS 홈 화면용 `<link rel="apple-touch-icon" href="/icon-apple-touch-180.png">`를 내고, 둘 다 manifest와 같은 하프물범 아이콘 세트를 쓴다. iOS 는 manifest 의 아이콘보다 이 링크를 먼저 보고, 없으면 **페이지 스크린샷**을 아이콘으로 쓴다. 파일을 따로 두는 이유는 크기가 아니라 **알파**다 — iOS 는 이 아이콘의 투명 픽셀을 검정으로 합성하므로 모서리가 투명한 192/512 를 가리키면 둥근 모서리 자리에 검은 삼각형이 남는다. 그래서 180×180 **불투명**(배경색 위에 합성) 사본이어야 하고, `scripts/check-dist.mjs` 가 매 빌드 크기·알파·문서 링크·프리캐시 포함을 확인한다.
 - R2. 아이콘의 캐릭터는 **하프물범 마스코트 확정본**이고 원본은 `assets/seal-sheet.png` 다. 레퍼런스 앱의 마스코트·구름 형태를 쓰지 않는다.
 - R2-a. **그림을 코드로 다시 그리지 않는다.** 캐릭터는 고정이라 선·색·비율을 재현하거나 보정하지 않는다 — 비슷하게 그린 것은 이 캐릭터가 아니다. 허용되는 가공은 **오려 내기와 축소**뿐이고, 축소는 면적 평균으로 한다(최근접 이웃은 윤곽선을 들쭉날쭉하게 만든다). 아이콘이 어색하면 고칠 것은 그림이 아니라 **배치**다.
 - R2-b. **배치 계약**: 둥근 사각 배경 `#7CC6FF` 위에 캐릭터를 가운데 두고, 높이는 캔버스의 78%(maskable 은 안전 영역 때문에 62%). 192·512 는 모서리가 투명한 둥근 사각, maskable 과 apple-touch 는 꽉 찬 사각이다. 네 파일(192·512·maskable 512·apple-touch 180)은 전부 `scripts/make-icons.mjs` 하나가 만든다 — 손으로 고친 PNG를 섞지 않는다.

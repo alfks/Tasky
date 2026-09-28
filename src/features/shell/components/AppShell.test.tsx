@@ -349,19 +349,19 @@ describe('달성률 낭독 (calendar-layout.md R5·R24 재배치 후 — 리뷰 
 });
 
 describe('문서 제목 (R9)', () => {
-  it('투두가 있으면 날짜 · 비율 · 앱 이름', async () => {
+  it('투두가 있어도 앱 이름만 유지한다', async () => {
     await seed([
       makeTodo({ seq: 1, categoryId: STUDY.id, date: TODAY, done: true }),
       makeTodo({ seq: 2, categoryId: STUDY.id, date: TODAY }),
     ]);
     await mount();
-    expect(document.title).toBe('9월 16일 (수) · 1/2 · Tasky');
+    expect(document.title).toBe('Tasky');
   });
 
-  it('투두가 0개면 비율을 빼고 쓴다', async () => {
+  it('투두가 0개여도 앱 이름만 유지한다', async () => {
     await seed([]);
     await mount();
-    expect(document.title).toBe('9월 16일 (수) · Tasky');
+    expect(document.title).toBe('Tasky');
   });
 });
 
