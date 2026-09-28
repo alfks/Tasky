@@ -97,9 +97,16 @@ describe('초대 bootstrap', () => {
   });
 
   it('잘못된 새 URL에서 이전 저장값을 지울 수 없으면 OAuth 이동을 막는다', async () => {
+    window.sessionStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ token: TOKEN_A, expiresAt: NOW + 60_000 }),
+    );
     (window as EarlyWindow).__taskyInvalidInvite = true;
     const { prepareInviteLogin } = await bootstrap();
     vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new DOMException('denied', 'SecurityError');
     });
     expect(prepareInviteLogin()).toBe(false);
@@ -129,18 +136,81 @@ describe('초대 bootstrap', () => {
     expect(window.sessionStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 
-  it('Storage 전체가 차단돼도 명시적 초대 포기 뒤 일반 로그인은 막지 않는다', async () => {
-    early(TOKEN_A);
-    const { prepareInviteLogin, consumeInviteAfterReady } = await bootstrap();
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new DOMException('denied', 'SecurityError');
-    });
+  it('삭제 실패 시 같은 키를 무효값으로 덮어 새 문서에서 이전 초대를 복원하지 않는다', async () => {
+    window.sessionStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ token: TOKEN_A, expiresAt: NOW + 60_000 }),
+    );
+    const first = await bootstrap();
     vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
       throw new DOMException('denied', 'SecurityError');
     });
+    expect(first.prepareInviteLogin(true)).toBe(true);
+    expect(window.sessionStorage.getItem(STORAGE_KEY)).toBe('null');
 
-    expect(prepareInviteLogin()).toBe(false);
-    expect(prepareInviteLogin(true)).toBe(true);
-    expect(consumeInviteAfterReady()).toBeNull();
+    vi.restoreAllMocks();
+    vi.resetModules();
+    expect((await bootstrap()).consumeInviteAfterReady()).toBeNull();
+  });
+
+  it('삭제와 덮어쓰기가 모두 실패하면 skip을 막고 회복 후 일반 로그인에서 잔존값을 지운다', async () => {
+    window.sessionStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ token: TOKEN_A, expiresAt: NOW + 60_000 }),
+    );
+    const first = await bootstrap();
+    const remove = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
+    const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
+    expect(first.prepareInviteLogin(true)).toBe(false);
+    expect(window.sessionStorage.getItem(STORAGE_KEY)).toContain(TOKEN_A);
+
+    remove.mockRestore();
+    write.mockRestore();
+    expect(first.prepareInviteLogin()).toBe(true);
+    expect(window.sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+    vi.resetModules();
+    expect((await bootstrap()).consumeInviteAfterReady()).toBeNull();
+  });
+
+  it('로그아웃/계정 교체의 삭제 실패 후 일반 로그인도 오래된 키 제거 전에는 이동하지 않는다', async () => {
+    window.sessionStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ token: TOKEN_A, expiresAt: NOW + 60_000 }),
+    );
+    const first = await bootstrap();
+    const remove = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
+    const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
+    expect(first.clearPendingInvite()).toBe(false);
+    expect(first.prepareInviteLogin()).toBe(false);
+    remove.mockRestore();
+    write.mockRestore();
+    expect(first.prepareInviteLogin()).toBe(true);
+    vi.resetModules();
+    expect((await bootstrap()).consumeInviteAfterReady()).toBeNull();
+  });
+
+  it('새 URL B가 우선이어도 이전 저장 A를 지울 수 없으면 둘 다 표시하지 않는다', async () => {
+    window.sessionStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ token: TOKEN_A, expiresAt: NOW + 60_000 }),
+    );
+    early(TOKEN_B);
+    const first = await bootstrap();
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
+    expect(first.consumeInviteAfterReady()).toBeNull();
+    expect(first.prepareInviteLogin(true)).toBe(false);
   });
 });

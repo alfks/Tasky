@@ -172,6 +172,8 @@ describe('index.html: SPA 셸 배선 — 지워도 빌드가 초록인 줄들', 
     for (const hash of [
       '#x=1&invite=secret',
       '#%69nvite=secret',
+      `#%69nvite=${'a'.repeat(64)}%ZZ`,
+      `#%2569nvite=${'a'.repeat(64)}%ZZ`,
       '#invite=abc&invite=def',
       '#INVITE=secret',
       '#invite=',

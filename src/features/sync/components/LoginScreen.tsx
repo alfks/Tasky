@@ -42,7 +42,10 @@ export function LoginScreen({ beforeLogin }: LoginScreenProps) {
           role="alert"
           className="flex flex-col items-center gap-[var(--space-2)] text-sm text-danger"
         >
-          <p>초대 정보를 보관하지 못했어요. 로그인 후 초대 링크를 다시 열어 주세요.</p>
+          <p>
+            초대 정보를 보관하거나 이전 초대를 지우지 못했어요. 브라우저 저장소 사용을 허용한 뒤
+            다시 시도해 주세요.
+          </p>
           <a
             href="/auth/login"
             onClick={(event) => {
