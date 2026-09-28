@@ -112,7 +112,7 @@ Tasky/
     │   ├── calendar/     D-day 카드
     │   ├── diary/        하루 기록 카드·모달
     │   ├── reports/      기간 통계(달성률·스트릭·히트맵)
-    │   ├── social/       세션 검증·피드 lease·메모리 상태 기반(화면은 후속)
+    │   ├── social/       세션 검증·피드 lease·초대 부트스트랩·관계/피드/공유 화면
     │   └── shell/        앱 셸·레이아웃·토스트 스택 — **조립 지점이지 feature 가 아니다**
     ├── domain/         → src/domain/AGENTS.md         (배럴 없음)
     │   ├── todo/  category/  date/  theme/  focus/  backup/  dday/  diary/  routine/  sync/(서버 LWW·클라이언트 병합·아웃박스·와이어)
@@ -202,7 +202,7 @@ type FocusSession = Meta & {
 | 확장                | 예약 위치                                                                                                                                                                                                                                                             | MVP에서 지킬 것                                                                                                                                                               |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 클라우드 동기화     | **로컬 스키마(v4: `syncOutbox`·`syncState`)·순수 판정(`src/domain/sync/**`)·루틴 슬롯 id·`fillFloor`는 T-92 에서 이미 착수됨(ADR-0018).** 남은 것: `src/infra/sync/`(어댑터 + 충돌 정책), `repositories/sync-repository.ts`·`sync-transport.ts`(포트·구현, T-92 후속) | `Meta` 유지·`touch` 경유·소프트 삭제(ADR-0005·0007), 레포지토리 외부에서 Dexie 참조 금지, ID 클라이언트 생성. 서버 순번(`seq`)은 `Meta`에 필드로 추가하지 않는다(ADR-0015 §2) |
-| SNS(친구·피드·반응) | T-1 순수 계약/포트, T-2 D1 primitive, T-3 관계 HTTP 16경로·삭제 배선, T-4 클라이언트 fake·22메서드 HTTP 어댑터·세션/피드 기반. 게시글·응원·피드 서버 6경로, 실서버 통합, 화면·운영은 후속 티켓                                                                        | `Todo`·개인 sync/backup을 유지하고 별도 서버 공유 사본·actor 권한 포트로 구현([ADR-0022](decisions/ADR-0022-social-projection-and-authorization.md))                          |
+| SNS(친구·피드·반응) | T-1 순수 계약/포트, T-2 D1 primitive, T-3 관계 HTTP 16경로·삭제 배선, T-4 클라이언트 fake·22메서드 HTTP 어댑터·세션/피드 기반, T-5 서버 나머지 6경로, T-7 셸·초대·관계·피드·공유 화면. 실제 어댑터→서버 통합은 T-6, 운영 활성화는 후속 게이트                         | `Todo`·개인 sync/backup을 유지하고 별도 서버 공유 사본·actor 권한 포트로 구현([ADR-0022](decisions/ADR-0022-social-projection-and-authorization.md))                          |
 | 루틴/반복 투두      | `src/domain/todo/recurrence.ts`                                                                                                                                                                                                                                       | `Todo.date`는 인스턴스 날짜로 유지(템플릿과 분리)                                                                                                                             |
 | 다중 프로필/계정    | `Settings.id`를 프로필 id로(지금은 `'default'`) + `todos`/`categories`에 프로필 키                                                                                                                                                                                    | 단일 프로필 가정, DB 이름 `tasky` 고정. 인덱스가 전부 `[date+…]` 접두이므로 도입 시 전 인덱스 재작성 — 착수 전 ADR 필수                                                       |
 | 서버 컴포넌트 활용  | `src/app`                                                                                                                                                                                                                                                             | 로컬 우선이므로 데이터는 전부 클라이언트. 서버 컴포넌트는 셸/메타데이터만                                                                                                     |
@@ -211,6 +211,8 @@ type FocusSession = Meta & {
 ## 6. 조립 지점
 
 `src/app/providers.tsx`(client): 앱 시작 시 `setRepositories(createIndexedDbRepositories())` → 각 개인 feature store가 `getRepositories()`로 사용. 소셜 포트는 별도 `setSocialRepository(createLazySocialRepository(...))` 슬롯에 주입하고, 최초 소셜 호출 때만 `infra/social` HTTP 청크를 불러온다. provider의 private bridge가 sync 상태와 로컬/원격 신원을 대조해 소셜 세션을 연다. 테스트는 `src/test/setup.ts`에서 개인 memory 저장소와 별도 social fake를 주입한다. 이 두 파일과 테스트 계층(`src/test/**`, `*.test.*`), `infra` 자신 외에 `infra`를 import하면 `pnpm lint`가 실패한다(§1 허용 목록 — 어느 경유지를 거쳐도, 어떤 경로 표기·import 구문으로 써도, `eslint-disable` 을 어떤 문법으로 붙여도 마찬가지다. 한계는 §1 의 "보장 안 됨" 과 "남는 한계").
+
+`src/app/page.tsx`는 로그인 직전 선택적 콜백만 Sync 화면에 전달한다. 초대 fragment는 `index.html`의 동기 스크립트가 앱 모듈·분석 비콘보다 먼저 URL에서 제거하고, `social/lib/invite-bootstrap.ts`가 같은 탭의 로그인 왕복에서 한 번만 소비한다. `shell`의 `useSocialShell`은 작은 공개 경계만 정적으로 읽고, `SocialScreen`과 그 관계·피드·내 공유 UI는 친구 화면 첫 활성화에 동적 import한다. 셸은 개인 화면·Reports·친구 화면을 단일 `<main>`에서 전환한다. 피드 본문 노출과 재검증은 T-4의 세션/lease manager가 담당하고, 화면 명령은 별도 `SocialRepository`를 사용한다.
 
 ## 7. 관련 ADR
 
@@ -224,4 +226,4 @@ type FocusSession = Meta & {
 - [ADR-0010](./decisions/ADR-0010-vinext-build-and-cloudflare-workers.md) 빌드 스택 Vinext + 배포 Cloudflare Workers (**superseded by ADR-0013**)
 - [ADR-0013](./decisions/ADR-0013-plain-vite-react-and-lazy-dexie.md) 순수 Vite + React SPA · Dexie 지연 로드 · 정적 자산 전용 Workers 배포
 
-Phase 3의 서버/클라이언트 경계와 SQL 계약: [social-design.md](social-design.md). 파일별 구현·배선 순서: [phase3-implementation-plan.md](phase3-implementation-plan.md). 현재 social은 순수 계약·포트·D1 primitive·22 HTTP 경로와 계정 삭제 연결, 클라이언트 fake·HTTP/세션·피드 기반까지다. 서버는 `worker/social/feed-read.ts`의 작성자별 인덱스 피드, `validate-posts.ts`의 본문 없는 재검증, 공유/응원 명령과 `worker/index.ts`의 scheduled GC 진입을 포함한다. 실제 어댑터→서버 통합, 화면·운영은 후속 티켓이다.
+Phase 3의 서버/클라이언트 경계와 SQL 계약: [social-design.md](social-design.md). 파일별 구현·배선 순서: [phase3-implementation-plan.md](phase3-implementation-plan.md). 서버는 `worker/social/feed-read.ts`의 작성자별 인덱스 피드, `validate-posts.ts`의 본문 없는 재검증, 공유/응원 명령과 `worker/index.ts`의 scheduled GC 진입을 포함한다. T-7 화면은 클라이언트 경계에 있으며, 실제 어댑터→서버 통합 증거는 T-6, 운영 활성화는 후속 게이트에서 판정한다.
