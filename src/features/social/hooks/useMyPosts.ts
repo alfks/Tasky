@@ -100,8 +100,10 @@ export function useMyPosts(enabled: boolean) {
       await getSocialRepository().createPost(parsed.value, { key });
       if (!allowed() || generation.current !== current) return false;
       forgetKey(operation);
-      await load();
+      if (!(await load()) || !allowed()) return false;
+      const refreshedGeneration = generation.current;
       await refreshFeed();
+      if (!allowed() || generation.current !== refreshedGeneration) return false;
       setMessage('친구에게 공유했어요.');
       return true;
     } catch {
@@ -130,8 +132,10 @@ export function useMyPosts(enabled: boolean) {
       await getSocialRepository().deletePost({ id }, { key });
       if (!allowed() || generation.current !== current) return false;
       forgetKey(operation);
-      await load(cursorStack.at(-1) ?? null, cursorStack);
+      if (!(await load(cursorStack.at(-1) ?? null, cursorStack)) || !allowed()) return false;
+      const refreshedGeneration = generation.current;
       await refreshFeed();
+      if (!allowed() || generation.current !== refreshedGeneration) return false;
       setMessage('공유를 삭제했어요.');
       return true;
     } catch {

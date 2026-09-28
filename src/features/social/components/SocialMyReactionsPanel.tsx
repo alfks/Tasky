@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { useMyReactions } from '@/features/social/hooks/useMyReactions';
+import { captureSocialDispatch } from '@/features/social/session-lifecycle';
 
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
@@ -23,9 +24,10 @@ export function SocialMyReactionsPanel({ enabled, refreshNonce }: SocialMyReacti
   }, [enabled, refreshNonce, refresh]);
 
   const focusHeading = () => {
+    const allowed = captureSocialDispatch();
     requestAnimationFrame(() => {
       const heading = headingRef.current;
-      if (heading?.isConnected && !heading.closest('[hidden]'))
+      if (allowed() && heading?.isConnected && !heading.closest('[hidden]'))
         heading.focus({ preventScroll: true });
     });
   };

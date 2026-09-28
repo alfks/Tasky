@@ -138,8 +138,14 @@ export function SocialScreen({
           {tab === item.id ? (
             item.id === 'feed' ? (
               <SocialFeedPanel
-                onOpenFriends={() => setTab('friends')}
-                onOpenMine={() => setTab('mine')}
+                onOpenFriends={() => {
+                  setTab('friends');
+                  tabsRef.current.friends?.focus({ preventScroll: true });
+                }}
+                onOpenMine={() => {
+                  setTab('mine');
+                  tabsRef.current.mine?.focus({ preventScroll: true });
+                }}
               />
             ) : item.id === 'friends' ? (
               <SocialFriendsPanel
