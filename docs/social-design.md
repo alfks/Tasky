@@ -156,17 +156,20 @@ WHERE lo=:lo AND hi=:hi AND EXISTS(/* 이 nonce의 ok receipt */);
 | POST `/posts`                                                    | `{text,happenedOn}`                         | `{id}` 201                                                                                   |
 | POST `/posts/delete`                                             | `{id}`                                      | `{deleted:true}` (이미 없으면 안전한 성공, 타인 존재 여부 비노출)                            |
 | POST `/reactions/set`                                            | `{postId,active:boolean}`                   | `{postId,active}`                                                                            |
+| GET `/reactions/mine`                                            | cursor?, limit?                             | `{items:[{postId,createdAt}],nextCursor}` 본인 활성 응원만; 타인 글 본문·작성자 없음         |
 
 서버 mode의 기본값은 `off`다. `SOCIAL_MODE`는 `off|read-only|enabled`만 인정하며 누락·오류는 `off`다. `SOCIAL_ALLOWLIST`는 내부 `sub`의 비어 있지 않은 JSON 문자열 배열만 인정하고 wildcard·이메일·누락·오류는 전체 `off`로 닫는다. 비대상 계정도 매 요청 `off`다. `/me`에는 이 계정의 effective mode만 공개한다. 배포 설정에는 `SOCIAL_MODE=off`만 넣고 실활성화는 후속 운영 결정이다.
 
-| effective mode | 허용 경로                                                                                                                                                                                                     |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `off`          | GET `me/friends/requests/invites/blocks/posts/mine`, POST `invites/revoke`, `requests/decline`, `requests/cancel`, `friends/remove`, `blocks/set`, `posts/delete`, `reactions/set`(`active:false`), 계정 삭제 |
-| `read-only`    | `off` 허용 경로와 GET `feed`, POST `invites/preview`, `posts/validate`                                                                                                                                        |
-| `enabled`      | 위 경로와 POST `profile`, `profile/name`, `invites`, `requests`, `requests/accept`, `posts`, `reactions/set`(`active:true`)                                                                                   |
+| effective mode | 허용 경로                                                                                                                                                                                                                    |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `off`          | GET `me/friends/requests/invites/blocks/posts/mine/reactions/mine`, POST `invites/revoke`, `requests/decline`, `requests/cancel`, `friends/remove`, `blocks/set`, `posts/delete`, `reactions/set`(`active:false`), 계정 삭제 |
+| `read-only`    | `off` 허용 경로와 GET `feed`, POST `invites/preview`, `posts/validate`                                                                                                                                                       |
+| `enabled`      | 위 경로와 POST `profile`, `profile/name`, `invites`, `requests`, `requests/accept`, `posts`, `reactions/set`(`active:true`)                                                                                                  |
 
 POST는 동일 Origin과 `X-Tasky: 1`을 세션 조회 전에 검사한다(실패 403, 본문·빈도 미사용). 세션 검증 뒤 effective mode가 경로를 차단하면 503으로 본문을 읽지 않고 빈도도 쓰지 않는다. 그 다음 `Content-Type: application/json`과 **스트림 8 KiB 상한**으로 JSON을 읽는다. 인증된 content type 오류 415, 구문 오류 400, 크기 초과 413은 각각 해당 route bucket을 한 번 조건부 예약한 뒤 primitive 호출 없이 응답한다. 초과 한도 429가 transport 오류보다 우선한다. 예약 0행은 현재 actor를 다시 확인해 401/410/404/429를 구분한다. JSON 구조·필드·값의 의미 검증 실패는 primitive 안에서 처리하며 동일 요청을 HTTP에서 두 번 과금하지 않는다. 알 수 없는 path/method는 임의 bucket 없이 404다.
 `/reactions/set`만 bounded transport 뒤 최상위 `active === false`를 철회로 분류한다. 이 경우 `off`에서도 revoke bucket을 primitive가 한 번 사용한다. 그 외 값은 추가 분기이므로 `enabled`가 아니면 503으로 종료한다. JSON 구문·크기·Content-Type 오류는 분기를 알 수 없어 이 경로에서만 mode `off`여도 write bucket을 한 번 예약한다.
+
+본인 응원 목록은 `off`에서도 읽기 bucket으로 접근한다. 현재 세션·계정·프로필, 수락된 친구 관계, 양방향 차단 부재, 삭제되지 않은 작성자를 같은 SQL에서 확인해 **지금 `active:false`로 철회 가능한 본인 활성 행**만 반환한다. `postId`는 다른 사람 글의 연결 가능한 식별자이므로 본인 취소 명령의 대상으로만 제공하고, 본문·작성자·별명·게시 날짜·응원 수는 반환하지 않는다. 목록은 `social_reactions(reactor,post_id)` 인덱스에서 postId 오름차순으로 seek하며 기본 20/최대 50개를 반환한다. HMAC cursor는 이 경로 scope와 현재 프로필·sid에 결합되고 첫 페이지부터 15분 뒤 만료된다. 동시 취소·추가 중에는 snapshot이 아니므로 페이지 사이 항목 이동이 가능하며 만료/무효 cursor는 400 후 사용자가 처음부터 다시 확인한다.
 
 429는 현재 UTC 분 창이 끝날 때까지의 초를 `Retry-After`로 돌려준다. mode 차단 503은 60초, 일시 D1 오류 503은 30초다. 새 key로 다시 시도하지 않고 같은 key를 유지한다.
 

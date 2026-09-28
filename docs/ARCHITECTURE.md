@@ -95,7 +95,7 @@ Tasky/
 ├── tests/feel/         → tests/feel/AGENTS.md         사용감 계측 도구(러너 없음 — docs/FEEL_REPORT.md)
 ├── worker/             → worker/AGENTS.md            auth/sync/account/db + social/ D1 투영·scheduled GC 진입
 │   ├── db/migrations/  → worker/db/migrations/AGENTS.md  0001 개인·0002 소셜·0003 공개범위
-│   └── social/         → worker/social/AGENTS.md     actor·receipt/CAS·한도/GC·공유/공개 읽기·현재 ACL
+│   └── social/         → worker/social/AGENTS.md     actor·receipt/CAS·한도/GC·공유/공개 읽기·본인 응원 관리·현재 ACL
 └── src/                → src/AGENTS.md
     ├── app/            → src/app/AGENTS.md            SPA 진입점(main.tsx)·개인 providers·별도 /public 진입
     ├── components/     → src/components/AGENTS.md     ui/ 프리미티브(Button, Checkbox, Popover…)
