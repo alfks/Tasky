@@ -184,6 +184,7 @@ export function SocialScreen({
         {profile !== null && tab === 'friends' ? (
           <SocialFriendsPanel
             enabled={mode === 'enabled'}
+            reactionsEnabled={phase !== 'blocked'}
             onManageCategories={onManageCategories}
           />
         ) : null}
