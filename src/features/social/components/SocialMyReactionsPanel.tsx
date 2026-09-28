@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMyReactions } from '@/features/social/hooks/useMyReactions';
 
 import { Button } from '@/components/ui/Button';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Dialog } from '@/components/ui/Dialog';
 
 type SocialMyReactionsPanelProps = { enabled: boolean; refreshNonce: number };
 
@@ -14,7 +14,9 @@ export function SocialMyReactionsPanel({ enabled, refreshNonce }: SocialMyReacti
   const reactions = useMyReactions(enabled);
   const [cancelId, setCancelId] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const { refresh } = reactions;
+  const selected = reactions.items.find((item) => item.postId === cancelId);
 
   useEffect(() => {
     if (enabled && refreshNonce > 0) void refresh();
@@ -56,16 +58,27 @@ export function SocialMyReactionsPanel({ enabled, refreshNonce }: SocialMyReacti
       <p className="text-sm text-muted">
         본인이 누른 응원 시각만 보여 줘요. 친구의 글 내용은 이 목록에 표시하지 않아요.
       </p>
-      <Button variant="outline" disabled={reactions.busy} onClick={() => void reactions.refresh()}>
+      <Button
+        variant="outline"
+        disabled={reactions.busy || reactions.cooldownSeconds > 0}
+        onClick={() => void reactions.refresh()}
+      >
         응원 목록 새로고침
       </Button>
+      {reactions.cooldownSeconds > 0 ? (
+        <p role="status">{reactions.cooldownSeconds}초 뒤 다시 시도할 수 있어요.</p>
+      ) : null}
       {reactions.phase === 'loading' || reactions.phase === 'idle' ? (
         <p role="status">보낸 응원을 확인하는 중이에요.</p>
       ) : null}
-      {reactions.error ? <p role="alert">{reactions.error}</p> : null}
+      {reactions.error && cancelId === null ? <p role="alert">{reactions.error}</p> : null}
       {reactions.phase === 'error' ? (
-        <Button variant="outline" onClick={() => void reactions.retry()}>
-          다시 시도
+        <Button
+          variant="outline"
+          disabled={reactions.cooldownSeconds > 0}
+          onClick={() => void reactions.retry()}
+        >
+          {reactions.cursorExpired ? '처음부터 다시 보기' : '다시 시도'}
         </Button>
       ) : null}
       {reactions.phase === 'ready' && reactions.items.length === 0 ? (
@@ -87,7 +100,7 @@ export function SocialMyReactionsPanel({ enabled, refreshNonce }: SocialMyReacti
               </span>
               <Button
                 variant="outline"
-                disabled={reactions.busy}
+                disabled={reactions.busy || reactions.cooldownSeconds > 0}
                 onClick={() => setCancelId(item.postId)}
               >
                 응원 취소
@@ -99,28 +112,72 @@ export function SocialMyReactionsPanel({ enabled, refreshNonce }: SocialMyReacti
         <div className="flex justify-between gap-[var(--space-2)]">
           <Button
             variant="outline"
-            disabled={reactions.pageIndex === 0 || reactions.busy}
+            disabled={reactions.pageIndex === 0 || reactions.busy || reactions.cooldownSeconds > 0}
             onClick={() => void changePage('previous')}
           >
             이전 응원
           </Button>
           <Button
             variant="outline"
-            disabled={reactions.nextCursor === null || reactions.busy}
+            disabled={
+              reactions.nextCursor === null || reactions.busy || reactions.cooldownSeconds > 0
+            }
             onClick={() => void changePage('next')}
           >
             다음 응원
           </Button>
         </div>
       ) : null}
-      <ConfirmDialog
+      <Dialog
         open={cancelId !== null}
+        onClose={() => setCancelId(null)}
+        role="alertdialog"
         title="이 응원을 취소할까요?"
-        description="이 목록에는 친구 글의 내용이 표시되지 않아요. 선택한 시각의 응원만 취소해요."
-        confirmLabel="응원 취소"
-        onConfirm={() => void confirmCancel()}
-        onCancel={() => setCancelId(null)}
+        description={
+          <>
+            <p>
+              이 목록에는 친구 글의 내용이 표시되지 않아요.{' '}
+              {selected
+                ? `${new Date(selected.createdAt).toLocaleString('ko-KR')}에 보낸 응원만 취소해요.`
+                : '선택한 응원 기록만 취소해요.'}
+            </p>
+            {reactions.error ? <p role="alert">{reactions.error}</p> : null}
+            {reactions.cooldownSeconds > 0 ? (
+              <p role="status">{reactions.cooldownSeconds}초 뒤 다시 시도할 수 있어요.</p>
+            ) : null}
+          </>
+        }
+        initialFocusRef={cancelRef}
         returnFocus={() => headingRef.current}
+        className="max-w-[400px]"
+        footer={
+          <>
+            <Button ref={cancelRef} variant="outline" onClick={() => setCancelId(null)}>
+              취소
+            </Button>
+            {reactions.phase === 'error' ? (
+              <Button
+                variant="outline"
+                disabled={reactions.cooldownSeconds > 0}
+                onClick={() => void reactions.retry()}
+              >
+                {reactions.cursorExpired ? '처음부터 다시 보기' : '목록 다시 확인'}
+              </Button>
+            ) : null}
+            <Button
+              variant="danger"
+              disabled={
+                reactions.phase !== 'ready' ||
+                reactions.busy ||
+                reactions.cooldownSeconds > 0 ||
+                !reactions.items.some((item) => item.postId === cancelId)
+              }
+              onClick={() => void confirmCancel()}
+            >
+              {reactions.error ? '같은 요청으로 재시도' : '응원 취소'}
+            </Button>
+          </>
+        }
       />
     </section>
   );

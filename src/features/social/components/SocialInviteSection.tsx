@@ -13,8 +13,9 @@ type SocialInviteSectionProps = {
   onClearInvite: () => void;
 };
 
-function restoreInviteFocus(id = 'social-invites-title'): void {
+function restoreInviteFocus(valid: () => boolean, id = 'social-invites-title'): void {
   requestAnimationFrame(() => {
+    if (!valid()) return;
     const tab = document.getElementById('social-tab-friends');
     if (tab?.getAttribute('aria-selected') !== 'true') return;
     const target = document.getElementById(id) ?? tab;
@@ -87,15 +88,16 @@ export function SocialInviteSection({
               <div className="mt-[var(--space-2)] flex gap-[var(--space-2)]">
                 <Button
                   disabled={busy || mode !== 'enabled'}
-                  onClick={() =>
+                  onClick={() => {
+                    const valid = relations.captureView();
                     void relations.request(invite.token).then((done) => {
-                      if (done) {
+                      if (done && valid()) {
                         onClearInvite();
                         setNotice('친구 요청을 보냈어요.');
-                        restoreInviteFocus('social-outgoing-title');
+                        restoreInviteFocus(valid, 'social-outgoing-title');
                       }
-                    })
-                  }
+                    });
+                  }}
                 >
                   친구 요청 보내기
                 </Button>
@@ -119,7 +121,12 @@ export function SocialInviteSection({
           </h2>
           <Button
             disabled={busy || mode !== 'enabled'}
-            onClick={() => void relations.invite().then(() => restoreInviteFocus())}
+            onClick={() => {
+              const valid = relations.captureView();
+              void relations.invite().then((done) => {
+                if (done && valid()) restoreInviteFocus(valid);
+              });
+            }}
           >
             초대 만들기
           </Button>
@@ -171,14 +178,15 @@ export function SocialInviteSection({
                 <Button
                   variant="outline"
                   disabled={busy}
-                  onClick={() =>
+                  onClick={() => {
+                    const valid = relations.captureView();
                     void relations.revokeInvite(item.inviteId).then((done) => {
-                      if (done) {
+                      if (done && valid()) {
                         setNotice('초대를 취소했어요.');
-                        restoreInviteFocus();
+                        restoreInviteFocus(valid);
                       }
-                    })
-                  }
+                    });
+                  }}
                 >
                   초대 취소
                 </Button>

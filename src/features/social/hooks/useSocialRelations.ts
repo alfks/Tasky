@@ -11,10 +11,12 @@ import {
   appendRelationPage,
   EMPTY_RELATIONS,
   readRelationPage,
+  readRelationSnapshot,
   type RelationKind,
   type RelationsSnapshot,
 } from '@/features/social/hooks/relation-pages';
-import { captureSocialDispatch, onSocialInvalidation } from '@/features/social/session-lifecycle';
+import { useSocialViewLease } from '@/features/social/hooks/useSocialViewLease';
+import { onSocialInvalidation } from '@/features/social/session-lifecycle';
 import { useSocialStore } from '@/features/social/store/social-store';
 
 export type { RelationsSnapshot } from '@/features/social/hooks/relation-pages';
@@ -30,6 +32,7 @@ export function useSocialRelations(enabled: boolean) {
   const [previewPhase, setPreviewPhase] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const generation = useRef(0);
   const busyRef = useRef(false);
+  const { invalidateView, captureView } = useSocialViewLease();
   const keyFor = useSocialStore((state) => state.keyFor);
   const forgetKey = useSocialStore((state) => state.forgetKey);
   const refreshFeed = useSocialStore((state) => state.refresh);
@@ -38,6 +41,7 @@ export function useSocialRelations(enabled: boolean) {
     () =>
       onSocialInvalidation(() => {
         generation.current += 1;
+        invalidateView();
         busyRef.current = false;
         setBusy(false);
         setData(EMPTY_RELATIONS);
@@ -47,13 +51,13 @@ export function useSocialRelations(enabled: boolean) {
         setPhase('idle');
         setError(null);
       }),
-    [],
+    [invalidateView],
   );
 
   const load = useCallback(async () => {
     if (!enabled) return;
     const current = ++generation.current;
-    const allowed = captureSocialDispatch();
+    const allowed = captureView();
     setPhase('loading');
     setError(null);
     try {
@@ -65,29 +69,9 @@ export function useSocialRelations(enabled: boolean) {
         setPhase('ready');
         return;
       }
-      const [friends, incoming, outgoing, invites, blocks] = await Promise.all([
-        repo.friends(),
-        repo.requests('incoming'),
-        repo.requests('outgoing'),
-        repo.invites(),
-        repo.blocks(),
-      ]);
+      const snapshot = await readRelationSnapshot(repo, me);
       if (!allowed() || generation.current !== current) return;
-      setData({
-        me,
-        friends: friends.data.items,
-        incoming: incoming.data.items,
-        outgoing: outgoing.data.items,
-        invites: invites.data.items,
-        blocks: blocks.data.items,
-        next: {
-          friends: friends.data.nextCursor,
-          incoming: incoming.data.nextCursor,
-          outgoing: outgoing.data.nextCursor,
-          invites: invites.data.nextCursor,
-          blocks: blocks.data.nextCursor,
-        },
-      });
+      setData(snapshot);
       setPhase('ready');
     } catch (cause) {
       if (!allowed() || generation.current !== current) return;
@@ -95,7 +79,7 @@ export function useSocialRelations(enabled: boolean) {
       setError(relationErrorMessage(cause));
       setPhase('error');
     }
-  }, [enabled]);
+  }, [enabled, captureView]);
 
   useEffect(() => {
     if (enabled) void load();
@@ -105,7 +89,7 @@ export function useSocialRelations(enabled: boolean) {
     const cursor = data.next[kind];
     if (cursor === null || busyRef.current || phase !== 'ready') return;
     const current = generation.current;
-    const allowed = captureSocialDispatch();
+    const allowed = captureView();
     if (!allowed()) return;
     busyRef.current = true;
     setBusy(true);
@@ -131,7 +115,7 @@ export function useSocialRelations(enabled: boolean) {
     ): Promise<T | null> => {
       if (busyRef.current) return null;
       const current = generation.current;
-      const allowed = captureSocialDispatch();
+      const allowed = captureView();
       if (!allowed()) return null;
       busyRef.current = true;
       setBusy(true);
@@ -163,10 +147,11 @@ export function useSocialRelations(enabled: boolean) {
         }
       }
     },
-    [forgetKey, keyFor, load],
+    [forgetKey, keyFor, load, captureView],
   );
 
   const createProfile = async (nickname: string): Promise<boolean> => {
+    const valid = captureView();
     const parsed = parseNickname(nickname);
     if (!parsed.ok) {
       setError('별명은 1~20자로 입력해 주세요.');
@@ -175,13 +160,15 @@ export function useSocialRelations(enabled: boolean) {
     const result = await command(`profile:create:${parsed.value}`, (repo) =>
       repo.createProfile({ nickname: parsed.value }),
     );
-    if (result === null) return false;
+    if (result === null || !valid()) return false;
     await load();
+    if (!valid()) return false;
     await refreshFeed();
-    return true;
+    return valid();
   };
 
   const rename = async (nickname: string): Promise<boolean> => {
+    const valid = captureView();
     const profile = data.me?.profile;
     const parsed = parseNickname(nickname);
     if (profile === null || profile === undefined || !parsed.ok) {
@@ -192,59 +179,67 @@ export function useSocialRelations(enabled: boolean) {
     const result = await command(operation, (repo, key) =>
       repo.renameProfile({ nickname: parsed.value, expectedVersion: profile.version }, { key }),
     );
-    if (result === null) return false;
+    if (result === null || !valid()) return false;
     await load();
-    return true;
+    return valid();
   };
 
-  const invite = async (): Promise<void> => {
+  const invite = async (): Promise<boolean> => {
+    const valid = captureView();
     const result = await command('invite:create', (repo, key) => repo.createInvite({ key }));
-    if (result === null) return;
+    if (result === null || !valid()) return false;
     setCreatedInvite(result);
     await load();
+    return valid();
   };
 
   const revokeInvite = async (inviteId: string): Promise<boolean> => {
+    const valid = captureView();
     const result = await command(`invite:revoke:${inviteId}`, (repo, key) =>
       repo.revokeInvite({ inviteId }, { key }),
     );
-    if (result === null) return false;
+    if (result === null || !valid()) return false;
     setCreatedInvite(null);
     await load();
-    return true;
+    return valid();
   };
 
   const request = async (token: string): Promise<boolean> => {
+    const valid = captureView();
     const result = await command(`request:send:${token}`, (repo, key) =>
       repo.sendRequest({ token }, { key }),
     );
-    if (result === null) return false;
+    if (result === null || !valid()) return false;
     await load();
-    return true;
+    return valid();
   };
 
-  const previewInvite = useCallback(async (token: string): Promise<void> => {
-    const current = generation.current;
-    const allowed = captureSocialDispatch();
-    if (!allowed()) return;
-    setPreview(null);
-    setPreviewPhase('loading');
-    try {
-      const response = await getSocialRepository().previewInvite({ token });
-      if (!allowed() || generation.current !== current) return;
-      setPreview(response.data);
-      setPreviewPhase('ready');
-    } catch {
-      if (!allowed() || generation.current !== current) return;
-      setPreviewPhase('error');
-      setError('사용할 수 없는 초대예요. 새 초대를 부탁해 주세요.');
-    }
-  }, []);
+  const previewInvite = useCallback(
+    async (token: string): Promise<void> => {
+      const current = generation.current;
+      const allowed = captureView();
+      if (!allowed()) return;
+      setPreview(null);
+      setPreviewPhase('loading');
+      try {
+        const response = await getSocialRepository().previewInvite({ token });
+        if (!allowed() || generation.current !== current) return;
+        setPreview(response.data);
+        setPreviewPhase('ready');
+      } catch {
+        if (!allowed() || generation.current !== current) return;
+        setPreviewPhase('error');
+        setError('사용할 수 없는 초대예요. 새 초대를 부탁해 주세요.');
+      }
+    },
+    [captureView],
+  );
 
   const changeRequest = async (
     kind: 'accept' | 'decline' | 'cancel',
     item: RequestView,
   ): Promise<boolean> => {
+    const valid = captureView();
     const input = { peerId: item.peer.id, expectedVersion: item.pairVersion };
     const operation = `request:${kind}:${input.peerId}:${input.expectedVersion}`;
     const result = await command(operation, (repo, key) => {
@@ -252,21 +247,24 @@ export function useSocialRelations(enabled: boolean) {
       if (kind === 'decline') return repo.declineRequest(input, { key });
       return repo.cancelRequest(input, { key });
     });
-    if (result === null) return false;
+    if (result === null || !valid()) return false;
     await load();
+    if (!valid()) return false;
     await refreshFeed();
-    return true;
+    return valid();
   };
 
   const removeFriend = async (friend: FriendView): Promise<boolean> => {
+    const valid = captureView();
     const input = { peerId: friend.id, expectedVersion: friend.pairVersion };
     const result = await command(`friend:remove:${friend.id}:${friend.pairVersion}`, (repo, key) =>
       repo.removeFriend(input, { key }),
     );
-    if (result === null) return false;
+    if (result === null || !valid()) return false;
     await refreshFeed();
+    if (!valid()) return false;
     await load();
-    return true;
+    return valid();
   };
 
   const block = async (
@@ -274,6 +272,7 @@ export function useSocialRelations(enabled: boolean) {
     blocked: boolean,
     expectedVersion?: number,
   ): Promise<boolean> => {
+    const valid = captureView();
     const input = {
       peerId,
       blocked,
@@ -283,10 +282,11 @@ export function useSocialRelations(enabled: boolean) {
       `block:${peerId}:${blocked}:${expectedVersion ?? ''}`,
       (repo, key) => repo.setBlock(input, { key }),
     );
-    if (result === null) return false;
+    if (result === null || !valid()) return false;
     await refreshFeed();
+    if (!valid()) return false;
     await load();
-    return true;
+    return valid();
   };
 
   return {
@@ -297,6 +297,7 @@ export function useSocialRelations(enabled: boolean) {
     createdInvite,
     preview,
     previewPhase,
+    captureView,
     load,
     loadMore,
     createProfile,

@@ -7,7 +7,7 @@ import { useSocialStore } from '@/features/social/store/social-store';
 
 /** 서버 확정 뒤에만 응원 수를 다시 조회한다. 같은 본문 재시도는 같은 key다. */
 type ReactionFocus = {
-  begin: (postId: string, index: number) => void;
+  begin: (postId: string, index: number, valid: () => boolean) => void;
   committed: () => void;
   cancel: () => void;
 };
@@ -29,7 +29,7 @@ export function useSocialReaction(focus: ReactionFocus) {
       document.querySelectorAll<HTMLButtonElement>('button[data-social-reaction-id]'),
     );
     const focusedIndex = buttons.findIndex((button) => button.dataset.socialReactionId === postId);
-    focus.begin(postId, focusedIndex);
+    focus.begin(postId, focusedIndex, allowed);
     setBusyId(postId);
     setError(null);
     const operation = `reaction:${postId}:${active}`;
@@ -37,11 +37,15 @@ export function useSocialReaction(focus: ReactionFocus) {
     try {
       await getSocialRepository().setReaction({ postId, active }, { key });
       if (!allowed()) {
-        focus.committed();
+        focus.cancel();
         return false;
       }
       forgetKey(operation);
       await refreshCurrent();
+      if (!allowed()) {
+        focus.cancel();
+        return false;
+      }
       focus.committed();
       return true;
     } catch {
@@ -51,7 +55,7 @@ export function useSocialReaction(focus: ReactionFocus) {
       return false;
     } finally {
       running.current = false;
-      if (allowed()) setBusyId(null);
+      setBusyId(null);
     }
   };
 

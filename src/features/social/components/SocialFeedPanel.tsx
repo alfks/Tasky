@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { SocialFeedCard } from '@/features/social/components/SocialFeedCard';
+import { SocialFeedEmpty } from '@/features/social/components/SocialFeedEmpty';
 import { useBlockFromFeed } from '@/features/social/hooks/useBlockFromFeed';
 import { useSocialReaction } from '@/features/social/hooks/useSocialReaction';
 import { useSocialStore, useVisibleSocialPosts } from '@/features/social/store/social-store';
@@ -32,6 +33,7 @@ export function SocialFeedPanel({ onOpenFriends, onOpenMine }: SocialFeedPanelPr
     profileId: string;
     navigation: number;
     committed: boolean;
+    valid: () => boolean;
   } | null>(null);
   const [focusVersion, setFocusVersion] = useState(0);
   const phase = useSocialStore((state) => state.phase);
@@ -48,8 +50,9 @@ export function SocialFeedPanel({ onOpenFriends, onOpenMine }: SocialFeedPanelPr
   const next = useSocialStore((state) => state.next);
   const previous = useSocialStore((state) => state.previous);
   const posts = useVisibleSocialPosts();
+  const showFeed = phase === 'ready' && canShow && profile !== null && mode !== 'off';
   const reaction = useSocialReaction({
-    begin: (postId, index) => {
+    begin: (postId, index, valid) => {
       reactionFocusRef.current = profile
         ? {
             postId,
@@ -57,6 +60,7 @@ export function SocialFeedPanel({ onOpenFriends, onOpenMine }: SocialFeedPanelPr
             profileId: profile.id,
             navigation: navigationRef.current,
             committed: false,
+            valid,
           }
         : null;
     },
@@ -93,6 +97,7 @@ export function SocialFeedPanel({ onOpenFriends, onOpenMine }: SocialFeedPanelPr
     const intent = reactionFocusRef.current;
     if (intent === null || !intent.committed) return;
     if (
+      !intent.valid() ||
       intent.navigation !== navigationRef.current ||
       profile?.id !== intent.profileId ||
       phase === 'blocked' ||
@@ -103,8 +108,11 @@ export function SocialFeedPanel({ onOpenFriends, onOpenMine }: SocialFeedPanelPr
     }
     if (phase === 'loading') return;
     const handle = requestAnimationFrame(() => {
-      if (reactionFocusRef.current !== intent || intent.navigation !== navigationRef.current)
+      if (reactionFocusRef.current !== intent) return;
+      if (!intent.valid() || intent.navigation !== navigationRef.current) {
+        reactionFocusRef.current = null;
         return;
+      }
       const snapshot = useSocialStore.getState();
       const heading = headingRef.current;
       if (!heading?.isConnected || heading.closest('[hidden]')) return;
@@ -175,6 +183,9 @@ export function SocialFeedPanel({ onOpenFriends, onOpenMine }: SocialFeedPanelPr
           </Button>
         </div>
       ) : null}
+      {phase === 'ready' && mode === 'read-only' && profile === null ? (
+        <p role="status">지금은 새 별명을 만들 수 없어요. 나중에 다시 확인해 주세요.</p>
+      ) : null}
       {phase === 'error' ? (
         <div role="alert">
           <p>
@@ -189,36 +200,15 @@ export function SocialFeedPanel({ onOpenFriends, onOpenMine }: SocialFeedPanelPr
           </Button>
         </div>
       ) : null}
-      {phase === 'ready' &&
-      profile !== null &&
-      mode !== 'off' &&
-      canShow &&
-      posts.length === 0 &&
-      pageIndex > 0 ? (
-        <div className="flex flex-col items-start gap-[var(--space-2)]">
-          <p>이 페이지에 표시할 기록이 없어요.</p>
-          <Button variant="outline" onClick={() => void showNew()}>
-            처음부터 다시 보기
-          </Button>
-        </div>
+      {showFeed && posts.length === 0 ? (
+        <SocialFeedEmpty
+          pageIndex={pageIndex}
+          onShowNew={() => void showNew()}
+          onOpenFriends={onOpenFriends}
+          onOpenMine={onOpenMine}
+        />
       ) : null}
-      {phase === 'ready' &&
-      profile !== null &&
-      mode !== 'off' &&
-      canShow &&
-      posts.length === 0 &&
-      pageIndex === 0 ? (
-        <div className="flex flex-col items-start gap-[var(--space-2)]">
-          <p>아직 공유한 기록이 없어요.</p>
-          <Button variant="outline" onClick={onOpenFriends}>
-            친구 초대
-          </Button>
-          <Button variant="ghost" onClick={onOpenMine}>
-            기록 공유
-          </Button>
-        </div>
-      ) : null}
-      {phase === 'ready' && canShow
+      {showFeed
         ? posts.map((post) => (
             <SocialFeedCard
               key={post.id}

@@ -12,6 +12,7 @@ import {
   activateSocialSession,
   configureSocialVerifier,
   deactivateSocialSession,
+  invalidateSocialSession,
   resetSocialSessionForTest,
 } from '@/features/social/session-lifecycle';
 
@@ -94,5 +95,56 @@ describe('보낸 응원 off 자기 관리', () => {
       await Promise.resolve();
     });
     expect(myReactions).toHaveBeenCalledTimes(2);
+  });
+
+  it('429 Retry-After 동안 조회 행동을 잠그고 즉시 재전송하지 않는다', async () => {
+    const limited = Object.assign(new Error('limited'), { code: 'rate-limited', retryAfter: 7 });
+    const myReactions = vi.fn().mockRejectedValueOnce(limited);
+    setSocialRepository({ myReactions } as unknown as SocialRepository);
+    render(<SocialMyReactionsPanel enabled refreshNonce={0} />);
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('7초'));
+    expect(screen.getByRole('button', { name: '응원 목록 새로고침' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '다시 시도' })).toBeDisabled();
+    expect(myReactions).toHaveBeenCalledTimes(1);
+  });
+
+  it('만료된 cursor는 명시적 첫 페이지 재시도에서 버린다', async () => {
+    const expired = Object.assign(new Error('expired'), { code: 'validation' });
+    const myReactions = vi
+      .fn()
+      .mockResolvedValueOnce(response({ items: [], nextCursor: 'cursor' }))
+      .mockRejectedValueOnce(expired)
+      .mockResolvedValueOnce(response({ items: [], nextCursor: null }));
+    setSocialRepository({ myReactions } as unknown as SocialRepository);
+    const { result } = renderHook(() => useMyReactions(true));
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    await act(async () => {
+      expect(await result.current.next()).toBe(false);
+    });
+    expect(result.current.cursorExpired).toBe(true);
+    await act(async () => {
+      expect(await result.current.retry()).toBe(true);
+    });
+    expect(myReactions.mock.calls[1][0]).toEqual({ cursor: 'cursor' });
+    expect(myReactions.mock.calls[2][0]).toBeUndefined();
+    expect(result.current.pageIndex).toBe(0);
+  });
+
+  it('응원 철회 도중 세션이 무효화되면 이전 화면 성공 후속 동작을 중단한다', async () => {
+    const myReactions = vi.fn(async () =>
+      response({ items: [{ postId: POST, createdAt: NOW }], nextCursor: null }),
+    );
+    const setReaction = vi.fn(async () => {
+      invalidateSocialSession('account');
+      return response({ postId: POST, active: false });
+    });
+    setSocialRepository({ myReactions, setReaction } as unknown as SocialRepository);
+    const { result } = renderHook(() => useMyReactions(true));
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    await act(async () => {
+      expect(await result.current.cancel(POST)).toBe(false);
+    });
+    expect(myReactions).toHaveBeenCalledTimes(1);
+    expect(result.current.phase).toBe('idle');
   });
 });

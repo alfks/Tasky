@@ -41,25 +41,26 @@ export function SocialProfileSection({ relations }: SocialProfileSectionProps) {
           </label>
           <Button
             disabled={relations.busy || nickname.trim().length === 0}
-            onClick={() =>
+            onClick={() => {
+              const valid = relations.captureView();
               void (profile ? relations.rename(nickname) : relations.createProfile(nickname)).then(
                 (done) => {
-                  if (done) {
-                    setNickname('');
-                    requestAnimationFrame(() => {
-                      if (
-                        document
-                          .getElementById('social-tab-friends')
-                          ?.getAttribute('aria-selected') === 'true'
-                      )
-                        document
-                          .getElementById('social-profile-title')
-                          ?.focus({ preventScroll: true });
-                    });
-                  }
+                  if (!done || !valid()) return;
+                  setNickname('');
+                  requestAnimationFrame(() => {
+                    if (!valid()) return;
+                    if (
+                      document
+                        .getElementById('social-tab-friends')
+                        ?.getAttribute('aria-selected') === 'true'
+                    )
+                      document
+                        .getElementById('social-profile-title')
+                        ?.focus({ preventScroll: true });
+                  });
                 },
-              )
-            }
+              );
+            }}
           >
             {profile ? '별명 바꾸기' : '시작하기'}
           </Button>

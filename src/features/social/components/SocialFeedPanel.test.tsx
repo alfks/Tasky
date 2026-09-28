@@ -27,4 +27,13 @@ describe('피드 첫 진입', () => {
     await userEvent.click(screen.getByRole('button', { name: '별명 정하러 가기' }));
     expect(onOpenFriends).toHaveBeenCalledOnce();
   });
+
+  it('읽기 전용에서 프로필이 없으면 생성 제한을 설명한다', () => {
+    act(() =>
+      useSocialStore.setState({ phase: 'ready', mode: 'read-only', profile: null, canShow: false }),
+    );
+    render(<SocialFeedPanel onOpenFriends={vi.fn()} onOpenMine={vi.fn()} />);
+    expect(screen.getByRole('status')).toHaveTextContent('지금은 새 별명을 만들 수 없어요');
+    expect(screen.queryByRole('button', { name: '별명 정하러 가기' })).not.toBeInTheDocument();
+  });
 });

@@ -97,6 +97,33 @@ describe('친구 관계 hook의 명시 행동과 세대', () => {
     expect(result.current.busy).toBe(false);
   });
 
+  it('탭을 떠난 뒤 같은 세션의 늦은 성공은 새 화면 초점 의도를 살리지 않는다', async () => {
+    const api = repository();
+    let resolve: (value: SocialResponse<{ peerId: string; pairVersion: number }>) => void = () => {
+      throw new Error('미설정');
+    };
+    api.sendRequest.mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    const { result, unmount } = renderHook(() => useSocialRelations(true));
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    const valid = result.current.captureView();
+    let pending: Promise<boolean> = Promise.resolve(false);
+    act(() => {
+      pending = result.current.request(TOKEN);
+      unmount();
+    });
+    await act(async () => {
+      resolve(response({ peerId: PEER, pairVersion: 1 }));
+      expect(await pending).toBe(false);
+    });
+    expect(valid()).toBe(false);
+    expect(api.me).toHaveBeenCalledTimes(1);
+  });
+
   it('버전 충돌은 낡은 관계 행을 다시 읽고 사용자에게 재결정을 요구한다', async () => {
     const api = repository();
     api.renameProfile.mockRejectedValue(Object.assign(new Error('conflict'), { code: 'conflict' }));

@@ -23,6 +23,34 @@ export const EMPTY_RELATIONS: RelationsSnapshot = {
   next: { friends: null, incoming: null, outgoing: null, invites: null, blocks: null },
 };
 
+export async function readRelationSnapshot(
+  repo: SocialRepository,
+  me: SocialMe,
+): Promise<RelationsSnapshot> {
+  const [friends, incoming, outgoing, invites, blocks] = await Promise.all([
+    repo.friends(),
+    repo.requests('incoming'),
+    repo.requests('outgoing'),
+    repo.invites(),
+    repo.blocks(),
+  ]);
+  return {
+    me,
+    friends: friends.data.items,
+    incoming: incoming.data.items,
+    outgoing: outgoing.data.items,
+    invites: invites.data.items,
+    blocks: blocks.data.items,
+    next: {
+      friends: friends.data.nextCursor,
+      incoming: incoming.data.nextCursor,
+      outgoing: outgoing.data.nextCursor,
+      invites: invites.data.nextCursor,
+      blocks: blocks.data.nextCursor,
+    },
+  };
+}
+
 export async function readRelationPage(
   repo: SocialRepository,
   kind: RelationKind,

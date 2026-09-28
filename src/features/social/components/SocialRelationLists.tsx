@@ -15,8 +15,9 @@ type SocialRelationListsProps = {
 };
 type PendingConfirm = { kind: 'remove'; item: FriendView } | { kind: 'block'; item: FriendView };
 
-function restoreSection(id: string): void {
+function restoreSection(id: string, valid: () => boolean): void {
   requestAnimationFrame(() => {
+    if (!valid()) return;
     const tab = document.getElementById('social-tab-friends');
     if (tab?.getAttribute('aria-selected') !== 'true') return;
     const target = document.getElementById(id) ?? tab;
@@ -29,16 +30,25 @@ export function SocialRelationLists({ relations, onGoFeed }: SocialRelationLists
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const mode = data.me?.mode;
+  const runAndRestore = (run: () => Promise<boolean>, id: string, message?: string) => {
+    const valid = relations.captureView();
+    void run().then((done) => {
+      if (!done || !valid()) return;
+      if (message) setNotice(message);
+      restoreSection(id, valid);
+    });
+  };
   const resolveConfirm = async () => {
     if (confirm === null || busy) return;
+    const valid = relations.captureView();
     const done =
       confirm.kind === 'remove'
         ? await relations.removeFriend(confirm.item)
         : await relations.block(confirm.item.id, true, confirm.item.pairVersion);
-    if (done) {
+    if (done && valid()) {
       setConfirm(null);
       setNotice(confirm.kind === 'remove' ? '친구를 해제했어요.' : '사용자를 차단했어요.');
-      restoreSection('social-friends-title');
+      restoreSection('social-friends-title', valid);
     }
   };
 
@@ -61,9 +71,10 @@ export function SocialRelationLists({ relations, onGoFeed }: SocialRelationLists
               <Button
                 disabled={busy || mode !== 'enabled'}
                 onClick={() =>
-                  void relations.changeRequest('accept', item).then((done) => {
-                    if (done) restoreSection('social-incoming-title');
-                  })
+                  runAndRestore(
+                    () => relations.changeRequest('accept', item),
+                    'social-incoming-title',
+                  )
                 }
               >
                 수락
@@ -72,9 +83,10 @@ export function SocialRelationLists({ relations, onGoFeed }: SocialRelationLists
                 variant="outline"
                 disabled={busy}
                 onClick={() =>
-                  void relations.changeRequest('decline', item).then((done) => {
-                    if (done) restoreSection('social-incoming-title');
-                  })
+                  runAndRestore(
+                    () => relations.changeRequest('decline', item),
+                    'social-incoming-title',
+                  )
                 }
               >
                 거절
@@ -109,9 +121,10 @@ export function SocialRelationLists({ relations, onGoFeed }: SocialRelationLists
                 variant="outline"
                 disabled={busy}
                 onClick={() =>
-                  void relations.changeRequest('cancel', item).then((done) => {
-                    if (done) restoreSection('social-outgoing-title');
-                  })
+                  runAndRestore(
+                    () => relations.changeRequest('cancel', item),
+                    'social-outgoing-title',
+                  )
                 }
               >
                 요청 취소
@@ -189,12 +202,11 @@ export function SocialRelationLists({ relations, onGoFeed }: SocialRelationLists
                 variant="outline"
                 disabled={busy}
                 onClick={() =>
-                  void relations.block(item.id, false, item.pairVersion).then((done) => {
-                    if (done) {
-                      setNotice('차단을 해제했어요. 친구 관계는 복원되지 않아요.');
-                      restoreSection('social-blocks-title');
-                    }
-                  })
+                  runAndRestore(
+                    () => relations.block(item.id, false, item.pairVersion),
+                    'social-blocks-title',
+                    '차단을 해제했어요. 친구 관계는 복원되지 않아요.',
+                  )
                 }
               >
                 차단 해제
