@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 
 import { SocialInviteSection } from '@/features/social/components/SocialInviteSection';
+import { SocialMyReactionsPanel } from '@/features/social/components/SocialMyReactionsPanel';
 import { SocialProfileSection } from '@/features/social/components/SocialProfileSection';
 import { SocialRelationLists } from '@/features/social/components/SocialRelationLists';
 import { useSocialRelations } from '@/features/social/hooks/useSocialRelations';
@@ -62,6 +63,9 @@ export function SocialFriendsPanel({
       <SocialProfileSection relations={relations} />
       <SocialInviteSection relations={relations} invite={invite} onClearInvite={onClearInvite} />
       {data.me?.profile ? <SocialRelationLists relations={relations} onGoFeed={onGoFeed} /> : null}
+      {data.me?.profile ? (
+        <SocialMyReactionsPanel enabled={enabled} refreshNonce={refreshNonce} />
+      ) : null}
     </div>
   );
 }
