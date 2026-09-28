@@ -6,12 +6,12 @@
 
 Playwright E2E(`tests/e2e/`). **합격/불합격을 내는** 유일한 브라우저 테스트다. 값을 찍어 보고서에 옮기는 계측 도구는 `tests/feel/`(별도 AGENTS.md) — 성격이 다르니 섞지 않는다.
 
-## 여기 있는 것 (20개 스펙 · 79건 — Phase 3 공개 범위·복구 반영 기준, `pnpm exec playwright test --list`)
+## 여기 있는 것 (21개 스펙 · 86건 — Phase 3 소셜 mode 전환 반영 기준, `pnpm exec playwright test --list`)
 
-`selection-ring` 9 · `hover-and-focus` 9 · `sync` 7 · `split-viewport` 5 · `smoke` 4 · `cross-category-drag` 3 ·
+`selection-ring` 9 · `hover-and-focus` 9 · `sync` 8 · `split-viewport` 5 · `smoke` 4 · `cross-category-drag` 3 ·
 `category-reorder` 3 · `pomodoro` 3 · `emoji-picker` 3 · `month-view` 6 · `narrow-viewport` 4 ·
-`routine-reorder` 2 · `diary-sidebar` 4 · `todo-date-picker` 2 · `profile` 8 · `reports-overflow` 1 · `routine-manager-menu` 1 · `year-month-picker` 1 · `category-visibility` 2 · `social` 2. **스펙을 더하거나 지우면 이 줄과 건수를 같은 PR 에서 고친다.**
-개인 기본 off 회귀와 첫 서비스워커 설치·오프라인 쓰기·번들 상한은 기본 서버(3100)에서, 소셜 네 건은 `TASKY_E2E_SOCIAL=1` 서버(3101)의 정확히 세 테스트 계정 allowlist에서 잰다.
+`routine-reorder` 2 · `diary-sidebar` 4 · `todo-date-picker` 2 · `profile` 12 · `reports-overflow` 1 · `routine-manager-menu` 1 · `year-month-picker` 1 · `category-visibility` 2 · `social` 3 · `social-modes` 1. **스펙을 더하거나 지우면 이 줄과 건수를 같은 PR 에서 고친다.**
+개인 기본 off 회귀와 첫 서비스워커 설치·오프라인 쓰기·번들 상한은 기본 서버(3100)에서, 소셜 `social` 3건은 `TASKY_E2E_SOCIAL=1` 서버(3101)의 정확히 세 테스트 계정 allowlist에서 잰다. `social-modes` 1건은 `fixtures/social.ts` 가 따로 띄운 loopback Worker/D1 에서 enabled→off→enabled 로 mode 를 바꿔 가며 잰다(깨끗한 Git 트리와 직전 `pnpm build` 산출물이 필요하다).
 공개 범위 복구는 실제 서버 저장 뒤 응답을 끊고 같은 요청 재확인·재로드 뒤 명시 연결까지 검증한다.
 `split-viewport` 는 반쪽 창(720·960)에서 달력·패널이 나란한지, 1440 에서 쌍이 가운데인지, 679 가 1열인지, 1280 고정 컬럼에 가로 스크롤이 없는지를 실제 박스로 잰다.
 앞의 둘은 "선택됨"·호버·포커스 표시(theme §3-G R17~R20·R29)를 계산된 스타일로(규칙 1), `narrow-viewport` 는 폭 360·375·390
