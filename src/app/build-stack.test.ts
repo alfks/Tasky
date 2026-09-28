@@ -6,8 +6,9 @@
 // 찾아 주기 때문이다. 즉 "설치돼 있지 않으니 컴파일이 막아 준다" 는 환경에 따라 참이 아니다 — 여기서 직접 본다.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 /** 문자열을 조각으로 조립한다 — 이 파일 자신이 검사에 걸리지 않게 하려는 것이 아니라, 패턴의 단일 소스를 만들려는 것. */
 const BANNED = ['next', 'vinext', '@vinext', 'react-server-dom-webpack'];
@@ -114,5 +115,91 @@ describe('index.html: SPA 셸 배선 — 지워도 빌드가 초록인 줄들', 
 
   it('<title> 이 있다', () => {
     expect(html).toMatch(/<title>Tasky<\/title>/);
+  });
+
+  it('초대 fragment를 테마 뒤·앱과 분석 앞에서 먼저 지운다', () => {
+    const inviteStart = html.indexOf('<script>(function(){var h=location.hash;');
+    const inviteEnd = html.indexOf('</script>', inviteStart);
+    expect(inviteStart).toBeGreaterThan(html.indexOf('tasky.theme.v1'));
+    expect(inviteStart).toBeLessThan(html.indexOf('src="/src/app/main.tsx"'));
+    expect(inviteStart).toBeLessThan(html.indexOf('static.cloudflareinsights.com/beacon.min.js'));
+    expect(inviteEnd).toBeGreaterThan(inviteStart);
+
+    const token = 'a'.repeat(64);
+    const location = { hash: `#invite=${token}`, pathname: '/', search: '?source=friend' };
+    const carrier: { __taskyIncomingInvite?: { token: string } } = {};
+    const state = { previous: true };
+    const replaceState = vi.fn((received: unknown, _title: string, url: string) => {
+      expect(received).toBe(state);
+      expect(url).toBe('/?source=friend');
+      expect(carrier.__taskyIncomingInvite).toBeUndefined();
+      location.hash = '';
+    });
+    runInNewContext(html.slice(inviteStart + '<script>'.length, inviteEnd), {
+      location,
+      history: { state, replaceState },
+      window: carrier,
+      Date,
+    });
+    expect(replaceState).toHaveBeenCalledOnce();
+    expect(location.hash).toBe('');
+    expect(carrier.__taskyIncomingInvite?.token).toBe(token);
+  });
+
+  it('잘못된 초대 원문도 제거하되 메모리에 실어 보내지 않는다', () => {
+    const start = html.indexOf('<script>(function(){var h=location.hash;');
+    const end = html.indexOf('</script>', start);
+    const location = { hash: `#invite=${'A'.repeat(64)}`, pathname: '/', search: '' };
+    const carrier: { __taskyIncomingInvite?: unknown; __taskyInvalidInvite?: boolean } = {};
+    const replaceState = vi.fn(() => {
+      location.hash = '';
+    });
+    runInNewContext(html.slice(start + '<script>'.length, end), {
+      location,
+      history: { state: null, replaceState },
+      window: carrier,
+      Date,
+    });
+    expect(replaceState).toHaveBeenCalledWith(null, '', '/');
+    expect(carrier.__taskyIncomingInvite).toBeUndefined();
+    expect(carrier.__taskyInvalidInvite).toBe(true);
+  });
+
+  it('비정규 초대 키·중복 값을 지우고 초대와 무관한 fragment는 보존한다', () => {
+    const start = html.indexOf('<script>(function(){var h=location.hash;');
+    const end = html.indexOf('</script>', start);
+    const source = html.slice(start + '<script>'.length, end);
+    for (const hash of [
+      '#x=1&invite=secret',
+      '#%69nvite=secret',
+      '#invite=abc&invite=def',
+      '#INVITE=secret',
+      '#invite=',
+    ]) {
+      const location = { hash, pathname: '/today', search: '?a=1' };
+      const carrier: { __taskyIncomingInvite?: unknown; __taskyInvalidInvite?: boolean } = {};
+      const replaceState = vi.fn(() => {
+        location.hash = '';
+      });
+      runInNewContext(source, {
+        location,
+        history: { state: null, replaceState },
+        window: carrier,
+        Date,
+      });
+      expect(replaceState, hash).toHaveBeenCalledWith(null, '', '/today?a=1');
+      expect(carrier.__taskyIncomingInvite, hash).toBeUndefined();
+      expect(carrier.__taskyInvalidInvite, hash).toBe(true);
+    }
+    const location = { hash: '#calendar', pathname: '/', search: '' };
+    const replaceState = vi.fn();
+    runInNewContext(source, { location, history: { state: null, replaceState }, window: {}, Date });
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(location.hash).toBe('#calendar');
+  });
+
+  it('초대 페이지의 referrer 정책을 응답 헤더에 둔다', () => {
+    const headers = readFileSync('public/_headers', 'utf-8');
+    expect(headers).toMatch(/\/\*\s+Referrer-Policy: no-referrer/u);
   });
 });

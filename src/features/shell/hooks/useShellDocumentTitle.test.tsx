@@ -16,6 +16,11 @@ function Probe() {
   return null;
 }
 
+function SocialProbe() {
+  useShellDocumentTitle(TODAY, { done: 1, total: 2 }, true);
+  return null;
+}
+
 beforeEach(() => {
   useTimerStore.setState({ session: null, completion: null, todoTitle: null });
   document.title = 'Tasky';
@@ -26,6 +31,18 @@ afterEach(() => {
 });
 
 describe('useShellDocumentTitle', () => {
+  it('친구 화면에서는 친구 제목을 쓰되 실행 중 타이머 제목은 덮지 않는다', () => {
+    render(<SocialProbe />);
+    expect(document.title).toBe('친구 · Tasky');
+    useTimerStore.setState({
+      session: makeFocusSession({ startedAt: '2026-09-16T00:00:00.000Z' }),
+    });
+    document.title = '24:59 · Tasky';
+    act(() => {
+      useTimerStore.setState({ now: '2026-09-16T00:00:01.000Z' });
+    });
+    expect(document.title).toBe('24:59 · Tasky');
+  });
   it('마운트하면 R9 제목을 쓴다', () => {
     render(<Probe />);
     expect(document.title).toBe(SHELL_TITLE);

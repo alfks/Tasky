@@ -75,6 +75,9 @@ type ShellSidebarProps = {
    * 오버레이가 갖는다 — `AppShell` 이 같은 함수를 이 prop 으로 여기에도, 그쪽에도 함께 내린다).
    */
   exportBackup: () => Promise<boolean>;
+  onOpenSocial?: () => void;
+  socialOpen?: boolean;
+  appTitleHeading?: boolean;
 };
 
 export function ShellSidebar({
@@ -87,6 +90,9 @@ export function ShellSidebar({
   onSelectCategory,
   onRemoveCategory,
   exportBackup,
+  onOpenSocial,
+  socialOpen = false,
+  appTitleHeading = true,
 }: ShellSidebarProps) {
   // 루틴 삭제로 그 행이 사라진 뒤 포커스가 `<body>` 로 떨어지지 않게(app-shell R14) — 카테고리
   // 삭제가 쓰는 것과 같은 헬퍼, 인스턴스만 이 사이드바 전용으로 새로 둔다.
@@ -105,10 +111,8 @@ export function ShellSidebar({
   const pinToggleLabel = `사이드바 ${sidebarPinned ? '고정 해제' : '고정'}`;
 
   return (
-    <nav
-      aria-label="카테고리"
-      className="flex h-full min-h-0 flex-col gap-[var(--space-3)] overflow-hidden"
-    >
+    <div className="flex h-full min-h-0 flex-col gap-[var(--space-3)] overflow-hidden">
+      <nav aria-label="카테고리" className="flex min-h-0 shrink flex-col gap-[var(--space-3)]">
       {showPinRow ? (
         <div
           className={cn(
@@ -116,7 +120,13 @@ export function ShellSidebar({
             showTitle ? 'justify-between' : 'justify-end',
           )}
         >
-          {showTitle ? <h1 className="text-lg font-bold text-text">{APP_NAME}</h1> : null}
+          {showTitle ? (
+            appTitleHeading ? (
+              <h1 className="text-lg font-bold text-text">{APP_NAME}</h1>
+            ) : (
+              <p className="text-lg font-bold text-text">{APP_NAME}</p>
+            )
+          ) : null}
           <Button
             {...{ [SIDEBAR_PIN_TOGGLE_ATTR]: '' }}
             variant="ghost"
@@ -133,12 +143,13 @@ export function ShellSidebar({
         아래로 빈 흰 기둥이 서서, 고치려던 "비어 보임" 이 더 크게 돌아온다. 넘칠 때만 안에서
         스크롤한다(`min-h-0` + `overflow-y-auto`).
       */}
-      <div
-        data-shell-sidebar-card=""
-        className={cn('min-h-0 shrink overflow-y-auto', framed ? CARD_CLASS : null)}
-      >
-        <CategoryList onSelect={onSelectCategory} onRemove={onRemoveCategory} />
-      </div>
+        <div
+          data-shell-sidebar-card=""
+          className={cn('min-h-0 shrink overflow-y-auto', framed ? CARD_CLASS : null)}
+        >
+          <CategoryList onSelect={onSelectCategory} onRemove={onRemoveCategory} />
+        </div>
+      </nav>
 
       {/*
         D-day (calendar.md §2) — 카테고리쪽 사이드바로 옮겨졌다: 카테고리 목록 카드 바로 아래,
@@ -147,6 +158,19 @@ export function ShellSidebar({
       <div className={cn('min-h-0 shrink overflow-y-auto', framed ? CARD_CLASS : null)}>
         <DdayPanelSection />
       </div>
+
+      {onOpenSocial ? (
+        <div className="shrink-0">
+          <Button
+            variant="ghost"
+            className="w-full justify-start"
+            aria-current={socialOpen ? 'page' : undefined}
+            onClick={onOpenSocial}
+          >
+            친구
+          </Button>
+        </div>
+      ) : null}
 
       {/*
         도구 줄 (R12: 테마 토글 · 설정 · 백업/복원). 스크롤 영역 밖이라 목록이 길어져도 밀려나지
@@ -185,6 +209,6 @@ export function ShellSidebar({
       {/* 계정 블록은 세션에 종속된 상태라 나머지 진입점(도구 줄)과 분리해 사이드바 맨 끝에 둔다
           (sync.md §2, app-shell.md R12-a). */}
       <AccountBlockLauncher exportBackup={exportBackup} />
-    </nav>
+    </div>
   );
 }

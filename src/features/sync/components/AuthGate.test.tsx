@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { userEvent } from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getRepositories } from '@/repositories/container';
 
@@ -19,6 +20,20 @@ describe('AuthGate (sync.md R1)', () => {
       </AuthGate>,
     );
     expect(await screen.findByText('Tasky')).toBeInTheDocument();
+    expect(screen.queryByText('앱 본체')).not.toBeInTheDocument();
+  });
+
+  it('로그인 버튼의 선택적 사전 동작을 앱 조립점에서 그대로 전달한다', async () => {
+    const beforeLogin = vi.fn(() => false);
+    render(
+      <AuthGate beforeLogin={beforeLogin}>
+        <div>앱 본체</div>
+      </AuthGate>,
+    );
+
+    await userEvent.click(await screen.findByRole('link', { name: 'Google로 계속하기' }));
+    expect(beforeLogin).toHaveBeenCalledOnce();
+    expect(screen.getByRole('alert')).toHaveTextContent('초대 정보를 보관하지 못했어요.');
     expect(screen.queryByText('앱 본체')).not.toBeInTheDocument();
   });
 

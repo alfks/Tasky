@@ -8,7 +8,8 @@
 // 대신 `main` 을 맡는데, 목록·다이어리·빈 상태 렌더링(`DayPanelBody`)은 **여기서만** 정의해
 // `ShellMain` 이 가져다 쓴다 — 본문 로직이 두 벌로 갈리면 한쪽만 고쳐지는 순간 다른 쪽에서
 // 조용히 되살아난다(§2-C 문구·스켈레톤 배선이 실제로 그렇게 갈렸던 전례).
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef } from 'react';
+import type { MutableRefObject, ReactNode } from 'react';
 
 import type { Category } from '@/domain/category/category';
 import type { DateKey } from '@/domain/date/date-key';
@@ -142,12 +143,21 @@ export function DayPanelBody({
 
 type ShellDayPanelProps = DayPanelBodyProps & {
   summary: CompletionSummary;
+  scrollPositionRef?: MutableRefObject<number>;
 };
 
 /**
  * ≥1024 의 `main` (calendar-layout.md R1(c)·R5). 머리 한 줄만 고정, 목록·다이어리가 스크롤한다(R3).
  */
-export function ShellDayPanel({ date, summary, ...body }: ShellDayPanelProps) {
+export function ShellDayPanel({ date, summary, scrollPositionRef, ...body }: ShellDayPanelProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (element && scrollPositionRef) element.scrollTop = scrollPositionRef.current;
+    return () => {
+      if (element && scrollPositionRef) scrollPositionRef.current = element.scrollTop;
+    };
+  }, [scrollPositionRef]);
   return (
     <main
       id={SHELL_MAIN_ID}
@@ -166,7 +176,10 @@ export function ShellDayPanel({ date, summary, ...body }: ShellDayPanelProps) {
         </span>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-[var(--space-4)] py-[var(--space-3)]">
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto px-[var(--space-4)] py-[var(--space-3)]"
+      >
         <DayPanelBody date={date} {...body} />
       </div>
     </main>

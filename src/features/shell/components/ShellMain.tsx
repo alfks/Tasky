@@ -7,8 +7,8 @@
 // 목록·다이어리·빈 상태의 실제 렌더링(`DayPanelBody`)은 `ShellDayPanel.tsx` 가 갖고 있고 여기서는
 // 가져다 쓸 뿐이다 — 두 갈래가 각자 그 본문을 그리면 한쪽만 고쳐지는 순간 다른 쪽에서 조용히
 // 되살아난다(calendar-layout.md R21).
-import { useRef } from 'react';
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef } from 'react';
+import type { MutableRefObject, ReactNode } from 'react';
 
 import type { Category } from '@/domain/category/category';
 import type { DateKey } from '@/domain/date/date-key';
@@ -48,6 +48,7 @@ type ShellMainProps = {
   showBottomAdd: boolean;
   /** 투두 항목 메뉴 "타이머 시작" (timer.md §2) — `DayPanelBody` 로 그대로 흘려보낸다. */
   onStartTimer?: (todo: Todo) => void;
+  scrollPositionRef?: MutableRefObject<number>;
 };
 
 /**
@@ -74,6 +75,7 @@ export function ShellMain({
   onCreateCategory,
   showBottomAdd,
   onStartTimer,
+  scrollPositionRef,
 }: ShellMainProps) {
   const noCategories = !categoriesPending && categories.length === 0;
   const runTodoNew = useTodoNewHandler();
@@ -99,6 +101,13 @@ export function ShellMain({
   // 없는 화면(≥768)은 이 애매함이 생길 자리 자체가 없다. `date` 를 넘겨 날짜가 바뀌면(목록이
   // 통째로 바뀌면) 다시 판정하게 한다(`useGuardAmbiguousClip` 머리주석 — 최종 리뷰 Minor).
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = scrollAreaRef.current;
+    if (element && scrollPositionRef) element.scrollTop = scrollPositionRef.current;
+    return () => {
+      if (element && scrollPositionRef) scrollPositionRef.current = element.scrollTop;
+    };
+  }, [scrollPositionRef]);
   useGuardAmbiguousClip(scrollAreaRef, showBottomAdd, date);
 
   return (

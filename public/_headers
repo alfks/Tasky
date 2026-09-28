@@ -5,6 +5,9 @@
 # **파일 하나하나**가 아래 글롭에 실제로 덮이는지 대조한다 — 규칙 줄의 존재만 보는 것이 아니다.
 # Worker 스크립트가 없으므로(정적 자산 전용 배포) 모든 응답이 여기 규칙의 적용 대상이다 —
 # /manifest.webmanifest 도 이제 Worker 가 만드는 것이 아니라 public/ 의 정적 파일이다.
+/*
+  Referrer-Policy: no-referrer
+
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 

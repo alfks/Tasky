@@ -14,3 +14,10 @@ export type {
   SocialSessionClient,
   SocialSessionScope,
 } from '@/features/social/session-lifecycle';
+export {
+  clearPendingInvite,
+  consumeInviteAfterReady,
+  prepareInviteLogin,
+} from '@/features/social/lib/invite-bootstrap';
+export type { InviteBootstrap } from '@/features/social/lib/invite-bootstrap';
+export { useSocialShell } from '@/features/social/hooks/useSocialShell';

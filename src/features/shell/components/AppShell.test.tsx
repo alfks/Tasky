@@ -976,3 +976,43 @@ describe('사이드바 기본값 (calendar-layout.md §1-A · R23~R24 — WU-3)'
     },
   );
 });
+
+describe('친구 화면 진입과 개인 상태 복귀 (T-7)', () => {
+  it('사이드바 친구 진입은 main 하나를 유지하고 실제 날짜 패널 스크롤과 날짜를 돌려놓는다', async () => {
+    useShellUiStore.setState({ sidebarPinned: true });
+    await mount();
+    const personal = screen.getByRole('main');
+    const scroll = personal.querySelector<HTMLElement>('.overflow-y-auto');
+    expect(scroll).not.toBeNull();
+    if (scroll) scroll.scrollTop = 128;
+    const opener = screen.getByRole('button', { name: '친구' });
+
+    await userEvent.click(opener);
+    expect(await screen.findByRole('heading', { level: 1, name: '친구' })).toBeInTheDocument();
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+    expect(opener).toHaveAttribute('aria-current', 'page');
+    expect(document.title).toBe('친구 · Tasky');
+
+    await userEvent.click(screen.getByRole('button', { name: '내 할 일로' }));
+    await waitFor(() =>
+      expect(screen.getByRole('main')).not.toHaveTextContent('친구 화면을 불러오는 중이에요.'),
+    );
+    const restored = screen.getByRole('main').querySelector<HTMLElement>('.overflow-y-auto');
+    expect(restored?.scrollTop).toBe(128);
+    expect(useDateStripStore.getState().selectedDate).toBe(TODAY);
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+
+  it('드로어에서도 같은 친구 진입을 열고 통계를 열면 친구 본문을 교체한다', async () => {
+    await mount();
+    await userEvent.click(screen.getByRole('button', { name: '카테고리 열기' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Tasky' });
+    await userEvent.click(within(drawer).getByRole('button', { name: '친구' }));
+    expect(await screen.findByRole('heading', { level: 1, name: '친구' })).toBeInTheDocument();
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+    act(() => useReportsStore.getState().openReports());
+    expect(await screen.findByRole('heading', { level: 2, name: '통계' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1, name: '친구' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+  });
+});

@@ -57,6 +57,8 @@ type ShellOverlaysProps = {
   /** 계정 블록(로그아웃·계정 삭제·계정 전환)이 쓰는 내보내기 — `AppShell` 이 만들어 이 컴포넌트와
    * `ShellSidebar` 양쪽에 같은 함수를 내린다. */
   exportBackup: () => Promise<boolean>;
+  onOpenSocial?: () => void;
+  socialOpen?: boolean;
 };
 
 export function ShellOverlays({
@@ -75,6 +77,8 @@ export function ShellOverlays({
   removalReturnFocus,
   onSelectCategory,
   exportBackup,
+  onOpenSocial,
+  socialOpen,
 }: ShellOverlaysProps) {
   // 방금 선택한 카테고리로의 포커스 인계를 다음 프레임으로 미루는 예약 — 언마운트되면 취소한다
   // (아래 onSelectCategory 콜백, 리뷰 Minor: 취소하지 않으면 이미 사라진 트리에 대고 실행된다).
@@ -140,6 +144,20 @@ export function ShellOverlays({
           }}
           onRemoveCategory={onRemoveCategory}
           exportBackup={exportBackup}
+          socialOpen={socialOpen}
+          onOpenSocial={
+            onOpenSocial
+              ? () => {
+                  onDrawerClose();
+                  if (typeof requestAnimationFrame === 'function') {
+                    selectHandoffRef.current = requestAnimationFrame(() => {
+                      selectHandoffRef.current = null;
+                      onOpenSocial();
+                    });
+                  } else onOpenSocial();
+                }
+              : undefined
+          }
         />
       </Dialog>
 

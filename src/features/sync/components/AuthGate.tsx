@@ -14,9 +14,11 @@ import { Skeleton } from '@/components/ui/Skeleton';
 
 type AuthGateProps = {
   children: ReactNode;
+  /** 앱 조립점이 로그인 직전에만 실행하는 선택적 초대 보관 경계. */
+  beforeLogin?: (withoutInvite?: boolean) => boolean;
 };
 
-export function AuthGate({ children }: AuthGateProps) {
+export function AuthGate({ children, beforeLogin }: AuthGateProps) {
   const phase = useSyncStore((state) => state.phase);
   const bootstrap = useSyncStore((state) => state.bootstrap);
 
@@ -34,7 +36,7 @@ export function AuthGate({ children }: AuthGateProps) {
   }
 
   if (phase === 'login') {
-    return <LoginScreen />;
+    return <LoginScreen beforeLogin={beforeLogin} />;
   }
 
   // phase === 'ready' — 표식이 있으면 오프라인이라도 즉시 통과한다(R6).

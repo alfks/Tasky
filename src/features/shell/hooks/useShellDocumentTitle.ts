@@ -32,8 +32,9 @@ function timerOwnsTitle(state: TimerState): boolean {
 export function useShellDocumentTitle(
   date: DateKey,
   counts: { done: number; total: number },
+  socialOpen = false,
 ): string {
-  const title = shellDocumentTitle(date, counts);
+  const title = socialOpen ? '친구 · Tasky' : shellDocumentTitle(date, counts);
 
   useEffect(() => {
     const apply = (state: TimerState): void => {

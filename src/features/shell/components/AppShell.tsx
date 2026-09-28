@@ -26,6 +26,7 @@ import { INSIGHT_PANEL_ID, ShellInsights } from '@/features/shell/components/She
 import { ShellMain } from '@/features/shell/components/ShellMain';
 import { ShellOverlays } from '@/features/shell/components/ShellOverlays';
 import { ShellSidebar } from '@/features/shell/components/ShellSidebar';
+import { ShellSocialFrame } from '@/features/shell/components/ShellSocialFrame';
 import { SkipLink } from '@/features/shell/components/SkipLink';
 import { StorageFailureCard } from '@/features/shell/components/StorageFailureCard';
 import { useCategoriesWithHistory } from '@/features/shell/hooks/useCategoriesWithHistory';
@@ -44,9 +45,12 @@ import { SHELL_MAIN_ID } from '@/features/shell/lib/main-id';
 import { APP_NAME } from '@/features/shell/lib/title';
 import { useShellStorageStore } from '@/features/shell/store/shell-storage-store';
 import { useShellToastStore } from '@/features/shell/store/shell-toast-store';
+import { useSocialShell } from '@/features/social';
 import { useCompletion } from '@/features/stats';
 import { useThemeSync } from '@/features/theme';
 import { useTodoStore } from '@/features/todo';
+
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 function ShellBody() {
   // 두 패널의 "지금 컬럼인가 / 어떻게 열고 접는가" 와 접을 때의 포커스 인계는 한 훅에 모여 있다.
@@ -114,6 +118,30 @@ function ShellBody() {
   // 한 번에 바뀌었으므로). 닫히기 **직전** 값을 여기 로컬 ref 에 스냅샷해 둔다 — 셸 컴포넌트 하나가
   // 앱 생애주기 내내 사는 지역 변수라 스토어처럼 전역에 남거나 `getState()` 로 다시 노출되지 않는다.
   const reportsOpenerRef = useRef<HTMLElement | null>(null);
+  const social = useSocialShell(SHELL_MAIN_ID, reportsOpen);
+  const socialOpen = social.open;
+  const {
+    openSocial: activateSocial,
+    dirty: socialDirty,
+    requestClose: requestSocialClose,
+    forceClose: forceCloseSocial,
+  } = social;
+  const reportAfterDiscard = useRef(false);
+  const mainScrollRef = useRef(0);
+  const dayScrollRef = useRef(0);
+
+  const openSocial = useCallback(() => {
+    activateSocial(() => useReportsStore.getState().closeReports());
+  }, [activateSocial]);
+  useEffect(() => {
+    if (reportsOpen && socialOpen) {
+      if (socialDirty) {
+        reportAfterDiscard.current = true;
+        useReportsStore.getState().closeReports();
+        requestSocialClose();
+      } else forceCloseSocial();
+    }
+  }, [reportsOpen, socialOpen, socialDirty, requestSocialClose, forceCloseSocial]);
   useEffect(() => {
     if (reportsOpen) reportsOpenerRef.current = reportsOpener;
   }, [reportsOpen, reportsOpener]);
@@ -121,16 +149,19 @@ function ShellBody() {
     // 방금 닫혔다 — 열었던 요소로, 사라졌으면 본문 랜드마크로(`Dialog` 의 `restoreFocus` 와 같은
     // 규약: 열 때 잡아 둔 요소가 살아 있으면 그리로, 없으면 대체 랜드마크로. `ShellMain` 은 통째로
     // 새로 마운트되므로 그 안의 옛 opener 는 거의 항상 끊겨 있고, 그때는 `#shell-main` 으로 간다).
-    if (wasReportsOpen.current && !reportsOpen) {
+    if (wasReportsOpen.current && !reportsOpen && !socialOpen) {
       const opener = reportsOpenerRef.current;
-      if (opener !== null && opener.isConnected) opener.focus();
-      else document.getElementById(SHELL_MAIN_ID)?.focus();
+      if (opener !== null && opener.isConnected) opener.focus({ preventScroll: true });
+      else document.getElementById(SHELL_MAIN_ID)?.focus({ preventScroll: true });
     }
     wasReportsOpen.current = reportsOpen;
-  }, [reportsOpen]);
+  }, [reportsOpen, socialOpen]);
 
-  useShellDocumentTitle(date, summary);
-  useShellShortcuts({ toggleSidebar: panels.toggleSidebar });
+  useShellDocumentTitle(date, summary, socialOpen);
+  useShellShortcuts({
+    toggleSidebar: panels.toggleSidebar,
+    personalActive: !socialOpen && !reportsOpen,
+  });
   const handleDropTodo = useTodoDropToDate(date);
   const focusCategory = useCategoryFocus(categories);
   const removalFocus = useRemovalReturnFocus();
@@ -188,7 +219,6 @@ function ShellBody() {
       onDropTodo={handleDropTodo}
     />
   );
-
   return (
     // `min-w` 는 §3 R11 의 최소 폭이다. 400px 이던 시절에는 **실기기 대부분에서 가로 스크롤이
     // 생겼다** — 휴대폰의 CSS 폭은 360(안드로이드 다수)·375(iPhone SE·mini)·390(iPhone 12~16)
@@ -212,7 +242,7 @@ function ShellBody() {
         `reportsOpen` 을 빼고 좁히면(리뷰 Major) 통계를 연 순간 문서에 `h1` 이 0개가 된다 —
         `AppShell.test.tsx` 가 그 상태를 고정한다.
       */}
-      {sidebarIsColumn || (failureCard === null && !reportsOpen) ? null : (
+      {socialOpen || sidebarIsColumn || (failureCard === null && !reportsOpen) ? null : (
         <h1 className="sr-only">{APP_NAME}</h1>
       )}
 
@@ -228,12 +258,27 @@ function ShellBody() {
               onSelectCategory={focusCategory}
               onRemoveCategory={requestRemove}
               exportBackup={exportBackup}
+              onOpenSocial={openSocial}
+              socialOpen={socialOpen}
+              appTitleHeading={!socialOpen}
             />
           </div>
         ) : null}
 
         {reportsOpen ? (
           <ReportsScreen />
+        ) : socialOpen ? (
+          <ShellSocialFrame
+            screen={social.component}
+            headingRef={social.headingRef}
+            loadError={social.loadError}
+            onRetryLoad={social.retryLoad}
+            onBack={social.requestClose}
+            invite={social.invite}
+            onClearInvite={social.clearInvite}
+            initialDate={date}
+            onDraftDirtyChange={social.setDirty}
+          />
         ) : threeRegion ? (
           // calendar-layout.md §1-B R1(b)·R2·R4: 달력 컬럼(셸 상단 줄 + 날짜 스트립 + 그 아래
           // 인사이트, 인사이트만 스크롤) + 선택 날짜 패널(`main`, R1(c)) 둘로 나뉜다. `h1` 은 여기서
@@ -275,6 +320,7 @@ function ShellBody() {
               failureCard={failureCard}
               onCreateCategory={handleCreateCategory}
               onStartTimer={startTimerForTodo}
+              scrollPositionRef={dayScrollRef}
             />
           </div>
         ) : (
@@ -290,6 +336,7 @@ function ShellBody() {
             onCreateCategory={handleCreateCategory}
             onStartTimer={startTimerForTodo}
             header={header}
+            scrollPositionRef={mainScrollRef}
           />
         )}
       </div>
@@ -312,6 +359,26 @@ function ShellBody() {
         removalReturnFocus={removalFocus.returnFocus}
         onSelectCategory={focusCategory}
         exportBackup={exportBackup}
+        onOpenSocial={openSocial}
+        socialOpen={socialOpen}
+      />
+      <ConfirmDialog
+        open={social.discardPrompt}
+        title="작성 중인 공유를 버릴까요?"
+        description="보내지 않은 문장은 사라져요."
+        confirmLabel="버리기"
+        cancelLabel="계속 작성"
+        onConfirm={() => {
+          social.confirmDiscard();
+          if (reportAfterDiscard.current) {
+            reportAfterDiscard.current = false;
+            useReportsStore.getState().openReports();
+          }
+        }}
+        onCancel={() => {
+          social.cancelDiscard();
+          reportAfterDiscard.current = false;
+        }}
       />
     </div>
   );
