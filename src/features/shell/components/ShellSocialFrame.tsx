@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/Button';
 
 type SocialContentProps = {
   invite: InviteBootstrap | null;
-  onClearInvite: () => void;
+  onClearInvite: (expected: InviteBootstrap) => boolean;
   initialDate: DateKey;
   onDraftDirtyChange: (dirty: boolean) => void;
 };

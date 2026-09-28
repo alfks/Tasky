@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/Button';
 
 type SocialFriendsPanelProps = {
   invite: InviteBootstrap | null;
-  onClearInvite: () => void;
+  onClearInvite: (expected: InviteBootstrap) => boolean;
   onGoFeed: () => void;
   refreshNonce: number;
   enabled: boolean;

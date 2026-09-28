@@ -26,6 +26,9 @@ function response<T>(data: T): SocialResponse<T> {
 function repository() {
   const sendRequest = vi.fn(async () => response({ peerId: PEER, pairVersion: 1 }));
   const renameProfile = vi.fn(async () => response({ id: 'c'.repeat(32), version: 2 }));
+  const previewInvite = vi.fn(async (_input: { token: string }) =>
+    response({ nickname: '초대자', expiresAt: RESPONSE_TIME }),
+  );
   const api = {
     me: vi.fn(async () =>
       response({ mode: 'enabled', profile: { id: 'c'.repeat(32), nickname: '나', version: 1 } }),
@@ -38,6 +41,7 @@ function repository() {
     blocks: vi.fn(async () => response({ items: [], nextCursor: null })),
     sendRequest,
     renameProfile,
+    previewInvite,
   };
   setSocialRepository(api as unknown as SocialRepository);
   return api;
@@ -170,5 +174,65 @@ describe('친구 관계 hook의 명시 행동과 세대', () => {
     expect(api.friends).toHaveBeenLastCalledWith({ cursor: 'next' });
     expect(result.current.data.friends).toEqual([first, second]);
     expect(result.current.data.next.friends).toBeNull();
+  });
+
+  it('A와 B 초대 미리보기 응답이 역전되어도 최신 B만 표시한다', async () => {
+    const api = repository();
+    const finish = new Map<
+      string,
+      (value: SocialResponse<{ nickname: string; expiresAt: number }>) => void
+    >();
+    api.previewInvite.mockImplementation(
+      ({ token }) =>
+        new Promise((resolve) => {
+          finish.set(token, resolve);
+        }),
+    );
+    const { result } = renderHook(() => useSocialRelations(true));
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+
+    let first: Promise<void> = Promise.resolve();
+    let second: Promise<void> = Promise.resolve();
+    act(() => {
+      first = result.current.previewInvite(TOKEN);
+      second = result.current.previewInvite('b'.repeat(64));
+    });
+    await act(async () => {
+      finish.get('b'.repeat(64))?.(response({ nickname: 'B', expiresAt: RESPONSE_TIME }));
+      await second;
+    });
+    await act(async () => {
+      finish.get(TOKEN)?.(response({ nickname: 'A', expiresAt: RESPONSE_TIME }));
+      await first;
+    });
+    expect(result.current.previewToken).toBe('b'.repeat(64));
+    expect(result.current.preview?.nickname).toBe('B');
+  });
+
+  it('초대를 닫으면 늦은 미리보기 오류도 현재 화면에 남기지 않는다', async () => {
+    const api = repository();
+    let reject: (error: Error) => void = () => {
+      throw new Error('미설정');
+    };
+    api.previewInvite.mockImplementation(
+      () =>
+        new Promise((_, fail) => {
+          reject = fail;
+        }),
+    );
+    const { result } = renderHook(() => useSocialRelations(true));
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    let pending: Promise<void> = Promise.resolve();
+    act(() => {
+      pending = result.current.previewInvite(TOKEN);
+      void result.current.previewInvite(null);
+    });
+    await act(async () => {
+      reject(new Error('old preview'));
+      await pending;
+    });
+    expect(result.current.previewToken).toBeNull();
+    expect(result.current.previewPhase).toBe('idle');
+    expect(result.current.error).toBeNull();
   });
 });

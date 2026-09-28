@@ -29,7 +29,9 @@ export function useSocialRelations(enabled: boolean) {
   const [busy, setBusy] = useState(false);
   const [createdInvite, setCreatedInvite] = useState<InviteCreated | null>(null);
   const [preview, setPreview] = useState<{ nickname: string; expiresAt: number } | null>(null);
+  const [previewToken, setPreviewToken] = useState<string | null>(null);
   const [previewPhase, setPreviewPhase] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const previewVersion = useRef(0);
   const generation = useRef(0);
   const busyRef = useRef(false);
   const { invalidateView, captureView } = useSocialViewLease();
@@ -46,7 +48,9 @@ export function useSocialRelations(enabled: boolean) {
         setBusy(false);
         setData(EMPTY_RELATIONS);
         setCreatedInvite(null);
+        previewVersion.current += 1;
         setPreview(null);
+        setPreviewToken(null);
         setPreviewPhase('idle');
         setPhase('idle');
         setError(null);
@@ -215,19 +219,23 @@ export function useSocialRelations(enabled: boolean) {
   };
 
   const previewInvite = useCallback(
-    async (token: string): Promise<void> => {
+    async (token: string | null): Promise<void> => {
+      const request = ++previewVersion.current;
       const current = generation.current;
       const allowed = captureView();
-      if (!allowed()) return;
       setPreview(null);
-      setPreviewPhase('loading');
+      setPreviewToken(token);
+      setPreviewPhase(token === null ? 'idle' : 'loading');
+      if (token === null || !allowed()) return;
       try {
         const response = await getSocialRepository().previewInvite({ token });
-        if (!allowed() || generation.current !== current) return;
+        if (!allowed() || generation.current !== current || previewVersion.current !== request)
+          return;
         setPreview(response.data);
         setPreviewPhase('ready');
       } catch {
-        if (!allowed() || generation.current !== current) return;
+        if (!allowed() || generation.current !== current || previewVersion.current !== request)
+          return;
         setPreviewPhase('error');
         setError('사용할 수 없는 초대예요. 새 초대를 부탁해 주세요.');
       }
@@ -296,6 +304,7 @@ export function useSocialRelations(enabled: boolean) {
     busy,
     createdInvite,
     preview,
+    previewToken,
     previewPhase,
     captureView,
     load,

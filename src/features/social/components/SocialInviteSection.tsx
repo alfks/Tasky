@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Button';
 type SocialInviteSectionProps = {
   relations: ReturnType<typeof useSocialRelations>;
   invite: InviteBootstrap | null;
-  onClearInvite: () => void;
+  onClearInvite: (expected: InviteBootstrap) => boolean;
 };
 
 function restoreInviteFocus(valid: () => boolean, id = 'social-invites-title'): void {
@@ -30,14 +30,20 @@ export function SocialInviteSection({
 }: SocialInviteSectionProps) {
   const [copyFailed, setCopyFailed] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const { data, busy, preview, previewPhase, createdInvite, previewInvite } = relations;
+  const { data, busy, preview, previewToken, previewPhase, createdInvite, previewInvite } =
+    relations;
   const profile = data.me?.profile;
+  const profileId = profile?.id;
   const mode = data.me?.mode;
+  const matchesPreview = invite?.kind === 'invite' && previewToken === invite.token;
+  const currentPreview = matchesPreview ? preview : null;
+  const currentPreviewPhase = matchesPreview ? previewPhase : 'loading';
 
   useEffect(() => {
-    if (profile == null || mode === 'off' || invite?.kind !== 'invite') return;
-    void previewInvite(invite.token);
-  }, [invite, mode, profile, previewInvite]);
+    void previewInvite(
+      profileId == null || mode === 'off' || invite?.kind !== 'invite' ? null : invite.token,
+    );
+  }, [invite, mode, profileId, previewInvite]);
 
   const visibleInvite = createdInvite && 'token' in createdInvite ? createdInvite : null;
   const shareLink = visibleInvite
@@ -63,7 +69,7 @@ export function SocialInviteSection({
           className="rounded-[var(--radius-xl)] border border-border p-[var(--space-4)]"
         >
           <p>사용할 수 없는 초대예요. 새 초대를 부탁해 주세요.</p>
-          <Button variant="ghost" onClick={onClearInvite}>
+          <Button variant="ghost" onClick={() => void onClearInvite(invite)}>
             초대 닫기
           </Button>
         </section>
@@ -77,22 +83,22 @@ export function SocialInviteSection({
             <p>별명을 만든 뒤 초대를 확인할 수 있어요.</p>
           ) : mode === 'off' ? (
             <p>지금은 초대를 확인할 수 없어요.</p>
-          ) : previewPhase === 'loading' ? (
+          ) : currentPreviewPhase === 'loading' ? (
             <p role="status">초대를 확인하는 중이에요.</p>
-          ) : preview ? (
+          ) : currentPreview ? (
             <>
               <p>
-                <strong>{preview.nickname}</strong>님의 초대예요. 친구 요청을 보내면 상대가 수락할
-                때 연결돼요.
+                <strong>{currentPreview.nickname}</strong>님의 초대예요. 친구 요청을 보내면 상대가
+                수락할 때 연결돼요.
               </p>
               <div className="mt-[var(--space-2)] flex gap-[var(--space-2)]">
                 <Button
                   disabled={busy || mode !== 'enabled'}
                   onClick={() => {
+                    const requested = invite;
                     const valid = relations.captureView();
                     void relations.request(invite.token).then((done) => {
-                      if (done && valid()) {
-                        onClearInvite();
+                      if (done && valid() && onClearInvite(requested)) {
                         setNotice('친구 요청을 보냈어요.');
                         restoreInviteFocus(valid, 'social-outgoing-title');
                       }
@@ -106,7 +112,7 @@ export function SocialInviteSection({
           ) : (
             <p role="alert">사용할 수 없는 초대예요. 새 초대를 부탁해 주세요.</p>
           )}
-          <Button variant="outline" onClick={onClearInvite}>
+          <Button variant="outline" onClick={() => void onClearInvite(invite)}>
             초대 닫기
           </Button>
         </section>

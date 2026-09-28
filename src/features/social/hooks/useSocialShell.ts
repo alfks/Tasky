@@ -34,6 +34,7 @@ export function useSocialShell(
   const wasOpen = useRef(false);
   const returnFocusPending = useRef(false);
   const pendingInviteRef = useRef<InviteBootstrap | null>(null);
+  const inviteRef = useRef<InviteBootstrap | null>(null);
 
   const openSocial = useCallback((closeReports: () => void) => {
     const opener = document.activeElement;
@@ -43,6 +44,7 @@ export function useSocialShell(
   }, []);
   const forceClose = useCallback(() => {
     pendingInviteRef.current = null;
+    inviteRef.current = null;
     setOpen(false);
     setInvite(null);
     dirtyRef.current = false;
@@ -54,14 +56,18 @@ export function useSocialShell(
     if (dirtyRef.current) setDiscardPrompt(true);
     else forceClose();
   }, [forceClose]);
-  const clearInvite = useCallback(() => {
+  const clearInvite = useCallback((expected: InviteBootstrap): boolean => {
+    if (inviteRef.current !== expected) return false;
+    inviteRef.current = null;
     setInvite(null);
     clearPendingInvite();
+    return true;
   }, []);
 
   const applyInvite = useCallback(
     (next: InviteBootstrap) => {
       closeReports();
+      inviteRef.current = next;
       setInvite(next);
       setOpen(true);
     },

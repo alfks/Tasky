@@ -84,4 +84,14 @@ describe('열린 앱의 초대 전달', () => {
     act(() => expect(result.current.confirmDiscard()).toBe(false));
     expect(result.current.invite).toBeNull();
   });
+
+  it('이전 화면이 붙잡은 초대만 닫으려 하면 현재 새 초대를 보존한다', () => {
+    const { result } = renderHook(() => useSocialShell('shell-main', false, closeReports, ready));
+    act(() => receive(TOKEN_A));
+    const oldInvite = result.current.invite;
+    if (oldInvite === null) throw new Error('A invite missing');
+    act(() => receive(TOKEN_B));
+    act(() => expect(result.current.clearInvite(oldInvite)).toBe(false));
+    expect(result.current.invite).toEqual({ kind: 'invite', token: TOKEN_B });
+  });
 });

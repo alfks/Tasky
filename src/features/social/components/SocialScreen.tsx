@@ -23,7 +23,7 @@ type TabId = (typeof TABS)[number]['id'];
 
 export type SocialScreenProps = {
   invite: InviteBootstrap | null;
-  onClearInvite: () => void;
+  onClearInvite: (expected: InviteBootstrap) => boolean;
   initialDate: DateKey;
   onDraftDirtyChange: (dirty: boolean) => void;
 };
