@@ -47,6 +47,7 @@ import { useShellStorageStore } from '@/features/shell/store/shell-storage-store
 import { useShellToastStore } from '@/features/shell/store/shell-toast-store';
 import { useSocialShell } from '@/features/social';
 import { useCompletion } from '@/features/stats';
+import { useSyncStore } from '@/features/sync';
 import { useThemeSync } from '@/features/theme';
 import { useTodoStore } from '@/features/todo';
 
@@ -118,7 +119,14 @@ function ShellBody() {
   // 한 번에 바뀌었으므로). 닫히기 **직전** 값을 여기 로컬 ref 에 스냅샷해 둔다 — 셸 컴포넌트 하나가
   // 앱 생애주기 내내 사는 지역 변수라 스토어처럼 전역에 남거나 `getState()` 로 다시 노출되지 않는다.
   const reportsOpenerRef = useRef<HTMLElement | null>(null);
-  const social = useSocialShell(SHELL_MAIN_ID, reportsOpen);
+  const closeReportsForInvite = useCallback(() => useReportsStore.getState().closeReports(), []);
+  const authReadyForInvite = useSyncStore((state) => state.phase === 'ready');
+  const social = useSocialShell(
+    SHELL_MAIN_ID,
+    reportsOpen,
+    closeReportsForInvite,
+    authReadyForInvite,
+  );
   const socialOpen = social.open;
   const {
     openSocial: activateSocial,
@@ -369,8 +377,8 @@ function ShellBody() {
         confirmLabel="버리기"
         cancelLabel="계속 작성"
         onConfirm={() => {
-          social.confirmDiscard();
-          if (reportAfterDiscard.current) {
+          if (social.confirmDiscard()) reportAfterDiscard.current = false;
+          else if (reportAfterDiscard.current) {
             reportAfterDiscard.current = false;
             useReportsStore.getState().openReports();
           }

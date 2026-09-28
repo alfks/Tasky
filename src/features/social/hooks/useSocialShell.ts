@@ -5,23 +5,35 @@ import type { SocialScreenProps } from '@/features/social/components/SocialScree
 import {
   clearPendingInvite,
   consumeInviteAfterReady,
+  onIncomingInvite,
 } from '@/features/social/lib/invite-bootstrap';
 import type { InviteBootstrap } from '@/features/social/lib/invite-bootstrap';
 import { onSocialInvalidation } from '@/features/social/session-lifecycle';
 
 /** 셸이 사용하는 작은 화면 경계. 본문·스토어·HTTP 청크는 첫 활성화까지 import하지 않는다. */
-export function useSocialShell(mainId: string, reportsOpen: boolean) {
+export function useSocialShell(
+  mainId: string,
+  reportsOpen: boolean,
+  closeReports: () => void,
+  authReady: boolean,
+) {
   const [open, setOpen] = useState(false);
   const [invite, setInvite] = useState<InviteBootstrap | null>(null);
   const [component, setComponent] = useState<ComponentType<SocialScreenProps> | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [dirty, setDirty] = useState(false);
+  const dirtyRef = useRef(false);
+  const updateDirty = useCallback((value: boolean) => {
+    dirtyRef.current = value;
+    setDirty(value);
+  }, []);
   const [discardPrompt, setDiscardPrompt] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const wasOpen = useRef(false);
   const returnFocusPending = useRef(false);
+  const pendingInviteRef = useRef<InviteBootstrap | null>(null);
 
   const openSocial = useCallback((closeReports: () => void) => {
     const opener = document.activeElement;
@@ -30,27 +42,48 @@ export function useSocialShell(mainId: string, reportsOpen: boolean) {
     setOpen(true);
   }, []);
   const forceClose = useCallback(() => {
+    pendingInviteRef.current = null;
     setOpen(false);
     setInvite(null);
+    dirtyRef.current = false;
     setDirty(false);
+    setDiscardPrompt(false);
     clearPendingInvite();
   }, []);
   const requestClose = useCallback(() => {
-    if (dirty) setDiscardPrompt(true);
+    if (dirtyRef.current) setDiscardPrompt(true);
     else forceClose();
-  }, [dirty, forceClose]);
+  }, [forceClose]);
   const clearInvite = useCallback(() => {
     setInvite(null);
     clearPendingInvite();
   }, []);
 
-  useLayoutEffect(() => {
-    const next = consumeInviteAfterReady();
-    if (next !== null) {
+  const applyInvite = useCallback(
+    (next: InviteBootstrap) => {
+      closeReports();
       setInvite(next);
       setOpen(true);
+    },
+    [closeReports],
+  );
+
+  useLayoutEffect(() => {
+    const unsubscribe = onIncomingInvite(() => {
+      if (!authReady) return;
+      const next = consumeInviteAfterReady();
+      if (next === null) return;
+      if (dirtyRef.current) {
+        pendingInviteRef.current = next;
+        setDiscardPrompt(true);
+      } else applyInvite(next);
+    });
+    if (authReady) {
+      const next = consumeInviteAfterReady();
+      if (next !== null) applyInvite(next);
     }
-  }, []);
+    return unsubscribe;
+  }, [applyInvite, authReady]);
   useEffect(
     () =>
       onSocialInvalidation((reason) => {
@@ -117,12 +150,27 @@ export function useSocialShell(mainId: string, reportsOpen: boolean) {
     forceClose,
     requestClose,
     clearInvite,
-    setDirty,
+    setDirty: updateDirty,
     retryLoad: () => setLoadAttempt((value) => value + 1),
-    confirmDiscard: () => {
+    confirmDiscard: (): boolean => {
       setDiscardPrompt(false);
+      const next = pendingInviteRef.current;
+      if (next !== null) {
+        pendingInviteRef.current = null;
+        dirtyRef.current = false;
+        setDirty(false);
+        applyInvite(next);
+        return true;
+      }
       forceClose();
+      return false;
     },
-    cancelDiscard: () => setDiscardPrompt(false),
+    cancelDiscard: () => {
+      setDiscardPrompt(false);
+      if (pendingInviteRef.current !== null) {
+        pendingInviteRef.current = null;
+        clearPendingInvite();
+      }
+    },
   };
 }

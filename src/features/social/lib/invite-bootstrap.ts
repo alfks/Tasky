@@ -163,4 +163,15 @@ export function clearPendingInvite(): boolean {
   return cleared;
 }
 
+/** head의 hashchange scrub가 원문 없이 알린 뒤, 현재 화면만 새 초대를 소비한다. */
+export function onIncomingInvite(callback: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const receive = () => {
+    captureEarlyInvite();
+    callback();
+  };
+  window.addEventListener('tasky:social-invite', receive);
+  return () => window.removeEventListener('tasky:social-invite', receive);
+}
+
 captureEarlyInvite();

@@ -9,6 +9,7 @@ import { SocialFeedPanel } from '@/features/social/components/SocialFeedPanel';
 import { SocialFriendsPanel } from '@/features/social/components/SocialFriendsPanel';
 import { SocialMyPostsPanel } from '@/features/social/components/SocialMyPostsPanel';
 import type { InviteBootstrap } from '@/features/social/lib/invite-bootstrap';
+import { captureSocialDispatch } from '@/features/social/session-lifecycle';
 import { useSocialStore } from '@/features/social/store/social-store';
 
 import { Button } from '@/components/ui/Button';
@@ -51,6 +52,19 @@ export function SocialScreen({
     void open();
     return () => close();
   }, [open, close]);
+
+  useEffect(() => {
+    if (invite === null) return;
+    setTab('friends');
+    setFocusedTab('friends');
+    const valid = captureSocialDispatch();
+    const handle = requestAnimationFrame(() => {
+      const target = tabsRef.current.friends;
+      if (valid() && target?.isConnected && target.getAttribute('aria-selected') === 'true')
+        target.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [invite]);
 
   const moveTab = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     const destination = TABS[index]?.id;

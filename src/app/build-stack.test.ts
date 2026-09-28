@@ -118,7 +118,9 @@ describe('index.html: SPA 셸 배선 — 지워도 빌드가 초록인 줄들', 
   });
 
   it('초대 fragment를 테마 뒤·앱과 분석 앞에서 먼저 지운다', () => {
-    const inviteStart = html.indexOf('<script>(function(){var h=location.hash;');
+    const inviteStart = html.indexOf(
+      '<script>(function(){function capture(signal){var h=location.hash;',
+    );
     const inviteEnd = html.indexOf('</script>', inviteStart);
     expect(inviteStart).toBeGreaterThan(html.indexOf('tasky.theme.v1'));
     expect(inviteStart).toBeLessThan(html.indexOf('src="/src/app/main.tsx"'));
@@ -147,7 +149,7 @@ describe('index.html: SPA 셸 배선 — 지워도 빌드가 초록인 줄들', 
   });
 
   it('잘못된 초대 원문도 제거하되 메모리에 실어 보내지 않는다', () => {
-    const start = html.indexOf('<script>(function(){var h=location.hash;');
+    const start = html.indexOf('<script>(function(){function capture(signal){var h=location.hash;');
     const end = html.indexOf('</script>', start);
     const location = { hash: `#invite=${'A'.repeat(64)}`, pathname: '/', search: '' };
     const carrier: { __taskyIncomingInvite?: unknown; __taskyInvalidInvite?: boolean } = {};
@@ -166,7 +168,7 @@ describe('index.html: SPA 셸 배선 — 지워도 빌드가 초록인 줄들', 
   });
 
   it('비정규 초대 키·중복 값을 지우고 초대와 무관한 fragment는 보존한다', () => {
-    const start = html.indexOf('<script>(function(){var h=location.hash;');
+    const start = html.indexOf('<script>(function(){function capture(signal){var h=location.hash;');
     const end = html.indexOf('</script>', start);
     const source = html.slice(start + '<script>'.length, end);
     for (const hash of [
@@ -198,6 +200,51 @@ describe('index.html: SPA 셸 배선 — 지워도 빌드가 초록인 줄들', 
     runInNewContext(source, { location, history: { state: null, replaceState }, window: {}, Date });
     expect(replaceState).not.toHaveBeenCalled();
     expect(location.hash).toBe('#calendar');
+  });
+
+  it('같은 문서의 hashchange도 즉시 지우고 원문 없는 신호를 한 번 보낸다', () => {
+    const start = html.indexOf('<script>(function(){function capture(signal){var h=location.hash;');
+    const end = html.indexOf('</script>', start);
+    const location = { hash: '', pathname: '/', search: '' };
+    const listeners = new Map<string, () => void>();
+    const dispatched: string[] = [];
+    const carrier: {
+      __taskyIncomingInvite?: { token: string };
+      __taskyInvalidInvite?: boolean;
+      addEventListener: (name: string, listener: () => void) => void;
+      dispatchEvent: (event: { type: string }) => void;
+    } = {
+      addEventListener: (name, listener) => listeners.set(name, listener),
+      dispatchEvent: (event) => dispatched.push(event.type),
+    };
+    const replaceState = vi.fn(() => {
+      location.hash = '';
+    });
+    runInNewContext(html.slice(start + '<script>'.length, end), {
+      location,
+      history: { state: null, replaceState },
+      window: carrier,
+      Date,
+      Event: class {
+        constructor(readonly type: string) {}
+      },
+    });
+    expect(listeners.size).toBe(1);
+    expect(replaceState).not.toHaveBeenCalled();
+
+    location.hash = `#invite=${'a'.repeat(64)}`;
+    listeners.get('hashchange')?.();
+    expect(location.hash).toBe('');
+    expect(carrier.__taskyIncomingInvite?.token).toBe('a'.repeat(64));
+    expect(dispatched).toEqual(['tasky:social-invite']);
+    listeners.get('hashchange')?.(); // replaceState가 다시 알리더라도 중복 소비하지 않는다.
+    expect(dispatched).toHaveLength(1);
+
+    location.hash = '#INVITE=bad';
+    listeners.get('hashchange')?.();
+    expect(carrier.__taskyIncomingInvite).toBeUndefined();
+    expect(carrier.__taskyInvalidInvite).toBe(true);
+    expect(dispatched).toHaveLength(2);
   });
 
   it('초대 페이지의 referrer 정책을 응답 헤더에 둔다', () => {
