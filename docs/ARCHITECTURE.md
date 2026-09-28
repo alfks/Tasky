@@ -95,7 +95,7 @@ Tasky/
 ├── tests/feel/         → tests/feel/AGENTS.md         사용감 계측 도구(러너 없음 — docs/FEEL_REPORT.md)
 ├── worker/             → worker/AGENTS.md            auth/sync/account/db + social/ D1 투영·scheduled GC 진입
 │   ├── db/migrations/  → worker/db/migrations/AGENTS.md  0001 개인·0002 소셜
-│   └── social/         → worker/social/AGENTS.md     actor·receipt/CAS·한도/GC·삭제·피드/공유/응원 포함 22 HTTP 경로
+│   └── social/         → worker/social/AGENTS.md     actor·receipt/CAS·한도/GC·삭제·피드/공유/응원·본인 응원 관리 포함 23 HTTP 경로
 └── src/                → src/AGENTS.md
     ├── app/            → src/app/AGENTS.md            SPA 진입점(main.tsx)·providers·단일 라우트 화면
     ├── components/     → src/components/AGENTS.md     ui/ 프리미티브(Button, Checkbox, Popover…)
@@ -128,7 +128,7 @@ Tasky/
     ├── infra/          → src/infra/AGENTS.md
     │   ├── indexeddb/        db.ts(Dexie 스키마·버전) · query.ts(조회 liveAll/liveOne/liveBy/liveBetween/liveOrderBy · 툼스톤만 deletedByIds · 쓰기 put · DatasetRepository 전용 allRows/clear/bulkPut/store.transaction · 스키마 열기 store.open · 묶음 Store/tables/createStore/storeOn) · *-indexeddb-repository.ts · repositories.ts(조립)
     │   ├── sync/             http-transport.ts(Worker 왕복). 순수 규칙은 domain/sync/, 계약은 repositories/sync-*
-    │   └── social/           22메서드 typed HTTP 어댑터·응답 디코더(동적 import, 기본 off)
+    │   └── social/           23메서드 typed HTTP 어댑터·응답 디코더(동적 import, 기본 off)
     ├── lib/            → src/lib/AGENTS.md            cn.ts, date.ts(nowIso), id.ts(newId), a11y.ts, ime.ts, korean.ts, focus-fallback.ts, drag-order.ts, write-signal.ts
     ├── styles/         → src/styles/AGENTS.md         tokens.css, globals.css (.css 만)
     └── test/           → src/test/AGENTS.md           setup.ts, fixtures/
