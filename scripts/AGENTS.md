@@ -30,11 +30,14 @@
 | `bundle-baseline.mjs`|`check-dist.mjs`의 진입 정적 의존 폐포 탐색과 번들 델타 리포트 **로직**(기준값 파일 읽기/쓰기·PR/브랜치 인자 파싱·delta 계산·WARN 판정).`check-dist.mjs` 에 그대로 두면 300줄 상한(`eslint max-lines`)을 넘어서 옮겼다 — 이 파일에서만 쓴다 | `check-dist.mjs`|
 |`bundle-baseline.json`|`check-dist.mjs`(가 부르는 `bundle-baseline.mjs`) 의 번들 델타 리포트가 비교하는 **기준값 저장 파일**(`{entryClosureGzip, networkGzip, prNumber, branch, recordedAt, note}`, git 커밋 — `prNumber`는 CLAUDE.md 머리 방침대로 커밋 해시가 아니라 PR 번호로 적는다, 머지 전이라 모르면 `null`). 자동 갱신되지 않는다 — 새 값을 기준으로 인정할 때만 `node scripts/check-dist.mjs --update-baseline [--pr=<n>]`을 사람이 명시적으로 돌려 덮어쓴다(자동이면 delta 가 항상 0 이 되어 무의미해진다). **머지 직후 main 에서 이 명령을 한 번 돌려 PR 번호까지 채우는 것은 오케스트레이터의 몫이다** — 구현 에이전트의 워크트리는 머지 전이라 최종 PR 번호를 모른다 |`check-dist.mjs`|
 |`make-icons.mjs` | **아이콘 생성**(`node scripts/make-icons.mjs`). `assets/seal-sheet.png`(캐릭터 확정본)에서 플러드 필 + 연결 성분으로 가장 큰 한 마리를 오려 내 배경 위에 얹고 `public/icon-{192,512,maskable-512,apple-touch-180}.png` 넷을 만든다. **그림을 그리지 않는다**(`docs/specs/pwa.md`R2-a). 파일마다 계약이 다르다: 192·512 는 모서리 투명, maskable 은 꽉 찬 사각 + 더 작게, apple 은 꽉 찬 사각 + 알파 없음(색 타입 2, R1-a). 이미지 라이브러리가 없어 PNG 디코드·인코드·면적 평균 축소를 직접 한다 | 아이콘 변경 시 수동 |
-|`arch-layers.mjs` | 레이어·허용 목록·`src/` 직속 파일·확장자 + **아키텍처 규칙 목록(`ARCH_RULES`)**의 단일 소스(데이터만, 로직 없음). `eslint.config.mjs`·`eslint.arch.config.mjs`·`check-arch.sh`가 import | `pnpm lint`, `check-arch.sh` |
+|`arch-layers.mjs` | 레이어·허용 목록·`src/` 직속 파일·확장자 + **아키텍처 규칙 목록(`ARCH_RULES`)**의 단일 소스(데이터만, 로직 없음). `eslint.config.mjs`·`eslint.arch.config.mjs`·`check-arch.sh`가 import | `pnpm lint`, `check-arch.sh`|
+|`social-load.mjs`| Phase 3 합성 피드 부하 계획(기본)·fixture 생성·명시적 loopback HTTP 측정 CLI. 원격 URL과 리다이렉트 거절, 요청·응답 상한. 실행 절차는`docs/phase3-social-operations.md`| P3-07 로컬 검증 수동 |
+|`social-load-fixture.mjs`| runId로 격리된 합성 계정·친구·공유 SQL, allowlist, 정확한 정리 SQL·manifest 작성 |`social-load.mjs --prepare`|
+|`social-load-report.mjs`| 비밀 없는 응답 분포·실패·p50/p95/p99 요약 |`social-load.mjs --run` |
 
 ## 규칙
 
-1. POSIX sh 호환 bash(`#!/usr/bin/env bash`, `set -euo pipefail`). macOS/Linux 둘 다 동작(GNU 전용 옵션 금지: `grep -P`, `sed -i ''` 차이 주의). `*.mjs`는 데이터 모듈만(로직은 셸).
+1. POSIX sh 호환 bash(`#!/usr/bin/env bash`, `set -euo pipefail`). macOS/Linux 둘 다 동작(GNU 전용 옵션 금지: `grep -P`, `sed -i ''` 차이 주의). `*.mjs`는 기존 빌드 데이터 모듈과 명시적 Node CLI(`check-dist.mjs`, `social-load.mjs` 등)에만 사용한다. CLI의 복잡한 로직을 셸 문자열 처리로 중복 구현하지 않는다.
 2. 성공 시 조용히(마지막 한 줄 OK), 실패 시 **원인 + 고치는 명령**을 출력하고 exit 1.
 3. 금지어 패턴은 절대 리터럴로 쓰지 않는다. 조각 변수 조립 방식 유지.
 4. 외부 도구 의존 최소화(`git`, `grep`, `awk`, `sed`만). `jq`, `yq`, `flock` 필요하면 없을 때의 대체 경로 제공(`wt.sh`의 BOARD 락은 `flock` 없으면 `mkdir` 스핀락으로 대체).
