@@ -84,7 +84,8 @@ test('다른 카테고리 그룹에 떨어뜨리면 그 카테고리로 옮겨�
 
   await expect(group(page, 운동).getByRole('checkbox', { name: 할일 })).toBeVisible();
   await expect(group(page, 공부).getByRole('checkbox')).toHaveCount(0);
-  await expect(group(page, 공부)).toContainText('아직 할 일이 없어요');
+  await expect(group(page, 공부).getByRole('button', { name: '+ 할 일 추가' })).toBeVisible();
+  await expect(group(page, 공부).getByRole('listitem')).toHaveCount(1);
 
   // 저장까지 갔는가. 낙관적 갱신이 아니어도 화면만 보면 "옮겨 보이는데 저장은 안 된" 상태를 놓친다.
   await page.reload();

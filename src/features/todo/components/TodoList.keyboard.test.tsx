@@ -250,7 +250,7 @@ describe('삭제 뒤 포커스 복귀 (§5·app-shell R14)', () => {
     });
   });
 
-  it('③ 마지막 한 건이면 목록 컨테이너로 가고 빈 상태 문구가 보인다', async () => {
+  it('③ 마지막 한 건이면 목록 컨테이너로 가고, 그룹은 추가 행만 남긴 채 빈 문구를 그리지 않는다', async () => {
     const user = userEvent.setup();
     render(
       <>
@@ -270,8 +270,12 @@ describe('삭제 뒤 포커스 복귀 (§5·app-shell R14)', () => {
       });
     }
 
-    expect(screen.getByRole('list')).toHaveFocus();
-    expect(screen.getByText('아직 할 일이 없어요')).toBeInTheDocument();
+    const list = screen.getByRole('list', { name: '공부 할 일' });
+    expect(list).toHaveFocus();
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+    // 그룹에 남는 것은 추가 행 하나뿐이다.
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(list).getByRole('button', { name: '+ 할 일 추가' })).toBeInTheDocument();
   });
 
   it('어느 경로에서도 포커스가 body 로 떨어지지 않는다', async () => {
