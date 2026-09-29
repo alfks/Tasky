@@ -5,7 +5,7 @@
 //
 // 2영역(`wide`·`mid`, ≥680)에서 이 컴포넌트가 `main` 랜드마크를 맡는다(R1) — 건너뛰기 링크·포커스
 // 복귀·e2e 의 `main` 조회가 가리키는 "할 일이 있는 곳"이 이제 여기다. <680(`compact`)에서는
-// `ShellMain` 이 대신 `main` 을 맡는데, 목록·다이어리·빈 상태 렌더링(`DayPanelBody`)은 **여기서만** 정의해
+// `ShellMain` 이 대신 `main` 을 맡는데, 목록·빈 상태 렌더링(`DayPanelBody`)은 **여기서만** 정의해
 // `ShellMain` 이 가져다 쓴다 — 본문 로직이 두 벌로 갈리면 한쪽만 고쳐지는 순간 다른 쪽에서
 // 조용히 되살아난다(§2-C 문구·스켈레톤 배선이 실제로 그렇게 갈렸던 전례).
 import type { ReactNode } from 'react';
@@ -15,7 +15,6 @@ import type { DateKey } from '@/domain/date/date-key';
 import type { Todo } from '@/domain/todo/todo';
 
 import { useDateStripStore } from '@/features/date-strip';
-import { DiaryCard } from '@/features/diary';
 import { useDelayedFlag } from '@/features/shell/hooks/useDelayedFlag';
 import { SHELL_MAIN_ID } from '@/features/shell/lib/main-id';
 import { titleDateLabel } from '@/features/shell/lib/title';
@@ -84,9 +83,10 @@ export type DayPanelBodyProps = {
 };
 
 /**
- * 목록·다이어리·빈 상태 (§2-C) — **`ShellDayPanel`(≥680)과 `ShellMain`(<680)이 함께 쓰는 본문**.
+ * 목록·빈 상태 (§2-C) — **`ShellDayPanel`(≥680)과 `ShellMain`(<680)이 함께 쓰는 본문**.
  * 두 컴포넌트는 이 안쪽 내용을 감싸는 머리(패널 머리 대 전체 `ShellHeader`)와 스크롤 컨테이너만
- * 다르게 두른다 — R21 이 "옮겨 받는다"고 부르는 것이 정확히 이 함수다.
+ * 다르게 두른다 — R21 이 "옮겨 받는다"고 부르는 것이 정확히 이 함수다. 오늘의 기록 카드는 여기
+ * 없다 — 사이드바(`ShellSidebar`)가 유일한 마운트 지점이다(diary.md §2, 사용자 결정).
  */
 export function DayPanelBody({
   date,
@@ -134,8 +134,6 @@ export function DayPanelBody({
         ) : null}
         <TodoList date={date} categories={categories} onStartTimer={onStartTimer} />
       </div>
-      {/* 다이어리 카드(diary.md §2 — 투두 목록 아래). 카테고리·투두와 무관한 독립 기록이다. */}
-      <DiaryCard date={date} />
     </>
   );
 }
@@ -145,7 +143,7 @@ type ShellDayPanelProps = DayPanelBodyProps & {
 };
 
 /**
- * 2영역(≥680)의 `main` (calendar-layout.md R1(c)·R5). 머리 한 줄만 고정, 목록·다이어리가 스크롤한다(R3).
+ * 2영역(≥680)의 `main` (calendar-layout.md R1(c)·R5). 머리 한 줄만 고정, 목록이 스크롤한다(R3).
  *
  * 폭은 `flex-1 min-w-[280px] max-w-[400px]` — 달력 컬럼과 **같은 문법**으로 남는 폭을 나눠 갖고
  * 상한(400)에서 멈춘다(R2). 전에는 `w-[400px] shrink-0` 고정이라 달력 컬럼의 하한(440)과 합쳐

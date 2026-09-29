@@ -1,24 +1,29 @@
 'use client';
 
-// 오늘의 기록 카드 (diary.md §2 — 날짜 화면 하단, 투두 목록 아래). `ShellMain` 이 마운트한다.
+// 오늘의 기록 카드 (diary.md §2 — 카테고리쪽 사이드바, D-day 아래·도구 줄 위). `ShellSidebar` 가
+// 마운트한다 — 컬럼이든 드로어든 한 번에 하나만 선다(diary 스토어가 전역 단일이라 둘이 같이 뜨면
+// 같은 스토어를 놓고 싸운다).
 import { useEffect, useRef, useState } from 'react';
 
 import type { DateKey } from '@/domain/date/date-key';
 import { findMoodEmoji } from '@/domain/diary/mood-emoji';
 
 import { DiaryDialog } from '@/features/diary/components/DiaryDialog';
+import { DiaryTitle } from '@/features/diary/components/DiaryTitle';
 import { focusAfterDiaryRemoval } from '@/features/diary/lib/diary-focus';
-import { diaryRemovalToastMessage } from '@/features/diary/lib/diary-messages';
+import { DIARY_CARD_TITLE, diaryRemovalToastMessage } from '@/features/diary/lib/diary-messages';
 import { useDiaryStore } from '@/features/diary/store/diary-store';
 
 import { Button } from '@/components/ui/Button';
+import { CARD_CLASS } from '@/components/ui/card-class';
 import { IconButton } from '@/components/ui/IconButton';
 import { Menu } from '@/components/ui/Menu';
 import { Popover } from '@/components/ui/Popover';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { pushToast } from '@/components/ui/Toast';
 
-export const DIARY_CARD_TITLE = '오늘의 기록';
+import { cn } from '@/lib/cn';
+
 export const DIARY_EMPTY_TEXT = '오늘 하루 어땠나요?';
 export const DIARY_ADD_LABEL = '+ 기록하기';
 export const DIARY_EDIT_LABEL = '수정';
@@ -26,10 +31,24 @@ export const DIARY_MENU_LABEL = `${DIARY_CARD_TITLE} 메뉴`;
 export const DIARY_DELETE_LABEL = '삭제';
 /** 조회 자체가 실패했을 때(빈 상태와 구분, diary §2). `TodoList` 의 같은 문구 패턴. */
 export const DIARY_LOAD_FAILED = '기록을 불러오지 못했어요';
+/** `[되돌리기]` 를 눌렀는데 되돌릴 것이 없을 때(날짜를 옮긴 뒤 등, 리뷰 Minor 4). */
+export const DIARY_UNDO_FAILED = '되돌릴 수 없어요';
 
-type DiaryCardProps = { date: DateKey };
+type DiaryCardProps = {
+  date: DateKey;
+  /**
+   * 카드 껍질(면·보더·그림자)을 스스로 그릴지. 기본 `true`. 이미 면을 가진 오버레이(드로어) 안에서는
+   * `false` — 같은 면을 두 겹 겹치지 않는다(app-shell R18).
+   */
+  framed?: boolean;
+  /**
+   * 제목 아래 한 줄로 보일 날짜(`9월 17일 (목)`) — 호출부가 **선택 날짜가 오늘이 아닐 때만** 넘긴다
+   * (오늘 판정의 출처는 스트립 스토어 하나, app-shell R12). 제목은 접근 이름 고정을 위해 그대로 둔다.
+   */
+  dateLabel?: string;
+};
 
-export function DiaryCard({ date }: DiaryCardProps) {
+export function DiaryCard({ date, framed = true, dateLabel }: DiaryCardProps) {
   const entry = useDiaryStore((s) => s.entry);
   const status = useDiaryStore((s) => s.status);
   const error = useDiaryStore((s) => s.error);
@@ -46,8 +65,11 @@ export function DiaryCard({ date }: DiaryCardProps) {
   const editRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    void load(date);
-    // 날짜가 바뀔 때만 다시 읽는다 — load 자체는 스토어 인스턴스마다 바뀌지 않는다.
+    // 스토어가 이미 그 날짜를 `ready` 로 들고 있으면 다시 읽지 않는다 — 사이드바 드로어를 여닫을
+    // 때마다 이 카드가 마운트되므로(리뷰 Major 1·Nit 2), 매번 읽으면 6초 되돌리기 메모가 위험해지고
+    // 스켈레톤 → 내용으로 높이가 튄다. 날짜가 바뀌면 `load` 가 새로 읽는다.
+    const current = useDiaryStore.getState();
+    if (current.date !== date || current.status !== 'ready') void load(date);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
 
@@ -70,7 +92,13 @@ export function DiaryCard({ date }: DiaryCardProps) {
       if (!ok) return;
       pushToast({
         message: diaryRemovalToastMessage(),
-        action: { label: '되돌리기', onAction: () => void undoRemove() },
+        action: {
+          label: '되돌리기',
+          onAction: () =>
+            void undoRemove().then((ok) => {
+              if (!ok) pushToast({ message: DIARY_UNDO_FAILED });
+            }),
+        },
         onDismiss: clearPendingRemoval,
       });
       // `pushToast` 는 허브(구독 배열)만 갱신한다 — 토스트 뷰포트가 그 구독을 받아 실제로
@@ -82,7 +110,10 @@ export function DiaryCard({ date }: DiaryCardProps) {
   };
 
   return (
-    <section aria-label={DIARY_CARD_TITLE} className="mt-[var(--space-4)]">
+    <section
+      aria-label={DIARY_CARD_TITLE}
+      className={cn('flex flex-col', framed ? CARD_CLASS : null)}
+    >
       {status === 'loading' ? (
         <Skeleton className="h-[72px] w-full" />
       ) : status === 'error' ? (
@@ -91,18 +122,18 @@ export function DiaryCard({ date }: DiaryCardProps) {
           {error ?? DIARY_LOAD_FAILED}
         </p>
       ) : entry === undefined ? (
-        <article className="flex flex-col items-start gap-[var(--space-3)] rounded-[var(--radius-xl)] border border-border bg-surface p-[var(--space-4)] shadow-sm">
-          <h2 className="text-sm font-semibold text-muted">{DIARY_CARD_TITLE}</h2>
+        <article className="flex flex-col items-start gap-[var(--space-3)]">
+          <DiaryTitle dateLabel={dateLabel} />
           <p className="text-base text-text">{DIARY_EMPTY_TEXT}</p>
           <Button ref={addRef} onClick={() => setDialogOpen(true)}>
             {DIARY_ADD_LABEL}
           </Button>
         </article>
       ) : (
-        <article className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-xl)] border border-border bg-surface p-[var(--space-4)] shadow-sm">
+        <article className="flex flex-col gap-[var(--space-3)]">
           <div className="flex items-start justify-between gap-[var(--space-2)]">
-            <h2 className="text-sm font-semibold text-muted">{DIARY_CARD_TITLE}</h2>
-            <div className="flex items-center gap-[var(--space-1)]">
+            <DiaryTitle dateLabel={dateLabel} />
+            <div className="flex shrink-0 items-center gap-[var(--space-1)]">
               <Button ref={editRef} variant="ghost" size="sm" onClick={() => setDialogOpen(true)}>
                 {DIARY_EDIT_LABEL}
               </Button>
@@ -151,7 +182,7 @@ export function DiaryCard({ date }: DiaryCardProps) {
               </>
             )}
             {entry.content === '' ? null : (
-              <span className="whitespace-pre-wrap">{entry.content}</span>
+              <span className="min-w-0 break-words whitespace-pre-wrap">{entry.content}</span>
             )}
           </p>
         </article>

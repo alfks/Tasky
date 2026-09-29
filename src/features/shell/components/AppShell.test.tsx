@@ -498,6 +498,43 @@ describe('붕괴 순서 (§2-B · R4)', () => {
   });
 });
 
+describe('오늘의 기록은 사이드바에 있다 (diary.md §2 · app-shell R6-b — 사용자 결정)', () => {
+  it('드로어를 열면 그 안에 있고, 선택 날짜 패널(main)에는 없다', async () => {
+    const user = userEvent.setup();
+    setWidth(900);
+    await mount();
+    const main = screen.getByRole('main');
+    expect(within(main).queryByRole('region', { name: '오늘의 기록' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '오늘의 기록' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '카테고리 열기' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Tasky' });
+    const diary = within(drawer).getByRole('region', { name: '오늘의 기록' });
+    expect(await within(diary).findByRole('button', { name: '+ 기록하기' })).toBeInTheDocument();
+    // 앱 전체에서 하나뿐이다(`hidden: true` — 드로어가 열린 동안 배경은 inert 라 접근성 트리 밖).
+    expect(screen.getAllByRole('region', { name: '오늘의 기록', hidden: true })).toHaveLength(1);
+  });
+
+  it('고정 컬럼이 서 있으면 nav 안에 있다 — 여전히 하나뿐', async () => {
+    setWidth(1440);
+    useShellUiStore.setState({ sidebarPinned: true });
+    await mount();
+    const nav = screen.getByRole('navigation', { name: '카테고리' });
+    const diary = within(nav).getByRole('region', { name: '오늘의 기록' });
+    expect(await within(diary).findByRole('button', { name: '+ 기록하기' })).toBeInTheDocument();
+    expect(screen.getAllByRole('region', { name: '오늘의 기록' })).toHaveLength(1);
+    expect(
+      within(screen.getByRole('main')).queryByRole('region', { name: '오늘의 기록' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('1열(<680)의 main 에도 없다 — 드로어 안에서만', async () => {
+    setWidth(600);
+    await mount();
+    expect(screen.queryByRole('region', { name: '오늘의 기록' })).not.toBeInTheDocument();
+  });
+});
+
 describe('적재 배선 (Blocker: 사이드바가 드로어인 폭·사이드바 접힘에서 앱이 비어 있던 자리)', () => {
   /** 카테고리 적재를 거는 유일한 경로가 사이드바였다 — 사이드바가 없는 화면을 전부 훑는다. */
   it.each([

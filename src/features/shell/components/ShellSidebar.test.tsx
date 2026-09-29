@@ -2,15 +2,18 @@
 //
 // `CategoryList`·`RoutineManager` 자체 동작은 각 feature 의 테스트가 이미 본다. 여기서 묻는 것은
 // 셸이 "루틴" 진입점을 실제로 올렸고, 그 다이얼로그가 필요로 하는 `categories` 를 받았는가뿐이다.
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { DateKey } from '@/domain/date/date-key';
 import { adopt } from '@/domain/meta';
 
 import { getRepositories, setRepositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
+import { useDateStripStore } from '@/features/date-strip';
+import { useDiaryStore } from '@/features/diary';
 import { ShellSidebar } from '@/features/shell/components/ShellSidebar';
 import { useShellUiStore } from '@/features/shell/store/shell-ui-store';
 import { useTodoStore } from '@/features/todo';
@@ -26,6 +29,8 @@ import {
 } from '@/components/ui/Toast';
 
 const 운동 = makeCategory({ seq: 1, name: '운동', order: 0 });
+const TODAY = '2026-09-17' as DateKey;
+const PAST = '2026-09-10' as DateKey;
 
 /** 계정 블록이 요구하는 prop — 이 파일의 관심사(루틴 진입점)와 무관하므로 항상 같은 대역을 준다. */
 const exportBackup = () => Promise.resolve(true);
@@ -37,6 +42,16 @@ function ToastHost() {
 
 beforeEach(() => {
   setRepositories(createMemoryRepositories());
+  useDateStripStore.setState({ selectedDate: TODAY, today: TODAY });
+  // 오늘의 기록 카드가 이 안에 서서 마운트마다 `load(date)` 를 부른다 — 스토어는 모듈 전역이라
+  // 앞 테스트의 기록이 남으면 다음 테스트가 "작성됨" 상태로 시작한다.
+  useDiaryStore.setState({
+    date: null,
+    entry: undefined,
+    status: 'idle',
+    error: null,
+    pendingRemoval: null,
+  });
   useTodoStore.setState({
     byId: {},
     date: null,
@@ -152,6 +167,90 @@ describe('D-day (사용자 결정 — 카테고리쪽 사이드바로 옮겨옴)
 
     expect(screen.getByRole('heading', { level: 2, name: 'D-day' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '+ D-day 추가' })).toBeInTheDocument();
+  });
+});
+
+describe('오늘의 기록 (diary.md §2 · app-shell R6-b — 사용자 결정으로 선택 날짜 패널에서 옮겨옴)', () => {
+  /** 문서 순서 비교 — `a` 가 `b` 보다 앞에 있으면 참. */
+  const precedes = (a: Element, b: Element): boolean =>
+    Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  it('D-day 아래, 도구 줄 위에 있다 — nav 안 순서: 카테고리 → D-day → 오늘의 기록 → 도구 → 계정', async () => {
+    render(
+      <ShellSidebar
+        showTitle
+        framed
+        sidebarPinned={false}
+        onTogglePinned={vi.fn()}
+        categories={[운동]}
+        onSelectCategory={vi.fn()}
+        onRemoveCategory={vi.fn()}
+        exportBackup={exportBackup}
+      />,
+    );
+    const diary = screen.getByRole('region', { name: '오늘의 기록' });
+    expect(await within(diary).findByRole('button', { name: '+ 기록하기' })).toBeInTheDocument();
+
+    const categories = screen.getByRole('heading', { level: 2, name: '카테고리' });
+    const dday = screen.getByRole('heading', { level: 2, name: 'D-day' });
+    const tools = screen.getByRole('button', { name: '루틴' });
+    expect(precedes(categories, dday)).toBe(true);
+    expect(precedes(dday, diary)).toBe(true);
+    expect(precedes(diary, tools)).toBe(true);
+  });
+
+  it('컬럼(framed)에서는 카드 껍질을 스스로 그리고, 드로어(framed 아님)에서는 벗는다 (R18)', () => {
+    const props = {
+      showTitle: false,
+      sidebarPinned: false,
+      onTogglePinned: vi.fn(),
+      categories: [운동],
+      onSelectCategory: vi.fn(),
+      onRemoveCategory: vi.fn(),
+      exportBackup,
+    };
+    const { unmount } = render(<ShellSidebar {...props} framed />);
+    expect(screen.getByRole('region', { name: '오늘의 기록' })).toHaveClass('border');
+    unmount();
+
+    render(<ShellSidebar {...props} framed={false} />);
+    expect(screen.getByRole('region', { name: '오늘의 기록' })).not.toHaveClass('border');
+  });
+
+  it('선택 날짜가 오늘이 아니면 제목 아래에 그 날짜를 적고, 오늘이면 적지 않는다', async () => {
+    useDateStripStore.setState({ selectedDate: PAST, today: TODAY });
+    const { unmount } = render(
+      <ShellSidebar
+        showTitle
+        sidebarPinned={false}
+        onTogglePinned={vi.fn()}
+        categories={[운동]}
+        onSelectCategory={vi.fn()}
+        onRemoveCategory={vi.fn()}
+        exportBackup={exportBackup}
+      />,
+    );
+    const past = screen.getByRole('region', { name: '오늘의 기록' });
+    expect(await within(past).findByText('9월 10일 (목)')).toBeInTheDocument();
+    // 접근 이름은 날짜와 무관하게 고정이다 — e2e·단축키 도움말이 이 이름으로 찾는다.
+    expect(past).toHaveAccessibleName('오늘의 기록');
+    unmount();
+
+    useDateStripStore.setState({ selectedDate: TODAY, today: TODAY });
+    render(
+      <ShellSidebar
+        showTitle
+        sidebarPinned={false}
+        onTogglePinned={vi.fn()}
+        categories={[운동]}
+        onSelectCategory={vi.fn()}
+        onRemoveCategory={vi.fn()}
+        exportBackup={exportBackup}
+      />,
+    );
+    const today = screen.getByRole('region', { name: '오늘의 기록' });
+    await within(today).findByRole('button', { name: '+ 기록하기' });
+    expect(within(today).queryByText(/\d+월 \d+일/)).not.toBeInTheDocument();
   });
 });
 
