@@ -59,7 +59,8 @@ board_lock_release() {
     flock -u "$fd" 2>/dev/null || true
     exec 9>&- 2>/dev/null || true
   else
-    if ! owner="$(< "$_board_lock_dir/pid")" || [ "$owner" != "$$" ]; then
+    # bash 5.2는 set -e 아래 `$(< 없는파일)`이 `if !` 안에서도 셸을 끝내므로, 일반 builtin 리다이렉션으로 먼저 열어 본다.
+    if ! true < "$_board_lock_dir/pid" || ! owner="$(< "$_board_lock_dir/pid")" || [ "$owner" != "$$" ]; then
       echo "ERROR: BOARD 락 PID 읽기 실패 또는 소유자 불일치; 락을 보존합니다" >&2
       return 1
     fi
