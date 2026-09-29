@@ -240,16 +240,11 @@ function ShellBody() {
           // 그리지 않는다 — `sidebarIsColumn` 이면 `ShellSidebar` 가, 아니면 `ShellHeader` 가 이미
           // ☰ 옆에 갖고 있다(calendar-layout.md R6).
           //
-          // **두 컬럼이 같은 문법으로 폭을 나눠 갖는다(R2).** 둘 다 `flex-1` 이라 남는 폭을 똑같이
-          // 나누고, 각자의 상한(달력 440 · 패널 400)에서 멈추면 이 래퍼의 `justify-center` 가 **쌍을**
-          // 가운데로 민다 — 1440 이면 양쪽 288 씩. 달력 컬럼의 상한이 440 인 이유: 격자(7×48+6×6 =
-          // 372)에 34px 만 남겨 "달력 잉크가 컬럼 안에서 따로 가운데" 로 보이던 인상(사용자 피드백
-          // 6, FEEL_REPORT §14)을 없앤다 — 컬럼 폭 ≈ 잉크 폭이면 컬럼의 가운데가 곧 잉크의 가운데다.
-          // 하한은 `--shell-calendar-col-min`(격자 + 좌우 16, ≥768 에서 404 / <768 에서 336 —
-          // tokens.css 가 달력 밀도 토큰으로부터 계산한다) 와 패널 280. 그래서 680 에서도 두
-          // 컬럼이 나란히 선다(336 + 24 + 288 = 648 = 680 − 거터 32). `min-w-0` 은 이 래퍼가
-          // `justify-center` 로 줄어들 때도 자식의 `min-w` 가 실제로 지켜지게 한다(안 주면 flex 기본
-          // `min-width:auto` 가 이 래퍼 자체를 늘려 버린다).
+          // 치수는 calendar-layout.md R2 가 단일 소스다: 두 컬럼 다 `flex-1` 로 남는 폭을 나눠 갖고
+          // 상한(달력 440 · 패널 400)에서 멈추면 이 래퍼의 `justify-center` 가 **쌍을** 가운데로 민다.
+          // 하한(`--shell-calendar-col-min` 404/336 · 패널 280)이 680 에서 꼭 맞는다(검산은 R2).
+          // `min-w-0` 은 래퍼가 줄어들 때도 자식의 `min-w` 가 지켜지게 한다(flex 기본 `min-width:auto`
+          // 가 래퍼 자체를 늘리는 것을 막는다). 잉크 실측은 FEEL_REPORT §14.
           <div className="flex min-h-0 min-w-0 flex-1 justify-center gap-[var(--space-6)]">
             <div className="flex min-h-0 max-w-[440px] min-w-[var(--shell-calendar-col-min)] flex-1 flex-col gap-[var(--space-3)]">
               <div className="shrink-0">{failureCard === null ? header : null}</div>

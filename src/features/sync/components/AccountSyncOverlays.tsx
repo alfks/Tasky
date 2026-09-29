@@ -4,7 +4,7 @@
 // 등록 — **레이아웃과 무관하게 항상 마운트된다** (리뷰 Major 3).
 //
 // `AccountBlockLauncher`(사이드바) 안에 있던 시절엔 사이드바가 컬럼일 때, 또는 드로어를 연 동안만
-// 마운트됐다 — 좁은 뷰포트(<1024px, `layout.ts` narrow/compact)에서 드로어를 한 번도 연 적 없는
+// 마운트됐다 — 사이드바가 드로어인 폭(모든 폭의 기본, calendar-layout.md §1-A)에서 드로어를 한 번도 연 적 없는
 // 세션은 이 셋 중 아무것도 못 보고 `registerExportBackup` 도 불리지 않는다. 그 상태에서 첫 로그인
 // 이 끝나면 R7 다이얼로그가 없으니 `completeLogin` 도 엔진을 안 켜고, 사용자가 그 다이얼로그를 볼
 // 방법이 없으니 `resolveUpload`/`deferUpload` 도 못 불려 엔진은 그 세션 내내 시작되지 않는다

@@ -14,9 +14,17 @@ import { openSidebarDrawer } from './sidebar';
 
 import type { Page } from '@playwright/test';
 
-async function waitForShell(page: Page): Promise<void> {
+/**
+ * 셸이 떴는지 — `h1` 은 폭에 따라 다르게 잰다(calendar-layout.md R6): ≥768 에서는 보여야 하고,
+ * <768(680~767 의 2영역 포함)에서는 `sr-only` 라 "보인다" 는 단언이 거짓이다(Playwright 는 1×1 클립
+ * 요소도 visible 로 치므로 통과는 하지만 R6 회귀 — h1 이 아예 안 그려지는 것 — 를 못 잡는다).
+ * 그래서 좁은 폭은 **정확히 하나 마운트돼 있는가**로 잰다.
+ */
+async function waitForShell(page: Page, width: number): Promise<void> {
   await page.waitForSelector('main#shell-main');
-  await expect(page.getByRole('heading', { name: 'Tasky', level: 1 })).toBeVisible();
+  const h1 = page.getByRole('heading', { name: 'Tasky', level: 1 });
+  if (width >= 768) await expect(h1).toBeVisible();
+  else await expect(h1).toHaveCount(1);
 }
 
 async function documentFitsViewport(page: Page, label: string): Promise<void> {
@@ -44,7 +52,7 @@ for (const width of [720, 960] as const) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/');
-    await waitForShell(page);
+    await waitForShell(page, width);
 
     const strip = await box(page, 'radiogroup', '날짜 선택');
     const main = await box(page, 'main');
@@ -67,7 +75,7 @@ test('1440px 에서 달력 컬럼과 할 일 패널이 한 쌍으로 가운데 �
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
-  await waitForShell(page);
+  await waitForShell(page, 1440);
 
   // 달력 컬럼의 왼쪽 가장자리 = 헤더 줄 첫 요소(☰)의 왼쪽. 패널의 오른쪽 = `main` 의 오른쪽.
   const menu = await page.getByRole('button', { name: '카테고리 열기' }).boundingBox();
@@ -89,7 +97,7 @@ test('679px 에서는 1열이다 — 패널이 스트립 아래로 내려가고 
 }) => {
   await page.setViewportSize({ width: 679, height: 900 });
   await page.goto('/');
-  await waitForShell(page);
+  await waitForShell(page, 679);
 
   const strip = await box(page, 'radiogroup', '날짜 선택');
   // 1열의 `main` 은 `ShellMain` — 스트립을 **안에** 품는다. 그래서 "아래" 는 `main` 의 y 가 아니라
@@ -107,7 +115,7 @@ test('679px 에서는 1열이다 — 패널이 스트립 아래로 내려가고 
 test('1280px 에서 사이드바를 고정해도 가로 스크롤이 없다 (app-shell.md R4)', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
-  await waitForShell(page);
+  await waitForShell(page, 1280);
 
   const drawer = await openSidebarDrawer(page);
   await drawer.getByRole('button', { name: '사이드바 고정' }).click();
