@@ -10,6 +10,7 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 
 import type { DateKey } from '@/domain/date/date-key';
 
+import { Chevron } from '@/features/date-strip/components/Chevron';
 import {
   monthLabel,
   moveMonthFocus,
@@ -42,6 +43,23 @@ const MONTHS = Array.from({ length: 12 }, (_, index) => index + 1);
  * 값이 갈릴 여지가 있는 것은 300ms 상수뿐이고, 그마저 같은 값으로 맞춰 뒀다.
  */
 const ANNOUNCE_DEBOUNCE_MS = 300;
+
+/**
+ * 페이드인의 끝을 **두 번째 프레임**에 건다(R19, 리뷰 Minor — 한 프레임짜리 rAF 는 `opacity-0` 가 한 번도
+ * 그려지기 전에 벗겨져 눈에는 아무 변화가 없었다, 실측 300ms 내 opacity 전부 1). 첫 rAF 는 아직 그 프레임의
+ * 페인트 전이라 그 안에서 상태를 되돌리면 브라우저가 0 을 본 적이 없어 transition 이 시작되지 않는다 —
+ * 한 프레임을 더 기다려야 0 → 1 이 `--motion-xfast` 동안 실제로 올라온다. 일 피커도 같은 함수를 쓴다.
+ */
+export function scheduleFadeEnd(end: () => void): () => void {
+  let inner = 0;
+  const outer = requestAnimationFrame(() => {
+    inner = requestAnimationFrame(end);
+  });
+  return () => {
+    cancelAnimationFrame(outer);
+    cancelAnimationFrame(inner);
+  };
+}
 
 /** 방향키 → `moveMonthFocus` 의 이동 이름 (R16). Home/End/PageUp/PageDown 도 여기서 한 번에 잡는다. */
 const KEY_MOVE: Partial<Record<string, MonthGridMove>> = {
@@ -86,14 +104,13 @@ export function YearMonthPicker({ selectedDate, today, onSelect }: YearMonthPick
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 년이 바뀔 때만 월 격자를 opacity 크로스페이드(R19). 12개 버튼은 해가 바뀌어도 다시 만들어지지
+  // 년이 바뀔 때만 월 격자를 opacity 페이드인(R19). 12개 버튼은 해가 바뀌어도 다시 만들어지지
   // 않고(그대로 재사용) 라벨·강조만 갱신되므로, 페이드는 시각 효과일 뿐 포커스 이동과는 무관하다.
   useEffect(() => {
     if (lastYearRef.current === focus.year) return;
     lastYearRef.current = focus.year;
     setFading(true);
-    const id = requestAnimationFrame(() => setFading(false));
-    return () => cancelAnimationFrame(id);
+    return scheduleFadeEnd(() => setFading(false));
   }, [focus.year]);
 
   const commit = (target: YearMonth) => onSelect(withYearMonth(selectedDate, target));
@@ -145,7 +162,10 @@ export function YearMonthPicker({ selectedDate, today, onSelect }: YearMonthPick
         {/* 스크린리더 가상 커서로 훑을 때 이 값이 sr-only 노드와 나란히 두 번 읽히지 않도록
             시각 스팬은 접근 트리에서 뺀다(리뷰 Minor) — 접근 가능한 텍스트는 아래 sr-only
             노드 하나뿐이다. */}
-        <span aria-hidden="true" className="text-xl leading-none font-bold text-text tabular-nums">
+        <span
+          aria-hidden="true"
+          className="text-[length:var(--text-xl)] leading-none font-bold text-text tabular-nums"
+        >
           {focus.year}
         </span>
         {/* 화면에 보이는 년 숫자와 달리 이 노드만 디바운스된 값을 낭독한다(ANNOUNCE_DEBOUNCE_MS). */}
@@ -238,23 +258,5 @@ export function YearMonthPicker({ selectedDate, today, onSelect }: YearMonthPick
         })}
       </div>
     </div>
-  );
-}
-
-const CHEVRON_PATH = { left: 'M10 3 5 8l5 5', right: 'M6 3l5 5-5 5' } as const;
-
-/** 방향 표시 아이콘. 장식이므로 부모 버튼이 이름을 책임진다(DateStripHeader 의 Chevron 과 같은 모양). */
-function Chevron({ direction }: { direction: keyof typeof CHEVRON_PATH }) {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" className="size-[var(--space-4)] shrink-0">
-      <path
-        d={CHEVRON_PATH[direction]}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }

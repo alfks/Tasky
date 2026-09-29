@@ -54,7 +54,7 @@ test('항목 메뉴 → 날짜 고르기 → 다음 달 → 칸 확정 → 옮�
 
   const picker = page.getByRole('grid', { name: '날짜 고르기' });
   await expect(picker).toBeVisible();
-  await expect(page.getByText('어느 날로 옮길까요?')).toBeVisible();
+  await expect(page.getByText(`'${TITLE}'를 어느 날로 옮길까요?`)).toBeVisible();
 
   // 주 보기의 스트립 헤더는 `이전 주`/`다음 주` 라 `다음 달` 은 지금 피커 안에만 있다(date-strip R14).
   await page.getByRole('button', { name: '다음 달', exact: true }).click();
@@ -90,7 +90,7 @@ test('편집 패널 → 날짜 버튼 → 내일 → 저장 → 다음 날 목�
   const picker = page.getByRole('grid', { name: '날짜 고르기' });
   await expect(picker).toBeVisible();
   // 편집 패널에서 연 피커에는 "옮길까요" 힌트가 없다.
-  await expect(page.getByText('어느 날로 옮길까요?')).toHaveCount(0);
+  await expect(page.getByText(/어느 날로 옮길까요/)).toHaveCount(0);
 
   await page.getByRole('button', { name: '내일', exact: true }).click();
   await expect(picker).toHaveCount(0);

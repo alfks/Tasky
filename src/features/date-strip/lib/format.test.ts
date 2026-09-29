@@ -11,6 +11,7 @@ import {
   formatProgressName,
   formatShortMonthLabel,
   weekdayIndex,
+  formatDateFieldLabel,
 } from '@/features/date-strip/lib/format';
 
 describe('R9. 요일 색은 토요일·일요일만 다르고 요일 텍스트가 항상 있다', () => {
@@ -64,5 +65,12 @@ describe('R11. 날짜 표기는 월 YYYY년 M월, 셀 D(0 채움 없음), 요일
         progress: formatProgressName(0, 0),
       }),
     ).toBe('9월 18일 금요일');
+  });
+});
+
+describe('formatDateFieldLabel — 날짜 필드·제목의 짧은 표기', () => {
+  it("'M월 D일 (요일)' 이고 0 채움이 없다", () => {
+    expect(formatDateFieldLabel('2026-09-17')).toBe('9월 17일 (목)');
+    expect(formatDateFieldLabel('2026-01-04')).toBe('1월 4일 (일)');
   });
 });

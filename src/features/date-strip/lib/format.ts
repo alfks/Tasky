@@ -47,6 +47,15 @@ export function formatDateName(date: DateKey): string {
   return `${month}월 ${day}일 ${WEEKDAY_LABELS[weekdayIndex(date)]}요일`;
 }
 
+/**
+ * 날짜 필드·문서 제목의 짧은 표기 'M월 D일 (요일)' — 편집 패널의 날짜 버튼(todo.md §2-A)과 선택 날짜
+ * 패널 제목(app-shell R9)이 같은 함수를 쓴다. 요일 글자의 단일 소스도 `WEEKDAY_LABELS` 다.
+ */
+export function formatDateFieldLabel(date: DateKey): string {
+  const { month, day } = parts(date);
+  return `${month}월 ${day}일 (${WEEKDAY_LABELS[weekdayIndex(date)]})`;
+}
+
 /** 셀 접근성 이름에 덧붙이는 진행 문구 (§5). 투두가 없으면 붙이지 않는다(빈 상태 문구 없음 — §2-C). */
 export function formatProgressName(total: number, doneCount: number): string | undefined {
   if (total === 0) return undefined;

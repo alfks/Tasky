@@ -87,6 +87,7 @@ export function TodoItem({
 }: TodoItemProps) {
   const rowRef = useRef<HTMLLIElement>(null);
   const titleRef = useRef<HTMLButtonElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const [pickingDate, setPickingDate] = useState(false);
   const [registeringRoutine, setRegisteringRoutine] = useState(false);
@@ -115,9 +116,8 @@ export function TodoItem({
     // 행 자신이 포커스일 때만. 안쪽 입력·버튼에서 올라온 키까지 여기서 처리하면 편집 중 Space 가
     // 완료 토글이 되고 Backspace 가 삭제 확인을 연다.
     //
-    // `isImeKey` 는 **지금은 닿지 않는** 방어선이다: 조합이 성립하려면 편집 가능한 요소가 포커스여야
-    // 하는데, 그러면 위 `e.target !== e.currentTarget` 에서 이미 돌아선다. 행이 언젠가 인라인 편집을
-    // 품게 되면 그때 필요해지므로 남긴다 — 빼면 그 변경이 조용히 R4 를 깬다.
+    // `isImeKey` 는 **지금은 닿지 않는** 방어선이다(조합 중이면 편집 요소가 포커스라 위 가드에서 먼저
+    // 돌아선다) — 행이 언젠가 인라인 편집을 품으면 필요해지므로 남긴다. 빼면 그 변경이 조용히 R4 를 깬다.
     if (e.target !== e.currentTarget || isImeKey(e.nativeEvent)) return;
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       e.preventDefault();
@@ -142,11 +142,15 @@ export function TodoItem({
     onDragChange(todo.id);
   };
 
-  // **순서 변경으로 받는 것은 같은 그룹의 드래그뿐이다** (R20). 다른 카테고리에서 온 드래그는 이
-  // 행 위에 있어도 여기서 받지 않고 그대로 지나가 **그룹 섹션**이 받는다(= 카테고리 이동). 항목 위냐
-  // 빈 자리냐로 제스처가 갈리면 같은 화면에서 같은 손짓이 두 가지 뜻이 된다 — 경계는 "같은
-  // 카테고리인가" 하나다. 지나가게 두는 것으로 충분한 이유: `dragover` 는 전파 경로 어디서든
-  // `preventDefault` 되면 드롭이 허용되고, 섹션이 그 자리에서 막아 준다.
+  // **순서 변경으로 받는 것은 같은 그룹의 드래그뿐이다** (R20). 다른 카테고리에서 온 드래그는 이 행
+  // 위에 있어도 받지 않고 지나가 **그룹 섹션**이 받는다(= 카테고리 이동) — 항목 위냐 빈 자리냐로
+  // 손짓의 뜻이 갈리면 안 되므로 경계는 "같은 카테고리인가" 하나다(`dragover` 는 전파 경로 어디서든
+  // `preventDefault` 되면 드롭이 허용되고, 섹션이 그 자리에서 막아 준다).
+  // 메뉴가 열리면 아직 떠 있는 피커를 먼저 내린다 — 같은 `⋯` 에 둘이 겹쳐 열리지 않게(리뷰 Minor).
+  const openMenu = (): void => {
+    snapshotFocus();
+    setPickingDate(false);
+  };
   const sameGroup = draggingId !== null && sequence.some((item) => item.id === draggingId);
   const dropTarget = sameGroup && draggingId !== todo.id && canReorder;
   const memo = memoPreview(todo.memo);
@@ -187,11 +191,9 @@ export function TodoItem({
       )}
       style={color === undefined ? undefined : { ['--cat-color' as string]: color }}
     >
-      {/* 행의 터치 치수는 좁은 화면에서 --todo-row-hit-min(28px, WCAG 2.5.8 하한 24px 위)으로
-          줄어든다(theme.md §3-D R32) — 데스크탑 값은 --control-hit-min 과 같은 32px 라 앱의 다른
-          컨트롤(ShellHeader·CommandPalette 등)과 다르지 않다. 세 자식(손잡이·체크박스·⋯ 메뉴)이
-          같은 토큰으로 함께 줄어야 행의 실제 높이(= max 자식 높이)가 실제로 작아진다 — 하나라도
-          --control-hit-min(32px) 그대로 남으면 그 자식이 행 높이를 다시 밀어 올린다. */}
+      {/* 행의 터치 치수는 좁은 화면에서 --todo-row-hit-min(28px, WCAG 2.5.8 하한 위)으로 줄어든다
+          (theme.md §3-D R32; 데스크탑은 --control-hit-min 과 같은 32px). 세 자식(손잡이·체크박스·⋯)이
+          같은 토큰으로 함께 줄어야 행 높이(= max 자식 높이)가 실제로 작아진다. */}
       <div className="flex min-h-[var(--todo-row-hit-min)] items-center gap-[var(--space-1)]">
         {canReorder ? (
           <DragHandle
@@ -239,11 +241,9 @@ export function TodoItem({
           </span>
         )}
         {routine === undefined ? null : (
-          // `role="img"` + `aria-label` 은 스크린리더가 아이콘이 아니라 문장을 읽게 한다(§5, 완료
-          // 조건 "배지가 스크린리더에 어떻게 읽히는지") — 형제 배지(🗒·⏱)와 같은 패턴이다. `title` 은
-          // 마우스 호버용. **탭 스톱은 만들지 않는다**(리뷰 Major 4) — 만들면 그 배지에 포커스가
-          // 있는 동안 `handleKeyDown` 의 `e.target !== e.currentTarget` 가드에 걸려 행 단축키
-          // (Space/Enter/Delete/Alt+↑↓)가 전부 죽고, 형제 배지들과도 다른 규약이 된다.
+          // `role="img"` + `aria-label` 은 스크린리더가 아이콘이 아니라 문장을 읽게 한다(§5) — 형제
+          // 배지(🗒·⏱)와 같은 패턴, `title` 은 마우스 호버용. **탭 스톱은 만들지 않는다**(리뷰 Major 4)
+          // — 배지에 포커스가 있으면 `e.target !== e.currentTarget` 가드에 걸려 행 단축키가 전부 죽는다.
           <span
             role="img"
             aria-label={M.routineBadgeLabel(describeRoutineRecurrence(routine.recurrence))}
@@ -267,8 +267,9 @@ export function TodoItem({
           readOnly={readOnly}
           moveTargets={categories}
           triggerClassName="size-[var(--todo-row-hit-min)]"
+          triggerRef={menuTriggerRef}
           returnFocus={returnFocus}
-          onOpen={snapshotFocus}
+          onOpen={openMenu}
           onEdit={() => onEditChange(todo.id, 'title')}
           onAddMemo={() => onEditChange(todo.id, 'memo')}
           onStartTimer={onStartTimer === undefined ? undefined : () => onStartTimer(todo)}
@@ -286,8 +287,8 @@ export function TodoItem({
 
       {pickingDate ? (
         <TodoItemDatePicker
-          value={todo.date}
-          anchorRef={rowRef}
+          todo={todo}
+          anchorRef={menuTriggerRef}
           returnFocus={returnFocus}
           onPick={goToDate}
           onClose={() => setPickingDate(false)}

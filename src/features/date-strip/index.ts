@@ -3,6 +3,7 @@
 export { DateStrip } from '@/features/date-strip/components/DateStrip';
 export { TODO_DRAG_MIME } from '@/features/date-strip/components/DateCell';
 export { DayPickerPopover } from '@/features/date-strip/components/DayPickerPopover';
+export { formatDateFieldLabel } from '@/features/date-strip/lib/format';
 export { MAX_DATE_KEY, MIN_DATE_KEY } from '@/features/date-strip/lib/week';
 export {
   useDateStripStore,

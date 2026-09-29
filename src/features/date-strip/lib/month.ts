@@ -65,6 +65,23 @@ export function monthGridDays(date: DateKey): DateKey[] {
   return days;
 }
 
+/** 6줄(42칸) 격자 — 일 피커가 쓴다(calendar-layout.md §3-A R15-a). */
+export const SIX_WEEKS = DAYS_IN_WEEK * 6;
+
+/**
+ * `monthGridDays` 결과를 **항상 42칸**으로 채운다 — 부족한 줄은 다음 달 날짜를 이어 붙인다. 월 보기
+ * (R15)는 4~6줄 그대로 두지만, 팝오버 피커는 달을 넘길 때 아래 `[오늘][내일]` 줄이 위아래로 튀면
+ * 안 되고 빈 띠를 남기는 것도 구멍처럼 보여(리뷰 Major) 칸으로 채운다. 이 달 밖 칸은 이미 흐린
+ * 숫자 + 클릭 확정이라 표현·동작이 그대로 맞는다. 범위(R6) 끝을 넘는 칸은 렌더가 비활성으로 표시한다.
+ */
+export function padToSixWeeks(days: readonly DateKey[]): DateKey[] {
+  const padded = [...days];
+  while (padded.length < SIX_WEEKS) {
+    padded.push(addDays(padded[padded.length - 1], 1));
+  }
+  return padded;
+}
+
 /** `monthGridDays` 의 결과를 7칸짜리 줄로 자른다 (R15). 격자 렌더가 `role="row"` 를 그리는 데 쓴다. */
 export function chunkIntoWeeks(days: readonly DateKey[]): DateKey[][] {
   const rows: DateKey[][] = [];

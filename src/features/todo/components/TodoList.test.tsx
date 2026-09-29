@@ -331,7 +331,7 @@ describe('편집 패널 날짜 필드 (R10-c)', () => {
     await user.click(dateButton);
     await screen.findByRole('grid', { name: '날짜 고르기' });
     // 편집 패널에서 연 피커에는 "옮길까요" 힌트가 없다.
-    expect(screen.queryByText('어느 날로 옮길까요?')).toBeNull();
+    expect(screen.queryByText(/어느 날로 옮길까요/)).toBeNull();
     // 피커의 "오늘" 은 실제 오늘이라 픽스처 날짜와 다를 수 있다 — 칸으로 고른다.
     await user.click(screen.getByRole('gridcell', { name: '1월 16일 금요일' }));
 

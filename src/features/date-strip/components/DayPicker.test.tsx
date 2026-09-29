@@ -90,6 +90,15 @@ describe('R17-a. 역할과 접근 이름', () => {
     expect(screen.getByRole('button', { name: '다음 달' })).toBeInTheDocument();
   });
 
+  it('격자는 어느 달이든 6줄·42칸이다 — 부족한 줄은 다음 달로 채운다(R15-a)', () => {
+    renderPicker({ value: '2026-09-17', today: '2026-01-01' });
+    // 요일 머리글 줄 1 + 날짜 줄 6.
+    expect(screen.getAllByRole('row')).toHaveLength(7);
+    expect(screen.getAllByRole('gridcell')).toHaveLength(42);
+    // 9월은 5줄 달 — 마지막 줄은 10월 5~11일이다.
+    expect(cell('10월 11일 일요일')).toBeInTheDocument();
+  });
+
   it('힌트는 주었을 때만 보인다', () => {
     renderPicker({ hint: '어느 날로 옮길까요?' });
     expect(screen.getByText('어느 날로 옮길까요?')).toBeInTheDocument();

@@ -2,17 +2,16 @@
 // timer feature 가 이 값 **앞에** 남은 시간과 투두 제목을 붙인다(timer R11).
 import type { DateKey } from '@/domain/date/date-key';
 
-import { fromDateKey } from '@/lib/date';
+import { formatDateFieldLabel } from '@/features/date-strip';
 
 export const APP_NAME = 'Tasky';
 
-/** 일요일 시작(= `Date.getDay()`) 요일 한 글자. */
-const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'] as const;
-
-/** 제목 한 날짜분: `9월 17일 (목)`. `Intl` 을 쓰지 않는 이유는 date-strip/lib/format.ts 와 같다. */
+/**
+ * 제목 한 날짜분: `9월 17일 (목)`. 표기의 단일 소스는 date-strip 의 `formatDateFieldLabel` 이다 —
+ * 편집 패널의 날짜 버튼과 같은 글자여야 하고(todo.md §2-A), 요일 글자도 한 곳(`WEEKDAY_LABELS`)에서 온다.
+ */
 export function titleDateLabel(date: DateKey): string {
-  const at = fromDateKey(date);
-  return `${at.getMonth() + 1}월 ${at.getDate()}일 (${WEEKDAYS[at.getDay()]})`;
+  return formatDateFieldLabel(date);
 }
 
 /** 날짜·달성률은 화면에만 표시하고, 일반 상태의 브라우저 탭은 앱 이름으로 고정한다. */

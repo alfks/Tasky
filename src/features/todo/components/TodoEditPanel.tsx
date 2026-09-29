@@ -9,24 +9,15 @@ import type { CategoryId } from '@/domain/ids';
 import type { Todo } from '@/domain/todo/todo';
 import { TODO_MEMO_MAX_LENGTH, TODO_TITLE_MAX_LENGTH } from '@/domain/todo/todo.rules';
 
-import { DayPickerPopover, useDateStripStore } from '@/features/date-strip';
+import { DayPickerPopover, formatDateFieldLabel, useDateStripStore } from '@/features/date-strip';
 import { useTodoActions } from '@/features/todo/hooks/useTodoActions';
 
 import { Button } from '@/components/ui/Button';
 
-import { fromDateKey } from '@/lib/date';
 import { isImeKey } from '@/lib/ime';
 
 const FIELD_CLASS =
   'w-full rounded-[var(--radius-md)] border border-border bg-surface px-[var(--space-3)] text-base text-text placeholder:text-faint focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus';
-
-const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'] as const;
-
-/** 날짜 필드 버튼의 글자 '9월 17일 (목)' (§2-A). 스트립의 표기(R11, 0 채움 없음)와 같은 결로 쓴다. */
-function dateFieldLabel(date: DateKey): string {
-  const at = fromDateKey(date);
-  return `${at.getMonth() + 1}월 ${at.getDate()}일 (${DAY_NAMES[at.getDay()]})`;
-}
 
 type TodoEditPanelProps = {
   todo: Todo;
@@ -167,7 +158,7 @@ export function TodoEditPanel({
             onClick={() => setPickingDate((open) => !open)}
             className="min-w-[160px] justify-between font-normal"
           >
-            <span id={dateValueId}>{dateFieldLabel(date)}</span>
+            <span id={dateValueId}>{formatDateFieldLabel(date)}</span>
             <span aria-hidden="true">▾</span>
           </Button>
           {/* 항상 마운트하고 open 만 토글한다 — 닫혀 있을 때도 버튼에 aria-haspopup 이 붙어야 한다. */}

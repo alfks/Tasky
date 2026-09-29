@@ -124,7 +124,7 @@ describe('날짜 바꾸기… (R10-b)', () => {
 
     const grid = await screen.findByRole('grid', { name: '날짜 고르기' });
     expect(grid).toBeInTheDocument();
-    expect(screen.getByText('어느 날로 옮길까요?')).toBeInTheDocument();
+    expect(screen.getByText("'독서'를 어느 날로 옮길까요?")).toBeInTheDocument();
     // 열리면 포커스는 현재 값(2026-01-15, 목요일)의 칸이다.
     expect(screen.getByRole('gridcell', { name: '1월 15일 목요일' })).toHaveFocus();
     // 네이티브 입력은 남아 있지 않다.
@@ -146,7 +146,32 @@ describe('날짜 바꾸기… (R10-b)', () => {
     });
   });
 
-  it('Esc 는 변경 없이 닫고 포커스가 행으로 돌아온다', async () => {
+  it('Esc 는 변경 없이 닫고 포커스가 그 행의 ⋯ 로 돌아온다 — 행 <li> 에는 팝업 속성이 붙지 않는다', async () => {
+    const user = userEvent.setup();
+    await 화면();
+
+    await user.click(screen.getByRole('button', { name: '독서 메뉴' }));
+    await user.click(screen.getByRole('menuitem', { name: '날짜 바꾸기…' }));
+    await screen.findByRole('grid', { name: '날짜 고르기' });
+    const menuButton = screen.getByRole('button', { name: '독서 메뉴' });
+    const row = screen.getByRole('checkbox', { name: '독서' }).closest('li');
+    // 앵커는 ⋯ 버튼이다(listitem 에는 aria-haspopup 이 허용되지 않는다, 리뷰 Minor).
+    expect(row).not.toHaveAttribute('aria-haspopup');
+    expect(row).not.toHaveAttribute('aria-expanded');
+    expect(menuButton).toHaveAttribute('aria-haspopup', 'grid');
+    expect(menuButton).toHaveAttribute('aria-expanded', 'true');
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('grid', { name: '날짜 고르기' })).toBeNull();
+    expect(screen.getByRole('checkbox', { name: '독서' })).toBeInTheDocument();
+    expect(menuButton).toHaveFocus();
+    // 닫히면 메뉴 팝오버의 속성으로 돌아간다.
+    expect(menuButton).toHaveAttribute('aria-haspopup', 'menu');
+    expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('피커가 열린 채 같은 행의 ⋯ 를 누르면 피커가 먼저 닫히고 메뉴만 열린다(겹치지 않는다)', async () => {
     const user = userEvent.setup();
     await 화면();
 
@@ -154,11 +179,11 @@ describe('날짜 바꾸기… (R10-b)', () => {
     await user.click(screen.getByRole('menuitem', { name: '날짜 바꾸기…' }));
     await screen.findByRole('grid', { name: '날짜 고르기' });
 
-    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: '독서 메뉴' }));
 
+    expect(screen.getByRole('menu')).toBeInTheDocument();
     expect(screen.queryByRole('grid', { name: '날짜 고르기' })).toBeNull();
-    expect(screen.getByRole('checkbox', { name: '독서' })).toBeInTheDocument();
-    const row = screen.getByRole('checkbox', { name: '독서' }).closest('li');
-    expect(row).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 });
