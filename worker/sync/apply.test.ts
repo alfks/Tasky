@@ -18,8 +18,13 @@ import { describe, expect, it } from 'vitest';
 
 import { clampFutureUpdatedAt } from '@/domain/sync/server-rules';
 import { SERVER_RULE_VECTORS } from '@/domain/sync/server-rules.vectors';
+import type { SyncOkResponse } from '@/domain/sync/wire';
 
+import { makeSettings } from '@/test/fixtures/settings';
+
+import { handleSync } from './handler';
 import { deleteAllForUser, gcFloor, pull, pushOne, touchDevice } from '../db/entities';
+import { forUser } from '../db/user-db';
 import { createD1Fixture, type D1Fixture } from '../test/d1-harness';
 
 async function seedUser(fx: D1Fixture, sub: string, now: string) {
@@ -256,6 +261,87 @@ describe('풀 — 자기 기기 제외 · gcFloor · 계정 삭제', () => {
         .first<{ c: number }>();
       expect(entities?.c).toBe(0);
       expect(devices?.c).toBe(0);
+    } finally {
+      await fx.dispose();
+    }
+  });
+});
+
+/**
+ * 프로필 세 필드(ADR-0023 규칙 3·6) — **배포될 Worker 번들이 세 필드를 살려 저장한다는 증거는 이
+ * 테스트뿐이다.** `handleSync` 는 `readRemoteRow` → `readSettings`(`SETTINGS_KEYS` 화이트리스트)로
+ * 걸러 D1 에 저장하므로, 화이트리스트에 세 필드가 없는 옛 Worker 는 `applied` 를 돌려주면서 조용히
+ * 떼어 낸다(그래서 재배포가 출시 조건이다). 벡터 파일(`server-rules.vectors.ts`)은 LWW 규칙용이라
+ * 여기 화이트리스트 검사는 벡터 대상이 아니다 — 벡터를 복사하지도 늘리지도 않는다.
+ */
+describe('프로필 세 필드 — 푸시 → D1 저장 → 풀 왕복 (profile.md R8 · ADR-0023 규칙 3)', () => {
+  const NOW = '2026-09-29T00:00:00.000Z';
+  const AVATAR = 'data:image/webp;base64,AAAA';
+
+  async function roundTrip(fx: D1Fixture, sub: string, row: Record<string, unknown>) {
+    const pushed = await handleSync(
+      {
+        protocol: 1,
+        deviceId: 'dev-a',
+        cursor: 0,
+        changes: [{ tbl: 'settings', id: 'default', baseSeq: 0, row }],
+      },
+      forUser(fx.db, sub),
+      NOW,
+    );
+    expect(pushed.status).toBe(200);
+    const pushResponse = pushed.response as SyncOkResponse;
+    expect(pushResponse.applied).toHaveLength(1);
+    expect(pushResponse.rejected).toEqual([]);
+    const pulled = await handleSync(
+      { protocol: 1, deviceId: 'dev-b', cursor: 0, changes: [] },
+      forUser(fx.db, sub),
+      NOW,
+    );
+    const pullResponse = pulled.response as SyncOkResponse;
+    expect(pullResponse.pulled).toHaveLength(1);
+    return pullResponse.pulled[0]!.row as Record<string, unknown>;
+  }
+
+  it('유효한 세 필드가 살아남고, 앞뒤 공백 있는 이름은 받은 값 그대로다', async () => {
+    const fx = await createD1Fixture();
+    try {
+      await seedUser(fx, 'profile-user', NOW);
+      const stored = await roundTrip(
+        fx,
+        'profile-user',
+        makeSettings({
+          profileName: ' 밀리 ',
+          profileBio: '오늘도 한 칸씩',
+          profileAvatar: AVATAR,
+        }),
+      );
+      expect(stored).toMatchObject({
+        profileName: ' 밀리 ',
+        profileBio: '오늘도 한 칸씩',
+        profileAvatar: AVATAR,
+        accentColor: makeSettings().accentColor,
+      });
+    } finally {
+      await fx.dispose();
+    }
+  });
+
+  it('잘못된 profileAvatar 는 그 필드만 떼고 행은 applied — 이름·테마는 저장된다', async () => {
+    const fx = await createD1Fixture();
+    try {
+      await seedUser(fx, 'profile-user-2', NOW);
+      const stored = await roundTrip(
+        fx,
+        'profile-user-2',
+        makeSettings({
+          theme: 'dark',
+          profileName: '밀리',
+          profileAvatar: 'data:image/png;base64,AAAA',
+        }),
+      );
+      expect(stored).toMatchObject({ theme: 'dark', profileName: '밀리' });
+      expect('profileAvatar' in stored).toBe(false);
     } finally {
       await fx.dispose();
     }

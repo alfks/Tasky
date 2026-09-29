@@ -10,6 +10,7 @@ import {
   readDday,
   readDiaryEntry,
   readRoutine,
+  readSettings,
   readTodo,
 } from '@/domain/backup/validate-rows';
 
@@ -17,6 +18,7 @@ import { makeCategory } from '@/test/fixtures/category';
 import { makeDday } from '@/test/fixtures/dday';
 import { makeDiaryEntry } from '@/test/fixtures/diary';
 import { makeRoutine } from '@/test/fixtures/routine';
+import { makeSettings } from '@/test/fixtures/settings';
 import { makeTodo } from '@/test/fixtures/todo';
 
 describe('readTodo — routineId 왕복 (routine.md §4)', () => {
@@ -217,5 +219,68 @@ describe('readRoutine — fillFloor 왕복 (ADR-0018, ROUTINE_KEYS 주석)', () 
     expect(pathOf(() => readRoutine({ ...makeRoutine(), order: '0' }, 'routines[0]'))).toBe(
       'routines[0].order',
     );
+  });
+});
+
+/** R5 형식을 만족하는 데이터 URL 하나. 길이 검사는 `profile.rules.test.ts` 가 본다. */
+const AVATAR = 'data:image/webp;base64,AAAA';
+
+describe('readSettings — 프로필 세 필드 (profile.md R8 · ADR-0023 규칙 3, backup R4 의 의도된 예외)', () => {
+  it('유효한 세 필드는 왕복에서 그대로 살아남는다', () => {
+    const restored = readSettings(
+      makeSettings({ profileName: '밀리', profileBio: '오늘도 한 칸씩', profileAvatar: AVATAR }),
+      'settings',
+    );
+    expect(restored).toMatchObject({
+      profileName: '밀리',
+      profileBio: '오늘도 한 칸씩',
+      profileAvatar: AVATAR,
+    });
+  });
+
+  it('잘못된 profileAvatar(png 접두)는 그 필드만 버리고 행은 채택한다 — 테마·강조색·이름은 살아남는다', () => {
+    const restored = readSettings(
+      makeSettings({
+        theme: 'dark',
+        accentColor: '#FF8FA3',
+        profileName: '밀리',
+        profileAvatar: 'data:image/png;base64,AAAA',
+      }),
+      'settings',
+    );
+    expect(restored).toMatchObject({ theme: 'dark', accentColor: '#FF8FA3', profileName: '밀리' });
+    expect('profileAvatar' in restored).toBe(false);
+  });
+
+  it('상한을 넘는 이름·소개, 문자열이 아닌 값도 각각 그 필드만 버린다', () => {
+    const restored = readSettings(
+      {
+        ...makeSettings(),
+        profileName: '가'.repeat(21),
+        profileBio: 42,
+        profileAvatar: AVATAR,
+      },
+      'settings',
+    );
+    expect('profileName' in restored).toBe(false);
+    expect('profileBio' in restored).toBe(false);
+    expect(restored.profileAvatar).toBe(AVATAR);
+  });
+
+  it('앞뒤 공백이 있는 profileName 은 파일 값 그대로 복원된다(검증은 다듬은 값, 저장은 받은 값)', () => {
+    const restored = readSettings(makeSettings({ profileName: '  밀리 ' }), 'settings');
+    expect(restored.profileName).toBe('  밀리 ');
+  });
+
+  it('공백만 있는 profileBio(" ")는 다듬으면 0자라 유효 — 그대로 남는다', () => {
+    const restored = readSettings(makeSettings({ profileBio: ' ' }), 'settings');
+    expect(restored.profileBio).toBe(' ');
+  });
+
+  it('프로필 필드가 없는 옛 설정 행은 그대로 통과하고 필드가 생기지 않는다', () => {
+    const restored = readSettings(makeSettings(), 'settings');
+    expect('profileName' in restored).toBe(false);
+    expect('profileBio' in restored).toBe(false);
+    expect('profileAvatar' in restored).toBe(false);
   });
 });

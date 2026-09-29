@@ -36,6 +36,9 @@ export type DomainErrorCode =
   | 'DIARY_EMPTY'
   | 'DIARY_CONTENT_TOO_LONG'
   | 'DIARY_EMOJI_INVALID'
+  | 'PROFILE_NAME_TOO_LONG'
+  | 'PROFILE_BIO_TOO_LONG'
+  | 'PROFILE_AVATAR_INVALID'
   | 'INSTANT_FORMAT_INVALID'
   | 'META_FORMAT_INVALID';
 
@@ -72,6 +75,9 @@ const MESSAGES: Record<DomainErrorCode, string> = {
   DIARY_EMPTY: '기분이나 한 줄을 남겨 주세요',
   DIARY_CONTENT_TOO_LONG: '기록은 500자까지 적을 수 있어요',
   DIARY_EMOJI_INVALID: '목록에 있는 이모지만 고를 수 있어요',
+  PROFILE_NAME_TOO_LONG: '이름은 20자까지 쓸 수 있어요',
+  PROFILE_BIO_TOO_LONG: '소개는 60자까지 쓸 수 있어요',
+  PROFILE_AVATAR_INVALID: '사진을 줄이지 못했어요. 다른 사진을 골라 주세요',
   INSTANT_FORMAT_INVALID: '시각 형식이 올바르지 않아요',
   META_FORMAT_INVALID: '파일 형식이 올바르지 않아요',
 };
