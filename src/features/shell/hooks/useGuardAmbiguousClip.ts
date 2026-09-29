@@ -5,7 +5,7 @@ import type { RefObject } from 'react';
 import { ambiguousClipPx, guardAmbiguousClip } from '@/features/shell/lib/scroll-clip-guard';
 
 /**
- * `active`(=`showBottomAdd`, compact 폭)일 때만 건다 — 하단 막대가 없는 화면(≥768)은 이 애매함이
+ * `active`(=`showBottomAdd`, compact 폭)일 때만 건다 — 하단 막대가 없는 화면(≥680)은 이 애매함이
  * 생길 자리 자체가 없다.
  *
  * **왜 한 주기에 한 번만 보정하는가(리뷰 Minor — 최종 리뷰 실측).** 예전에는 목록이 바뀔 때마다
@@ -19,8 +19,8 @@ import { ambiguousClipPx, guardAmbiguousClip } from '@/features/shell/lib/scroll
  * 지켜본다 — 그래야 실제 목록이 나중에 붙는 순간의 진짜 클립을 놓치지 않는다. clip=0 인 채로
  * 반복 판정하는 것 자체는 안전하다 — `scrollTop` 을 옮기지 않으니 튈 일이 없다.
  *
- * **주기의 경계는 `active` 전환과 `resetKey`(선택 날짜) 다.** `active` 가 꺼졌다 켜지면(≥768 ↔
- * <768 을 오가는 리사이즈) 이펙트가 다시 걸린다 — 화면 자체가 다시 마운트되는 것과 같은 새 판정
+ * **주기의 경계는 `active` 전환과 `resetKey`(선택 날짜) 다.** `active` 가 꺼졌다 켜지면(≥680 ↔
+ * <680 을 오가는 리사이즈) 이펙트가 다시 걸린다 — 화면 자체가 다시 마운트되는 것과 같은 새 판정
  * 계기다. `resetKey` 로 선택 날짜를 받아 **날짜가 바뀌면**(목록이 통째로 다른 날짜 것으로 바뀐다,
  * 지적 사항이 든 예) 같은 이유로 다시 판정한다 — 반면 **같은 날짜 안에서의** 체크·추가·삭제는
  * 이미 판정이 끝난 자리를 다시 흔들 이유가 없다(바로 위 문단이 고치는 버그 그 자체).
