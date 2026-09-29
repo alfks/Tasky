@@ -314,6 +314,42 @@ describe('날짜 이동 (R10)', () => {
   });
 });
 
+// 편집 패널의 날짜 필드는 네이티브 입력이 아니라 일 피커를 여는 버튼이다(R10-c). 피커에서 고르면
+// 버튼 글자만 바뀌고, 저장은 [저장] 에서만 일어난다.
+describe('편집 패널 날짜 필드 (R10-c)', () => {
+  it('버튼 글자가 날짜이고, [내일] 을 고르면 글자만 바뀌며, [저장] 에서야 옮겨진다', async () => {
+    const user = userEvent.setup();
+    화면();
+    await 목록이보일때까지();
+
+    await user.click(screen.getByRole('button', { name: '달리기 메뉴' }));
+    await user.click(screen.getByRole('menuitem', { name: '수정' }));
+    const panel = screen.getByRole('group', { name: '달리기 편집' });
+    const dateButton = within(panel).getByRole('button', { name: '날짜 1월 15일 (목)' });
+    expect(within(panel).queryByDisplayValue(FIXTURE_DATE)).toBeNull();
+
+    await user.click(dateButton);
+    await screen.findByRole('grid', { name: '날짜 고르기' });
+    // 편집 패널에서 연 피커에는 "옮길까요" 힌트가 없다.
+    expect(screen.queryByText('어느 날로 옮길까요?')).toBeNull();
+    // 피커의 "오늘" 은 실제 오늘이라 픽스처 날짜와 다를 수 있다 — 칸으로 고른다.
+    await user.click(screen.getByRole('gridcell', { name: '1월 16일 금요일' }));
+
+    expect(screen.queryByRole('grid', { name: '날짜 고르기' })).toBeNull();
+    expect(within(panel).getByRole('button', { name: '날짜 1월 16일 (금)' })).toHaveFocus();
+    // 아직 저장 전 — 목록에 그대로 있고 저장소도 그대로다.
+    expect(screen.getByRole('checkbox', { name: '달리기' })).toBeInTheDocument();
+    expect((await getRepositories().todos.getById(달리기.id))?.date).toBe(FIXTURE_DATE);
+
+    await user.click(within(panel).getByRole('button', { name: '저장' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('checkbox', { name: '달리기' })).toBeNull();
+    });
+    expect((await getRepositories().todos.getById(달리기.id))?.date).toBe('2026-01-16');
+  });
+});
+
 describe('단축키', () => {
   it('N 은 첫 활성 카테고리의 입력 행을 연다', async () => {
     const user = userEvent.setup();

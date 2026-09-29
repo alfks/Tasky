@@ -12,7 +12,7 @@ import { TODO_DRAG_MIME } from '@/features/date-strip';
 import { RoutineDialog } from '@/features/todo/components/RoutineDialog';
 import { FLIP_ATTR } from '@/features/todo/components/todo-focus';
 import { TodoEditPanel } from '@/features/todo/components/TodoEditPanel';
-import { DatePickRow } from '@/features/todo/components/TodoItemControls';
+import { TodoItemDatePicker } from '@/features/todo/components/TodoItemDatePicker';
 import { TodoItemMenu } from '@/features/todo/components/TodoItemMenu';
 import { useTodoItemActions } from '@/features/todo/components/useTodoItemActions';
 import { describeRoutineRecurrence, TODO_MESSAGES as M } from '@/features/todo/messages';
@@ -285,13 +285,12 @@ export function TodoItem({
       )}
 
       {pickingDate ? (
-        <DatePickRow
-          date={todo.date}
-          onPick={(next) => {
-            setPickingDate(false);
-            goToDate(next);
-          }}
-          onDismiss={() => setPickingDate(false)}
+        <TodoItemDatePicker
+          value={todo.date}
+          anchorRef={rowRef}
+          returnFocus={returnFocus}
+          onPick={goToDate}
+          onClose={() => setPickingDate(false)}
         />
       ) : null}
 

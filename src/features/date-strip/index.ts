@@ -2,6 +2,7 @@
 // 명시 export 만 둔다. 내부 파일은 이 배럴을 import 하지 않는다(순환).
 export { DateStrip } from '@/features/date-strip/components/DateStrip';
 export { TODO_DRAG_MIME } from '@/features/date-strip/components/DateCell';
+export { DayPickerPopover } from '@/features/date-strip/components/DayPickerPopover';
 export { MAX_DATE_KEY, MIN_DATE_KEY } from '@/features/date-strip/lib/week';
 export {
   useDateStripStore,

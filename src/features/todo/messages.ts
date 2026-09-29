@@ -73,6 +73,8 @@ export const TODO_MESSAGES = {
   menuTimer: '타이머 시작',
   menuTomorrow: '내일로',
   menuPickDate: '날짜 바꾸기…',
+  /** "날짜 바꾸기…" 가 여는 일 피커 위 한 줄 안내(R10-b). 편집 패널의 피커에는 붙지 않는다. */
+  pickDateHint: '어느 날로 옮길까요?',
   menuMoveCategory: '다른 카테고리로 옮기기',
   menuDelete: '삭제',
   /** 메모·집중 시간 표시 (R19). */

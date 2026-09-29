@@ -2,7 +2,7 @@
 // 이면 의미가 전달되지 않으므로 `role="img"` + `aria-label` 로 문장 전체를 읽게 하는지 고정한다.
 // **탭 스톱은 만들지 않는다**(리뷰 Major 4) — 형제 배지(🗒·⏱)와 같은 규약이고, 만들면 배지에
 // 포커스가 있는 동안 행 단축키(Space 등)가 `e.target !== e.currentTarget` 가드에 걸려 죽는다.
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -11,7 +11,7 @@ import type { Persistable } from '@/domain/meta';
 import type { Routine } from '@/domain/routine/routine';
 import type { Todo } from '@/domain/todo/todo';
 
-import { setRepositories } from '@/repositories/container';
+import { getRepositories, setRepositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
 import { TodoList } from '@/features/todo/components/TodoList';
@@ -108,5 +108,57 @@ describe('🔁 배지', () => {
     await 화면();
     const row = screen.getByRole('checkbox', { name: '독서' }).closest('li');
     expect(row?.querySelector('[role="img"][aria-label^="루틴:"]')).toBeNull();
+  });
+});
+
+// "날짜 바꾸기…" 는 네이티브 날짜 입력이 아니라 일 피커(date-strip `DayPickerPopover`, todo.md R10-b)를
+// 연다. 피커 본문은 지연 로드라 `findBy` 로 기다린다. 격자 규칙 자체는 DayPicker.test 가 재고,
+// 여기서는 메뉴 → 피커 → 확정 → 이동·토스트·포커스 인계까지 **행의 배선**만 본다.
+describe('날짜 바꾸기… (R10-b)', () => {
+  it('메뉴 항목이 grid "날짜 고르기" 를 열고, 칸을 고르면 그 날짜로 옮기며 팝오버가 닫힌다', async () => {
+    const user = userEvent.setup();
+    await 화면();
+
+    await user.click(screen.getByRole('button', { name: '독서 메뉴' }));
+    await user.click(screen.getByRole('menuitem', { name: '날짜 바꾸기…' }));
+
+    const grid = await screen.findByRole('grid', { name: '날짜 고르기' });
+    expect(grid).toBeInTheDocument();
+    expect(screen.getByText('어느 날로 옮길까요?')).toBeInTheDocument();
+    // 열리면 포커스는 현재 값(2026-01-15, 목요일)의 칸이다.
+    expect(screen.getByRole('gridcell', { name: '1월 15일 목요일' })).toHaveFocus();
+    // 네이티브 입력은 남아 있지 않다.
+    expect(document.querySelector('input[type="date"]')).toBeNull();
+
+    await user.click(screen.getByRole('gridcell', { name: '1월 20일 화요일' }));
+
+    // 이동이 확정되면 오늘 목록에서 사라지고 피커도 내려간다.
+    await waitFor(() => {
+      expect(screen.queryByRole('checkbox', { name: '독서' })).toBeNull();
+    });
+    expect(screen.queryByRole('grid', { name: '날짜 고르기' })).toBeNull();
+    // 저장소에는 새 날짜로 남아 있다.
+    const moved = await getRepositories().todos.getById(일반투두.id);
+    expect(moved?.date).toBe('2026-01-20');
+    // 포커스가 body 로 떨어지지 않는다(app-shell R14).
+    await waitFor(() => {
+      expect(document.activeElement).not.toBe(document.body);
+    });
+  });
+
+  it('Esc 는 변경 없이 닫고 포커스가 행으로 돌아온다', async () => {
+    const user = userEvent.setup();
+    await 화면();
+
+    await user.click(screen.getByRole('button', { name: '독서 메뉴' }));
+    await user.click(screen.getByRole('menuitem', { name: '날짜 바꾸기…' }));
+    await screen.findByRole('grid', { name: '날짜 고르기' });
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('grid', { name: '날짜 고르기' })).toBeNull();
+    expect(screen.getByRole('checkbox', { name: '독서' })).toBeInTheDocument();
+    const row = screen.getByRole('checkbox', { name: '독서' }).closest('li');
+    expect(row).toHaveFocus();
   });
 });
