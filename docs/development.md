@@ -130,7 +130,7 @@ pnpm exec wrangler d1 execute tasky --remote \
 [PHASE2_TICKET_BACKLOG.md](./PHASE2_TICKET_BACKLOG.md) T-106). **먼저 `pnpm build` 를 돌린 뒤 재배포한다**
 (`scripts/deploy.sh` 자체는 고치지 않는다 — owns 밖이고 고치는 방식은 T-106 에서 정한다).
 
-**두 번째 용의자: 서비스 워커 캐시.** PWA 라 23개 URL 을 프리캐시하므로, 배포본이 실제로 새것이어도 브라우저에
+**두 번째 용의자: 서비스 워커 캐시.** PWA 라 30개 URL 을 프리캐시하므로, 배포본이 실제로 새것이어도 브라우저에
 남은 옛 서비스 워커가 캐시된 옛 화면을 계속 내줄 수 있다. **구분법**: 시크릿(사생활 보호) 창에서 배포
 주소를 열어 본다 — 거기서 새 화면이 뜨면 캐시 문제고, 개발자도구 → Application → Service Workers →
 Unregister 로 푼다. 시크릿 창에서도 옛 화면이면 위의 낡은 `dist/client` 쪽을 본다.
