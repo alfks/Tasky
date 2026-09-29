@@ -19,6 +19,10 @@ describe('overlay-rules', () => {
     expect(applyOverlayEnterRule(enterOn(input))).toBe(true);
     expect(applyOverlayEnterRule(enterOn(button))).toBe(false);
     expect(applyOverlayEnterRule(enterOn(textarea))).toBe(false);
+    // 파일 입력의 Enter 는 제출이 아니라 파일 대화상자 열기다 — 버튼과 같은 부류(profile.md §5).
+    const file = document.createElement('input');
+    file.type = 'file';
+    expect(applyOverlayEnterRule(enterOn(file))).toBe(false);
 
     input.remove();
     button.remove();

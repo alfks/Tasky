@@ -106,9 +106,9 @@ test('360 폭 6줄 달에서 격자가 뷰포트 안에 들어오고 고정 영�
   expect(box!.x + box!.width).toBeLessThanOrEqual(overflow.innerWidth);
 
   // 고정 영역(셸 상단 줄 + 스트립 헤더 + 격자) ≤ 320px(R9) — 격자 바로 아래부터 목록이 스크롤된다.
-  // 기준선은 **셸 상단 줄의 위**(`카테고리 열기` 버튼의 y)다 — 그 위의 페이지 여백(안전 영역 거터)은
+  // 기준선은 **셸 상단 줄의 위**(`사이드바 열기` 버튼의 y)다 — 그 위의 페이지 여백(안전 영역 거터)은
   // 달력 블록 소관이 아니라 셸의 바깥 여백이라 R9 의 "고정 영역"에 포함되지 않는다.
-  const shellTop = await page.getByRole('button', { name: '카테고리 열기' }).boundingBox();
+  const shellTop = await page.getByRole('button', { name: '사이드바 열기' }).boundingBox();
   expect(shellTop, '셸 상단 줄 기준점을 읽지 못했다').not.toBeNull();
   expect(
     box!.y + box!.height - shellTop!.y,

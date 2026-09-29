@@ -219,6 +219,7 @@ describe('sync 지연 로드 경계 — 방향 규칙(§D-10)', () => {
     'pwa',
     'reports',
     'social',
+    'profile',
   ];
 
   it.each(NON_ASSEMBLING_FEATURES)(

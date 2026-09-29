@@ -77,3 +77,40 @@ describe('readRemoteRow — 봉투 id 와 본문 id 대조 (§②-3)', () => {
     expect(readRemoteRow('todos', todo.id, todo).ok).toBe(true);
   });
 });
+
+describe('readRemoteRow — settings 의 프로필 세 필드 (profile.md R8 · ADR-0023 규칙 3, 동기화 풀)', () => {
+  const AVATAR = 'data:image/jpeg;base64,AAAA';
+
+  it('유효한 세 필드는 풀에서 그대로 채택된다', () => {
+    const row = makeSettings({
+      profileName: '밀리',
+      profileBio: '오늘도 한 칸씩',
+      profileAvatar: AVATAR,
+    });
+    const result = readRemoteRow('settings', row.id, row);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.entity).toMatchObject({
+        profileName: '밀리',
+        profileBio: '오늘도 한 칸씩',
+        profileAvatar: AVATAR,
+      });
+    }
+  });
+
+  it('잘못된 profileAvatar 는 그 필드만 버리고 행은 ok:true — 다른 로우 규칙(invalid)과 다르다', () => {
+    const row = makeSettings({ profileName: '밀리', profileAvatar: 'not-a-data-url' });
+    const result = readRemoteRow('settings', row.id, row);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.entity.profileName).toBe('밀리');
+      expect('profileAvatar' in result.entity).toBe(false);
+    }
+  });
+
+  it('앞뒤 공백 있는 profileName 은 받은 값 그대로다', () => {
+    const row = makeSettings({ profileName: ' 밀리 ' });
+    const result = readRemoteRow('settings', row.id, row);
+    expect(result.ok && result.entity.profileName).toBe(' 밀리 ');
+  });
+});

@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createCategory } from '@/domain/category/category.rules';
@@ -9,6 +12,7 @@ import { createMemorySyncTransport } from '@/repositories/memory/sync-transport'
 
 import { createHttpSyncTransport } from '@/infra/sync/http-transport';
 
+import { PROFILE_MIRROR_KEY, useProfileStore } from '@/features/profile';
 import {
   acknowledgeAccountDeleted,
   confirmAccountSwitch,
@@ -37,6 +41,8 @@ function fakeRuntime(initial: Partial<{ dataRevision: number }> = {}) {
     },
     getExportBackup: () => exportBackup,
     ensureEngineStarted,
+    forgetProfileLocal: () => useProfileStore.getState().forgetLocal(),
+    reloadProfile: () => useProfileStore.getState().reloadFromStorage(),
   };
   return {
     rt,
@@ -435,5 +441,111 @@ describe('auth-actions: performLogoutOthers(ADR-0020 §결정 5, 리뷰 Major 1)
 
     expect(await performLogoutOthers(rt)).toBe('error');
     expect(state.phase).toBeUndefined();
+  });
+});
+
+describe('auth-actions: 로컬 삭제 다섯 경로가 전부 프로필 미러를 함께 지운다(profile.md R13·R14)', () => {
+  const AVATAR = 'data:image/webp;base64,AAAA';
+
+  function seedMirror(): void {
+    window.localStorage.setItem(
+      PROFILE_MIRROR_KEY,
+      JSON.stringify({ name: '밀리', avatar: AVATAR }),
+    );
+    useProfileStore.setState({ name: '밀리', avatar: AVATAR, status: 'ready', hydrated: true });
+  }
+
+  function expectMirrorGone(): void {
+    expect(window.localStorage.getItem(PROFILE_MIRROR_KEY)).toBeNull();
+    expect(useProfileStore.getState()).toMatchObject({
+      name: undefined,
+      avatar: undefined,
+      status: 'idle',
+    });
+  }
+
+  beforeEach(async () => {
+    await getRepositories().sync.wipeLocal();
+    await getRepositories().sync.setState({
+      deviceId: 'device-1',
+      userSub: 'sub-1',
+      userEmail: 'a@example.com',
+      cursor: 0,
+    });
+    setSyncTransport(
+      createMemorySyncTransport(createMemorySyncServer(), {
+        sub: 'sub-1',
+        email: 'a@example.com',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      }),
+    );
+    seedMirror();
+  });
+
+  it('첫 로그인 "내보내고 지우기"(resolveUploadChoice export-wipe)', async () => {
+    const { rt } = fakeRuntime();
+    expect(await resolveUploadChoice(rt, 'export-wipe', async () => true)).toBe(true);
+    expectMirrorGone();
+  });
+
+  it('로그아웃(performLogout)', async () => {
+    const { rt } = fakeRuntime();
+    expect(await performLogout(rt, async () => true)).toBe(true);
+    expectMirrorGone();
+  });
+
+  it('계정 삭제(performDeleteAccount)', async () => {
+    const { rt } = fakeRuntime();
+    expect(await performDeleteAccount(rt, async () => true)).toBe(true);
+    expectMirrorGone();
+  });
+
+  it('계정 전환(confirmAccountSwitch)', async () => {
+    setSyncTransport(
+      createMemorySyncTransport(createMemorySyncServer(), {
+        sub: 'sub-new',
+        email: 'new@example.com',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      }),
+    );
+    const { rt } = fakeRuntime();
+    expect(await confirmAccountSwitch(rt, async () => true)).toBe(true);
+    expectMirrorGone();
+  });
+
+  it('계정 삭제 안내(acknowledgeAccountDeleted)', async () => {
+    const { rt } = fakeRuntime();
+    expect(await acknowledgeAccountDeleted(rt, async () => true)).toBe(true);
+    expectMirrorGone();
+  });
+
+  it('내보내기가 취소되면 미러도 그대로다(지우지 않는 경로는 미러도 지우지 않는다)', async () => {
+    const { rt } = fakeRuntime();
+    expect(await performLogout(rt, async () => false)).toBe(false);
+    expect(window.localStorage.getItem(PROFILE_MIRROR_KEY)).not.toBeNull();
+  });
+
+  it('src/features/** 전체에서 직접 `wipeLocal()` 호출이 헬퍼 안 한 곳뿐이다(R14 — 삭제 지점은 하나)', () => {
+    // 한 파일만 보면 다른 feature 가 저장소를 직접 지워 미러를 남겨도 초록이다(리뷰 A-m4) — feature 전체를 훑는다.
+    const hits: string[] = [];
+    const stack = [path.resolve('src/features')];
+    while (stack.length > 0) {
+      const dir = stack.pop()!;
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) stack.push(full);
+        else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
+          const count = (readFileSync(full, 'utf-8').match(/\.wipeLocal\(\)/g) ?? []).length;
+          if (count > 0) hits.push(`${path.relative(process.cwd(), full)}:${count}`);
+        }
+      }
+    }
+    expect(hits).toEqual(['src/features/sync/store/auth-actions.ts:1']);
+    const source = readFileSync(path.resolve('src/features/sync/store/auth-actions.ts'), 'utf-8');
+    expect(source).toMatch(
+      /async function wipeLocalAndMirrors\(rt: SyncRuntime\)[\s\S]*?\.wipeLocal\(\)/,
+    );
+    // 여섯 호출(다섯 경로 — 계정 전환은 두 갈래)이 전부 헬퍼를 탄다.
+    expect(source.match(/await wipeLocalAndMirrors\(rt\)/g)).toHaveLength(6);
   });
 });

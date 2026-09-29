@@ -10,6 +10,20 @@ import { isTransportError } from '@/repositories/sync-transport';
 
 import type { SyncRuntime } from '@/features/sync/store/sync-store';
 
+/**
+ * 로컬 전량 삭제의 **유일한 통로**(profile.md R13·R14). 저장소 계층의 `wipeLocal()` 은 localStorage 를
+ * 모르므로, 프로필의 첫 페인트 미러(`tasky.profile.v1`)는 여기서 함께 지운다 — 공용 PC 에 이름·사진이
+ * 남지 않게. 첫 로그인 "내보내고 지우기"·로그아웃·계정 전환(두 갈래)·계정 삭제·삭제 안내, 여섯 호출이
+ * 전부 이 함수를 타고 직접 `wipeLocal()` 호출은 이 파일에 남지 않는다(`auth-actions.test.ts` 가 소스를
+ * 읽어 고정한다). 테마 미러는 지우지 않는다 — 개인정보가 아니다(theme R8). 프로필 스토어는
+ * `rt.forgetProfileLocal` 로 받는다 — 이 지연 청크가 `@/features/profile` 을 정적으로 끌지 않게
+ * (`SyncRuntime` 의 그 필드 주석).
+ */
+async function wipeLocalAndMirrors(rt: SyncRuntime): Promise<void> {
+  await getRepositories().sync.wipeLocal();
+  rt.forgetProfileLocal();
+}
+
 /** 7테이블 중 하나라도 로우가 있으면 true(R7 다이얼로그를 띄울지 판단). 툼스톤은 세지 않는다
  * (엔티티 조회 — `backup-actions.ts#refresh` 와 같은 방식). */
 async function hasLocalData(): Promise<boolean> {
@@ -111,7 +125,7 @@ export async function resolveUploadChoice(
   if (choice === 'export-wipe') {
     const exported = await exportBackup();
     if (!exported) return false; // 저장 취소 — wipe 하지 않는다(사실 10, sync.md R7)
-    await getRepositories().sync.wipeLocal();
+    await wipeLocalAndMirrors(rt);
     rt.setState({ uploadPrompt: false, uploadPending: false });
     void rt.ensureEngineStarted();
     return true;
@@ -131,7 +145,7 @@ export async function performLogout(
 ): Promise<boolean> {
   const exported = await exportBackup();
   if (!exported) return false;
-  await getRepositories().sync.wipeLocal();
+  await wipeLocalAndMirrors(rt);
   try {
     await getSyncTransport().logout();
   } catch {
@@ -163,7 +177,7 @@ export async function performDeleteAccount(
   } catch {
     return false; // 서버가 못 지웠으면 로컬도 지우지 않는다 — 부활 위험(sync.md §6)보다 재시도가 낫다
   }
-  await getRepositories().sync.wipeLocal();
+  await wipeLocalAndMirrors(rt);
   rt.setState({ phase: 'login', email: null, pendingCount: 0, uploadPrompt: false });
   return true;
 }
@@ -221,7 +235,7 @@ export async function acknowledgeAccountDeleted(
 ): Promise<boolean> {
   const exported = await exportBackup();
   if (!exported) return false; // 내보내기를 취소했으면 안내를 다시 보여준다(호출부가 유지)
-  await getRepositories().sync.wipeLocal();
+  await wipeLocalAndMirrors(rt);
   rt.setState({
     phase: 'login',
     email: null,
@@ -307,12 +321,12 @@ export async function confirmAccountSwitch(
   if (state === undefined) return false;
   if (session === null) {
     // 그사이 로그아웃됨 — 전환이 아니라 로그아웃으로 정리한다.
-    await getRepositories().sync.wipeLocal();
+    await wipeLocalAndMirrors(rt);
     await getRepositories().sync.setState({ deviceId: state.deviceId, cursor: 0 });
     rt.setState({ phase: 'login', email: null, pendingCount: 0, accountSwitchedNotice: false });
     return true;
   }
-  await getRepositories().sync.wipeLocal();
+  await wipeLocalAndMirrors(rt);
   await getRepositories().sync.setState({
     deviceId: state.deviceId,
     userSub: session.sub,

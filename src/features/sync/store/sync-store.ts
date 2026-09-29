@@ -12,6 +12,8 @@ import { create } from 'zustand';
 
 import { getRepositories } from '@/repositories/container';
 
+import { useProfileStore } from '@/features/profile';
+
 import { pushToast } from '@/components/ui/Toast';
 
 /**
@@ -108,6 +110,15 @@ export type SyncRuntime = {
   getExportBackup: () => (() => Promise<boolean>) | null;
   /** 엔진 청크를 딱 한 번 가져와 시작한다. 여러 번 불러도 안전(멱등). */
   ensureEngineStarted: () => Promise<void>;
+  /**
+   * 프로필 스토어(진입)의 두 액션(profile.md R13·R14·R15). 지연 청크가 `@/features/profile` 배럴을
+   * **정적으로 import 하지 않게** 여기서 묶어 넘긴다 — 지연 청크(auth-actions·reload-views)가 그
+   * 배럴을 직접 끌면 `ProfileCard` 의 `lazy(ProfileDialog)` 가 그 지연 진입점에서도 닿게 되어
+   * rolldown 이 대화상자와 진입이 나눠 쓰는 Toast·Button·settings.rules 를 진입에서 떼어 별도
+   * 청크로 만든다(실측 2026-09-29: 진입 폐포 +1.4 KB 가 순전히 이 분할 때문이었다).
+   */
+  forgetProfileLocal: () => void;
+  reloadProfile: () => Promise<void>;
 };
 
 const initialState: SyncStoreState = {
@@ -260,6 +271,8 @@ function runtime(): SyncRuntime {
     setState: (partial) => useSyncStore.setState(partial),
     getExportBackup: () => registeredExportBackup,
     ensureEngineStarted,
+    forgetProfileLocal: () => useProfileStore.getState().forgetLocal(),
+    reloadProfile: () => useProfileStore.getState().reloadFromStorage(),
   };
 }
 

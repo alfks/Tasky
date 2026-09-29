@@ -32,6 +32,11 @@ import { validateDdayTitle } from '@/domain/dday/dday.rules';
 import type { DiaryEntry } from '@/domain/diary/diary-entry';
 import { validateDiaryContent, validateMoodEmoji } from '@/domain/diary/diary.rules';
 import type { FocusSession } from '@/domain/focus/focus-session';
+import {
+  isAcceptableProfileAvatar,
+  isAcceptableProfileBio,
+  isAcceptableProfileName,
+} from '@/domain/profile/profile.rules';
 import type { Routine } from '@/domain/routine/routine';
 import { normalizeHexColor } from '@/domain/theme/palette';
 import { SETTINGS_ID, type Settings } from '@/domain/theme/settings';
@@ -107,7 +112,30 @@ const SETTINGS_KEYS = whitelist<Settings>()([
   'accentColor',
   'seededAt',
   'lastBackupAt',
+  'profileName',
+  'profileBio',
+  'profileAvatar',
 ]);
+
+/**
+ * 프로필 세 필드는 **행을 거부하지 않고 그 필드만 버린다**(profile.md R8, ADR-0023 규칙 3 — backup
+ * R4 "하나라도 실패하면 아무것도 쓰지 않는다" 의 의도된 예외). 손으로 키운 사진 하나가 백업 복원·
+ * 동기화 풀·Worker 푸시 전체를 막으면 안 된다. 판정은 다듬은 값으로, 저장은 받은 값 그대로(위
+ * 머리주석의 왕복 동일성 원칙 — 앞뒤 공백이 있는 이름은 그대로 남고 카드가 표시할 때 다듬는다).
+ */
+const PROFILE_FIELDS = [
+  ['profileName', isAcceptableProfileName],
+  ['profileBio', isAcceptableProfileBio],
+  ['profileAvatar', isAcceptableProfileAvatar],
+] as const;
+
+function dropInvalidProfileFields(row: Record<string, unknown>): void {
+  for (const [key, accept] of PROFILE_FIELDS) {
+    if (row[key] !== undefined && !accept(row[key])) {
+      delete row[key];
+    }
+  }
+}
 const DDAY_KEYS = whitelist<Dday>()([...META_KEYS, 'title', 'date']);
 const DIARY_KEYS = whitelist<DiaryEntry>()([...META_KEYS, 'date', 'emoji', 'content']);
 /**
@@ -276,6 +304,7 @@ export function readSettings(value: unknown, path: string): Settings {
   }
   optionalInstant(row, 'seededAt', path);
   optionalInstant(row, 'lastBackupAt', path);
+  dropInvalidProfileFields(row);
   return entity;
 }
 

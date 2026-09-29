@@ -176,6 +176,9 @@ type Settings = Meta & {
   accentColor: string;
   seededAt?: string;
   lastBackupAt?: string;
+  profileName?: string; // 프로필 세 필드 — ADR-0023, 규칙·상한은 domain/profile/profile.rules.ts
+  profileBio?: string;
+  profileAvatar?: string; // data:image/webp|jpeg;base64,… ≤ 16,384자(클라이언트가 96px 로 줄인 것)
 };
 type FocusSession = Meta & {
   todoId?: string;

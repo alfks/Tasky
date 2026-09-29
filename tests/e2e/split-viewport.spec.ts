@@ -7,7 +7,7 @@
 // 않으므로 `min-w`/`max-w`/`justify-center` 가 실제로 무엇을 그리는지는 실제 박스로만 보인다.
 //
 // 셀렉터는 전부 역할 + 접근 이름이다. 달력 컬럼 자체에는 역할이 없으므로 그 안의 **첫 요소**(☰
-// `카테고리 열기` — 헤더 줄의 맨 왼쪽, 컬럼에 좌우 padding 이 없다)와 스트립(`radiogroup "날짜
+// `사이드바 열기` — 헤더 줄의 맨 왼쪽, 컬럼에 좌우 padding 이 없다)와 스트립(`radiogroup "날짜
 // 선택"`)의 박스로 컬럼의 왼쪽 가장자리·격자 위치를 읽는다.
 import { expect, test } from './fixtures/stub-login';
 import { openSidebarDrawer } from './sidebar';
@@ -78,7 +78,7 @@ test('1440px 에서 달력 컬럼과 할 일 패널이 한 쌍으로 가운데 �
   await waitForShell(page, 1440);
 
   // 달력 컬럼의 왼쪽 가장자리 = 헤더 줄 첫 요소(☰)의 왼쪽. 패널의 오른쪽 = `main` 의 오른쪽.
-  const menu = await page.getByRole('button', { name: '카테고리 열기' }).boundingBox();
+  const menu = await page.getByRole('button', { name: '사이드바 열기' }).boundingBox();
   expect(menu).not.toBeNull();
   const main = await box(page, 'main');
   const left = menu!.x;
@@ -120,7 +120,7 @@ test('1280px 에서 사이드바를 고정해도 가로 스크롤이 없다 (app
   const drawer = await openSidebarDrawer(page);
   await drawer.getByRole('button', { name: '사이드바 고정' }).click();
   await expect(drawer).toHaveCount(0);
-  await expect(page.getByRole('navigation', { name: '카테고리' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '사이드바' })).toBeVisible();
 
   const strip = await box(page, 'radiogroup', '날짜 선택');
   const main = await box(page, 'main');

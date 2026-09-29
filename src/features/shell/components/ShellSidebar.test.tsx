@@ -14,8 +14,10 @@ import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
 import { useDateStripStore } from '@/features/date-strip';
 import { useDiaryStore } from '@/features/diary';
+import { useProfileStore } from '@/features/profile';
 import { ShellSidebar } from '@/features/shell/components/ShellSidebar';
 import { useShellUiStore } from '@/features/shell/store/shell-ui-store';
+import { useSyncStore } from '@/features/sync';
 import { useTodoStore } from '@/features/todo';
 import { makeCategory } from '@/test/fixtures/category';
 import { makeRoutine } from '@/test/fixtures/routine';
@@ -68,6 +70,37 @@ beforeEach(() => {
     insightOverlayOpen: false,
   });
   clearToasts();
+  window.localStorage.clear();
+  useProfileStore.setState({
+    name: undefined,
+    bio: undefined,
+    avatar: undefined,
+    status: 'idle',
+    hydrated: false,
+  });
+  useSyncStore.setState({ email: 'millie@example.com' });
+});
+
+describe('프로필 카드 (profile.md §2, app-shell §2-A 순서)', () => {
+  it('nav "사이드바" 의 첫 카드가 region "프로필" 이고 이름 폴백은 동기화 스토어의 이메일 앞부분이다', async () => {
+    render(
+      <ShellSidebar
+        showTitle
+        sidebarPinned={false}
+        onTogglePinned={vi.fn()}
+        categories={[운동]}
+        onSelectCategory={vi.fn()}
+        onRemoveCategory={vi.fn()}
+        exportBackup={exportBackup}
+      />,
+    );
+    const nav = screen.getByRole('navigation', { name: '사이드바' });
+    const regions = within(nav).getAllByRole('region');
+    expect(regions[0]).toHaveAccessibleName('프로필');
+    expect(regions[1]).toHaveAccessibleName('카테고리');
+    expect(await within(regions[0]!).findByText('millie')).toBeInTheDocument();
+    expect(within(regions[0]!).getByRole('button', { name: '프로필 편집' })).toBeInTheDocument();
+  });
 });
 
 describe('"루틴" 진입점', () => {

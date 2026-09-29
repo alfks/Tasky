@@ -72,7 +72,7 @@ test('휴대폰 폭(360·375·390)에서 가로 스크롤이 생기지 않는다
 
     // 넘칠 때 제일 먼저 화면 밖으로 밀리는 둘(ShellHeader 주석의 실측 경로)을 따로 못 박는다.
     // 문서 폭만 보면 `overflow:hidden` 을 어딘가에 씌워도 초록불이 되지만, 그건 버튼이 잘린 것이다.
-    for (const name of ['카테고리 열기', '오늘 요약 열기']) {
+    for (const name of ['사이드바 열기', '오늘 요약 열기']) {
       const box = await page.getByRole('button', { name }).boundingBox();
       expect(box, `${width}px 에서 "${name}" 버튼이 없다`).not.toBeNull();
       expect(box!.x, `${width}px 에서 "${name}" 버튼의 왼쪽`).toBeGreaterThanOrEqual(0);

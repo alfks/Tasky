@@ -7,15 +7,15 @@
 Playwright E2E(`tests/e2e/`). **합격/불합격을 내는** 유일한 브라우저 테스트다. 값을 찍어 보고서에
 옮기는 계측 도구는 `tests/feel/`(별도 AGENTS.md) — 성격이 다르니 섞지 않는다.
 
-## 여기 있는 것 (17개 스펙 · 64건 — 루틴 순서(routine.md R13) 반영 기준, `pnpm exec playwright test --list`)
+## 여기 있는 것 (18개 스펙 · 72건 — 프로필(profile.md) 반영 기준, `pnpm exec playwright test --list`)
 
 `selection-ring` 9 · `hover-and-focus` 9 · `sync` 7 · `split-viewport` 5 · `smoke` 3 · `cross-category-drag` 3 ·
 `category-reorder` 3 · `pomodoro` 3 · `emoji-picker` 3 · `month-view` 6 · `narrow-viewport` 2 ·
-`routine-reorder` 2 · `diary-sidebar` 4 · `todo-date-picker` 2 · `reports-overflow` 1 · `routine-manager-menu` 1 · `year-month-picker` 1. **스펙을 더하거나 지우면 이 줄과 건수를 같은 PR 에서 고친다.**
+`routine-reorder` 2 · `diary-sidebar` 4 · `todo-date-picker` 2 · `profile` 8 · `reports-overflow` 1 · `routine-manager-menu` 1 · `year-month-picker` 1. **스펙을 더하거나 지우면 이 줄과 건수를 같은 PR 에서 고친다.**
 `split-viewport` 는 반쪽 창(720·960)에서 달력·패널이 나란한지, 1440 에서 쌍이 가운데인지, 679 가 1열인지, 1280 고정 컬럼에 가로 스크롤이 없는지를 실제 박스로 잰다.
 앞의 둘은 "선택됨"·호버·포커스 표시(theme §3-G R17~R20·R29)를 계산된 스타일로(규칙 1), `narrow-viewport` 는 폭 360·375·390
 가로 스크롤 없음(app-shell R11)을 실제 박스로, `routine-manager-menu` 는 대화상자 안 팝오버가 눌리는지를
-`elementFromPoint` 로 재는 z-index 회귀 가드, `diary-sidebar` 는 오늘의 기록 카드가 드로어 안에서 써지고 `main` 에는 없으며 새로고침 뒤 남는지·모달이 드로어 위에 뜨는지·드로어를 닫았다 열어도 되돌리기가 되는지·1280×720 고정 컬럼에서 카드 세 장이 한 스크롤 영역에 흐르는지를 잰다. 러너는 `playwright.config.ts`, CI 잡은 `.github/workflows/e2e.yml`.
+`elementFromPoint` 로 재는 z-index 회귀 가드, `profile` 은 프로필 카드·편집 대화상자(이름·소개 저장과 새로고침 유지, 사진 실변환 — 투명 배경 흰색·EXIF 회전 6·4000×4000 상한·WebP 강제 폴백 JPEG, 키보드로 파일 입력 도달과 label 링, 두 기기 동기화)를, `diary-sidebar` 는 오늘의 기록 카드가 드로어 안에서 써지고 `main` 에는 없으며 새로고침 뒤 남는지·모달이 드로어 위에 뜨는지·드로어를 닫았다 열어도 되돌리기가 되는지·1280×720 고정 컬럼에서 카드 세 장이 한 스크롤 영역에 흐르는지를 잰다. 러너는 `playwright.config.ts`, CI 잡은 `.github/workflows/e2e.yml`.
 
 ## 규칙
 

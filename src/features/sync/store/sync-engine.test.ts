@@ -54,6 +54,8 @@ function fakeRuntime(): { rt: SyncRuntime; state: Partial<SyncStoreState> } {
     },
     getExportBackup: () => null,
     ensureEngineStarted: async () => {},
+    forgetProfileLocal: () => {},
+    reloadProfile: async () => {},
   };
   return { rt, state };
 }

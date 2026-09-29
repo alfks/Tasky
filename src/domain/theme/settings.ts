@@ -19,4 +19,10 @@ export type Settings = Meta & {
   seededAt?: string;
   /** 마지막 백업 내보내기 시각 (backup R10). */
   lastBackupAt?: string;
+  /** 프로필 이름 — 다듬은 뒤 1~20자, 없음 = 미설정 (profile.md R1, ADR-0023). */
+  profileName?: string;
+  /** 한 줄 소개 — 0~60자 (profile.md R2). */
+  profileBio?: string;
+  /** 사진 — 클라이언트가 96px 로 줄인 `data:image/webp|jpeg;base64,…` ≤ 16,384자 (profile.md R5). */
+  profileAvatar?: string;
 };
