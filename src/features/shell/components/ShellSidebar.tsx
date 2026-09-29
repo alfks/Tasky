@@ -1,18 +1,17 @@
 'use client';
 
 // 사이드바 (app-shell.md §2-A · R1 `nav` · R12 하단 고정 영역 · R16~R18 면과 밀도).
-//
-// 상단에는 **앱 이름만** 둔다(R12). 도구 줄은 테마 토글 · 설정 · 백업/복원 · **루틴**(routine.md §2,
-// T-83) 넷이다 — R12 원문("하단 셋")은 이 티켓으로 넷째 진입점이 붙어 갱신이 필요하다(문서 갱신은
-// 별도 `docs` 티켓 몫이라 여기서는 코드만 앞서 고친다).
+// 순서(위→아래): 앱 이름(R12) → 카테고리 → D-day(R6-a) → 오늘의 기록(R6-b) → 도구 줄(R12) → 계정 블록(R12-a).
 import type { Category } from '@/domain/category/category';
 import type { CategoryId } from '@/domain/ids';
 
 import { BackupLauncher } from '@/features/backup';
 import { DdayPanelSection } from '@/features/calendar';
 import { CategoryList } from '@/features/category';
+import { useDateStripStore } from '@/features/date-strip';
+import { DiaryCard } from '@/features/diary';
 import { useRemovalReturnFocus } from '@/features/shell/hooks/useRemovalReturnFocus';
-import { APP_NAME } from '@/features/shell/lib/title';
+import { APP_NAME, titleDateLabel } from '@/features/shell/lib/title';
 import { AccountBlockLauncher } from '@/features/sync';
 import { ThemeModeToggle, ThemeSettingsPopover } from '@/features/theme';
 import { RoutineManager } from '@/features/todo';
@@ -21,11 +20,10 @@ import { Button } from '@/components/ui/Button';
 
 import { cn } from '@/lib/cn';
 
-/** `[고정]`/`[고정 해제]` 버튼의 표식 — 컬럼(이 파일, `showTitle`)과 드로어 본문 첫 줄(이 파일,
- * `showPinToggle`)에 각각 하나씩 서지만 서로 다른 순간에만 존재하므로(고정이 켜지면 드로어 쪽이
- * 닫히고 컬럼 쪽이 선다) 같은 표식을 공유해도 안전하다. `ShellOverlays` 가 고정을 켠 뒤 사라지는
- * 드로어 대신 포커스를 넘길 곳을 찾을 때(`Dialog` 의 `returnFocus`) 이 표식으로 새로 선 컬럼의
- * 버튼을 집는다. */
+/** `[고정]`/`[고정 해제]` 버튼의 표식 — 컬럼(`showTitle`)과 드로어 본문 첫 줄(`showPinToggle`)에
+ * 하나씩 서지만 서로 다른 순간에만 존재하므로(고정이 켜지면 드로어가 닫히고 컬럼이 선다) 같은
+ * 표식을 공유해도 안전하다. `ShellOverlays` 가 고정을 켠 뒤 사라지는 드로어 대신 포커스를 넘길
+ * 곳(`Dialog` 의 `returnFocus`)을 이 표식으로 집는다. */
 export const SIDEBAR_PIN_TOGGLE_ATTR = 'data-shell-sidebar-pin-toggle';
 
 /**
@@ -95,12 +93,15 @@ export function ShellSidebar({
   // 등록 성공 `[되돌리기]`)의 버튼으로 포커스가 튀어, 거기서 Enter 를 누르면 루틴 삭제가 아니라
   // 그 등록을 되돌린다(리뷰 #104 Major 실측 — 파괴적이라 반드시 꺼야 한다).
   const routineRemovalFocus = useRemovalReturnFocus({ preferToast: false });
+  // 오늘의 기록은 **선택 날짜**의 기록이다(diary.md §2) — 소유자는 스트립 스토어(calendar-layout R21),
+  // 오늘 판정도 같은 스토어의 `today`(자정 갱신 R12)라 여기서 시계를 다시 읽지 않는다.
+  const selectedDate = useDateStripStore((state) => state.selectedDate);
+  const today = useDateStripStore((state) => state.today);
   const showPinRow = showTitle || showPinToggle;
   /*
    * `aria-pressed` 를 **일부러 쓰지 않는다.** 글자 자체가 "사이드바 고정" ↔ "사이드바 고정 해제"
    * 로 지금 상태와 누르면 바뀔 상태를 함께 말한다 — `aria-pressed` 를 더하면 "고정 해제, 눌림" 처럼
-   * 같은 상태를 두 번 낭독한다(리뷰 Major). 같은 이유로 같은 선택을 이미 한 선례가
-   * `date-strip/components/DateStripHeader.tsx` 의 주/월 보기 토글이다 — 그 파일 주석 참고.
+   * 같은 상태를 두 번 낭독한다(리뷰 Major). 선례: `date-strip/components/DateStripHeader.tsx` 의 주/월 토글.
    */
   const pinToggleLabel = `사이드바 ${sidebarPinned ? '고정 해제' : '고정'}`;
 
@@ -129,9 +130,8 @@ export function ShellSidebar({
       ) : null}
 
       {/*
-        목록 카드는 **내용 높이만큼만** 차지한다(R16). 컬럼을 채우려고 늘리면 카테고리 서너 개
-        아래로 빈 흰 기둥이 서서, 고치려던 "비어 보임" 이 더 크게 돌아온다. 넘칠 때만 안에서
-        스크롤한다(`min-h-0` + `overflow-y-auto`).
+        목록 카드는 **내용 높이만큼만** 차지한다(R16) — 컬럼을 채우려고 늘리면 카테고리 서너 개
+        아래로 빈 흰 기둥이 선다. 넘칠 때만 안에서 스크롤한다(`min-h-0` + `overflow-y-auto`).
       */}
       <div
         data-shell-sidebar-card=""
@@ -149,20 +149,30 @@ export function ShellSidebar({
       </div>
 
       {/*
-        도구 줄 (R12: 테마 토글 · 설정 · 백업/복원). 스크롤 영역 밖이라 목록이 길어져도 밀려나지
-        않는다(`shrink-0`).
+        오늘의 기록 (diary.md §2 — 사용자 결정으로 선택 날짜 패널에서 옮겨왔다): D-day 아래, 도구 줄 위.
+        여기가 **앱에서 유일한 마운트 지점**이다 — 사이드바는 컬럼 **또는** 드로어 하나만 서므로
+        diary 스토어(전역 단일)를 두 카드가 나눠 갖는 일이 없다. 카드 껍질은 카드 자신이 그린다
+        (`framed`, 드로어에서는 벗는다 — R18). 위 두 블록처럼 높이가 모자라면 안에서 스크롤한다.
+      */}
+      <div className="flex min-h-0 shrink flex-col">
+        <DiaryCard
+          date={selectedDate}
+          framed={framed}
+          dateLabel={selectedDate === today ? undefined : titleDateLabel(selectedDate)}
+        />
+      </div>
 
-        **컬럼일 때는 목록 카드 바로 아래에 붙인다 — 바닥으로 내려보내지 않는다(R12).**
-        `mt-auto` 로 바닥에 붙이면 카드 두 장 **사이**에 빈 띠가 갇힌다: 투두 3~5건이 보통인
-        이 앱에서 실측 538px(1440), 사이드바 높이의 3분의 2였다(FEEL_REPORT §9-2 A). 위아래가
-        전부 카드로 막힌 공백은 "여백" 이 아니라 **레이아웃이 끝나지 않은 자리**로 읽힌다 —
-        메인의 꼬리 공백(§2-A-2 가 "채우지 않는다" 고 정한 그것)과 다른 물건이다. 정보를 새로
-        지어 채우는 대신 **띠를 꼬리로 옮긴다**: 카드는 위에서부터 쌓이고 남는 공간은 아래에
-        모인다 — 메인 컬럼과 같은 문법이다.
+      {/*
+        도구 줄 (R12: 테마 토글 · 설정 · 백업/복원 · 루틴). 스크롤 영역 밖이라 목록이 길어져도
+        밀려나지 않는다(`shrink-0`).
+
+        **컬럼일 때는 위 카드 바로 아래에 붙인다 — 바닥으로 내려보내지 않는다(R12·R20).**
+        `mt-auto` 로 바닥에 붙이면 카드 사이에 빈 띠가 갇힌다(실측 538px, FEEL_REPORT §9-2 A) —
+        위아래가 면으로 막힌 공백은 "여백" 이 아니라 레이아웃이 끝나지 않은 자리로 읽힌다. 카드는
+        위에서부터 쌓고 남는 공간은 꼬리에 모은다(§2-A-2, 메인 컬럼과 같은 문법).
 
         드로어(`framed === false`)는 그대로 `mt-auto` 다. 거기서는 도구 줄이 카드가 아니라
-        대화상자의 발(캔버스 + 1px 구분선, R17)이라 공백을 가두지 않고, 오버레이의 바닥에
-        붙어 있는 편이 손가락에 가깝다.
+        대화상자의 발(캔버스 + 1px 구분선, R17)이라 공백을 가두지 않고, 바닥이 손가락에 가깝다.
       */}
       <div
         className={cn(

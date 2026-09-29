@@ -158,27 +158,39 @@ test('마지막 할 일 행이 하단 [+ 할 일] 막대에 가리지 않는다(
   // **손대지 않은 첫 화면**(scrollTop=0, 진짜 새로고침 — 타이핑 중 브라우저가 스스로 스크롤해 둔
   // 자리를 배제한다)에서도, 마지막 행이 "거의 다 보이는데 살짝만 잘린" 애매한 상태로 뜨지 않아야
   // 한다(`ShellMain` 의 `useGuardAmbiguousClip`). 콘텐츠 높이는 폭 변경 등으로 달라질 수 있으므로
-  // 리터럴 높이를 짐작하지 않고, **직접 재서** "잘린 양이 정확히 목표(250px)가 되는 높이"를 구한다
-  // — 리뷰가 재현한 것과 같은 종류의 애매함(대상 자신이 일부만 잘린 상태)을 안정적으로 만든다.
+  // 리터럴 높이를 짐작하지 않고, **마지막 행 자신이** 보이는 경계 아래로 정확히 목표만큼 내려가는
+  // 높이를 **직접 재서** 구한다 — 리뷰가 재현한 것과 같은 종류의 애매함(대상 자신이 일부만 잘린
+  // 상태)을 안정적으로 만든다. 스크롤 영역 전체의 넘친 양으로 잡으면 목록 **아래에 다른 콘텐츠**가
+  // 있느냐(옛 다이어리 카드 — 지금은 사이드바에 있다, diary.md §2)에 따라 같은 숫자가 "행이 살짝
+  // 잘림" 과 "행이 통째로 숨음" 을 오간다 — 후자는 가드가 일부러 손대지 않는 평범한 스크롤이다.
   await page.reload();
   await waitForShell(page);
   const dismissAgain = page.getByRole('button', { name: '저장 공간 알림 닫기' });
   if ((await dismissAgain.count()) > 0) await dismissAgain.click();
 
-  const PROBE_HEIGHT = 400; // 확실히 넘치는 높이 — 콘텐츠의 실제 스크롤 높이를 재는 발판.
-  const TARGET_OVERFLOW = 250; // 한 컨트롤 높이(36px)보다 훨씬 커, 고치기 전 코드에서 실패가
-  // 재현되는 지점이다(실측: 200 이하는 원래도 통과, 250 부터 원래 코드가 막대에 잡혔다).
+  // 가드가 재는 것은 스크롤 영역 안 **DOM 순서상 마지막 상호작용 요소** 하나다(`scroll-clip-guard.ts`
+  // 머리주석) — 이 화면에서는 마지막 그룹의 `+ 할 일 추가`(마지막 행 바로 아래)다. 그래서 그 버튼을
+  // 기준으로 잘린 양을 만든다. 마지막 행(체크박스·메뉴)은 그 위에 있으니 보정이 맞으면 함께 보인다.
+  const lastAdd = lastGroup.getByRole('button', { name: '+ 할 일 추가' });
+  const PROBE_HEIGHT = 400; // 확실히 넘치는 높이 — 대상이 경계 아래 얼마나 있는지 재는 발판.
+  // 컨트롤 높이(36px, `--control-height`) 미만이라 가드가 보정하는 구간이고, 절반(18px)보다 커서
+  // 보정이 없으면 버튼의 중심점이 경계 아래로 숨는 값이다(그 상태면 `elementFromPoint` 가 막대를
+  // 집는다 — 실측: 40 처럼 컨트롤 높이를 넘기면 가드가 일부러 손대지 않아 이 단언이 빨개진다).
+  const TARGET_CLIP = 28;
   await page.setViewportSize({ width: WIDTH, height: PROBE_HEIGHT });
   const scrollArea = page.locator('main#shell-main > div:nth-child(2)');
-  const probe = await scrollArea.evaluate((el) => ({
-    scrollHeight: el.scrollHeight,
-    clientHeight: el.clientHeight,
-  }));
-  const targetHeight = Math.round(
-    PROBE_HEIGHT + probe.scrollHeight - TARGET_OVERFLOW - probe.clientHeight,
+  const areaBottom = await scrollArea.evaluate(
+    (el) => el.getBoundingClientRect().bottom - el.scrollTop,
   );
+  const targetBottom = await lastAdd.evaluate((el) => el.getBoundingClientRect().bottom);
+  // 뷰포트를 X 만큼 키우면 스크롤 영역의 아래 경계도 X 만큼 내려간다(막대 높이는 고정).
+  const targetHeight = Math.round(PROBE_HEIGHT + (targetBottom - areaBottom) - TARGET_CLIP);
   await page.setViewportSize({ width: WIDTH, height: targetHeight });
 
+  expect(
+    await isOnTop(lastAdd),
+    `${targetHeight}px·손대지 않은 첫 화면에서 마지막 [+ 할 일 추가] 가 하단 막대에 가려 있다`,
+  ).toBe(true);
   expect(
     await isOnTop(lastCheckbox),
     `${targetHeight}px·손대지 않은 첫 화면에서 마지막 행 체크박스가 하단 막대에 가려 있다`,

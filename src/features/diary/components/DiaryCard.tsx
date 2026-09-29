@@ -1,6 +1,8 @@
 'use client';
 
-// 오늘의 기록 카드 (diary.md §2 — 날짜 화면 하단, 투두 목록 아래). `ShellMain` 이 마운트한다.
+// 오늘의 기록 카드 (diary.md §2 — 카테고리쪽 사이드바, D-day 아래·도구 줄 위). `ShellSidebar` 가
+// 마운트한다 — 컬럼이든 드로어든 한 번에 하나만 선다(diary 스토어가 전역 단일이라 둘이 같이 뜨면
+// 같은 스토어를 놓고 싸운다).
 import { useEffect, useRef, useState } from 'react';
 
 import type { DateKey } from '@/domain/date/date-key';
@@ -18,6 +20,8 @@ import { Popover } from '@/components/ui/Popover';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { pushToast } from '@/components/ui/Toast';
 
+import { cn } from '@/lib/cn';
+
 export const DIARY_CARD_TITLE = '오늘의 기록';
 export const DIARY_EMPTY_TEXT = '오늘 하루 어땠나요?';
 export const DIARY_ADD_LABEL = '+ 기록하기';
@@ -27,9 +31,38 @@ export const DIARY_DELETE_LABEL = '삭제';
 /** 조회 자체가 실패했을 때(빈 상태와 구분, diary §2). `TodoList` 의 같은 문구 패턴. */
 export const DIARY_LOAD_FAILED = '기록을 불러오지 못했어요';
 
-type DiaryCardProps = { date: DateKey };
+/**
+ * 상시 카드 한 장 (app-shell.md §2-A "면과 고도" — 값의 단일 소스는 그 절이다). 사이드바의 다른
+ * 카드(`ShellSidebar` 의 `CARD_CLASS`)와 **같은 값** — 한 컬럼 안에서 면의 문법이 갈리지 않게.
+ */
+const CARD_CLASS =
+  'rounded-[var(--radius-xl)] border border-border bg-surface p-[var(--space-3)] shadow-sm';
+/**
+ * 껍질이 없을 때(드로어) 포커스 링이 들어갈 자리. 이 `section` 은 스크롤 컨테이너라 상자 밖은
+ * 잘리는데, 껍질의 안쪽 여백이 없으면 맨 왼쪽에 붙은 `[+ 기록하기]` 의 링(2px + offset 2px)이
+ * 왼쪽에서 잘린다(실측, 960 드로어). 그래서 링 두께만큼 안쪽 여백을 주고 같은 값의 음수 마진으로
+ * 내용의 정렬(제목이 옆 D-day 제목과 같은 x)을 그대로 둔다.
+ */
+const UNFRAMED_CLASS = '-mx-[var(--space-1)] -my-[var(--space-1)] p-[var(--space-1)]';
 
-export function DiaryCard({ date }: DiaryCardProps) {
+type DiaryCardProps = {
+  date: DateKey;
+  /**
+   * 카드 껍질(면·보더·그림자)을 스스로 그릴지. 기본 `true`. 이미 면을 가진 오버레이(드로어) 안에서는
+   * `false` — 같은 면을 두 겹 겹치지 않는다(app-shell R18). 껍질은 스크롤 컨테이너인 `section` 자체에
+   * 두어, 사이드바가 높이를 조일 때 보더는 제자리에 있고 안쪽만 스크롤한다.
+   */
+  framed?: boolean;
+  /**
+   * 제목 아래 한 줄로 보일 날짜(`9월 17일 (목)`). 사이드바는 날짜 스트립에서 멀어 "어느 날의
+   * 기록인지" 를 카드 스스로 말해야 한다 — 호출부가 **선택 날짜가 오늘이 아닐 때만** 넘긴다(오늘
+   * 판정의 출처는 스트립 스토어 하나, app-shell R12). 제목 "오늘의 기록" 은 접근 이름을 고정하려고
+   * 그대로 둔다.
+   */
+  dateLabel?: string;
+};
+
+export function DiaryCard({ date, framed = true, dateLabel }: DiaryCardProps) {
   const entry = useDiaryStore((s) => s.entry);
   const status = useDiaryStore((s) => s.status);
   const error = useDiaryStore((s) => s.error);
@@ -82,7 +115,10 @@ export function DiaryCard({ date }: DiaryCardProps) {
   };
 
   return (
-    <section aria-label={DIARY_CARD_TITLE} className="mt-[var(--space-4)]">
+    <section
+      aria-label={DIARY_CARD_TITLE}
+      className={cn('flex min-h-0 flex-col overflow-y-auto', framed ? CARD_CLASS : UNFRAMED_CLASS)}
+    >
       {status === 'loading' ? (
         <Skeleton className="h-[72px] w-full" />
       ) : status === 'error' ? (
@@ -91,18 +127,18 @@ export function DiaryCard({ date }: DiaryCardProps) {
           {error ?? DIARY_LOAD_FAILED}
         </p>
       ) : entry === undefined ? (
-        <article className="flex flex-col items-start gap-[var(--space-3)] rounded-[var(--radius-xl)] border border-border bg-surface p-[var(--space-4)] shadow-sm">
-          <h2 className="text-sm font-semibold text-muted">{DIARY_CARD_TITLE}</h2>
+        <article className="flex flex-col items-start gap-[var(--space-3)]">
+          <DiaryTitle dateLabel={dateLabel} />
           <p className="text-base text-text">{DIARY_EMPTY_TEXT}</p>
           <Button ref={addRef} onClick={() => setDialogOpen(true)}>
             {DIARY_ADD_LABEL}
           </Button>
         </article>
       ) : (
-        <article className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-xl)] border border-border bg-surface p-[var(--space-4)] shadow-sm">
+        <article className="flex flex-col gap-[var(--space-3)]">
           <div className="flex items-start justify-between gap-[var(--space-2)]">
-            <h2 className="text-sm font-semibold text-muted">{DIARY_CARD_TITLE}</h2>
-            <div className="flex items-center gap-[var(--space-1)]">
+            <DiaryTitle dateLabel={dateLabel} />
+            <div className="flex shrink-0 items-center gap-[var(--space-1)]">
               <Button ref={editRef} variant="ghost" size="sm" onClick={() => setDialogOpen(true)}>
                 {DIARY_EDIT_LABEL}
               </Button>
@@ -151,7 +187,8 @@ export function DiaryCard({ date }: DiaryCardProps) {
               </>
             )}
             {entry.content === '' ? null : (
-              <span className="whitespace-pre-wrap">{entry.content}</span>
+              // `break-words` — 사이드바(240 컬럼·300 드로어)에서 URL 같은 긴 낱말이 카드 폭을 밀지 않게.
+              <span className="min-w-0 break-words whitespace-pre-wrap">{entry.content}</span>
             )}
           </p>
         </article>
@@ -165,5 +202,15 @@ export function DiaryCard({ date }: DiaryCardProps) {
         returnFocus={() => (entry === undefined ? addRef.current : editRef.current)}
       />
     </section>
+  );
+}
+
+/** 제목 + (오늘이 아닐 때만) 날짜 한 줄. 제목 글자는 옆 카드(D-day)의 `h2` 와 같은 값이다. */
+function DiaryTitle({ dateLabel }: { dateLabel?: string }) {
+  return (
+    <div className="min-w-0">
+      <h2 className="text-md font-semibold text-text">{DIARY_CARD_TITLE}</h2>
+      {dateLabel === undefined ? null : <p className="text-xs text-muted">{dateLabel}</p>}
+    </div>
   );
 }
