@@ -17,6 +17,12 @@ import type { Settings } from '@/domain/theme/settings';
 export const PROFILE_NAME_MAX_LENGTH = 20;
 /** 한 줄 소개 최대 길이 (R2). */
 export const PROFILE_BIO_MAX_LENGTH = 60;
+/**
+ * 이름·소개의 **다듬기 전 원시 길이** 상한(UTF-16 단위, R8). 읽기 경로는 다듬은 값으로 판정하고 받은 값을
+ * 그대로 저장하므로, 이것이 없으면 공백 1 MB + "밀리" 가 유효로 통과해 설정 행 상한(~17 KB)의 취지가
+ * 우회된다(리뷰 A-m1). 정상 입력은 절대 닿지 않는 값이다.
+ */
+export const PROFILE_TEXT_RAW_MAX_LENGTH = 1_000;
 /** 사진 데이터 URL 의 최대 **문자열 길이**(≈ 이진 12 KB). 상한이자 R6 품질 하강의 문턱이다 (R5). */
 export const PROFILE_AVATAR_MAX_CHARS = 16_384;
 /**
@@ -75,7 +81,11 @@ export function isAcceptableProfileBio(value: unknown): value is string {
 }
 
 function withinLimit(value: unknown, max: number): value is string {
-  return typeof value === 'string' && profileCharCount(normalizeProfileText(value)) <= max;
+  return (
+    typeof value === 'string' &&
+    value.length <= PROFILE_TEXT_RAW_MAX_LENGTH &&
+    profileCharCount(normalizeProfileText(value)) <= max
+  );
 }
 
 /** 사진은 다듬을 것이 없다 — 형식 그대로 R5 (R8). */
@@ -138,11 +148,12 @@ let segmenter: Intl.Segmenter | undefined;
 export function profileInitial(name: string): string {
   if (name.length === 0) return '';
   if (typeof Intl === 'undefined' || !('Segmenter' in Intl)) {
-    return [...name][0] ?? '';
+    return ([...name][0] ?? '').toLocaleUpperCase();
   }
   segmenter ??= new Intl.Segmenter('ko', { granularity: 'grapheme' });
   const first = segmenter.segment(name)[Symbol.iterator]().next();
-  return first.done ? '' : first.value.segment;
+  // 라틴 소문자(이메일 폴백 "millie" 등)는 대문자로 — 아바타 이니셜의 관용. 한글·이모지는 그대로다.
+  return first.done ? '' : first.value.segment.toLocaleUpperCase();
 }
 
 /**

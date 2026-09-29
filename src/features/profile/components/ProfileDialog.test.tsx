@@ -56,7 +56,7 @@ describe('ProfileDialog — 입력·글자 수', () => {
     render(<ProfileDialog {...dialogProps({ email: 'millie@example.com' })} />);
     const dialog = screen.getByRole('dialog', { name: '프로필 편집' });
     const circle = () => dialog.querySelector('span[aria-hidden="true"].rounded-full');
-    expect(circle()?.textContent).toBe('m');
+    expect(circle()?.textContent).toBe('M');
     await user.type(screen.getByLabelText('이름'), '밀리');
     expect(circle()?.textContent).toBe('밀');
   });
@@ -133,6 +133,25 @@ describe('ProfileDialog — 저장·취소', () => {
     await waitFor(() => expect(onSaveFailed).toHaveBeenCalledTimes(1));
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog', { name: '프로필 편집' })).toBeInTheDocument();
+  });
+});
+
+describe('ProfileDialog — 사진을 읽는 동안 (리뷰 B-m2)', () => {
+  it('디코드가 끝나기 전 Enter/저장은 무시되고 저장 버튼이 잠긴다 — 고른 사진을 버리지 않는다', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<ProfileDialog {...dialogProps({ onClose })} />);
+    vi.stubGlobal('createImageBitmap', () => new Promise(() => {})); // 영원히 읽는 중
+    await user.upload(
+      screen.getByLabelText('사진 고르기'),
+      new File(['x'], 'big.png', { type: 'image/png' }),
+    );
+    expect(await screen.findByText('사진을 읽는 중…')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '저장' })).toBeDisabled();
+    await user.type(screen.getByLabelText('이름'), '밀리{Enter}');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(await getRepositories().settings.get()).toBeUndefined();
+    vi.unstubAllGlobals();
   });
 });
 

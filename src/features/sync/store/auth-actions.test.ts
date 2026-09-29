@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -525,10 +525,23 @@ describe('auth-actions: 로컬 삭제 다섯 경로가 전부 프로필 미러�
     expect(window.localStorage.getItem(PROFILE_MIRROR_KEY)).not.toBeNull();
   });
 
-  it('소스에 직접 `wipeLocal()` 호출이 헬퍼 안 한 곳뿐이다(R14 — 삭제 지점은 하나)', () => {
+  it('src/features/** 전체에서 직접 `wipeLocal()` 호출이 헬퍼 안 한 곳뿐이다(R14 — 삭제 지점은 하나)', () => {
+    // 한 파일만 보면 다른 feature 가 저장소를 직접 지워 미러를 남겨도 초록이다(리뷰 A-m4) — feature 전체를 훑는다.
+    const hits: string[] = [];
+    const stack = [path.resolve('src/features')];
+    while (stack.length > 0) {
+      const dir = stack.pop()!;
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) stack.push(full);
+        else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
+          const count = (readFileSync(full, 'utf-8').match(/\.wipeLocal\(\)/g) ?? []).length;
+          if (count > 0) hits.push(`${path.relative(process.cwd(), full)}:${count}`);
+        }
+      }
+    }
+    expect(hits).toEqual(['src/features/sync/store/auth-actions.ts:1']);
     const source = readFileSync(path.resolve('src/features/sync/store/auth-actions.ts'), 'utf-8');
-    const direct = source.match(/\.wipeLocal\(\)/g) ?? [];
-    expect(direct).toHaveLength(1);
     expect(source).toMatch(
       /async function wipeLocalAndMirrors\(rt: SyncRuntime\)[\s\S]*?\.wipeLocal\(\)/,
     );

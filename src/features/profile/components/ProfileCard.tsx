@@ -57,14 +57,18 @@ export function ProfileCard({ framed = true, email }: ProfileCardProps) {
   const bio = useProfileStore((state) => state.bio);
   const avatar = useProfileStore((state) => state.avatar);
   const hydrated = useProfileStore((state) => state.hydrated);
+  const status = useProfileStore((state) => state.status);
   const init = useProfileStore((state) => state.init);
   const save = useProfileStore((state) => state.save);
   const [editing, setEditing] = useState(false);
 
-  // 외부 저장소 읽기(code-style §3 이 금지하는 파생 상태 동기화가 아니다). 스토어가 한 번만 돈다.
+  // 외부 저장소 읽기(code-style §3 이 금지하는 파생 상태 동기화가 아니다). 스토어가 `idle` 일 때만
+  // 돈다 — 마운트 때 한 번, 그리고 셸이 선 채로 로컬을 지우는 두 경로(첫 로그인 "내보내고 지우기"·
+  // 계정 전환) 뒤 `forgetLocal` 이 `idle` 로 되돌렸을 때 다시(리뷰 A-M1 — 그러지 않으면 카드가
+  // 새로고침 전까지 빈 칸으로 남는다, R13·R14).
   useEffect(() => {
-    void init();
-  }, [init]);
+    if (status === 'idle') void init();
+  }, [status, init]);
 
   const displayName = profileDisplayName(name, email);
   const displayBio = profileDisplayBio(bio);
@@ -72,8 +76,10 @@ export function ProfileCard({ framed = true, email }: ProfileCardProps) {
   return (
     <section
       aria-label={PROFILE_CARD_LABEL}
+      // 간격 `--space-2`: 고정 컬럼(240)에서 텍스트 폭이 120px 뿐이라 `--space-3` 이면 자리표시 문구
+      // "한 줄 소개를 적어 보세요"(122px) 가 잘린다(리뷰 B-M1 실측). e2e 가 scrollWidth 로 지킨다.
       className={cn(
-        'flex shrink-0 items-center gap-[var(--space-3)]',
+        'flex shrink-0 items-center gap-[var(--space-2)]',
         framed ? CARD_CLASS : 'px-[var(--space-2)]',
       )}
     >
@@ -91,7 +97,8 @@ export function ProfileCard({ framed = true, email }: ProfileCardProps) {
           </>
         ) : null}
       </div>
-      <IconButton label={PROFILE_EDIT_LABEL} onClick={() => setEditing(true)}>
+      {/* 읽기가 끝나기 전에 열면 빈 폼이 새로 읽은 행 위에 빈 값을 써 이름·사진을 지운다(R7) — 리뷰 B-m3. */}
+      <IconButton label={PROFILE_EDIT_LABEL} disabled={!hydrated} onClick={() => setEditing(true)}>
         ✎
       </IconButton>
       {editing ? (

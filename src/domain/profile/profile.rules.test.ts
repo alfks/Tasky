@@ -10,6 +10,7 @@ import {
   PROFILE_AVATAR_MAX_CHARS,
   PROFILE_BIO_MAX_LENGTH,
   PROFILE_NAME_MAX_LENGTH,
+  PROFILE_TEXT_RAW_MAX_LENGTH,
   setProfile,
   validateProfileAvatar,
   validateProfileBio,
@@ -118,6 +119,12 @@ describe('isAcceptable* — R8 읽기 경로의 관용(다듬은 값으로 판�
     expect(isAcceptableProfileName('가'.repeat(21))).toBe(false);
   });
 
+  it('다듬기 전 원시 길이가 1,000자를 넘으면 다듬어서 짧아도 무효 — 공백으로 부풀린 값(리뷰 A-m1)', () => {
+    expect(isAcceptableProfileName(`${' '.repeat(2_000)}밀리`)).toBe(false);
+    expect(isAcceptableProfileBio(' '.repeat(PROFILE_TEXT_RAW_MAX_LENGTH))).toBe(true);
+    expect(isAcceptableProfileBio(' '.repeat(PROFILE_TEXT_RAW_MAX_LENGTH + 1))).toBe(false);
+  });
+
   it('공백만 있는 소개(" ")는 다듬으면 0자라 유효하다', () => {
     expect(isAcceptableProfileBio(' ')).toBe(true);
     expect(isAcceptableProfileBio('나'.repeat(61))).toBe(false);
@@ -183,8 +190,9 @@ describe('setProfile — R7 (ADR-0023 규칙 4)', () => {
 });
 
 describe('표시 (R9·R10)', () => {
-  it('첫 글자는 첫 그래핌 — ZWJ 가족 이모지도 하나', () => {
+  it('첫 글자는 첫 그래핌 — ZWJ 가족 이모지도 하나, 라틴 소문자는 대문자로', () => {
     expect(profileInitial('밀리')).toBe('밀');
+    expect(profileInitial('millie')).toBe('M');
     expect(profileInitial('👨‍👩‍👧 가족')).toBe('👨‍👩‍👧');
     expect(profileInitial('')).toBe('');
   });

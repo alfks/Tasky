@@ -24,7 +24,8 @@ export type AvatarResult = { ok: true; dataUrl: string } | { ok: false; error: A
  * R3) 애니메이션은 첫 프레임만 준다. 브라우저가 못 여는 형식(HEIC 등)은 여기서 던져 `decode` 가 된다.
  */
 export async function readAvatarFile(file: File): Promise<AvatarResult> {
-  if (!file.type.startsWith('image/')) return { ok: false, error: 'not-image' };
+  // 확장자를 모르는 파일에 `type === ''` 을 주는 OS/선택기가 있다 — 그 경우는 디코드까지 가 보고 판정한다.
+  if (file.type !== '' && !file.type.startsWith('image/')) return { ok: false, error: 'not-image' };
   if (file.size > AVATAR_MAX_FILE_BYTES) return { ok: false, error: 'too-big' };
 
   let decoded: ImageBitmap;

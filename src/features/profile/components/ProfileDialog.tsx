@@ -58,6 +58,8 @@ function TextField({ label, value, max, error, inputRef, onChange, onEnter }: Te
         <input
           ref={inputRef}
           value={value}
+          autoComplete="off"
+          enterKeyHint="done"
           aria-invalid={error === null ? undefined : true}
           aria-describedby={error === null ? undefined : errorId}
           onChange={(e) => onChange(e.target.value)}
@@ -101,7 +103,8 @@ export function ProfileDialog({
   const form = useProfileForm({ initial, save: saveToStore, deps });
 
   const save = async (): Promise<void> => {
-    if (form.saving) return;
+    // 사진을 읽는 동안 저장하면 이전 사진으로 저장하고 닫혀 고른 사진이 조용히 버려진다(리뷰 B-m2).
+    if (form.saving || form.reading) return;
     const result = await form.submit();
     if (result === 'saved') onClose();
     else if (result === 'failed') onSaveFailed();
@@ -121,7 +124,7 @@ export function ProfileDialog({
           <Button variant="outline" onClick={onClose}>
             취소
           </Button>
-          <Button onClick={() => void save()} loading={form.saving}>
+          <Button onClick={() => void save()} loading={form.saving} disabled={form.reading}>
             저장
           </Button>
         </>

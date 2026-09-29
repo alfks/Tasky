@@ -160,5 +160,10 @@ describe('parseProfileMirror', () => {
     expect(parseProfileMirror('{')).toBeUndefined();
     expect(parseProfileMirror('[]')).toBeUndefined();
     expect(parseProfileMirror('{"name":1,"bio":"소개"}')).toEqual({ bio: '소개' });
+    // avatar 는 R5 형식만 — `http://` 가 미러를 타고 img src 가 되지 않게(리뷰 A-m2).
+    expect(parseProfileMirror('{"avatar":"http://evil.example/a.png"}')).toEqual({});
+    expect(parseProfileMirror('{"avatar":"data:image/webp;base64,AAAA"}')).toEqual({
+      avatar: 'data:image/webp;base64,AAAA',
+    });
   });
 });

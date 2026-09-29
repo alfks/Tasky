@@ -22,7 +22,11 @@ export function ProfileAvatar({ avatar, initial, size }: ProfileAvatarProps) {
       <img
         src={avatar}
         alt=""
-        className={cn('shrink-0 rounded-full bg-surface-2 object-cover', SIZE_CLASS[size])}
+        // `border-transparent` 는 강제 색 모드에서만 시스템 색으로 드러나 원 윤곽을 살린다(리뷰 B-m1, §5).
+        className={cn(
+          'shrink-0 rounded-full border border-transparent bg-surface-2 object-cover',
+          SIZE_CLASS[size],
+        )}
       />
     );
   }
@@ -30,7 +34,7 @@ export function ProfileAvatar({ avatar, initial, size }: ProfileAvatarProps) {
     <span
       aria-hidden="true"
       className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-full bg-accent leading-none font-semibold text-on-accent select-none',
+        'inline-flex shrink-0 items-center justify-center rounded-full border border-transparent bg-accent leading-none font-semibold text-on-accent select-none',
         SIZE_CLASS[size],
       )}
     >

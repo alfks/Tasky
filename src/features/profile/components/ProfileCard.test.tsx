@@ -1,5 +1,5 @@
 // 카드의 폴백·미러 첫 페인트·진입점 (profile.md §2·R9·R10·R11·R14·§5).
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -43,7 +43,7 @@ describe('ProfileCard — 빈 상태 폴백 (R9·R10)', () => {
     expect(await screen.findByText('millie')).toBeInTheDocument();
     expect(screen.getByText('한 줄 소개를 적어 보세요')).toBeInTheDocument();
     // 첫 글자 원은 장식(aria-hidden) — 텍스트로만 확인한다.
-    expect(card.querySelector('[aria-hidden="true"]')?.textContent).toBe('m');
+    expect(card.querySelector('[aria-hidden="true"]')?.textContent).toBe('M'); // 라틴은 대문자
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '프로필 편집' })).toBeInTheDocument();
   });
@@ -80,6 +80,27 @@ describe('ProfileCard — 첫 페인트 (R14)', () => {
     expect(screen.getByRole('region', { name: '프로필' })).toBeInTheDocument();
     expect(screen.queryByText('millie')).not.toBeInTheDocument();
     expect(screen.queryByText('한 줄 소개를 적어 보세요')).not.toBeInTheDocument();
+  });
+
+  it('읽기가 끝나기 전에는 ✎ 가 비활성이다 — 빈 폼으로 저장해 기존 값을 지우는 창을 막는다(리뷰 B-m3)', async () => {
+    render(<ProfileCard email="millie@example.com" />);
+    expect(screen.getByRole('button', { name: '프로필 편집' })).toBeDisabled();
+    await screen.findByText('millie');
+    expect(screen.getByRole('button', { name: '프로필 편집' })).toBeEnabled();
+  });
+
+  it('셸이 선 채로 로컬이 지워지면(forgetLocal, 리마운트 없음) 다시 읽어 폴백을 보인다(리뷰 A-M1, R13·R14)', async () => {
+    await getRepositories().settings.upsert(
+      setProfile(createSettings(deps), { name: '밀리', bio: '', avatar: undefined }, deps),
+    );
+    render(<ProfileCard email="millie@example.com" />);
+    expect(await screen.findByText('밀리')).toBeInTheDocument();
+    // 첫 로그인 "내보내고 지우기"·계정 전환은 phase 를 바꾸지 않아 카드가 남는다 — 저장소도 비운다.
+    setRepositories(createMemoryRepositories());
+    act(() => useProfileStore.getState().forgetLocal());
+    expect(await screen.findByText('millie')).toBeInTheDocument();
+    expect(screen.queryByText('밀리')).not.toBeInTheDocument();
+    expect(useProfileStore.getState().status).toBe('ready');
   });
 
   it('미러가 있으면 첫 렌더부터 그 이름이 보인다(비동기 읽기를 기다리지 않는다)', () => {

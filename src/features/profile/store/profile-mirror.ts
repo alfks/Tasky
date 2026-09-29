@@ -4,6 +4,8 @@
 // 전환·계정 삭제의 로컬 삭제와 **함께 지운다**(`clearProfileMirror`, `auth-actions.ts#wipeLocalAndMirrors`)
 // — 공용 PC 에 이름·사진이 남지 않게. 브라우저 저장소를 만지는 곳은 이 파일뿐이다.
 
+import { isValidProfileAvatar } from '@/domain/profile/profile.rules';
+
 /** 미러 키. 값은 `{ name?, bio?, avatar? }` JSON — 세 값 다 없으면 빈 객체. */
 export const PROFILE_MIRROR_KEY = 'tasky.profile.v1';
 
@@ -34,8 +36,13 @@ export function parseProfileMirror(raw: string | null): ProfileMirror | undefine
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
   const record = parsed as Record<string, unknown>;
   const mirror: ProfileMirror = {};
-  for (const key of ['name', 'bio', 'avatar'] as const) {
+  for (const key of ['name', 'bio'] as const) {
     if (typeof record[key] === 'string') mirror[key] = record[key];
+  }
+  // 첫 페인트에 곧장 `img src` 가 된다 — R5 형식(data:image/webp|jpeg)만 받아 `http://…` 가 미러를 타고
+  // 들어와도 외부 요청이 나가지 않게 한다(리뷰 A-m2). 검증은 진입 청크에 이미 있어 공짜다.
+  if (typeof record['avatar'] === 'string' && isValidProfileAvatar(record['avatar'])) {
+    mirror.avatar = record['avatar'];
   }
   return mirror;
 }

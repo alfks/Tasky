@@ -13,6 +13,7 @@ import { cn } from '@/lib/cn';
 
 export const PHOTO_PICK_LABEL = '사진 고르기';
 export const PHOTO_CLEAR_LABEL = '사진 지우기';
+export const PHOTO_READING_TEXT = '사진을 읽는 중…';
 
 type ProfilePhotoFieldProps = {
   avatar: string | undefined;
@@ -39,7 +40,13 @@ export function ProfilePhotoField({
   return (
     <div className="flex flex-col gap-[var(--space-2)]">
       <div className="flex items-center gap-[var(--space-4)]">
-        <ProfileAvatar avatar={avatar} initial={initial} size={64} />
+        {/* 읽는 동안(큰 사진은 1~2초) 미리보기를 흐리고 아래 한 줄로 알린다 — "눌렀는데 아무 일도 없다" 방지. */}
+        <span
+          aria-busy={busy || undefined}
+          className={cn('inline-flex', busy ? 'opacity-50' : null)}
+        >
+          <ProfileAvatar avatar={avatar} initial={initial} size={64} />
+        </span>
         <div className="flex flex-wrap items-center gap-[var(--space-2)]">
           <input
             id={inputId}
@@ -73,6 +80,7 @@ export function ProfilePhotoField({
           )}
         </div>
       </div>
+      {busy && error === null ? <p className="text-sm text-muted">{PHOTO_READING_TEXT}</p> : null}
       {error === null ? null : (
         <p
           id={errorId}

@@ -91,6 +91,41 @@ test('이름·소개를 저장하면 카드에 보이고 새로고침 뒤에도 
   await expect(profileCard(page)).toContainText(BIO);
 });
 
+test('고정 컬럼(240)에서 빈 상태 자리표시 문구가 잘리지 않고, 드로어(300)에서 60자 소개가 한 줄이다(§7)', async ({
+  page,
+}) => {
+  await page.waitForSelector('main#shell-main');
+  const drawer = await openSidebarDrawer(page);
+  await drawer.getByRole('button', { name: '사이드바 고정' }).click();
+  await expect(drawer).toHaveCount(0);
+  const column = page.getByRole('navigation', { name: '사이드바' });
+  const placeholder = column.getByText('한 줄 소개를 적어 보세요');
+  await expect(placeholder).toBeVisible();
+  // 잘림은 계산된 박스로 잰다(규칙 1) — 리뷰 B-M1 이 잡은 4px 부족이 다시 오면 여기서 빨개진다.
+  const box = await placeholder.evaluate((el) => ({
+    scroll: el.scrollWidth,
+    client: el.clientWidth,
+  }));
+  expect(box.scroll, '자리표시 문구가 말줄임됐다').toBeLessThanOrEqual(box.client);
+
+  // 고정 컬럼에는 드로어가 없다 — ✎ 를 바로 누른다.
+  await column.getByRole('button', { name: '프로필 편집' }).click();
+  const dialog = page.getByRole('dialog', { name: '프로필 편집' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel('한 줄 소개').fill('나'.repeat(60));
+  await page.keyboard.press('Enter');
+  await expect(dialog).toHaveCount(0);
+  await column.getByRole('button', { name: '사이드바 고정 해제' }).click();
+  await page.setViewportSize({ width: 960, height: 800 });
+  await openSidebarDrawer(page);
+  const bio = profileCard(page).getByText('나'.repeat(60));
+  const lineBox = await bio.evaluate((el) => ({
+    height: el.clientHeight,
+    line: parseFloat(getComputedStyle(el).lineHeight),
+  }));
+  expect(lineBox.height, '60자 소개가 두 줄로 늘어났다').toBeLessThanOrEqual(lineBox.line + 1);
+});
+
 test('작은 투명 PNG → 카드의 img src 가 data:image/ 로 시작하고 16,384자 이하이며 배경이 흰색, 지우기가 된다', async ({
   page,
 }) => {
