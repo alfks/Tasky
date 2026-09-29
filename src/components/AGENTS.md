@@ -18,7 +18,8 @@
 2. 접근성 기본 내장: 포커스 링, `aria-*`, 키보드. 프리미티브가 접근성을 책임지면 feature는 신경 덜 쓴다.
 3. 파일 1개 = 컴포넌트 1개 + 테스트 1개(`Button.test.tsx`, 행동 1~2개). 예외 둘.
    - 여러 오버레이가 공유하는 모듈(`ui/overlay-stack.ts` = 레이어 스택, `ui/overlay-rules.ts` =
-     Enter/IME 규칙 + 배경 `inert` 예외 표식)은 컴포넌트가 아니지만 같은 이름의 테스트를 둔다.
+     Enter/IME 규칙 + 배경 `inert` 예외 표식, `ui/card-class.ts` = 상시 카드 면 클래스 —
+     app-shell R16, 사이드바와 diary 가 공유)은 컴포넌트가 아니지만 같은 이름의 테스트를 둔다.
    - 테스트 파일이 300줄(CLAUDE.md §6)에 닿으면 주제별로 `<Component>.<주제>.test.tsx` 로 나눈다
      (예: `Dialog.test.tsx` + `Dialog.trap.test.tsx` = 포커스 트랩·배경 inert). 컴포넌트 파일은
      그대로 하나다 — 나누는 것은 테스트뿐이다.
