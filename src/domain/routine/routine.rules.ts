@@ -109,8 +109,18 @@ export function deleteRoutine(routine: Routine, deps: MetaDeps): Persistable<Rou
   return markDeleted(routine, deps.now());
 }
 
-/** 표준 정렬: 만든 순서(`createdAt` asc) → `id` asc. 두 저장소 구현이 갈리지 않게 동률을 끊는다. */
+/**
+ * 표준 정렬(routine.md R13): `order` asc(없는 옛 레코드는 `Infinity` — 순서 있는 것들 뒤) →
+ * `createdAt` asc → `id` asc. 두 저장소 구현이 갈리지 않게 동률을 끊는다. 지연 생성
+ * (`planMaterializeRoutines`)이 `routines.list()` 순으로 채우므로 이 정렬이 곧 새 인스턴스가 보드에서
+ * 자리를 받는 순서다. 순서 변경 자체(`reorderRoutines`)는 진입 청크 밖 `routine-rank.ts` 에 있다.
+ */
 export function compareRoutines(a: Routine, b: Routine): number {
+  const ao = a.order ?? Infinity;
+  const bo = b.order ?? Infinity;
+  if (ao !== bo) {
+    return ao < bo ? -1 : 1;
+  }
   if (a.createdAt !== b.createdAt) {
     return a.createdAt < b.createdAt ? -1 : 1;
   }

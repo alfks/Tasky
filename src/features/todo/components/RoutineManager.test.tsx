@@ -62,7 +62,10 @@ async function seedRoutines(...inputs: Array<Partial<Routine> & { seq?: number }
   return routines;
 }
 
-/** 다이얼로그를 연다 — 열릴 때마다 `loadRoutines()` 가 저장소를 다시 읽는다. */
+/**
+ * 다이얼로그를 연다 — 열릴 때마다 `loadRoutines()` 가 저장소를 다시 읽는다. 본문(`RoutineManagerDialog`)
+ * 은 별도 파일이지만 정적 import 다(`RoutineManager.tsx` 머리 주석) — `findBy` 는 적재 대기용이다.
+ */
 async function openManager(
   categories = [운동],
   removalFocus?: ReturnType<typeof makeRemovalFocus>,
@@ -76,7 +79,9 @@ async function openManager(
     />,
   );
   await user.click(screen.getByRole('button', { name: '루틴' }));
-  await waitFor(() => expect(screen.getByRole('dialog', { name: '루틴' })).toBeInTheDocument());
+  await screen.findByRole('dialog', { name: '루틴' });
+  // 목록 적재까지 기다린다 — 스켈레톤(`aria-busy`)이 사라진 뒤에야 행·빈 상태 문구가 있다.
+  await waitFor(() => expect(screen.queryByRole('button', { name: '+ 루틴 추가' })).not.toBeNull());
   return user;
 }
 
@@ -154,9 +159,11 @@ describe('삭제 (R10) + 포커스 (app-shell R14, ShellSidebar 의 useRemovalRe
 
     await waitFor(() => expect(screen.queryByText('독서')).not.toBeInTheDocument());
     expect(screen.getByText('운동')).toBeInTheDocument();
-    // 포커스가 `<body>` 로 떨어지지 않는다(app-shell R14) — 남은 형제 행(운동)의 `⋯` 로 옮겨간다.
+    // 포커스가 `<body>` 로 떨어지지 않는다(app-shell R14) — 남은 형제 행(운동)의 첫 컨트롤로 옮겨간다.
+    // 행이 손잡이(R13)로 시작하므로 그 손잡이다(`focusAfterRowRemoval` 은 행의 첫 포커스 가능 요소를
+    // 고른다 — 카테고리 사이드바 행과 같은 결과).
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: '운동 루틴 메뉴' })).toHaveFocus(),
+      expect(screen.getByRole('button', { name: '운동 순서 변경 (Alt+위/아래)' })).toHaveFocus(),
     );
   });
 
@@ -211,7 +218,7 @@ describe('키보드만으로: 진입 → 중지 → 재개 → 삭제', () => {
     await user.tab();
     expect(screen.getByRole('button', { name: '루틴' })).toHaveFocus();
     await user.keyboard('{Enter}');
-    await waitFor(() => expect(screen.getByRole('dialog', { name: '루틴' })).toBeInTheDocument());
+    await screen.findByRole('dialog', { name: '루틴' });
 
     const menuButton = await screen.findByRole('button', { name: '운동 루틴 메뉴' });
     menuButton.focus();

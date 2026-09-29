@@ -33,9 +33,9 @@
 
 ```
  루틴
- │ 🏃 운동         매주 금·토 · 계속        ⋯ │   ← ⋯: 중지·재개·삭제(무기한 루틴만 중지·재개가 있다)
- │ 📚 독서         매주 화·목 · ~10/4       ⋯ │   ← 종료일 있는 루틴은 기록일 뿐(R7-a) — ⋯: 삭제만
- + 루틴 추가                                    ← 두 번째 진입점: 항목 없이 카테고리부터 고른다
+ │ ⠿ 🏃 운동         매주 금·토 · 계속        ⋯ │   ← ⠿: 순서 변경 손잡이(R13, 드래그 + Alt+↑/↓) · ⋯: 중지·재개·삭제(무기한 루틴만 중지·재개가 있다)
+ │ ⠿ 📚 독서         매주 화·목 · ~10/4       ⋯ │   ← 종료일 있는 루틴은 기록일 뿐(R7-a) — ⋯: 삭제만. 순서는 같이 바꿀 수 있다
+ + 루틴 추가                                      ← 두 번째 진입점: 항목 없이 카테고리부터 고른다
 ```
 
 투두 화면(todo.md 확장): 루틴에서 나온 투두는 제목 옆 🔁 아이콘(hover "매주 금·토 반복").
@@ -60,11 +60,12 @@
 - R10. 루틴 **삭제**(관리 화면, 중지와 별개 메뉴 항목): 과거 인스턴스의 `routineId` 연결은 유지(기록 보존, 🔁 아이콘만 사라짐 — 원본 없음), 이후 생성은 중단.
 - R11. 루틴이 가리키는 카테고리가 삭제되면 루틴 레코드는 바뀌지 않는다(`categoryId`를 비우지 않는다 — `Todo.categoryId`가 필수라 "카테고리 없이 생성"은 애초에 성립하지 않는다, §4 정정). 대신 **그 카테고리가 살아 있는 동안만** 지연 생성이 계속된다 — 삭제된 뒤로는 R6가 그 루틴을 건너뛴다(관리 화면은 "카테고리 없음" 텍스트를 병기해 왜 멈췄는지 보여준다). 이미 만든 인스턴스는 category.md R17처럼 "(삭제됨)" 그룹.
 - R12. **진입점은 둘**이다: (a) 항목 메뉴 "루틴으로 등록"(R21 그대로, 이번엔 종료일을 비울 수 있을 뿐), (b) 관리 화면의 "+ 루틴 추가"(신규, 항목 없이 카테고리부터 골라 새로 만든다).
+- R13. **순서**(사용자 피드백 9, 2026-09-29): 관리 화면 목록은 `Routine.order`(0부터) → `createdAt` → `id` 순이다(`compareRoutines`, 저장소 두 구현의 단일 정렬). `order` 없는 옛 레코드는 순서 있는 것들 뒤에 `createdAt` 순으로 선다 — 정렬은 항상 결정적이다. 행 왼쪽 손잡이(⠿)의 **드래그**와 **`Alt+↑/↓`**(카테고리 사이드바 R5 와 같은 조작·같은 손잡이)로 바꾸며, 한 번 바꾸면 목록 전체가 0..n-1 로 재매겨진다(옛 레코드도 이때 값을 받는다). 종료일 있는 기록도 목록의 일부라 같이 움직인다. **보드 반영은 두 갈래다**: ① 앞으로 생길 인스턴스는 지연 생성(R6)이 `routines.list()` 순으로 채우므로 자연히 루틴 순서로 그룹 끝에 붙는다. ② 이미 만들어진 인스턴스(`today ~ today+366일`)는 순서를 바꾸는 **같은 트랜잭션**에서 `(날짜, 카테고리)` 그룹마다 **미완료 루틴 인스턴스들이 차지한 `order` 자리(슬롯)를 그대로 둔 채 루틴 순위대로 서로 자리만 바꾼다**(`applyRoutineRank`). 손으로 옮긴 일반 투두의 자리·완료 항목·과거 날짜는 건드리지 않는다. 한 번의 순서 변경이 쓰는 행은 "루틴 n + 오늘 이후 해당 인스턴스" 를 넘지 않는다. `fillFloor` 는 건드리지 않는다(ADR-0018 — 순서는 지연 생성과 무관하다). 다른 기기의 체크와 LWW 로 충돌할 확률은 제목 편집과 같은 수준이라 감수한다(ADR 없음). **혼합 버전 주의**: 동기화 화이트리스트(`pickFields`)는 모르는 키를 거부하지 않고 조용히 버리므로, `order` 를 모르는 옛 Worker·옛 클라이언트(PWA 프리캐시로 옛 빌드를 도는 기기 포함)를 거치면 루틴 행에서 `order` 가 떨어질 수 있고, 그 행이 LWW 로 이기면 다른 기기의 `order` 도 사라진다(보드의 이미 재배치된 인스턴스는 새 순서를 지키므로 관리 목록만 `createdAt` 순으로 돌아간다). 그래서 **Worker 와 정적 자산은 함께 배포**한다(`pnpm build && pnpm run deploy` 한 번에). 복구는 순서를 한 번 더 바꾸는 것이다(전체가 0..n-1 로 다시 매겨진다). **비용**: 한 번의 순서 변경은 오늘~+366일 투두를 **전량 읽고**(카테고리·완료 여부 무관) **바뀐 행만 쓴다** — 지금 규모에서는 감수하고, 느려지면 후속 티켓(`routineId` 조회 전용 저장소 메서드는 Dexie 버전이 필요해 ADR 대상)으로 다룬다.
 
 ## 4. 데이터
 
 - domain: 기존 `RoutineRecurrence`(`{type:'weekly', daysOfWeek}` | `{type:'monthly', daysOfMonth}`, `src/domain/todo/routine.rules.ts`)는 **타입 변경 없음**(daily 유형을 추가하지 않는다, R1). 즉시 채우기(R3·R4)는 기존 `expandRoutineDates`를 그대로 쓰되, 호출부가 R3의 구간 규칙(끝이 시작보다 앞서지 않도록 `max`로 보정한 구간)을 넘긴다. 지연 생성(R6) 판정은 신규 순수 함수 `shouldMaterialize(routine, date) → boolean`(날짜만 입력받는다, 시각 의존 없음).
-- 신규 저장 엔티티 `Routine = Meta & { title, memo?, categoryId: CategoryId, recurrence: RoutineRecurrence, startDate: DateKey, endDate?: DateKey, active: boolean, fillFloor: DateKey }`. `categoryId`는 **필수**다(`Todo.categoryId`가 필수라 "카테고리 없이 등록"은 애초에 성립하지 않는다 — R11 정정 참고). `fillFloor`(구 `materializedThrough`, ADR-0018)는 "이 날짜 이하 슬롯은 만들지 않는다"는 하한이다(등록 시 `startDate` 전날로 시작) — 최종 설계는 **사용자 조작(등록·재개)으로만** 바뀌는 것이지만, **2026-09-21 정정(PR #121 리뷰 Blocker, ADR-0018 "## 정정" 절)으로 지금은 배경 채우기(`planRoutineFill`)도 이 값을 전진시킨다** — `SyncRepository.existingIds`(T-92 후속)가 배선될 때까지의 임시 조치다. `Todo.routineId?: RoutineId` — 기존 `createRoutine` 스토어 액션(R21 구현)이 만드는 투두에도 이제 이 필드를 채운다. **입력 시그니처가 바뀐다**: 지금은 `endDate: DateKey`가 필수인데 이제 선택이 된다(무기한, R2). `createRoutine`의 반환(`TodoId[] | false`)은 바뀌지 않는다 — 결과 0건도 이제 `false`가 아니라 `[]`로 성공 취급한다(R4).
+- 신규 저장 엔티티 `Routine = Meta & { title, memo?, categoryId: CategoryId, recurrence: RoutineRecurrence, startDate: DateKey, endDate?: DateKey, active: boolean, fillFloor: DateKey, order?: number }`. `order?`(R13)는 선택 필드라 백업 스키마 버전·Dexie 버전·동기화 벡터 전부 그대로다(백업 검증은 0 이상 정수만 받는다, `validate-rows.ts`). 순서 변경·인스턴스 재배치는 `src/domain/routine/routine-rank.ts`(`reorderRoutines`·`routineRank`·`applyRoutineRank`·`rankRoutineInstances`), 스토어 액션은 `reorderRoutine(id, targetIndex, today)`. `categoryId`는 **필수**다(`Todo.categoryId`가 필수라 "카테고리 없이 등록"은 애초에 성립하지 않는다 — R11 정정 참고). `fillFloor`(구 `materializedThrough`, ADR-0018)는 "이 날짜 이하 슬롯은 만들지 않는다"는 하한이다(등록 시 `startDate` 전날로 시작) — 최종 설계는 **사용자 조작(등록·재개)으로만** 바뀌는 것이지만, **2026-09-21 정정(PR #121 리뷰 Blocker, ADR-0018 "## 정정" 절)으로 지금은 배경 채우기(`planRoutineFill`)도 이 값을 전진시킨다** — `SyncRepository.existingIds`(T-92 후속)가 배선될 때까지의 임시 조치다. `Todo.routineId?: RoutineId` — 기존 `createRoutine` 스토어 액션(R21 구현)이 만드는 투두에도 이제 이 필드를 채운다. **입력 시그니처가 바뀐다**: 지금은 `endDate: DateKey`가 필수인데 이제 선택이 된다(무기한, R2). `createRoutine`의 반환(`TodoId[] | false`)은 바뀌지 않는다 — 결과 0건도 이제 `false`가 아니라 `[]`로 성공 취급한다(R4).
 - 레포지토리 `RoutineRepository.list({ includeInactive })`·`upsert(Persistable<Routine>)`. **중복 생성 방지는 조회가 아니라 슬롯 id 로 한다**(ADR-0017 최초 결정을 ADR-0018 이 갱신) — "`listByDateRange` 결과에 없는 (routine, date) 쌍만 채운다"는 이전 서술은 소프트 삭제 툼스톤이 조회에서 빠지는 것(ADR-0007)과 부딪혀 지운 인스턴스를 부활시키므로 쓰지 않는다. 실제로는 `planRoutineFill`(`src/domain/routine/routine-fill.ts`)이 `(fillFloor, through]` 구간(2026-09-21 정정 이후로는 지평선 `FILL_BACKFILL_HORIZON_DAYS`=1,095일로 뒤가 잘린 구간, Major 3)을 훑으며 각 날짜의 결정적 슬롯 id(`routineInstanceSlotId`)가 `existingIds`(호출부가 판정)에 없을 때만 만든다 — 만든 투두는 그 자체로 `DatasetRepository.write` 트랜잭션에 실린다. **루틴 로우도 같은 트랜잭션에 함께 쓴다(2026-09-21 정정, ADR-0018 "## 정정" 절 — 최종 설계는 안 쓰는 것이었다)**(계약 테스트: `routine-fill.contract.ts`, memory·indexeddb).
 - **지평선(T-82, ADR-0017 §결정 4)**: 지연 생성(R6)은 한 번의 방문에서 `오늘 + 366일`까지만 채운다(`MATERIALIZE_HORIZON_DAYS`, `src/features/todo/store/todo-routine-fill.ts`). 그보다 먼 구간은 그 방문에서 채우지 않는다(§6 "버퍼는 조정 가능"). **지평선 밖 날짜의 화면은 정하지 않는다** — 아직 방문한 적 없는 보통의 미래 날짜와 같은 빈 상태로 보인다(루틴 전용 안내 문구는 범위 밖).
 
@@ -73,6 +74,7 @@
 - "계속 반복" 체크박스: `checkbox` + 체크 시 종료일 `input`에 `disabled` + `aria-describedby`로 "계속 반복돼요" 설명.
 - 반복 주기 선택·요일 토글·일(day) 입력은 R21 그대로(변경 없음).
 - 관리 화면: 목록 `ul > li`, 행 메뉴 `aria-label="운동 루틴 메뉴"`, 상태는 텍스트 병기("계속" / "~10/4" / "중지됨") — 색만으로 구분하지 않는다.
+- 순서 변경(R13): 손잡이는 공용 `DragHandle` 이라 접근 이름이 카테고리와 같은 형식("운동 순서 변경 (Alt+위/아래)")이고, 드래그와 `Alt+↑/↓` 가 같은 자리에서 같은 일을 한다(WCAG 2.5.7). 결과는 대화상자 **안**의 `role="status"`(`aria-live="polite"`, 화면에는 안 보임)로 "운동 루틴을 2번째로 옮겼어요" 처럼 낭독한다 — 드래그·키보드가 같은 문면(`routine-drag.ts#movedAnnouncement`). 양끝에서 더 갈 곳이 없으면 낭독하지 않는다.
 - 🔁 아이콘은 텍스트 대체("루틴: 매주 금·토")가 있다.
 
 ## 6. 범위 밖
@@ -90,3 +92,4 @@
 - [ ] `(routineId, date)` 중복 생성 방지 계약 테스트(memory·indexeddb).
 - [ ] 키보드만으로: 항목 메뉴로 무기한 루틴 등록 → 관리 화면 진입 → 중지 → 재개 → 삭제.
 - [ ] 라이트/다크 스크린샷(다이얼로그의 "계속 반복" 체크, 관리 화면, 🔁 배지 투두).
+- [ ] R13: `compareRoutines` 가 `order` 우선·없는 것은 뒤(결정적) — 도메인·계약 테스트 · `reorderRoutines` 0..n-1 재매김·바뀐 행만 · `applyRoutineRank` 슬롯 집합 보존·일반 투두·완료·과거 불변 · 스토어가 루틴 행 + 오늘 이후 인스턴스를 **한 트랜잭션**으로 쓰고 쓰는 행 수가 상한을 넘지 않음 · 관리 화면 드래그·`Alt+↑/↓` 낭독 · e2e(`routine-reorder.spec.ts`): 등록 → 순서 변경 → 오늘 보드 즉시 반영 → 새로고침 유지 · 벡터·Worker·Dexie 버전 무변경 · 라이트/다크 스크린샷(손잡이·드래그 중).

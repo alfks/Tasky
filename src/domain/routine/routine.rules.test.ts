@@ -177,11 +177,27 @@ describe('deleteRoutine (R10)', () => {
   });
 });
 
-describe('compareRoutines', () => {
-  it('createdAt 오름차순, 동률이면 id 오름차순', () => {
+describe('compareRoutines (R13)', () => {
+  it('order 가 없으면 createdAt 오름차순, 동률이면 id 오름차순', () => {
     const a = makeRoutine({ id: 'b', createdAt: '2026-01-01T00:00:00.000Z' });
     const b = makeRoutine({ id: 'a', createdAt: '2026-01-01T00:00:00.000Z' });
     const c = makeRoutine({ id: 'z', createdAt: '2025-01-01T00:00:00.000Z' });
     expect([a, b, c].sort(compareRoutines)).toEqual([c, b, a]);
+  });
+
+  it('order 가 createdAt 보다 우선한다', () => {
+    const 나중에만든것 = makeRoutine({ id: 'a', createdAt: '2026-06-01T00:00:00.000Z', order: 0 });
+    const 먼저만든것 = makeRoutine({ id: 'b', createdAt: '2025-01-01T00:00:00.000Z', order: 1 });
+    expect([먼저만든것, 나중에만든것].sort(compareRoutines)).toEqual([나중에만든것, 먼저만든것]);
+  });
+
+  it('order 없는 옛 레코드는 순서 있는 것들 뒤에 createdAt 순으로 서고, 정렬이 결정적이다', () => {
+    const 순서있음 = makeRoutine({ id: 'c', createdAt: '2026-06-01T00:00:00.000Z', order: 3 });
+    const 옛것1 = makeRoutine({ id: 'b', createdAt: '2025-01-01T00:00:00.000Z' });
+    const 옛것2 = makeRoutine({ id: 'a', createdAt: '2025-01-01T00:00:00.000Z' });
+    const sorted = [옛것1, 순서있음, 옛것2].sort(compareRoutines);
+    expect(sorted).toEqual([순서있음, 옛것2, 옛것1]);
+    // 입력 순서를 바꿔도 같은 결과 — 안정 정렬에 기대지 않는다.
+    expect([옛것2, 옛것1, 순서있음].sort(compareRoutines)).toEqual(sorted);
   });
 });
