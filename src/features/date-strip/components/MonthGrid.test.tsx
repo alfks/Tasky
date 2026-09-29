@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -55,10 +55,20 @@ async function renderMonth(props: Partial<Parameters<typeof DateStrip>[0]> = {})
   return result;
 }
 
+/** 보이는 범위가 바뀐 뒤의 요약 재조회를 끝까지 흘려보낸다 — 안 하면 테스트 밖에서 상태가 바뀐다(act 경고). */
+async function settle() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 const cellName = (pattern: RegExp) =>
   screen.getByRole('gridcell', { name: pattern }).getAttribute('aria-label');
 
 beforeEach(() => {
+  // 보기 전환이 기기별 저장(R14)을 쓴다 — 앞 테스트가 남긴 값이 `createInitialDateStripState()` 에 새지 않게.
+  window.localStorage.clear();
   useDateStripStore.setState({ selectedDate: TODAY, today: TODAY, view: 'month' });
 });
 
@@ -96,12 +106,21 @@ describe('R14. 주 보기와 월 보기를 버튼 하나로 오간다', () => {
     );
   });
 
-  it('R2 와 같이 보기 모드도 저장하지 않는다 — 새로고침 직후는 언제나 주 보기다', () => {
-    // 새로고침 = 모듈 재평가 = 초기 상태 생성기의 결과가 그대로 첫 화면이다. 월 보기를 보고 있었든
-    // 아니든 이 값은 'week' 다 — 선택 날짜가 언제나 오늘인 것(R2)과 같은 이유다.
-    expect(useDateStripStore.getState().view).toBe('month');
+  it('월 보기로 두고 스토어를 다시 만들면 월 보기다 — 보기는 기기별로 기억한다(R14)', async () => {
+    // 새로고침 = 모듈 재평가 = 초기 상태 생성기의 결과가 그대로 첫 화면이다. 전환 버튼으로 월 보기를
+    // 골라 뒀으면 이 값은 'month' 다. 선택 날짜는 여전히 오늘이다(R2) — 두 상태가 어긋나지 않는
+    // 이유는 선택이 오늘이면 월 격자도 오늘이 든 달이기 때문이다.
+    stub();
+    useDateStripStore.setState({ view: 'week' });
+    const user = userEvent.setup();
+    await renderMonth();
+
     expect(createInitialDateStripState().view).toBe('week');
-    expect(createInitialDateStripState()).not.toHaveProperty('restoredView');
+    await user.click(screen.getByRole('button', { name: '월 보기로 전환' }));
+    expect(createInitialDateStripState().view).toBe('month');
+    expect(createInitialDateStripState().selectedDate).toBe(createInitialDateStripState().today);
+    await user.click(screen.getByRole('button', { name: '주 보기로 전환' }));
+    expect(createInitialDateStripState().view).toBe('week');
   });
 });
 
@@ -219,13 +238,105 @@ describe('R16. 월 보기 칸도 주 보기와 같은 언어를 쓴다', () => {
     ]);
   });
 
-  it('이 달 밖 칸도 누르면 그 날짜가 선택된다', async () => {
+  it('칸이 포커스를 받는 것만으로는 격자가 옮겨지지 않는다 — 마우스 순서(pointerdown → focus → click)', async () => {
+    stub();
+    await renderMonth();
+    const monthLabel = screen.getByRole('button', { name: /2026년 9월/ });
+
+    // 마우스: pointerdown → mousedown → focus → pointerup → click. focus 시점에 격자가 10월로 다시
+    // 그려지면 click 이 떨어질 칸이 사라져 선택이 안 된다(실브라우저 재현 버그).
+    const cell = screen.getByRole('gridcell', { name: /^10월 4일 일요일/ });
+    fireEvent.pointerDown(cell);
+    fireEvent.mouseDown(cell);
+    act(() => cell.focus());
+    expect(screen.getAllByRole('gridcell')).toHaveLength(GRID_CELLS);
+    expect(monthLabel).toHaveTextContent('2026년 9월');
+    expect(cell).toHaveFocus();
+
+    fireEvent.pointerUp(cell);
+    fireEvent.mouseUp(cell);
+    fireEvent.click(cell);
+    expect(useDateStripStore.getState().selectedDate).toBe('2026-10-04');
+    await settle();
+  });
+
+  it('터치 순서(pointerdown → pointerup → mousedown → focus → mouseup → click)에서도 선택되고 격자가 그 달로 넘어간다', async () => {
+    stub();
+    await renderMonth();
+
+    // 터치는 호환 마우스 이벤트가 pointerup **뒤에** 온다(리뷰 실측) — 포인터 플래그 방식은 여기서 무너졌다.
+    const cell = screen.getByRole('gridcell', { name: /^10월 4일 일요일/ });
+    fireEvent.pointerDown(cell, { pointerType: 'touch' });
+    fireEvent.pointerUp(cell, { pointerType: 'touch' });
+    fireEvent.mouseDown(cell);
+    act(() => cell.focus());
+    expect(screen.getAllByRole('gridcell')).toHaveLength(GRID_CELLS);
+    expect(screen.getByRole('button', { name: /2026년 9월/ })).toBeInTheDocument();
+    fireEvent.mouseUp(cell);
+    fireEvent.click(cell);
+
+    expect(useDateStripStore.getState().selectedDate).toBe('2026-10-04');
+    expect(screen.getByRole('gridcell', { name: /^10월 4일 일요일/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    // 10월 격자: 9/28(월) ~ 11/1(일) = 35칸, 월 표시도 10월이다.
+    expect(screen.getAllByRole('gridcell')).toHaveLength(monthGridDays('2026-10-04').length);
+    expect(screen.getByRole('button', { name: /2026년 10월/ })).toBeInTheDocument();
+    expect(screen.queryByRole('gridcell', { name: /^8월 31일/ })).not.toBeInTheDocument();
+    // 누른 칸은 새 격자에서도 같은 요소라 포커스 링이 그대로다.
+    expect(screen.getByRole('gridcell', { name: /^10월 4일 일요일/ })).toHaveFocus();
+    await settle();
+  });
+
+  it('이 달 밖 칸도 누르면 그 날짜가 선택된다 — 지난 달 쪽(userEvent 경로)', async () => {
     stub();
     const user = userEvent.setup();
     await renderMonth();
 
     await user.click(screen.getByRole('gridcell', { name: /^8월 31일 월요일/ }));
     expect(useDateStripStore.getState().selectedDate).toBe('2026-08-31');
+    expect(screen.getByRole('button', { name: /2026년 8월/ })).toBeInTheDocument();
+    await settle();
+  });
+
+  it('같은 달 칸의 포커스는 여전히 앵커를 옮긴다 — 누르고 밖에서 놓아도(클릭 불성립) → 는 그 칸에서 출발한다', async () => {
+    stub();
+    const user = userEvent.setup();
+    await renderMonth();
+
+    const cell = screen.getByRole('gridcell', { name: /^9월 4일 금요일/ });
+    fireEvent.pointerDown(cell);
+    fireEvent.mouseDown(cell);
+    act(() => cell.focus());
+    fireEvent.pointerUp(document.body);
+    fireEvent.mouseUp(document.body);
+    expect(useDateStripStore.getState().selectedDate).toBe(TODAY);
+
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('gridcell', { name: /^9월 5일 토요일/ })).toHaveFocus();
+  });
+
+  it('이 달 밖 칸에 포커스만 남은 채(누르고 밖에서 놓음) → 를 누르면 눈에 보이는 그 칸에서 출발한다', async () => {
+    stub();
+    const user = userEvent.setup();
+    await renderMonth();
+
+    const cell = screen.getByRole('gridcell', { name: /^10월 4일 일요일/ });
+    fireEvent.pointerDown(cell);
+    fireEvent.mouseDown(cell);
+    act(() => cell.focus());
+    fireEvent.pointerUp(document.body);
+    fireEvent.mouseUp(document.body);
+    // 앵커는 안 옮겼으니 격자는 9월 그대로다.
+    expect(screen.getByRole('button', { name: /2026년 9월/ })).toBeInTheDocument();
+
+    // 키 이동은 앵커(9/17)가 아니라 포커스 칸(10/4)에서 — 10/5 로 가며 격자가 10월로 넘어간다.
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('gridcell', { name: /^10월 5일 월요일/ })).toHaveFocus();
+    expect(screen.getByRole('button', { name: /2026년 10월/ })).toBeInTheDocument();
+    expect(useDateStripStore.getState().selectedDate).toBe(TODAY);
+    await settle();
   });
 });
 
@@ -265,6 +376,24 @@ describe('R18. 월 보기에서 ↑/↓ 는 일주일을 움직인다', () => {
 
     await user.keyboard('{ArrowUp}{ArrowUp}');
     expect(screen.getByRole('gridcell', { name: /^9월 10일 목요일/ })).toHaveFocus();
+  });
+
+  it('키보드 ↓ 로 다음 달 칸에 가면 격자가 따라간다 — 포인터 필터가 키 이동을 막지 않는다', async () => {
+    stub();
+    const user = userEvent.setup();
+    await renderMonth();
+
+    // 9/17 → 9/24 → 10/1: 마지막 걸음에서 격자가 10월로 넘어가고 포커스는 10/1 칸이다.
+    await act(async () => {
+      screen.getByRole('gridcell', { name: /^9월 17일 목요일/ }).focus();
+    });
+    await user.keyboard('{ArrowDown}{ArrowDown}');
+    expect(screen.getByRole('gridcell', { name: /^10월 1일 목요일/ })).toHaveFocus();
+    expect(screen.getByRole('button', { name: /2026년 10월/ })).toBeInTheDocument();
+    expect(screen.getAllByRole('gridcell')).toHaveLength(monthGridDays('2026-10-01').length);
+    // 선택은 그대로다 — 포커스 이동은 선택이 아니다(§5).
+    expect(useDateStripStore.getState().selectedDate).toBe(TODAY);
+    await settle();
   });
 
   it('←/→ 는 여전히 하루씩 움직이고 Home/End 는 그 줄의 월·일요일이다', async () => {

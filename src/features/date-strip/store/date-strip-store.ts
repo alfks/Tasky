@@ -3,21 +3,25 @@
 // 선택 날짜를 저장하지 않는 것이 요점이다(R2): 앱을 열면 언제나 오늘이다. 복원 로직을 넣으려면
 // 스펙 R2 를 먼저 바꿔야 한다.
 //
-// **보기 모드(주/월)도 같은 이유로 저장하지 않는다(R14).** 이 스토어는 "앱을 열면 오늘, 한 주"
-// 라는 한 가지 시작 상태만 갖는다 — 선택 날짜만 초기화하고 보기 모드는 복원하면, 새로고침 뒤
-// 9월 한 달이 펼쳐진 채 선택만 오늘로 튀어 두 상태가 서로 다른 시점을 가리킨다. 저장하려면
-// 이 스토어에 영속 계층이 새로 들어와야 하는데(지금은 저장소를 아예 읽지 않는다) 그것은
-// R2 를 함께 뒤집는 결정이므로 스펙 변경이 먼저다.
+// **보기 모드(주/월)는 기기별로 기억한다(R14, `lib/view-pref.ts`).** 선택 날짜와 달리 "어떤 모양으로
+// 보나" 는 취향이라 새로고침마다 주 보기로 되돌리면 월 보기를 쓰는 사람이 매번 다시 눌러야 한다.
+// 두 상태가 어긋날 우려는 없다 — 선택이 언제나 오늘이면 월 격자도 언제나 오늘이 든 달이다.
+// 저장은 localStorage 한 키뿐이고 백업·동기화에 들어가지 않는다(app-shell.md R5 와 같은 부류).
 import { create } from 'zustand';
 
 import type { DateKey } from '@/domain/date/date-key';
 
+import {
+  readViewPref,
+  writeViewPref,
+  type DateStripView,
+} from '@/features/date-strip/lib/view-pref';
 import { clampToRange } from '@/features/date-strip/lib/week';
 
 import { addDays, todayKey } from '@/lib/date';
 
-/** 날짜를 보여주는 두 가지 모양 (R14). `week` 는 한 줄 7칸, `month` 는 달력 격자다. */
-export type DateStripView = 'week' | 'month';
+/** 타입의 단일 소스는 `lib/view-pref.ts` 다 — 저장 형식과 같은 파일에 산다. 호출부는 계속 여기서 받는다. */
+export type { DateStripView };
 
 /** 스트립이 쓰는 날짜 상태와 조작. 전역 단축키(T-17)도 이 액션들을 부른다. */
 export type DateStripState = {
@@ -25,7 +29,7 @@ export type DateStripState = {
   selectedDate: DateKey;
   /** 기기 로컬 시간대의 오늘. 자정을 넘기면 `refreshToday()` 가 갱신한다 (R12). */
   today: DateKey;
-  /** 지금 보고 있는 모양. 앱을 열면 항상 `week` 다 — 저장하지 않는다 (R14, 위 주석). */
+  /** 지금 보고 있는 모양. 앱을 열면 마지막으로 보던 모양이다 — 기기별로 저장한다 (R14, 위 주석). */
   view: DateStripView;
   /** 그 날짜를 선택한다. 이동 가능 범위 밖이면 양끝으로 당긴다 (R6). */
   select: (date: DateKey) => void;
@@ -35,17 +39,19 @@ export type DateStripState = {
   goToToday: () => void;
   /** 오늘 표시만 갱신한다. **선택 날짜는 바꾸지 않는다** (R12). */
   refreshToday: () => void;
-  /** 주 ↔ 월 보기를 뒤집는다. **선택 날짜는 바뀌지 않는다** (R14). */
+  /** 주 ↔ 월 보기를 뒤집고 기기에 저장한다. **선택 날짜는 바뀌지 않는다** (R14). */
   toggleView: () => void;
 };
 
-/** 초기 상태. 모듈 로드 시 한 번 쓰이고, 테스트가 시계를 바꿔 다시 만들 때도 쓴다 (R2·R14). */
-export function createInitialDateStripState(): Pick<
-  DateStripState,
-  'selectedDate' | 'today' | 'view'
-> {
+/**
+ * 초기 상태. 모듈 로드 시 한 번 쓰이고, 테스트가 시계를 바꿔 다시 만들 때도 쓴다 (R2·R14).
+ * `view` 를 주면 저장소를 읽지 않는다 — 테스트가 localStorage 에 좌우되지 않게 하는 통로다.
+ */
+export function createInitialDateStripState({
+  view = readViewPref(),
+}: { view?: DateStripView } = {}): Pick<DateStripState, 'selectedDate' | 'today' | 'view'> {
   const today = todayKey();
-  return { selectedDate: clampToRange(today), today, view: 'week' };
+  return { selectedDate: clampToRange(today), today, view };
 }
 
 export const useDateStripStore = create<DateStripState>((set, get) => ({
@@ -57,5 +63,9 @@ export const useDateStripStore = create<DateStripState>((set, get) => ({
     set({ today, selectedDate: clampToRange(today) });
   },
   refreshToday: () => set({ today: todayKey() }),
-  toggleView: () => set({ view: get().view === 'week' ? 'month' : 'week' }),
+  toggleView: () => {
+    const view: DateStripView = get().view === 'week' ? 'month' : 'week';
+    writeViewPref(view);
+    set({ view });
+  },
 }));

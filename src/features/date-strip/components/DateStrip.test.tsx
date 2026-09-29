@@ -9,8 +9,9 @@ import type { Todo } from '@/domain/todo/todo';
 import { setRepositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
-import { DateStrip, VISIBLE_RANGE_DEBOUNCE_MS } from '@/features/date-strip/components/DateStrip';
+import { DateStrip } from '@/features/date-strip/components/DateStrip';
 import { TODAY_TICK_MS } from '@/features/date-strip/hooks/useTodayTick';
+import { VISIBLE_RANGE_DEBOUNCE_MS } from '@/features/date-strip/hooks/useVisibleRangeNotifier';
 import { MAX_DATE_KEY, MIN_DATE_KEY } from '@/features/date-strip/lib/week';
 import {
   createInitialDateStripState,
@@ -68,6 +69,8 @@ function focusCell(name: string | RegExp) {
 }
 
 beforeEach(() => {
+  // `createInitialDateStripState()` 가 보기 저장(R14)을 읽는다 — 앞 테스트의 값이 새지 않게 비운다.
+  window.localStorage.clear();
   stubRepositories();
   useDateStripStore.setState({ selectedDate: TODAY, today: TODAY });
 });

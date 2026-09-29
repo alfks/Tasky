@@ -141,3 +141,114 @@ test('월 보기에서 ↑/↓ 는 일주일을 옮기고 ‹ › 는 한 달을
   await expect(focused).toHaveAttribute('aria-label', new RegExp(`${weekday}요일`));
   await expect(focused).not.toHaveAttribute('aria-label', todayName);
 });
+
+/** 월 표시 버튼. 접근 이름이 넓은 폭에선 "2026년 9월", 좁은 폭(<640)에선 "9월" 이라 달 번호로만 잡는다. */
+const monthButton = (page: Page) => page.getByRole('button', { name: /\d+월/ });
+
+/** 월 표시에서 달 번호만 뽑는다. */
+async function displayedMonth(page: Page): Promise<number> {
+  const text = (await monthButton(page).textContent()) ?? '';
+  return Number(/(\d+)월/.exec(text)?.[1]);
+}
+
+/**
+ * 월 보기에서 격자 끝자락의 다른 달 칸(회색)을 하나 고른다. 1일이 월요일이고 말일이 일요일인 달(예:
+ * 2027년 2월)은 격자가 그 달로 꽉 차서 회색 칸이 없다 — 그런 달이면 다음 달로 넘긴다(연속 두 달일 수는
+ * 없다). 마지막 회색 칸(다음 달 첫 주) 또는 첫 회색 칸(지난 달 끝 주) — 어느 쪽이든 이 달이 아니다.
+ */
+async function pickOutsideCell(page: Page) {
+  let month = await displayedMonth(page);
+  let outside = page.getByRole('gridcell', { name: new RegExp(`^(?!${month}월 )`) });
+  if ((await outside.count()) === 0) {
+    await page.getByRole('button', { name: '다음 달' }).click();
+    month = await displayedMonth(page);
+    outside = page.getByRole('gridcell', { name: new RegExp(`^(?!${month}월 )`) });
+  }
+  const target = outside.last();
+  const name = (await target.getAttribute('aria-label')) ?? '';
+  const targetMonth = Number(/^(\d+)월/.exec(name)?.[1]);
+  expect(targetMonth).not.toBe(month);
+  return { target, name, targetMonth };
+}
+
+/** 회색 칸을 누른 뒤: 그 날이 선택됐고, 격자는 그 날이 든 달이며, 포커스 링도 그 칸에 있고, 선택 칸은 하나다. */
+async function expectJumpedTo(page: Page, name: string, targetMonth: number): Promise<void> {
+  const selected = page.getByRole('gridcell', { name });
+  await expect(selected).toHaveAttribute('aria-selected', 'true');
+  await expect(monthButton(page)).toHaveText(new RegExp(`(?<!\\d)${targetMonth}월`));
+  await expect(selected).toBeFocused();
+  await expect(page.getByRole('gridcell', { selected: true })).toHaveCount(1);
+}
+
+test('이 달 밖(회색) 칸을 마우스로 누르면 그 날이 선택되고 격자가 그 달로 넘어간다(date-strip.md R16)', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await waitForShell(page);
+  await page.getByRole('button', { name: '월 보기로 전환' }).click();
+  const { target, name, targetMonth } = await pickOutsideCell(page);
+
+  // **실제 마우스 클릭**이다. `locator.click()` 은 mousedown → focus → mouseup → click 을 실제 순서로
+  // 보내므로, focus 만으로 격자가 다시 그려지면 click 이 다른 칸(또는 조상)에 떨어져 선택이 일어나지
+  // 않는다 — 그것이 이 테스트가 재현하는 버그다.
+  await target.click();
+  await expectJumpedTo(page, name, targetMonth);
+});
+
+test.describe('터치', () => {
+  test.use({ hasTouch: true, viewport: { width: 412, height: 915 } });
+
+  test('이 달 밖(회색) 칸을 손가락으로 탭해도 그 날이 선택되고 격자가 그 달로 넘어간다(R16 — 입력 종류 무관)', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await waitForShell(page);
+    await page.getByRole('button', { name: '월 보기로 전환' }).click();
+    const { target, name, targetMonth } = await pickOutsideCell(page);
+
+    // 터치는 호환 마우스 이벤트(mousedown → focus → mouseup → click)가 pointerup **뒤에** 온다 — 포인터가
+    // 눌린 동안만 포커스를 거르는 방식은 여기서 무너진다(리뷰 라운드 1 실측). `locator.tap()` 은 진짜
+    // 터치 이벤트 순서를 보낸다.
+    await target.tap();
+    await expectJumpedTo(page, name, targetMonth);
+  });
+});
+
+test('월 보기는 새로고침 뒤에도 월 보기다 — 선택 날짜는 오늘로 돌아온다(date-strip.md R14·R2)', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await waitForShell(page);
+
+  await page.getByRole('button', { name: '월 보기로 전환' }).click();
+  await expect(page.getByRole('grid', { name: '날짜 선택' })).toBeVisible();
+  const monthLabel = page.getByRole('button', { name: /년 \d+월/ });
+  const thisMonth = (await monthLabel.textContent()) ?? '';
+  // 다른 달의 날을 골라 두어도(R2 — 월 보기의 › 는 선택 날짜를 한 달 옮긴다) …
+  await page.getByRole('button', { name: '다음 달' }).click();
+  await expect(monthLabel).not.toHaveText(thisMonth);
+  await expect(todayCell(page, 'gridcell')).not.toHaveAttribute('aria-selected', 'true');
+
+  await page.reload();
+  await waitForShell(page);
+
+  // … 새로고침 뒤에는 월 보기 그대로에 선택은 오늘이다.
+  await expect(page.getByRole('grid', { name: '날짜 선택' })).toBeVisible();
+  await expect(monthLabel).toHaveText(thisMonth);
+  await expect(todayCell(page, 'gridcell')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('button', { name: '주 보기로 전환' })).toBeVisible();
+
+  // 기기별 저장은 키 하나다 — 선택 날짜는 저장하지 않는다(R2).
+  const keys = await page.evaluate(() =>
+    Object.keys(window.localStorage).filter((key) => key.startsWith('tasky.datestrip')),
+  );
+  expect(keys).toEqual(['tasky.datestrip.v1']);
+  const stored = await page.evaluate(() => window.localStorage.getItem('tasky.datestrip.v1'));
+  expect(JSON.parse(stored ?? 'null')).toEqual({ view: 'month' });
+
+  // 주 보기로 돌리면 다음 방문은 주 보기다.
+  await page.getByRole('button', { name: '주 보기로 전환' }).click();
+  await page.reload();
+  await waitForShell(page);
+  await expect(page.getByRole('radiogroup', { name: '날짜 선택' })).toBeVisible();
+});
