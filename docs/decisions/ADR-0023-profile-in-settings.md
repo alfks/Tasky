@@ -36,9 +36,9 @@
 
 ## 지켜야 할 규칙 (검증 가능한 문장 — 리뷰 판정 근거)
 
-1. 프로필 구현 diff 에 `src/domain/sync/server-rules.vectors.ts`·`worker/**` **런타임 코드**·`src/infra/indexeddb/db.ts`(`DB_VERSION`)·D1 마이그레이션 변경이 **없다**(테스트 파일 `worker/sync/apply.test.ts` 에 "프로필 세 필드가 푸시→저장→풀 왕복에서 살아남는다" 1건 추가는 권장).
+1. 프로필 구현 diff 에 `src/domain/sync/server-rules.vectors.ts`·`worker/**` **런타임 코드**·`src/infra/indexeddb/db.ts`(`DB_VERSION`)·D1 마이그레이션 변경이 **없다**(테스트 파일 추가는 런타임 코드 변경이 아니며, 규칙 3 의 Worker 푸시 테스트는 `worker/sync/apply.test.ts` 에 둔다).
 2. 상한 상수(이름 20·소개 60·사진 16,384자·허용 MIME 접두)는 `src/domain/profile/profile.rules.ts` **한 곳**에만 리터럴로 있고, 클라이언트 검증·백업 복원·동기화 풀·Worker 푸시가 전부 그 상수를 import 한다.
-3. 백업 복원·동기화 풀·Worker 푸시 **세 곳**(같은 `readSettings`)은 형식이 틀린 `profile*` 필드를 **버리고 행은 통과**시키며, 유효한 값은 **받은 그대로**(다듬지 않고) 저장한다 — 테스트가 "잘못된 `profileAvatar` + 유효한 나머지 → 행 채택, 필드 없음" 과 "앞뒤 공백 있는 이름 → 파일 값 그대로" 를 고정한다.
+3. 백업 복원·동기화 풀·Worker 푸시 **세 곳**(같은 `readSettings`)은 형식이 틀린 `profile*` 필드를 **버리고 행은 통과**시키며, 유효한 값은 **받은 그대로**(다듬지 않고) 저장한다 — 테스트가 "잘못된 `profileAvatar` + 유효한 나머지 → 행 채택, 필드 없음" 과 "앞뒤 공백 있는 이름 → 파일 값 그대로" 를 고정하고, **Worker 푸시→D1 저장→풀 왕복에서 세 필드가 살아남는 `worker/sync/apply.test.ts`(Miniflare D1) 1건은 필수**다 — 배포될 Worker 번들이 세 필드를 살려 저장한다는 증거는 이 테스트뿐이다(규칙 6).
 4. 프로필 쓰기는 저장소에서 **새로 읽은** `Settings` 행 위에 `touch` 한 결과만 `upsert` 하고, 같은 틱에 두 설정 저장을 시작하지 않는다 — 캐시된 옛 행으로 다른 필드를 덮는 회귀 테스트(테마가 먼저 바꾼 강조색이 살아남는다)가 있다.
 5. 사진 처리는 클라이언트에서만 하고 결과 문자열이 상한을 넘으면 저장하지 않는다(품질 하한에서 멈추고 오류 — 무한 루프 없음).
 6. **Worker 재배포 = T-G 출시 조건.** 확장된 `SETTINGS_KEYS` 를 담은 Worker 가 배포되기 전에는 프로필을 사용자에게 열지 않는다(실기기 두 대에서 이름이 넘어가는 것을 확인한 뒤 `implemented`).
