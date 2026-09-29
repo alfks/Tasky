@@ -530,6 +530,46 @@ describe('디자인 토큰: 모바일 타이포 8단계(§3-D R30)', () => {
   });
 });
 
+describe('디자인 토큰: 달력 컬럼 하한 --shell-calendar-col-min(calendar-layout.md R2)', () => {
+  /** tokens.css 의 **모든** `:root {` 블록(중첩 미디어 안 포함)의 선언을 하나로 모은다 — 위
+   * `runtime` 은 첫 블록만 본다. 마커 뒤 첫 `{` 부터 짝이 맞는 `}` 까지가 블록이므로, 같은 마커를
+   * 다음 위치부터 다시 찾아 나간다. */
+  const allRootDecls = (): Map<string, string> => {
+    const merged = new Map<string, string>();
+    let from = 0;
+    for (;;) {
+      const at = CSS.indexOf(':root {', from);
+      if (at === -1) break;
+      for (const [k, v] of parseDecls(extractBlock(CSS.slice(at), ':root {'))) merged.set(k, v);
+      from = at + ':root {'.length;
+    }
+    return merged;
+  };
+  const roots = allRootDecls();
+
+  it('@theme 밖 :root 에 있고(유틸을 만들지 않는다), 격자 + 좌우 --space-4 로 --cal-* 에서 계산된다', () => {
+    expect(base.has('shell-calendar-col-min')).toBe(false);
+    expect(roots.get('shell-calendar-col-min')).toBe(
+      'calc(7 * var(--cal-cell-w) + 6 * var(--cal-gap) + 2 * var(--space-4))',
+    );
+  });
+
+  it('토큰 값으로 검산하면 ≥768 에서 404px, <768 에서 336px 다(AppShell 주석의 검산과 같은 수)', () => {
+    const px = (raw: string | undefined): number => Number.parseFloat(raw ?? 'NaN');
+    const space4 = px(base.get('space-4'));
+    // 달력 밀도 블록: 마커 뒤 첫 블록이 기본(:root) 값, 그 다음 `@media` 블록이 모바일 값이다.
+    // 미디어 블록은 "@media (max-width: 767.98px)" 가 셋이라 그 문자열만으로는 못 집으므로,
+    // 달력 마커 뒤 텍스트에서 첫 `@media` 를 집는다(모바일 타이포 describe 와 같은 요령).
+    const fromCal = CSS.slice(CSS.indexOf('달력(월 보기 격자) 밀도 토큰'));
+    const desktop = parseDecls(extractBlock(fromCal, ':root {'));
+    const mobile = parseDecls(extractBlock(fromCal.slice(fromCal.indexOf('@media')), '@media'));
+    const colMin = (cal: Map<string, string>): number =>
+      7 * px(cal.get('cal-cell-w')) + 6 * px(cal.get('cal-gap')) + 2 * space4;
+    expect(colMin(desktop)).toBe(404);
+    expect(colMin(mobile)).toBe(336);
+  });
+});
+
 // R2 리뷰 2라운드 Minor: 담장 토큰(--cal-*·--todo-*)은 @theme 밖에 둬서 유틸 생성만 막았을 뿐,
 // 각 담장 밖 컴포넌트가 var(--cal-…)/var(--todo-…) 를 직접 참조하는 것 자체는 막지 못했다 —
 // 지금 지켜지는 것은 규약일 뿐 우연이다. 아래 두 테스트가 그 규약을 검사로 바꾼다.

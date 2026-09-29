@@ -98,16 +98,20 @@ const PALETTE_CHORDS = chordsOf('palette.open');
  */
 function PaletteEntry() {
   const openPalette = useCommandStore((state) => state.openPalette);
+  // `sm:` 폭(272)은 **상한**이지 고정 폭이 아니다(`sm:shrink sm:min-w-0`): 2영역의 하한(680,
+  // calendar-layout.md R10)에서 달력 컬럼은 336px 뿐이라 ☰ 32 + 간격 8 + 272 = 312 로 이미 꽉 차,
+  // 입구가 `shrink-0` 이면 타이머 칩(R15)이 컬럼 밖으로 밀려 패널 머리 위에 겹쳤다(720 실측,
+  // FEEL_REPORT §14). 줄어들 때는 안내 문구만 말줄임된다 — 🔍·단축키 표시는 그대로다.
   return (
     <button
       type="button"
       {...{ [PALETTE_OPENER_ATTR]: '' }}
       onClick={openPalette}
-      className="flex h-[var(--control-hit-min)] w-[var(--control-hit-min)] shrink-0 items-center justify-center gap-[var(--space-2)] rounded-[var(--radius-full)] border border-border bg-surface px-0 text-sm text-muted hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus sm:w-[17rem] sm:justify-start sm:px-[var(--space-3)]"
+      className="flex h-[var(--control-hit-min)] w-[var(--control-hit-min)] shrink-0 items-center justify-center gap-[var(--space-2)] rounded-[var(--radius-full)] border border-border bg-surface px-0 text-sm text-muted hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus sm:w-[17rem] sm:min-w-0 sm:shrink sm:justify-start sm:px-[var(--space-3)]"
     >
       <span aria-hidden="true">🔍</span>
-      <span className="sr-only sm:not-sr-only">{PALETTE_ENTRY_LABEL}</span>
-      <ShortcutKeys chords={PALETTE_CHORDS} className="ml-auto max-sm:sr-only" />
+      <span className="sr-only sm:not-sr-only sm:min-w-0 sm:truncate">{PALETTE_ENTRY_LABEL}</span>
+      <ShortcutKeys chords={PALETTE_CHORDS} className="ml-auto shrink-0 max-sm:sr-only" />
     </button>
   );
 }

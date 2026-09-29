@@ -93,10 +93,12 @@
   --control-selected-ring: 2px;
 
   /* 3-D 브레이크포인트 — Tailwind 기본값(48rem)은 브라우저 루트 글꼴 크기가 16px 가 아니면
-     (접근성 설정으로 바꾼 경우) 768px 에서 어긋난다. px 로 고정해 JS `SHELL_BREAKPOINTS.narrow`
-     (768, src/features/shell/lib/layout.ts)·CSS `max-width: 767.98px`(calendar-layout.md R13)와
-     항상 같은 지점을 가리키게 한다(theme.md §3-D R31). `sm:`(640px)은 대응하는 JS 상수가 없어
-     그대로 둔다 — `lg:`·`xl:`·`2xl:` 는 이 레포가 쓰지 않아 손대지 않는다. */
+     (접근성 설정으로 바꾼 경우) 768px 에서 어긋난다. px 로 고정해 CSS `max-width: 767.98px`
+     (아래 밀도 블록들, calendar-layout.md R13)와 항상 같은 지점을 가리키게 한다(theme.md §3-D
+     R31). 768 은 이제 **CSS 밀도 경계로만** 존재한다 — JS `SHELL_BREAKPOINTS`
+     (src/features/shell/lib/layout.ts)는 1280/680 둘뿐이고 768 을 모른다(2영역 하한을 1024 에서
+     680 으로 내리며 `narrow` 갈래를 없앴다). `sm:`(640px)은 대응하는 JS 상수가 없어 그대로 둔다 —
+     `lg:`·`xl:`·`2xl:` 는 이 레포가 쓰지 않아 손대지 않는다. */
   --breakpoint-md: 768px;
 }
 
@@ -155,9 +157,9 @@
 /* 달력(월 보기 격자) 밀도 토큰(calendar-layout.md §2 R12) — 값의 단일 소스는 그 문서의 표다.
    `@theme` 밖에 두는 이유는 위 카테고리 팔레트와 같다: `@theme` 에 넣으면 `w-[var(--cal-cell-w)]`
    대신 `w-cal-cell-w` 같은 유틸이 생겨 이 밀도가 date-strip 담장 밖으로 새 나갈 길이 열린다.
-   미디어 경계 767.98 은 임의의 다른 값이 아니라 `src/features/shell/lib/layout.ts` 의
-   `SHELL_BREAKPOINTS.narrow`(768)와 같은 지점을 가리킨다(R13) — `max-width` 는 그 지점 미만을
-   잡아야 하므로 0.02 를 뺀다(768 자체는 이 미디어 쿼리 밖, 곧 ≥768 갈래). */
+   미디어 경계 767.98 은 위 `--breakpoint-md`(768)와 같은 지점을 가리킨다(R13) — `max-width` 는
+   그 지점 미만을 잡아야 하므로 0.02 를 뺀다(768 자체는 이 미디어 쿼리 밖, 곧 ≥768 갈래). 이
+   경계는 CSS 밀도 전용이다 — 2영역/1열의 갈림(JS `SHELL_BREAKPOINTS`, 1280/680)과 다르다. */
 :root {
   --cal-cell-w: 48px;
   --cal-cell-h-week: 64px;
@@ -165,6 +167,16 @@
   --cal-gap: 6px;
   --cal-day-text: var(--text-md);
   --cal-weekday-text: var(--text-xs);
+}
+
+/* 달력 컬럼 하한(calendar-layout.md R2) — 격자(7칸 + 6간격) + 좌우 `--space-4`. ≥768 에서 404px,
+   <768 에서 336px 가 **자동으로** 된다: 아래 미디어 블록이 `--cal-cell-w`·`--cal-gap` 을 바꾸면
+   `var()` 참조가 계산 시점에 다시 풀리므로 여기 값은 하나만 적는다. 이름이 `--shell-*` 인 이유:
+   `--cal-*` 는 date-strip 담장 안에서만 참조할 수 있어(src/test/tokens.test.ts) 셸이 직접 쓸 수
+   없다 — 담장 토큰을 참조하는 것은 이 정의 파일 자신뿐이고, `AppShell` 은 이 이름만 본다.
+   `@theme` 밖인 이유는 위 `--cal-*` 와 같다(유틸을 만들지 않는다). */
+:root {
+  --shell-calendar-col-min: calc(7 * var(--cal-cell-w) + 6 * var(--cal-gap) + 2 * var(--space-4));
 }
 
 @media (max-width: 767.98px) {

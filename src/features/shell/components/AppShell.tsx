@@ -52,10 +52,10 @@ function ShellBody() {
   // 두 패널의 "지금 컬럼인가 / 어떻게 열고 접는가" 와 접을 때의 포커스 인계는 한 훅에 모여 있다.
   const panels = useShellPanels();
   const { sidebarIsColumn, insightIsColumn, drawerOpen, insightOverlayOpen } = panels;
-  // 3영역(달력 컬럼 + 선택 날짜 패널) 대 1열(`ShellMain`)의 갈림은 지금은 인사이트 컬럼과 같은
-  // 문턱이지만 **뜻이 다른 판정**이라 전용 함수를 쓴다(`hasDayPanelColumn` — 리뷰 Minor). 예전에는
-  // `hasInsightColumn` 을 그대로 재사용했는데, 인사이트 정책만 바뀌어도(예: 인사이트를 `wide`
-  // 전용으로 좁히면) 3영역 레이아웃이 `mid` 에서 조용히 1열로 무너지는 결합이었다.
+  // 2영역(달력 컬럼 + 선택 날짜 패널, ≥680) 대 1열(`ShellMain`, <680)의 갈림은 지금은 인사이트
+  // 컬럼과 같은 문턱이지만 **뜻이 다른 판정**이라 전용 함수를 쓴다(`hasDayPanelColumn` — 리뷰
+  // Minor). 예전에는 `hasInsightColumn` 을 그대로 재사용했는데, 인사이트 정책만 바뀌어도(예:
+  // 인사이트를 `wide` 전용으로 좁히면) 2영역 레이아웃이 `mid` 에서 조용히 1열로 무너지는 결합이었다.
   const threeRegion = hasDayPanelColumn(panels.layout);
 
   // 테마 적재·OS 추종은 화면에 한 번만 건다(theme R6~R8).
@@ -142,7 +142,7 @@ function ShellBody() {
 
   /*
    * **카테고리 적재는 셸이 건다.** 전에는 `CategoryList` 의 effect 가 유일한 시작점이었는데, 그
-   * 컴포넌트는 사이드바가 **컬럼일 때만** 마운트된다. 그래서 폭 <1024 이거나 사이드바를 접어 둔
+   * 컴포넌트는 사이드바가 **컬럼일 때만** 마운트된다. 그래서 고정이 불가능한 폭이거나 사이드바를 접어 둔
    * 채(그 상태는 localStorage 에 남는다 — R5) 앱을 열면 아무도 `load()` 를 부르지 않아 상태가
    * 영원히 `idle` 이고, 메인에 투두도 빈 상태 문구도 뜨지 않았다. 드로어를 한 번 열어야 풀렸다.
    *
@@ -240,17 +240,18 @@ function ShellBody() {
           // 그리지 않는다 — `sidebarIsColumn` 이면 `ShellSidebar` 가, 아니면 `ShellHeader` 가 이미
           // ☰ 옆에 갖고 있다(calendar-layout.md R6).
           //
-          // **이 duo 를 감싸는 `justify-center` 래퍼(사용자 결정, 리뷰 Major — "1280·1440 에서
-          // 오른쪽에 300~500px 빈 공간").** 달력 컬럼은 `max-w-[560px]` 에서 자라기를 멈추고, 선택
-          // 날짜 패널은 400 고정이다 — 둘의 합(최대 984px + 간격)이 넓은 화면의 남는 폭보다 늘 작아,
-          // 이 래퍼가 없으면 `justify-content` 기본값(flex-start)에 따라 그 차액이 전부 **오른쪽
-          // 한쪽에** 쌓여 "로딩이 덜 된 것처럼" 보였다. 사이드바(고정 컬럼)는 이 래퍼 **밖**의
-          // 형제라 폭에 관여하지 않는다 — 그래서 고정 컬럼이 서 있어도 안 서 있어도, 이 duo 는
-          // 그 왼쪽에 남은 공간 안에서 자기끼리 가운데로 온다(1280·1440·1600 계산은 PR 본문·핸드오프
-          // 참고). `min-w-0` 은 이 래퍼가 `justify-center` 로 줄어들 때도 자식의 `min-w-[440px]` 가
-          // 실제로 지켜지게 한다(안 주면 flex 기본 `min-width:auto` 가 이 래퍼 자체를 늘려 버린다).
+          // **두 컬럼이 같은 문법으로 폭을 나눠 갖는다(R2).** 둘 다 `flex-1` 이라 남는 폭을 똑같이
+          // 나누고, 각자의 상한(달력 440 · 패널 400)에서 멈추면 이 래퍼의 `justify-center` 가 **쌍을**
+          // 가운데로 민다 — 1440 이면 양쪽 288 씩. 달력 컬럼의 상한이 440 인 이유: 격자(7×48+6×6 =
+          // 372)에 34px 만 남겨 "달력 잉크가 컬럼 안에서 따로 가운데" 로 보이던 인상(사용자 피드백
+          // 6, FEEL_REPORT §14)을 없앤다 — 컬럼 폭 ≈ 잉크 폭이면 컬럼의 가운데가 곧 잉크의 가운데다.
+          // 하한은 `--shell-calendar-col-min`(격자 + 좌우 16, ≥768 에서 404 / <768 에서 336 —
+          // tokens.css 가 달력 밀도 토큰으로부터 계산한다) 와 패널 280. 그래서 680 에서도 두
+          // 컬럼이 나란히 선다(336 + 24 + 288 = 648 = 680 − 거터 32). `min-w-0` 은 이 래퍼가
+          // `justify-center` 로 줄어들 때도 자식의 `min-w` 가 실제로 지켜지게 한다(안 주면 flex 기본
+          // `min-width:auto` 가 이 래퍼 자체를 늘려 버린다).
           <div className="flex min-h-0 min-w-0 flex-1 justify-center gap-[var(--space-6)]">
-            <div className="flex min-h-0 max-w-[560px] min-w-[440px] flex-1 flex-col gap-[var(--space-3)]">
+            <div className="flex min-h-0 max-w-[440px] min-w-[var(--shell-calendar-col-min)] flex-1 flex-col gap-[var(--space-3)]">
               <div className="shrink-0">{failureCard === null ? header : null}</div>
               {insightIsColumn ? (
                 <aside
@@ -278,7 +279,7 @@ function ShellBody() {
             />
           </div>
         ) : (
-          // calendar-layout.md R8: <1024 는 지금 구조 그대로 — 헤더가 `ShellMain` 안, `main` 하나뿐.
+          // calendar-layout.md R8: <680(compact) 는 1열 — 헤더가 `ShellMain` 안, `main` 하나뿐.
           <ShellMain
             date={date}
             categories={categoriesWithHistory}
