@@ -10,8 +10,9 @@ import { FIXTURE_CATEGORY_ID } from '@/test/fixtures/todo';
 const DEFAULT_RECURRENCE: RoutineRecurrence = { type: 'weekly', daysOfWeek: [4] };
 
 /**
- * 한 건. 기본은 **무기한(`endDate` 없음) · 활성** 루틴이다 — `overrides.endDate` 를 주면 기록용
- * (routine.md R7-a, ⋯ 메뉴에 삭제만 남는 쪽)이 된다.
+ * 한 건. 기본은 **무기한(`endDate` 없음) · 활성 · `order` 없음(옛 레코드 모양)** 루틴이다 —
+ * `overrides.endDate` 를 주면 기록용(routine.md R7-a, ⋯ 메뉴에 삭제만 남는 쪽)이 되고, 순서를 재는
+ * 테스트는 `order` 를 직접 준다(R13 — 없으면 `compareRoutines` 가 `createdAt`·`id` 로 가른다).
  */
 export function makeRoutine(overrides: Partial<Routine> & { seq?: number } = {}): Routine {
   const { seq = 1, ...rest } = overrides;

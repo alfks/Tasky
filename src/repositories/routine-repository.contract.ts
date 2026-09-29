@@ -102,7 +102,24 @@ export function runRoutineRepositoryContract(target: ContractTarget): void {
       );
     });
 
-    it('list() 정렬은 createdAt asc → id asc(동률 타이브레이크)', async () => {
+    it('list() 정렬은 order asc 가 먼저이고, order 없는 옛 레코드는 뒤에 선다(routine.md R13)', async () => {
+      const deps = contractDeps({ now: CONTRACT_INSTANT });
+      const legacy = contractRoutine(deps, { id: '50000000-0000-4000-8000-000000000001' });
+      const second = contractRoutine(deps, {
+        id: '50000000-0000-4000-8000-000000000002',
+        order: 1,
+      });
+      const first = contractRoutine(deps, { id: '50000000-0000-4000-8000-000000000003', order: 0 });
+      await repo.upsert(legacy);
+      await repo.upsert(second);
+      await repo.upsert(first);
+
+      // id 순이라면 legacy 가 먼저겠지만 order 가 우선이고, order 없는 것은 맨 뒤다.
+      expect(idsOf(await repo.list())).toEqual([first.id, second.id, legacy.id]);
+      expect((await repo.getById(first.id))?.order).toBe(0);
+    });
+
+    it('list() 정렬은 (order 가 없을 때) createdAt asc → id asc(동률 타이브레이크)', async () => {
       const deps = contractDeps({ now: CONTRACT_INSTANT });
       const first = contractRoutine(deps, { id: '50000000-0000-4000-8000-000000000002' });
       const second = contractRoutine(deps, { id: '50000000-0000-4000-8000-000000000001' });

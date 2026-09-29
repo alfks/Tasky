@@ -44,4 +44,10 @@ export type Routine = Meta & {
    * 멈춰 있어도 안전한 이유다.
    */
   fillFloor: DateKey;
+  /**
+   * 관리 화면의 표시 순서(routine.md R13, 0부터). **없으면 옛 레코드**다 — `compareRoutines` 가
+   * 그런 것을 순서 있는 것들 뒤에 `createdAt` 순으로 둔다. 순서를 한 번이라도 바꾸면
+   * `reorderRoutines`(`routine-rank.ts`)가 목록 전체를 0..n-1 로 재매겨 전부 값을 갖게 된다.
+   */
+  order?: number;
 };

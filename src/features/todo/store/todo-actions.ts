@@ -69,7 +69,7 @@ export type TodoActions = {
   /** 토스트를 닫을 때 문구를 지운다. */
   clearError: () => void;
 } & RoutineFillActions & // 루틴 등록·되돌리기·지연 생성(routine.md R2~R6, R21 확장) — todo-routine-fill.ts
-  RoutineManageActions; // 루틴 관리(중지·재개·삭제, routine.md R7·R10) — todo-routine-manage.ts
+  RoutineManageActions; // 루틴 관리(중지·재개·삭제·순서, routine.md R7·R10·R13) — todo-routine-manage.ts
 
 /** 적재 (R17). 요청 번호로 늦게 도착한 이전 날짜의 응답을 버린다 — 날짜 스트립 연타 경로다. */
 function createLoadAction(ctx: TodoContext): Pick<TodoActions, 'loadDate'> {

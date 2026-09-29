@@ -27,6 +27,7 @@ export type DomainErrorCode =
   | 'ROUTINE_DATE_RANGE_INVALID'
   | 'ROUTINE_RECURRENCE_INVALID'
   | 'ROUTINE_NOT_INDEFINITE'
+  | 'ROUTINE_NOT_IN_LIST'
   | 'DDAY_TITLE_REQUIRED'
   | 'DDAY_TITLE_TOO_LONG'
   | 'DDAY_DATE_INVALID'
@@ -62,6 +63,7 @@ const MESSAGES: Record<DomainErrorCode, string> = {
   ROUTINE_DATE_RANGE_INVALID: '종료일은 시작일과 같거나 이후여야 해요',
   ROUTINE_RECURRENCE_INVALID: '반복할 요일이나 날짜를 하나 이상 골라 주세요',
   ROUTINE_NOT_INDEFINITE: '종료일이 있는 루틴은 중지·재개할 수 없어요',
+  ROUTINE_NOT_IN_LIST: '루틴을 찾을 수 없어요',
   DDAY_TITLE_REQUIRED: '제목을 입력해 주세요',
   DDAY_TITLE_TOO_LONG: '30자까지 쓸 수 있어요',
   DDAY_DATE_INVALID: '날짜를 골라 주세요',

@@ -25,6 +25,7 @@ import { MATERIALIZE_HORIZON_DAYS } from '@/features/todo/store/todo-routine-fil
 import { createTodoStore, type TodoStore } from '@/features/todo/store/todo-store';
 import { makeCategory } from '@/test/fixtures/category';
 import { fixedDeps, FIXTURE_DATE } from '@/test/fixtures/deps';
+import { makeRoutine } from '@/test/fixtures/routine';
 import { FIXTURE_CATEGORY_ID, makeTodo } from '@/test/fixtures/todo';
 
 type Store = ReturnType<typeof createTodoStore>;
@@ -287,6 +288,37 @@ describe('materializeRoutines — 지연 생성 배선(routine.md R6·R7·R11)',
     // 막는다 — 위 단언들이 이미 그걸 본다.
     const [routine] = await getRepositories().routines.list();
     expect(routine?.fillFloor).toBe(addCivilDays(FIXTURE_DATE, -1));
+  });
+
+  it('새 인스턴스는 루틴 order 순으로 자리를 받는다(routine.md R13) — 구현 변경 없이 list() 정렬을 탄다', async () => {
+    // 먼저 만든 운동(order 1)·나중에 만든 독서(order 0): createdAt 순이라면 운동이 먼저겠지만 order 가 이긴다.
+    const seed = (seq: number, title: string, order: number, createdAt: string) =>
+      adopt(
+        makeRoutine({
+          seq,
+          title,
+          order,
+          createdAt,
+          updatedAt: createdAt,
+          recurrence: WEEKLY_RECURRENCE,
+          startDate: FIXTURE_DATE,
+          fillFloor: addCivilDays(FIXTURE_DATE, -1),
+        }),
+      );
+    await getRepositories().routines.upsert(seed(1, '운동', 1, '2026-01-01T00:00:00.000Z'));
+    await getRepositories().routines.upsert(seed(2, '독서', 0, '2026-01-02T00:00:00.000Z'));
+
+    await state().materializeRoutines({
+      from: FIXTURE_DATE,
+      to: FIXTURE_DATE,
+      today: FIXTURE_DATE,
+    });
+
+    const board = await getRepositories().todos.listByDate(FIXTURE_DATE);
+    expect(board.map((todo) => [todo.title, todo.order])).toEqual([
+      ['독서', 0],
+      ['운동', 1],
+    ]);
   });
 });
 

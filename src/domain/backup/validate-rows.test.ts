@@ -200,4 +200,22 @@ describe('readRoutine — fillFloor 왕복 (ADR-0018, ROUTINE_KEYS 주석)', () 
     const restored = readRoutine({ ...makeRoutine(), unknownField: 'x' }, 'routines[0]');
     expect('unknownField' in restored).toBe(false);
   });
+
+  it('order(routine.md R13) 는 왕복하고, 없는 옛 백업도 필드 없이 통과한다', () => {
+    expect(readRoutine(makeRoutine({ order: 2 }), 'routines[0]').order).toBe(2);
+    const legacy = readRoutine(makeRoutine(), 'routines[0]');
+    expect('order' in legacy).toBe(false);
+  });
+
+  it('order 가 음수·소수·숫자 아님이면 거부한다', () => {
+    expect(pathOf(() => readRoutine(makeRoutine({ order: -1 }), 'routines[0]'))).toBe(
+      'routines[0].order',
+    );
+    expect(pathOf(() => readRoutine(makeRoutine({ order: 1.5 }), 'routines[0]'))).toBe(
+      'routines[0].order',
+    );
+    expect(pathOf(() => readRoutine({ ...makeRoutine(), order: '0' }, 'routines[0]'))).toBe(
+      'routines[0].order',
+    );
+  });
 });

@@ -144,6 +144,7 @@ const ROUTINE_KEYS = whitelist<Routine>()([
   'endDate',
   'active',
   'fillFloor',
+  'order',
 ]);
 
 /** `recurrence.daysOfWeek`/`daysOfMonth` — 숫자 배열인지만 본다(범위는 `validateRecurrence` 가 본다). */
@@ -327,5 +328,7 @@ export function readRoutine(value: unknown, path: string): Routine {
   optionalDateKey(row, 'endDate', path);
   requireBoolean(row, 'active', path);
   requireDateKey(row, 'fillFloor', path);
+  // 관리 화면 순서(routine.md R13). 선택 필드라 옛 백업(없음)도 그대로 통과한다 — 스키마 버전 그대로.
+  optionalNumber(row, 'order', path, { integer: true, min: 0 });
   return entity;
 }
