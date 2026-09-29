@@ -13,10 +13,10 @@ import type { DateKey } from '@/domain/date/date-key';
 import { DateCell } from '@/features/date-strip/components/DateCell';
 import { DateStripHeader } from '@/features/date-strip/components/DateStripHeader';
 import { MonthGrid } from '@/features/date-strip/components/MonthGrid';
-import { usePointerDownFlag } from '@/features/date-strip/hooks/usePointerDownFlag';
 import { useRangeSummaries } from '@/features/date-strip/hooks/useRangeSummaries';
 import { useTodayTick } from '@/features/date-strip/hooks/useTodayTick';
-import { monthGridDays, shiftMonthWithinRange } from '@/features/date-strip/lib/month';
+import { useVisibleRangeNotifier } from '@/features/date-strip/hooks/useVisibleRangeNotifier';
+import { isSameMonth, monthGridDays, shiftMonthWithinRange } from '@/features/date-strip/lib/month';
 import {
   DAYS_IN_WEEK,
   isWithinRange,
@@ -43,19 +43,10 @@ type DateStripProps = {
    * 보이는 날짜 범위(양끝 포함)가 바뀔 때마다 알린다 (routine.md R6 무기한 루틴 지연 생성의 배선
    * 지점). 스트립 자신은 `todo` 를 import 할 수 없어(feature 그래프의 리프) 셸이 이 콜백으로 받아
    * 잇는다(`ShellHeader`) — `summaryRevision` 과 같은 이유(위 주석). **leading + trailing 으로
-   * 디바운스된다**(아래 `VISIBLE_RANGE_DEBOUNCE_MS`) — 한 걸음짜리 이동은 즉시(leading) 부르고,
-   * 연속 탐색(연타 이동)만 멈춘 뒤 마지막 범위로 한 번(trailing) 묶는다(리뷰 Major 2 실측: 100연타
-   * → put 426·tx 938·7.4초, 리뷰 Minor 1: trailing 전용이던 첫 버전은 한 걸음짜리 이동도
-   * 250ms 늦게 반영돼 빈 상태가 잠깐 보였다 사라지는 깜빡임이 있었다).
+   * 디바운스된다** — 규칙·근거·폭(`VISIBLE_RANGE_DEBOUNCE_MS`)은 `hooks/useVisibleRangeNotifier.ts`.
    */
   onVisibleRange?: (from: DateKey, to: DateKey) => void;
 };
-
-/**
- * `onVisibleRange` 디바운스 폭(리뷰 Major 2·Minor 1). leading 호출은 이 값과 무관하게 즉시 나가고,
- * 이 값은 "연타가 끝났다"고 판단해 trailing 을 쏘기까지 기다리는 조용한 시간이다.
- */
-export const VISIBLE_RANGE_DEBOUNCE_MS = 250;
 
 /** 모션 축소 선호 여부. `matchMedia` 가 없는 런타임(구형·테스트)에서는 "선호하지 않음"으로 본다. */
 function prefersReducedMotion(): boolean {
@@ -88,46 +79,13 @@ export function DateStrip({
   const rangeStart = days[0];
   const rangeEnd = days[days.length - 1];
   const summaries = useRangeSummaries(rangeStart, rangeEnd, summaryRevision, onSummaryError);
-  // 콜백 정체성이 바뀌어도 재실행하지 않게 ref 로 받는다(`useRangeSummaries` 의 `onError` 와 같은 이유).
-  const onVisibleRangeRef = useRef(onVisibleRange);
-  onVisibleRangeRef.current = onVisibleRange;
-  // leading + trailing 디바운스(리뷰 Minor 1): 버스트의 **첫** 범위 변화는 즉시 부른다(leading) —
-  // trailing 만 쓰면 한 걸음짜리 이동도 `VISIBLE_RANGE_DEBOUNCE_MS` 를 기다려, 그사이 "아직 비어
-  // 있어요" 빈 상태가 잠깐 떴다 사라지는 깜빡임이 실측됐다. 쿨다운 중에 이어지는 변화(연타)만
-  // trailing 으로 미뤄 마지막 범위로 한 번 부른다 — 낭비 방지 캐시(`materializeRoutines`)가 이미
-  // 중복 조회를 막아 주므로 leading 이 더해도 실질 비용은 거의 늘지 않는다(리뷰 Major 2).
-  const coolingDownRef = useRef(false);
-  const trailingPendingRef = useRef(false);
-  const debounceTimerRef = useRef<number | undefined>(undefined);
-  useEffect(() => {
-    if (!coolingDownRef.current) {
-      coolingDownRef.current = true;
-      trailingPendingRef.current = false;
-      onVisibleRangeRef.current?.(rangeStart, rangeEnd);
-    } else {
-      trailingPendingRef.current = true;
-    }
-    window.clearTimeout(debounceTimerRef.current);
-    debounceTimerRef.current = window.setTimeout(() => {
-      coolingDownRef.current = false;
-      if (trailingPendingRef.current) {
-        trailingPendingRef.current = false;
-        onVisibleRangeRef.current?.(rangeStart, rangeEnd);
-      }
-    }, VISIBLE_RANGE_DEBOUNCE_MS);
-    return () => window.clearTimeout(debounceTimerRef.current);
-  }, [rangeStart, rangeEnd]);
-  // ↑/↓ · Home/End 는 보기와 무관하게 **활성 날짜가 속한 주**를 기준으로 움직인다 (R18).
-  const activeWeek = weekDays(activeDate);
+  useVisibleRangeNotifier(rangeStart, rangeEnd, onVisibleRange);
 
   const cellRefs = useRef(new Map<DateKey, HTMLButtonElement>());
   // 클릭·Tab 으로 들어온 포커스까지 다시 focus() 하지 않도록, 키 조작으로 옮길 때만 켠다.
   const shouldMoveFocus = useRef(false);
-  // **포인터로 들어온 포커스는 격자를 옮기지 않는다(R16).** mousedown 의 포커스만으로 앵커를 옮기면
-  // 이 달 밖 칸에서 격자가 click 보다 먼저 다음 달로 다시 그려져 click 이 다른 칸(또는 조상)에
-  // 떨어지고 선택이 일어나지 않았다(실브라우저 재현 — jsdom 의 `userEvent.click` 은 요소 참조를
-  // 유지해 잡지 못했다). 키보드 이동(`moveFocus`)은 `setFocusedDate` 를 직접 부르므로 영향이 없다.
-  const { isPointerDown, onPointerDownCapture } = usePointerDownFlag();
+  // DOM 포커스가 실제로 있는 칸. 앵커와 다를 수 있어(`handleFocusCell`) 키 이동은 이것에서 출발한다.
+  const focusedCellDate = useRef<DateKey | null>(null);
   // 헤더 버튼이 자기 클릭으로 비활성될 때 포커스를 넘겨받을 셀 (WCAG 2.4.3).
   const shouldAdoptFocus = useRef(false);
 
@@ -168,16 +126,22 @@ export function DateStrip({
     setFocusedDate(target);
   };
 
-  /** 칸이 포커스를 받았다. 포인터가 눌린 채면 거른다(`isPointerDown`) — Tab·키 이동만 앵커를 옮긴다. */
+  /**
+   * **포커스만으로는 보이는 범위가 바뀌지 않는다(R16)** — 월 보기의 이 달 밖 칸은 앵커를 옮기지 않는다.
+   * 옮기면 격자가 click 보다 먼저 다시 그려져 click 이 다른 칸(또는 조상)에 떨어지고 선택이 안 됐다
+   * (마우스·터치 실브라우저 재현 — jsdom 은 요소 참조를 유지해 못 잡는다). 닿을 수 있는 칸은 보이는
+   * 칸뿐이고 주 보기의 칸은 전부 같은 주라 그림이 바뀌는 경우는 이것 하나다. 키보드 이동(R18)은
+   * `moveFocus` 가 앵커를 먼저 옮기므로 그 뒤의 focus 는 이미 같은 달이다.
+   */
   const handleFocusCell = (date: DateKey) => {
-    if (isPointerDown.current) return;
+    focusedCellDate.current = date;
+    if (isMonth && !isSameMonth(date, activeDate)) return;
     setFocusedDate(date);
   };
 
   /**
-   * 칸을 눌러 확정한 선택. 앵커를 비워 보이는 범위가 **선택 날짜**를 따르게 한다 — 이 달 밖 칸이면
-   * 그 날이 든 달로 격자가 넘어가고 그 칸이 선택·포커스 대상이 된다(R16). 줄의 키가 월요일 날짜고
-   * 격자는 언제나 온전한 주라 누른 칸의 줄은 새 달에도 같은 요소로 남는다 — 포커스 링이 그대로인 이유.
+   * 칸을 눌러 확정한 선택. 앵커를 비워 보이는 범위가 **선택 날짜**를 따르게 한다 — 이 달 밖 칸이면 그 날이
+   * 든 달로 격자가 넘어간다(R16). 줄의 키가 월요일이고 격자는 온전한 주라 누른 칸은 같은 요소로 남는다(포커스 유지).
    */
   const handleSelect = (date: DateKey) => {
     setFocusedDate(null);
@@ -185,19 +149,23 @@ export function DateStrip({
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    // 출발점은 포커스가 실제로 있는 칸(앵커와 어긋나도 — 이 달 밖 칸을 누르고 밖에서 놓음 — 보이는 칸에서
+    // 움직인다). ↑/↓ · Home/End 는 보기와 무관하게 그 칸이 속한 주 기준이다 (R18).
+    const origin = focusedCellDate.current ?? activeDate;
+    const originWeek = weekDays(origin);
     // 스트립 안의 ←/→ 는 셀 이동이므로 전역 날짜 이동(shortcuts R1)으로 새어나가면 안 된다 (§5).
     const handlers: Record<string, () => void> = {
-      ArrowLeft: () => moveFocus(shiftWithinRange(activeDate, -1)),
-      ArrowRight: () => moveFocus(shiftWithinRange(activeDate, 1)),
-      Home: () => moveFocus(activeWeek[0]),
-      End: () => moveFocus(activeWeek[DAYS_IN_WEEK - 1]),
+      ArrowLeft: () => moveFocus(shiftWithinRange(origin, -1)),
+      ArrowRight: () => moveFocus(shiftWithinRange(origin, 1)),
+      Home: () => moveFocus(originWeek[0]),
+      End: () => moveFocus(originWeek[DAYS_IN_WEEK - 1]),
     };
     // ↑/↓ 는 **월 보기에서만** 잡는다 (R18). 한 줄짜리 주 보기에서 위아래는 갈 곳이 없고, 거기서
     // 삼키면 브라우저 기본 스크롤만 죽는다. 등록된 전역 단축키와도 겹치지 않는다
     // (shortcut-catalog: ↑/↓ 단독은 없고 Alt+↑/↓ 는 투두 항목에 포커스가 있을 때만 도는 item 범위다).
     if (isMonth) {
-      handlers.ArrowUp = () => moveFocus(shiftWithinRange(activeDate, -DAYS_IN_WEEK));
-      handlers.ArrowDown = () => moveFocus(shiftWithinRange(activeDate, DAYS_IN_WEEK));
+      handlers.ArrowUp = () => moveFocus(shiftWithinRange(origin, -DAYS_IN_WEEK));
+      handlers.ArrowDown = () => moveFocus(shiftWithinRange(origin, DAYS_IN_WEEK));
     }
     const handler = handlers[event.key];
     if (handler === undefined) return;
@@ -223,13 +191,12 @@ export function DateStrip({
    */
   const clearFocusOnLeave = (event: FocusEvent<HTMLElement>) => {
     if (event.currentTarget.contains(event.relatedTarget)) return;
+    focusedCellDate.current = null;
     setFocusedDate(null);
   };
 
   return (
-    // 포인터 플래그는 두 보기의 칸 묶음을 다 덮는 이 상자에서 켠다(캡처 — 칸의 focus 보다 먼저 돈다).
-    // 헤더 버튼도 이 안이지만 그 포커스는 `handleFocusCell` 을 타지 않는다. 푸는 쪽은 window 다(훅 주석).
-    <div className="flex flex-col gap-[var(--space-2)]" onPointerDownCapture={onPointerDownCapture}>
+    <div className="flex flex-col gap-[var(--space-2)]">
       <DateStripHeader
         // 월 표시는 주 보기에서 보이는 주의 월요일을, 월 보기에서 보고 있는 달을 따른다.
         anchorDate={isMonth ? activeDate : days[0]}

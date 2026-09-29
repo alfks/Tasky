@@ -238,30 +238,41 @@ describe('R16. 월 보기 칸도 주 보기와 같은 언어를 쓴다', () => {
     ]);
   });
 
-  it('포인터로 들어온 포커스는 격자를 옮기지 않는다 — mousedown 의 포커스만으로는 같은 달이다', async () => {
+  it('칸이 포커스를 받는 것만으로는 격자가 옮겨지지 않는다 — 마우스 순서(pointerdown → focus → click)', async () => {
     stub();
     await renderMonth();
     const monthLabel = screen.getByRole('button', { name: /2026년 9월/ });
 
-    // 실브라우저의 클릭 순서: pointerdown → (mousedown →) focus → pointerup → click. focus 시점에
-    // 격자가 10월로 다시 그려지면 click 이 떨어질 칸이 사라져 선택이 안 된다(실브라우저 재현 버그).
+    // 마우스: pointerdown → mousedown → focus → pointerup → click. focus 시점에 격자가 10월로 다시
+    // 그려지면 click 이 떨어질 칸이 사라져 선택이 안 된다(실브라우저 재현 버그).
     const cell = screen.getByRole('gridcell', { name: /^10월 4일 일요일/ });
     fireEvent.pointerDown(cell);
+    fireEvent.mouseDown(cell);
     act(() => cell.focus());
     expect(screen.getAllByRole('gridcell')).toHaveLength(GRID_CELLS);
     expect(monthLabel).toHaveTextContent('2026년 9월');
     expect(cell).toHaveFocus();
+
+    fireEvent.pointerUp(cell);
+    fireEvent.mouseUp(cell);
+    fireEvent.click(cell);
+    expect(useDateStripStore.getState().selectedDate).toBe('2026-10-04');
+    await settle();
   });
 
-  it('이 달 밖 칸을 클릭하면 그 날이 선택되고 격자가 그 달로 넘어간다', async () => {
+  it('터치 순서(pointerdown → pointerup → mousedown → focus → mouseup → click)에서도 선택되고 격자가 그 달로 넘어간다', async () => {
     stub();
     await renderMonth();
 
-    // 위 테스트와 같은 실제 순서로 끝까지 간다 — pointerup 뒤의 click 이 선택을 확정한다.
+    // 터치는 호환 마우스 이벤트가 pointerup **뒤에** 온다(리뷰 실측) — 포인터 플래그 방식은 여기서 무너졌다.
     const cell = screen.getByRole('gridcell', { name: /^10월 4일 일요일/ });
-    fireEvent.pointerDown(cell);
+    fireEvent.pointerDown(cell, { pointerType: 'touch' });
+    fireEvent.pointerUp(cell, { pointerType: 'touch' });
+    fireEvent.mouseDown(cell);
     act(() => cell.focus());
-    fireEvent.pointerUp(cell);
+    expect(screen.getAllByRole('gridcell')).toHaveLength(GRID_CELLS);
+    expect(screen.getByRole('button', { name: /2026년 9월/ })).toBeInTheDocument();
+    fireEvent.mouseUp(cell);
     fireEvent.click(cell);
 
     expect(useDateStripStore.getState().selectedDate).toBe('2026-10-04');
@@ -289,17 +300,42 @@ describe('R16. 월 보기 칸도 주 보기와 같은 언어를 쓴다', () => {
     await settle();
   });
 
-  it('스트립 밖에서 포인터를 놓아도 플래그가 풀려 다음 Tab 진입은 앵커를 옮긴다', async () => {
+  it('같은 달 칸의 포커스는 여전히 앵커를 옮긴다 — 누르고 밖에서 놓아도(클릭 불성립) → 는 그 칸에서 출발한다', async () => {
     stub();
+    const user = userEvent.setup();
     await renderMonth();
 
-    // 칸 위에서 누르고 문서 어딘가에서 놓는다(드래그하다 놓침). pointerup 은 window 에서 잡는다.
-    fireEvent.pointerDown(screen.getByRole('gridcell', { name: /^9월 17일 목요일/ }));
+    const cell = screen.getByRole('gridcell', { name: /^9월 4일 금요일/ });
+    fireEvent.pointerDown(cell);
+    fireEvent.mouseDown(cell);
+    act(() => cell.focus());
     fireEvent.pointerUp(document.body);
+    fireEvent.mouseUp(document.body);
+    expect(useDateStripStore.getState().selectedDate).toBe(TODAY);
 
-    // 그 뒤 키보드로 들어온 포커스(pointer 없음)는 앵커를 옮긴다 — 10월 4일에 포커스하면 10월 격자다.
-    act(() => screen.getByRole('gridcell', { name: /^10월 4일 일요일/ }).focus());
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('gridcell', { name: /^9월 5일 토요일/ })).toHaveFocus();
+  });
+
+  it('이 달 밖 칸에 포커스만 남은 채(누르고 밖에서 놓음) → 를 누르면 눈에 보이는 그 칸에서 출발한다', async () => {
+    stub();
+    const user = userEvent.setup();
+    await renderMonth();
+
+    const cell = screen.getByRole('gridcell', { name: /^10월 4일 일요일/ });
+    fireEvent.pointerDown(cell);
+    fireEvent.mouseDown(cell);
+    act(() => cell.focus());
+    fireEvent.pointerUp(document.body);
+    fireEvent.mouseUp(document.body);
+    // 앵커는 안 옮겼으니 격자는 9월 그대로다.
+    expect(screen.getByRole('button', { name: /2026년 9월/ })).toBeInTheDocument();
+
+    // 키 이동은 앵커(9/17)가 아니라 포커스 칸(10/4)에서 — 10/5 로 가며 격자가 10월로 넘어간다.
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('gridcell', { name: /^10월 5일 월요일/ })).toHaveFocus();
     expect(screen.getByRole('button', { name: /2026년 10월/ })).toBeInTheDocument();
+    expect(useDateStripStore.getState().selectedDate).toBe(TODAY);
     await settle();
   });
 });

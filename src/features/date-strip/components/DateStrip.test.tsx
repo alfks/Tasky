@@ -9,8 +9,9 @@ import type { Todo } from '@/domain/todo/todo';
 import { setRepositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
-import { DateStrip, VISIBLE_RANGE_DEBOUNCE_MS } from '@/features/date-strip/components/DateStrip';
+import { DateStrip } from '@/features/date-strip/components/DateStrip';
 import { TODAY_TICK_MS } from '@/features/date-strip/hooks/useTodayTick';
+import { VISIBLE_RANGE_DEBOUNCE_MS } from '@/features/date-strip/hooks/useVisibleRangeNotifier';
 import { MAX_DATE_KEY, MIN_DATE_KEY } from '@/features/date-strip/lib/week';
 import {
   createInitialDateStripState,
