@@ -9,12 +9,25 @@
 import { expect, test } from './fixtures/stub-login';
 import { closeSidebarDrawer, openSidebarDrawer } from './sidebar';
 
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 /** `StorageFailureCard.MEMORY_MODE_BANNER_TEXT`. 메모리 모드면 "새로고침 뒤 유지" 가 성립하지 않는다. */
 const MEMORY_MODE_TEXT = '지금 적는 내용은 새로고침하면 사라져요';
 const DIARY = '오늘의 기록';
 const CONTENT = '산책하고 나니 개운했다';
+
+/** 그 지점을 실제로 누르면 이 요소가 받는가 — `narrow-viewport.spec.ts` 와 같은 `elementFromPoint` 실측. */
+async function isOnTop(locator: Locator): Promise<boolean> {
+  const box = await locator.boundingBox();
+  if (box === null) return false;
+  return locator.evaluate(
+    (el, { x, y }) => {
+      const hit = document.elementFromPoint(x, y);
+      return hit !== null && (hit === el || el.contains(hit));
+    },
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+  );
+}
 
 async function waitForShell(page: Page): Promise<void> {
   await page.waitForSelector('main#shell-main');
@@ -90,4 +103,69 @@ test('선택 날짜가 오늘이 아니면 카드가 제목 아래에 그 날짜
   await expect(card.getByText(label)).toBeVisible();
   // 접근 이름은 날짜와 무관하게 고정이다.
   await expect(card).toHaveAccessibleName(DIARY);
+});
+
+test('삭제 → 드로어 닫기 → 다시 열기 → [되돌리기] 로 글이 돌아온다 (리뷰 Major 1)', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await waitForShell(page);
+  const drawer = await openSidebarDrawer(page);
+  const card = drawer.getByRole('region', { name: DIARY });
+  await card.getByRole('button', { name: '+ 기록하기' }).click();
+  const dialog = page.getByRole('dialog', { name: DIARY });
+  await dialog.getByRole('radio', { name: '기쁨' }).click();
+  await dialog.getByRole('textbox', { name: '오늘 하루' }).fill(CONTENT);
+  await dialog.getByRole('button', { name: '저장' }).click();
+  await expect(card.getByText(CONTENT)).toBeVisible();
+
+  await card.getByRole('button', { name: `${DIARY} 메뉴` }).click();
+  await page.getByRole('menuitem', { name: '삭제' }).click();
+  const undo = page.getByRole('button', { name: '되돌리기' });
+  await expect(undo).toBeVisible();
+
+  // 토스트는 드로어 밖(하단 중앙)에 뜨므로 드로어를 닫는 것이 자연스럽다 — 6초 안에 다시 연다.
+  await closeSidebarDrawer(page, drawer);
+  const reopened = await openSidebarDrawer(page);
+  await expect(
+    reopened.getByRole('region', { name: DIARY }).getByText('오늘 하루 어땠나요?'),
+  ).toBeVisible();
+  await undo.click();
+  await expect(reopened.getByRole('region', { name: DIARY }).getByText(CONTENT)).toBeVisible();
+});
+
+test('1280×720 고정 컬럼: 카드 세 장은 한 스크롤 영역에 흐르고 [+ 기록하기]·[+ 카테고리 추가]·[로그아웃] 에 닿는다 (리뷰 Major 2)', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/');
+  await waitForShell(page);
+  const drawer = await openSidebarDrawer(page);
+  await page.getByRole('button', { name: '사이드바 고정' }).click();
+  await expect(drawer).toHaveCount(0);
+  const nav = page.getByRole('navigation', { name: '카테고리' });
+  await expect(nav).toBeVisible();
+
+  const add = nav.getByRole('button', { name: '+ 기록하기' });
+  const addCategory = nav.getByRole('button', { name: '+ 카테고리 추가' });
+  // `exact` — "다른 기기 모두 로그아웃" 도 같은 nav 안에 있다.
+  const logout = nav.getByRole('button', { name: '로그아웃', exact: true });
+  await expect(add).toBeVisible();
+
+  // 도구 줄·계정 블록은 스크롤 영역 밖 — 스크롤 없이 바로 닿는다.
+  expect(await isOnTop(logout), '로그아웃이 가려 있다').toBe(true);
+  expect(await isOnTop(addCategory), '+ 카테고리 추가가 가려 있다').toBe(true);
+  // 기록 카드는 (필요하면) 한 번의 스크롤로 **통째로** 드러난다 — 카드 자신은 스크롤 상자가 아니다.
+  await add.scrollIntoViewIfNeeded();
+  expect(await isOnTop(add), '+ 기록하기가 가려 있다').toBe(true);
+  const card = nav.getByRole('region', { name: DIARY });
+  expect(
+    await card.evaluate((el) => el.scrollHeight <= el.clientHeight + 1),
+    '기록 카드가 자기 안에서 스크롤한다(구멍)',
+  ).toBe(true);
+  const box = await card.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box).not.toBeNull();
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height);
 });

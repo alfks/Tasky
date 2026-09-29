@@ -132,6 +132,25 @@ describe('remove·undoRemove (R4)', () => {
     expect(state().error).toBeNull();
   });
 
+  it('같은 날짜를 다시 load 해도 pendingRemoval 은 남는다 — 드로어를 닫았다 열어도 되돌릴 수 있다', async () => {
+    await state().load(DATE);
+    await state().save({ emoji: EMOJI, content: '오늘' });
+    expect(await state().remove()).toBe(true);
+    await state().load(DATE);
+    expect(state().pendingRemoval).not.toBeNull();
+    expect(await state().undoRemove()).toBe(true);
+    expect(state().entry?.content).toBe('오늘');
+  });
+
+  it('다른 날짜로 load 하면 pendingRemoval 을 버린다(스펙이 감수한 경로)', async () => {
+    await state().load(DATE);
+    await state().save({ emoji: EMOJI, content: '오늘' });
+    expect(await state().remove()).toBe(true);
+    await state().load('2026-01-16' as DateKey);
+    expect(state().pendingRemoval).toBeNull();
+    expect(await state().undoRemove()).toBe(false);
+  });
+
   it('되돌릴 것이 없으면 undoRemove 는 false 다', async () => {
     expect(await state().undoRemove()).toBe(false);
   });

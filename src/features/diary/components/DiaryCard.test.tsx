@@ -202,3 +202,53 @@ describe('사이드바용 표면 (diary.md §2 · app-shell R18)', () => {
     expect(screen.queryByText(/\d+월 \d+일/)).not.toBeInTheDocument();
   });
 });
+
+describe('드로어 여닫기 = 마운트/언마운트 (리뷰 Major 1)', () => {
+  it('스토어가 이미 그 날짜를 ready 로 들고 있으면 다시 읽지 않고, pendingRemoval 도 그대로다', async () => {
+    const user = userEvent.setup();
+    let reads = 0;
+    const base = createMemoryRepositories();
+    setRepositories({
+      ...base,
+      diaryEntries: {
+        ...base.diaryEntries,
+        getByDate: (date) => {
+          reads += 1;
+          return base.diaryEntries.getByDate(date);
+        },
+      },
+    });
+    const first = renderWithToasts();
+    await user.click(await screen.findByRole('button', { name: '+ 기록하기' }));
+    await user.click(screen.getByRole('radio', { name: '기쁨' }));
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    await screen.findByRole('button', { name: '수정' });
+    await user.click(screen.getByRole('button', { name: '오늘의 기록 메뉴' }));
+    await user.click(await screen.findByRole('menuitem', { name: '삭제' }));
+    await screen.findByRole('button', { name: '되돌리기' });
+    const readsBefore = reads;
+
+    // 드로어를 닫았다 다시 연다 — 카드만 언마운트/마운트되고 스토어·토스트는 남는다.
+    first.unmount();
+    render(<DiaryCard date={DATE} />);
+    await screen.findByRole('button', { name: '+ 기록하기' });
+    expect(reads).toBe(readsBefore);
+    expect(useDiaryStore.getState().pendingRemoval).not.toBeNull();
+  });
+
+  it('되돌릴 것이 없으면 "되돌릴 수 없어요" 를 알린다 — 눌렀는데 아무 일도 없는 버튼을 두지 않는다', async () => {
+    const user = userEvent.setup();
+    renderWithToasts();
+    await user.click(await screen.findByRole('button', { name: '+ 기록하기' }));
+    await user.click(screen.getByRole('radio', { name: '기쁨' }));
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    await screen.findByRole('button', { name: '수정' });
+    await user.click(screen.getByRole('button', { name: '오늘의 기록 메뉴' }));
+    await user.click(await screen.findByRole('menuitem', { name: '삭제' }));
+    const undoButton = await screen.findByRole('button', { name: '되돌리기' });
+    // 날짜를 옮긴 뒤 누르는 경우(스펙이 감수한 경로)를 스토어 상태로 재현한다.
+    useDiaryStore.setState({ pendingRemoval: null });
+    await user.click(undoButton);
+    expect(await screen.findByText('되돌릴 수 없어요')).toBeInTheDocument();
+  });
+});

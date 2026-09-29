@@ -84,7 +84,15 @@ export function createDiaryStore(deps: MetaDeps = defaultDeps) {
     load: async (date) => {
       seq += 1;
       const mySeq = seq;
-      set({ date, status: 'loading', error: null, pendingRemoval: null });
+      // 같은 날짜를 다시 읽을 때는 되돌리기 메모를 지키고, 다른 날짜로 옮길 때만 버린다 — 카드가
+      // 사이드바 드로어에 살면서 여닫기 = 마운트/언마운트가 됐고, 삭제 직후 드로어를 닫았다 6초 안에
+      // 다시 여는 경로가 흔하다(리뷰 Major 1: 토스트 `[되돌리기]` 가 조용히 실패하던 자리).
+      set((s) => ({
+        date,
+        status: 'loading',
+        error: null,
+        pendingRemoval: s.date === date ? s.pendingRemoval : null,
+      }));
       try {
         const entry = await getRepositories().diaryEntries.getByDate(date);
         if (mySeq !== seq) return;

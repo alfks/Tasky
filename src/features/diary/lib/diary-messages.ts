@@ -11,3 +11,6 @@ const DIARY_ENTRY_LABEL = '오늘의 기록';
 export function diaryRemovalToastMessage(): string {
   return `'${DIARY_ENTRY_LABEL}'${objectParticle(DIARY_ENTRY_LABEL)} 삭제했어요`;
 }
+
+/** 카드·모달의 제목이자 `section` 의 접근 이름 — 날짜가 바뀌어도 고정이다(diary.md §2·§5). */
+export const DIARY_CARD_TITLE = '오늘의 기록';

@@ -9,11 +9,13 @@ import type { DateKey } from '@/domain/date/date-key';
 import { findMoodEmoji } from '@/domain/diary/mood-emoji';
 
 import { DiaryDialog } from '@/features/diary/components/DiaryDialog';
+import { DiaryTitle } from '@/features/diary/components/DiaryTitle';
 import { focusAfterDiaryRemoval } from '@/features/diary/lib/diary-focus';
-import { diaryRemovalToastMessage } from '@/features/diary/lib/diary-messages';
+import { DIARY_CARD_TITLE, diaryRemovalToastMessage } from '@/features/diary/lib/diary-messages';
 import { useDiaryStore } from '@/features/diary/store/diary-store';
 
 import { Button } from '@/components/ui/Button';
+import { CARD_CLASS } from '@/components/ui/card-class';
 import { IconButton } from '@/components/ui/IconButton';
 import { Menu } from '@/components/ui/Menu';
 import { Popover } from '@/components/ui/Popover';
@@ -22,7 +24,6 @@ import { pushToast } from '@/components/ui/Toast';
 
 import { cn } from '@/lib/cn';
 
-export const DIARY_CARD_TITLE = '오늘의 기록';
 export const DIARY_EMPTY_TEXT = '오늘 하루 어땠나요?';
 export const DIARY_ADD_LABEL = '+ 기록하기';
 export const DIARY_EDIT_LABEL = '수정';
@@ -30,34 +31,19 @@ export const DIARY_MENU_LABEL = `${DIARY_CARD_TITLE} 메뉴`;
 export const DIARY_DELETE_LABEL = '삭제';
 /** 조회 자체가 실패했을 때(빈 상태와 구분, diary §2). `TodoList` 의 같은 문구 패턴. */
 export const DIARY_LOAD_FAILED = '기록을 불러오지 못했어요';
-
-/**
- * 상시 카드 한 장 (app-shell.md §2-A "면과 고도" — 값의 단일 소스는 그 절이다). 사이드바의 다른
- * 카드(`ShellSidebar` 의 `CARD_CLASS`)와 **같은 값** — 한 컬럼 안에서 면의 문법이 갈리지 않게.
- */
-const CARD_CLASS =
-  'rounded-[var(--radius-xl)] border border-border bg-surface p-[var(--space-3)] shadow-sm';
-/**
- * 껍질이 없을 때(드로어) 포커스 링이 들어갈 자리. 이 `section` 은 스크롤 컨테이너라 상자 밖은
- * 잘리는데, 껍질의 안쪽 여백이 없으면 맨 왼쪽에 붙은 `[+ 기록하기]` 의 링(2px + offset 2px)이
- * 왼쪽에서 잘린다(실측, 960 드로어). 그래서 링 두께만큼 안쪽 여백을 주고 같은 값의 음수 마진으로
- * 내용의 정렬(제목이 옆 D-day 제목과 같은 x)을 그대로 둔다.
- */
-const UNFRAMED_CLASS = '-mx-[var(--space-1)] -my-[var(--space-1)] p-[var(--space-1)]';
+/** `[되돌리기]` 를 눌렀는데 되돌릴 것이 없을 때(날짜를 옮긴 뒤 등, 리뷰 Minor 4). */
+export const DIARY_UNDO_FAILED = '되돌릴 수 없어요';
 
 type DiaryCardProps = {
   date: DateKey;
   /**
    * 카드 껍질(면·보더·그림자)을 스스로 그릴지. 기본 `true`. 이미 면을 가진 오버레이(드로어) 안에서는
-   * `false` — 같은 면을 두 겹 겹치지 않는다(app-shell R18). 껍질은 스크롤 컨테이너인 `section` 자체에
-   * 두어, 사이드바가 높이를 조일 때 보더는 제자리에 있고 안쪽만 스크롤한다.
+   * `false` — 같은 면을 두 겹 겹치지 않는다(app-shell R18).
    */
   framed?: boolean;
   /**
-   * 제목 아래 한 줄로 보일 날짜(`9월 17일 (목)`). 사이드바는 날짜 스트립에서 멀어 "어느 날의
-   * 기록인지" 를 카드 스스로 말해야 한다 — 호출부가 **선택 날짜가 오늘이 아닐 때만** 넘긴다(오늘
-   * 판정의 출처는 스트립 스토어 하나, app-shell R12). 제목 "오늘의 기록" 은 접근 이름을 고정하려고
-   * 그대로 둔다.
+   * 제목 아래 한 줄로 보일 날짜(`9월 17일 (목)`) — 호출부가 **선택 날짜가 오늘이 아닐 때만** 넘긴다
+   * (오늘 판정의 출처는 스트립 스토어 하나, app-shell R12). 제목은 접근 이름 고정을 위해 그대로 둔다.
    */
   dateLabel?: string;
 };
@@ -79,8 +65,11 @@ export function DiaryCard({ date, framed = true, dateLabel }: DiaryCardProps) {
   const editRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    void load(date);
-    // 날짜가 바뀔 때만 다시 읽는다 — load 자체는 스토어 인스턴스마다 바뀌지 않는다.
+    // 스토어가 이미 그 날짜를 `ready` 로 들고 있으면 다시 읽지 않는다 — 사이드바 드로어를 여닫을
+    // 때마다 이 카드가 마운트되므로(리뷰 Major 1·Nit 2), 매번 읽으면 6초 되돌리기 메모가 위험해지고
+    // 스켈레톤 → 내용으로 높이가 튄다. 날짜가 바뀌면 `load` 가 새로 읽는다.
+    const current = useDiaryStore.getState();
+    if (current.date !== date || current.status !== 'ready') void load(date);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
 
@@ -103,7 +92,13 @@ export function DiaryCard({ date, framed = true, dateLabel }: DiaryCardProps) {
       if (!ok) return;
       pushToast({
         message: diaryRemovalToastMessage(),
-        action: { label: '되돌리기', onAction: () => void undoRemove() },
+        action: {
+          label: '되돌리기',
+          onAction: () =>
+            void undoRemove().then((ok) => {
+              if (!ok) pushToast({ message: DIARY_UNDO_FAILED });
+            }),
+        },
         onDismiss: clearPendingRemoval,
       });
       // `pushToast` 는 허브(구독 배열)만 갱신한다 — 토스트 뷰포트가 그 구독을 받아 실제로
@@ -117,7 +112,7 @@ export function DiaryCard({ date, framed = true, dateLabel }: DiaryCardProps) {
   return (
     <section
       aria-label={DIARY_CARD_TITLE}
-      className={cn('flex min-h-0 flex-col overflow-y-auto', framed ? CARD_CLASS : UNFRAMED_CLASS)}
+      className={cn('flex flex-col', framed ? CARD_CLASS : null)}
     >
       {status === 'loading' ? (
         <Skeleton className="h-[72px] w-full" />
@@ -187,7 +182,6 @@ export function DiaryCard({ date, framed = true, dateLabel }: DiaryCardProps) {
               </>
             )}
             {entry.content === '' ? null : (
-              // `break-words` — 사이드바(240 컬럼·300 드로어)에서 URL 같은 긴 낱말이 카드 폭을 밀지 않게.
               <span className="min-w-0 break-words whitespace-pre-wrap">{entry.content}</span>
             )}
           </p>
@@ -202,15 +196,5 @@ export function DiaryCard({ date, framed = true, dateLabel }: DiaryCardProps) {
         returnFocus={() => (entry === undefined ? addRef.current : editRef.current)}
       />
     </section>
-  );
-}
-
-/** 제목 + (오늘이 아닐 때만) 날짜 한 줄. 제목 글자는 옆 카드(D-day)의 `h2` 와 같은 값이다. */
-function DiaryTitle({ dateLabel }: { dateLabel?: string }) {
-  return (
-    <div className="min-w-0">
-      <h2 className="text-md font-semibold text-text">{DIARY_CARD_TITLE}</h2>
-      {dateLabel === undefined ? null : <p className="text-xs text-muted">{dateLabel}</p>}
-    </div>
   );
 }
