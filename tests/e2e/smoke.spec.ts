@@ -220,7 +220,8 @@ test('핵심 흐름: 카테고리 생성 → 한글 투두 → 체크 → 편집
     .click();
   await expect(today).toBeEnabled();
   await expect(group.getByRole('checkbox')).toHaveCount(0);
-  await expect(group.getByText('아직 할 일이 없어요')).toBeVisible();
+  await expect(group.getByRole('button', { name: '+ 할 일 추가' })).toBeVisible();
+  await expect(group.getByText('아직 할 일이 없어요')).toHaveCount(0);
 
   await today.click();
   await expect(today).toBeDisabled();

@@ -35,8 +35,6 @@ export const TODO_MESSAGES = {
   addPlaceholder: '할 일을 입력하고 Enter',
   /** 입력 행의 접근 이름 (§5). */
   addLabel: (categoryName: string): string => `${categoryName}에 할 일 추가`,
-  /** 그룹에 항목이 하나도 없을 때 (§2-C). */
-  empty: '아직 할 일이 없어요',
   /** 그룹 접기/펼치기 토글의 접근 이름 (R22) — 다음에 누르면 할 동작을 말한다. */
   collapseGroup: (name: string): string => `${name} 접기`,
   expandGroup: (name: string): string => `${name} 펼치기`,

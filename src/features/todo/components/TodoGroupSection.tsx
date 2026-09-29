@@ -257,6 +257,7 @@ export function TodoGroupSection({
           <ul
             ref={listRef}
             id={listId}
+            aria-label={name}
             {...{ [LIST_FOCUS_ATTR]: name }}
             tabIndex={-1}
             className="relative flex list-none flex-col focus-visible:outline-none"
@@ -298,10 +299,6 @@ export function TodoGroupSection({
               />
             ))}
           </ul>
-
-          {group.sequence.length === 0 ? (
-            <p className="px-[var(--space-2)] text-sm text-muted">{M.empty}</p>
-          ) : null}
         </>
       )}
     </section>
