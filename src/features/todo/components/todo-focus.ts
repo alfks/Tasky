@@ -10,7 +10,7 @@
 /** 행을 찾는 표식. `id` 가 아니라 전용 속성인 이유는 목록 밖 요소를 잡지 않기 위해서다. */
 export const FLIP_ATTR = 'data-flip-id';
 
-/** 목록 컨테이너가 스스로 포커스를 받을 수 있게 다는 표식. 빈 상태 문구를 읽히는 자리이기도 하다. */
+/** 목록 컨테이너가 스스로 포커스를 받을 수 있게 다는 표식. 포커스가 여기로 오면 접근 이름(`TODO_MESSAGES.listLabel`)이 읽힌다. */
 export const LIST_FOCUS_ATTR = 'data-todo-list';
 
 function rowSibling(row: Element, direction: 'next' | 'previous'): HTMLElement | null {

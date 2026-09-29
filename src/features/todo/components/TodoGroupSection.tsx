@@ -257,7 +257,7 @@ export function TodoGroupSection({
           <ul
             ref={listRef}
             id={listId}
-            aria-label={name}
+            aria-label={M.listLabel(name)}
             {...{ [LIST_FOCUS_ATTR]: name }}
             tabIndex={-1}
             className="relative flex list-none flex-col focus-visible:outline-none"

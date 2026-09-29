@@ -270,11 +270,12 @@ describe('삭제 뒤 포커스 복귀 (§5·app-shell R14)', () => {
       });
     }
 
-    const list = screen.getByRole('list', { name: '공부' });
+    const list = screen.getByRole('list', { name: '공부 할 일' });
     expect(list).toHaveFocus();
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+    // 그룹에 남는 것은 추가 행 하나뿐이다.
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
     expect(within(list).getByRole('button', { name: '+ 할 일 추가' })).toBeInTheDocument();
-    expect(screen.queryByText('아직 할 일이 없어요')).toBeNull();
   });
 
   it('어느 경로에서도 포커스가 body 로 떨어지지 않는다', async () => {
