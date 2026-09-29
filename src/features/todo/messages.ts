@@ -29,6 +29,9 @@ export function describeRoutineRecurrence(recurrence: RoutineRecurrence): string
   return `매달 ${days.join('·')}일`;
 }
 
+/** 피커 힌트에 남기는 제목 글자 수 — 280px 패널 한 줄(`--text-xs`)에 질문까지 들어가는 폭. */
+const PICK_DATE_TITLE_MAX = 14;
+
 export const TODO_MESSAGES = {
   /** 입력 행을 여는 버튼 (§2-A). */
   addButton: '+ 할 일 추가',
@@ -73,6 +76,15 @@ export const TODO_MESSAGES = {
   menuTimer: '타이머 시작',
   menuTomorrow: '내일로',
   menuPickDate: '날짜 바꾸기…',
+  /**
+   * "날짜 바꾸기…" 가 여는 일 피커 위 한 줄 안내(R10-b) — 피커가 행을 가려도 무엇을 옮기는지 남긴다.
+   * 제목이 길면 **제목 쪽을** 자른다 — 한 줄 고정(자리표시자 높이)에서 잘리는 것이 질문이면 안 된다.
+   */
+  pickDateHint: (title: string): string => {
+    const clamped =
+      title.length > PICK_DATE_TITLE_MAX ? `${title.slice(0, PICK_DATE_TITLE_MAX)}…` : title;
+    return `'${clamped}'${objectParticle(clamped)} 어느 날로 옮길까요?`;
+  },
   menuMoveCategory: '다른 카테고리로 옮기기',
   menuDelete: '삭제',
   /** 메모·집중 시간 표시 (R19). */

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 
 import type { Category } from '@/domain/category/category';
 import type { CategoryId } from '@/domain/ids';
@@ -54,6 +54,13 @@ type TodoItemMenuProps = {
    * 이 메뉴가 두 자리에서 쓰이지만 행 밀도는 `todo` 목록에만 적용되는 결정이라서다.
    */
   triggerClassName?: string;
+  /**
+   * `⋯` 트리거의 ref 를 바깥에서 쥐게 한다 — `TodoItem` 이 "날짜 바꾸기…" 피커를 **이 버튼**에 앵커한다
+   * (행 `<li>` 에 앵커하면 `listitem` 에 허용되지 않는 `aria-haspopup` 이 붙는다, 리뷰 Minor). 두 Popover
+   * 가 같은 앵커를 쓰지만 피커는 열려 있는 동안만 마운트되고 메뉴가 열리면 피커가 먼저 닫히므로 aria
+   * 속성 기록이 겹치지 않는다.
+   */
+  triggerRef?: RefObject<HTMLButtonElement | null>;
 };
 
 /**
@@ -79,8 +86,10 @@ export function TodoItemMenu({
   returnFocus,
   onOpen,
   triggerClassName,
+  triggerRef,
 }: TodoItemMenuProps) {
-  const anchor = useRef<HTMLButtonElement>(null);
+  const ownRef = useRef<HTMLButtonElement>(null);
+  const anchor = triggerRef ?? ownRef;
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<'root' | 'category'>('root');
   // `Menu` 는 항목을 고르면 언제나 `onClose` 를 부른다 — 2단계로 펼치는 항목만 그 닫힘을 한 번 삼킨다.
@@ -145,10 +154,10 @@ export function TodoItemMenu({
         className={triggerClassName}
         onClick={() => {
           setView('root');
-          setOpen((value) => {
-            if (!value) onOpen?.();
-            return !value;
-          });
+          // 업데이터 안에서 부르지 않는다 — `onOpen` 이 호출부의 상태를 바꾸면(열린 피커 닫기) 렌더 중
+          // setState 가 된다.
+          if (!open) onOpen?.();
+          setOpen((value) => !value);
         }}
       >
         ⋯

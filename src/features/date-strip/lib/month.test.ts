@@ -9,6 +9,8 @@ import {
   monthGridDays,
   shiftMonthWithinRange,
   startOfMonth,
+  padToSixWeeks,
+  SIX_WEEKS,
 } from '@/features/date-strip/lib/month';
 import { DAYS_IN_WEEK } from '@/features/date-strip/lib/week';
 
@@ -78,6 +80,22 @@ describe('R14. ‹ › 는 월 보기에서 한 달을 옮긴다', () => {
     expect(shiftMonthWithinRange('1970-01-15' as DateKey, -1)).toBeUndefined();
     expect(shiftMonthWithinRange('2099-12-15' as DateKey, 1)).toBeUndefined();
     expect(shiftMonthWithinRange('1970-02-15' as DateKey, -1)).toBe('1970-01-15');
+  });
+});
+
+describe('§3-A R15-a. padToSixWeeks 는 항상 42칸이다', () => {
+  it('5줄 달(2026년 9월)은 다음 달 날짜로 한 줄을 이어 붙인다', () => {
+    const padded = padToSixWeeks(monthGridDays(SEPTEMBER));
+    expect(padded).toHaveLength(SIX_WEEKS);
+    expect(padded[35]).toBe('2026-10-05');
+    expect(padded[41]).toBe('2026-10-11');
+  });
+
+  it('4줄 달(2027년 2월)은 두 줄을, 6줄 달(2026년 11월)은 그대로 둔다', () => {
+    expect(padToSixWeeks(monthGridDays('2027-02-10' as DateKey))).toHaveLength(SIX_WEEKS);
+    const november = monthGridDays('2026-11-10' as DateKey);
+    expect(november).toHaveLength(SIX_WEEKS);
+    expect(padToSixWeeks(november)).toEqual(november);
   });
 });
 

@@ -1,18 +1,19 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 
 import type { Category } from '@/domain/category/category';
+import type { DateKey } from '@/domain/date/date-key';
 import type { CategoryId } from '@/domain/ids';
 import type { Todo } from '@/domain/todo/todo';
 import { TODO_MEMO_MAX_LENGTH, TODO_TITLE_MAX_LENGTH } from '@/domain/todo/todo.rules';
 
+import { DayPickerPopover, formatDateFieldLabel, useDateStripStore } from '@/features/date-strip';
 import { useTodoActions } from '@/features/todo/hooks/useTodoActions';
 
 import { Button } from '@/components/ui/Button';
 
-import { isDateKey } from '@/lib/date';
 import { isImeKey } from '@/lib/ime';
 
 const FIELD_CLASS =
@@ -44,13 +45,18 @@ export function TodoEditPanel({
   onDelete,
 }: TodoEditPanelProps) {
   const { editTodo, changeCategory, moveToDate } = useTodoActions();
+  const dateLabelId = useId();
+  const dateValueId = useId();
   const [title, setTitle] = useState(todo.title);
   const [memo, setMemo] = useState(todo.memo ?? '');
   const [categoryId, setCategoryId] = useState<CategoryId>(todo.categoryId);
-  const [date, setDate] = useState<string>(todo.date);
+  const [date, setDate] = useState<DateKey>(todo.date);
   const [saving, setSaving] = useState(false);
+  const [pickingDate, setPickingDate] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const memoRef = useRef<HTMLTextAreaElement>(null);
+  const dateAnchorRef = useRef<HTMLButtonElement>(null);
+  const today = useDateStripStore((state) => state.today);
 
   useEffect(() => {
     const field = autoFocusField === 'memo' ? memoRef.current : titleRef.current;
@@ -69,8 +75,7 @@ export function TodoEditPanel({
       if (categoryId !== todo.categoryId && !(await changeCategory(todo.id, categoryId))) {
         return;
       }
-      // 네이티브 날짜 입력은 지우면 '' 를 준다 — 그때는 날짜를 건드리지 않는다(지울 수 있는 값이 아니다).
-      if (date !== todo.date && isDateKey(date) && !(await moveToDate(todo.id, date))) {
+      if (date !== todo.date && !(await moveToDate(todo.id, date))) {
         return;
       }
       onClose();
@@ -142,15 +147,33 @@ export function TodoEditPanel({
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-[var(--space-1)] text-sm text-muted">
-          날짜
-          <input
-            type="date"
+        {/* 날짜는 네이티브 입력 대신 일 피커(R10-c, calendar-layout §3-A). 버튼 글자가 곧 값이고
+            저장은 지금처럼 [저장] 에서만 — 피커에서 고르면 여기 상태만 바뀐다. */}
+        <div className="flex flex-col gap-[var(--space-1)] text-sm text-muted">
+          <span id={dateLabelId}>날짜</span>
+          <Button
+            ref={dateAnchorRef}
+            variant="outline"
+            aria-labelledby={`${dateLabelId} ${dateValueId}`}
+            onClick={() => setPickingDate((open) => !open)}
+            className="min-w-[160px] justify-between font-normal"
+          >
+            <span id={dateValueId}>{formatDateFieldLabel(date)}</span>
+            <span aria-hidden="true">▾</span>
+          </Button>
+          {/* 항상 마운트하고 open 만 토글한다 — 닫혀 있을 때도 버튼에 aria-haspopup 이 붙어야 한다. */}
+          <DayPickerPopover
+            open={pickingDate}
+            onClose={() => setPickingDate(false)}
+            anchorRef={dateAnchorRef}
             value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className={`${FIELD_CLASS} h-[var(--control-height)]`}
+            today={today}
+            onPick={(next) => {
+              setDate(next);
+              setPickingDate(false);
+            }}
           />
-        </label>
+        </div>
       </div>
 
       <div className="flex justify-end gap-[var(--space-2)]">

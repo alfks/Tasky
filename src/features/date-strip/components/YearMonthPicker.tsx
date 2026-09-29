@@ -10,6 +10,8 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 
 import type { DateKey } from '@/domain/date/date-key';
 
+import { Chevron } from '@/features/date-strip/components/Chevron';
+import { fadeInClass, scheduleFadeEnd } from '@/features/date-strip/lib/fade';
 import {
   monthLabel,
   moveMonthFocus,
@@ -86,14 +88,13 @@ export function YearMonthPicker({ selectedDate, today, onSelect }: YearMonthPick
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 년이 바뀔 때만 월 격자를 opacity 크로스페이드(R19). 12개 버튼은 해가 바뀌어도 다시 만들어지지
+  // 년이 바뀔 때만 월 격자를 opacity 페이드인(R19). 12개 버튼은 해가 바뀌어도 다시 만들어지지
   // 않고(그대로 재사용) 라벨·강조만 갱신되므로, 페이드는 시각 효과일 뿐 포커스 이동과는 무관하다.
   useEffect(() => {
     if (lastYearRef.current === focus.year) return;
     lastYearRef.current = focus.year;
     setFading(true);
-    const id = requestAnimationFrame(() => setFading(false));
-    return () => cancelAnimationFrame(id);
+    return scheduleFadeEnd(() => setFading(false));
   }, [focus.year]);
 
   const commit = (target: YearMonth) => onSelect(withYearMonth(selectedDate, target));
@@ -145,7 +146,10 @@ export function YearMonthPicker({ selectedDate, today, onSelect }: YearMonthPick
         {/* 스크린리더 가상 커서로 훑을 때 이 값이 sr-only 노드와 나란히 두 번 읽히지 않도록
             시각 스팬은 접근 트리에서 뺀다(리뷰 Minor) — 접근 가능한 텍스트는 아래 sr-only
             노드 하나뿐이다. */}
-        <span aria-hidden="true" className="text-xl leading-none font-bold text-text tabular-nums">
+        <span
+          aria-hidden="true"
+          className="text-[length:var(--text-xl)] leading-none font-bold text-text tabular-nums"
+        >
           {focus.year}
         </span>
         {/* 화면에 보이는 년 숫자와 달리 이 노드만 디바운스된 값을 낭독한다(ANNOUNCE_DEBOUNCE_MS). */}
@@ -174,12 +178,9 @@ export function YearMonthPicker({ selectedDate, today, onSelect }: YearMonthPick
         aria-label="월 선택"
         className={cn(
           'grid grid-cols-3 gap-[var(--space-2)]',
-          'motion-safe:transition-opacity motion-safe:duration-[var(--motion-xfast)] motion-safe:ease-[var(--motion-ease)]',
-          // reduced-motion 에서는 `opacity-0` 자체를 `motion-safe:` 로 가둔다 — transition 이 꺼진
-          // 채로 opacity 만 0→100 으로 튀면 페이드가 아니라 깜빡임이 된다(R19 "reduced-motion 0ms"
-          // 위반). `motion-safe:opacity-0` 는 reduced-motion 에서 아예 매치되지 않아 값이 그대로
-          // 100 에 머문다 — JS 로 감속 설정을 따로 읽을 필요가 없다.
-          fading ? 'motion-safe:opacity-0' : 'opacity-100',
+          // 페이드 중에는 전환 없이 0 을 그리고, 끝나면 `--motion-xfast` 동안 1 로 올라온다(lib/fade.ts —
+          // reduced-motion 에서는 어느 쪽도 매치되지 않아 깜빡임 0ms, R19).
+          fadeInClass(fading),
         )}
       >
         {MONTHS.map((month) => {
@@ -238,23 +239,5 @@ export function YearMonthPicker({ selectedDate, today, onSelect }: YearMonthPick
         })}
       </div>
     </div>
-  );
-}
-
-const CHEVRON_PATH = { left: 'M10 3 5 8l5 5', right: 'M6 3l5 5-5 5' } as const;
-
-/** 방향 표시 아이콘. 장식이므로 부모 버튼이 이름을 책임진다(DateStripHeader 의 Chevron 과 같은 모양). */
-function Chevron({ direction }: { direction: keyof typeof CHEVRON_PATH }) {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" className="size-[var(--space-4)] shrink-0">
-      <path
-        d={CHEVRON_PATH[direction]}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }

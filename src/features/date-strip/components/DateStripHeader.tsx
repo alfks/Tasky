@@ -9,6 +9,7 @@ import { lazy, Suspense, useRef, useState } from 'react';
 
 import type { DateKey } from '@/domain/date/date-key';
 
+import { Chevron } from '@/features/date-strip/components/Chevron';
 import { formatMonthLabel, formatShortMonthLabel } from '@/features/date-strip/lib/format';
 import type { DateStripView } from '@/features/date-strip/store/date-strip-store';
 
@@ -197,28 +198,5 @@ function YearMonthJump({
         </Suspense>
       </Popover>
     </>
-  );
-}
-
-const CHEVRON_PATH = {
-  left: 'M10 3 5 8l5 5',
-  right: 'M6 3l5 5-5 5',
-  down: 'M3 6l5 5 5-5',
-} as const;
-
-/** 방향 표시 아이콘. 장식이므로 부모 버튼이 이름을 책임진다. */
-function Chevron({ direction }: { direction: keyof typeof CHEVRON_PATH }) {
-  const path = CHEVRON_PATH[direction];
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" className="size-[var(--space-4)] shrink-0">
-      <path
-        d={path}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }

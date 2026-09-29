@@ -3,7 +3,7 @@
 // 배선(Popover + 앵커 버튼)을 여기서 직접 세워 R16 의 Esc·포커스 복귀까지 자기 완결적으로 검증한다.
 import { useRef, useState } from 'react';
 
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -324,12 +324,12 @@ describe('R15. 확정은 select 를 한 번만 부르고(일 유지) 팝오버�
 });
 
 describe('R19. reduced-motion 에서 크로스페이드가 깜빡임이 되지 않는다(리뷰 Minor)', () => {
-  it('연이 바뀌는 순간 opacity-0 는 motion-safe: 로만 걸린다(리터럴 opacity-0 는 reduced-motion 에서도 적용돼 깜빡임이 된다)', async () => {
-    const user = userEvent.setup();
+  it('연이 바뀌는 순간 opacity-0 는 motion-safe: 로만 걸린다(리터럴 opacity-0 는 reduced-motion 에서도 적용돼 깜빡임이 된다)', () => {
     renderPicker({ selectedDate: '2026-09-17', today: '2026-09-17' });
     const grid = screen.getByRole('radiogroup', { name: '월 선택' });
 
-    await user.click(screen.getByRole('button', { name: '다음 해' }));
+    // 동기 클릭 — 페이드는 두 프레임 뒤에 끝나므로 비동기 `user.click` 뒤에는 이미 지나가 있을 수 있다.
+    fireEvent.click(screen.getByRole('button', { name: '다음 해' }));
 
     const classes = grid.className.split(' ');
     expect(classes).toContain('motion-safe:opacity-0');
