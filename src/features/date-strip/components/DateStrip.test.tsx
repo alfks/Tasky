@@ -68,6 +68,8 @@ function focusCell(name: string | RegExp) {
 }
 
 beforeEach(() => {
+  // `createInitialDateStripState()` 가 보기 저장(R14)을 읽는다 — 앞 테스트의 값이 새지 않게 비운다.
+  window.localStorage.clear();
   stubRepositories();
   useDateStripStore.setState({ selectedDate: TODAY, today: TODAY });
 });

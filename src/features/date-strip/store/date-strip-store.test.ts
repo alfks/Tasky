@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { VIEW_PREF_KEY } from '@/features/date-strip/lib/view-pref';
 import { MAX_DATE_KEY, MIN_DATE_KEY } from '@/features/date-strip/lib/week';
 import {
   createInitialDateStripState,
@@ -12,6 +13,8 @@ const NOON = new Date(2026, 8, 17, 9, 30);
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOON);
+  // 보기 저장(R14)이 초기 상태에 새지 않게 — `toggleView` 를 부른 테스트 뒤에도 주 보기에서 시작한다.
+  window.localStorage.clear();
   useDateStripStore.setState(createInitialDateStripState());
 });
 
@@ -41,8 +44,47 @@ describe('R2. 앱 시작 시 선택 날짜는 항상 오늘이고 마지막 선�
     const setItem = vi.spyOn(Storage.prototype, 'setItem');
     useDateStripStore.getState().select('2026-03-03');
     useDateStripStore.getState().shiftSelected(7);
+    useDateStripStore.getState().goToToday();
     expect(setItem).not.toHaveBeenCalled();
     setItem.mockRestore();
+  });
+});
+
+describe('R14. 보기 모드는 기기별로 기억하고, 선택 날짜는 여전히 오늘이다', () => {
+  it('toggleView 는 보기를 뒤집고 tasky.datestrip.v1 에 저장한다', () => {
+    expect(useDateStripStore.getState().view).toBe('week');
+    useDateStripStore.getState().toggleView();
+    expect(useDateStripStore.getState().view).toBe('month');
+    expect(window.localStorage.getItem(VIEW_PREF_KEY)).toBe(JSON.stringify({ view: 'month' }));
+    useDateStripStore.getState().toggleView();
+    expect(useDateStripStore.getState().view).toBe('week');
+    expect(window.localStorage.getItem(VIEW_PREF_KEY)).toBe(JSON.stringify({ view: 'week' }));
+  });
+
+  it('월 보기로 두고 다시 읽으면 월 보기이고 선택 날짜는 오늘이다', async () => {
+    useDateStripStore.getState().select('2026-03-03');
+    useDateStripStore.getState().toggleView();
+
+    vi.resetModules();
+    const fresh = await import('@/features/date-strip/store/date-strip-store');
+    expect(fresh.useDateStripStore.getState().view).toBe('month');
+    expect(fresh.useDateStripStore.getState().selectedDate).toBe('2026-09-17');
+  });
+
+  it('createInitialDateStripState 에 view 를 주면 저장소를 읽지 않는다(테스트 격리 통로)', () => {
+    useDateStripStore.getState().toggleView();
+    expect(createInitialDateStripState().view).toBe('month');
+    expect(createInitialDateStripState({ view: 'week' }).view).toBe('week');
+    expect(createInitialDateStripState({}).view).toBe('month');
+  });
+
+  it('보기 저장은 선택 날짜를 건드리지 않는다 — 저장된 모양은 { view } 뿐이다', () => {
+    useDateStripStore.getState().select('2026-03-03');
+    useDateStripStore.getState().toggleView();
+    expect(Object.keys(window.localStorage)).toEqual([VIEW_PREF_KEY]);
+    expect(JSON.parse(window.localStorage.getItem(VIEW_PREF_KEY) ?? 'null')).toEqual({
+      view: 'month',
+    });
   });
 });
 

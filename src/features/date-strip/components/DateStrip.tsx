@@ -13,6 +13,7 @@ import type { DateKey } from '@/domain/date/date-key';
 import { DateCell } from '@/features/date-strip/components/DateCell';
 import { DateStripHeader } from '@/features/date-strip/components/DateStripHeader';
 import { MonthGrid } from '@/features/date-strip/components/MonthGrid';
+import { usePointerDownFlag } from '@/features/date-strip/hooks/usePointerDownFlag';
 import { useRangeSummaries } from '@/features/date-strip/hooks/useRangeSummaries';
 import { useTodayTick } from '@/features/date-strip/hooks/useTodayTick';
 import { monthGridDays, shiftMonthWithinRange } from '@/features/date-strip/lib/month';
@@ -122,6 +123,11 @@ export function DateStrip({
   const cellRefs = useRef(new Map<DateKey, HTMLButtonElement>());
   // 클릭·Tab 으로 들어온 포커스까지 다시 focus() 하지 않도록, 키 조작으로 옮길 때만 켠다.
   const shouldMoveFocus = useRef(false);
+  // **포인터로 들어온 포커스는 격자를 옮기지 않는다(R16).** mousedown 의 포커스만으로 앵커를 옮기면
+  // 이 달 밖 칸에서 격자가 click 보다 먼저 다음 달로 다시 그려져 click 이 다른 칸(또는 조상)에
+  // 떨어지고 선택이 일어나지 않았다(실브라우저 재현 — jsdom 의 `userEvent.click` 은 요소 참조를
+  // 유지해 잡지 못했다). 키보드 이동(`moveFocus`)은 `setFocusedDate` 를 직접 부르므로 영향이 없다.
+  const { isPointerDown, onPointerDownCapture } = usePointerDownFlag();
   // 헤더 버튼이 자기 클릭으로 비활성될 때 포커스를 넘겨받을 셀 (WCAG 2.4.3).
   const shouldAdoptFocus = useRef(false);
 
@@ -160,6 +166,22 @@ export function DateStrip({
     if (target === undefined || !isWithinRange(target)) return;
     shouldMoveFocus.current = true;
     setFocusedDate(target);
+  };
+
+  /** 칸이 포커스를 받았다. 포인터가 눌린 채면 거른다(`isPointerDown`) — Tab·키 이동만 앵커를 옮긴다. */
+  const handleFocusCell = (date: DateKey) => {
+    if (isPointerDown.current) return;
+    setFocusedDate(date);
+  };
+
+  /**
+   * 칸을 눌러 확정한 선택. 앵커를 비워 보이는 범위가 **선택 날짜**를 따르게 한다 — 이 달 밖 칸이면
+   * 그 날이 든 달로 격자가 넘어가고 그 칸이 선택·포커스 대상이 된다(R16). 줄의 키가 월요일 날짜고
+   * 격자는 언제나 온전한 주라 누른 칸의 줄은 새 달에도 같은 요소로 남는다 — 포커스 링이 그대로인 이유.
+   */
+  const handleSelect = (date: DateKey) => {
+    setFocusedDate(null);
+    select(date);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -205,7 +227,9 @@ export function DateStrip({
   };
 
   return (
-    <div className="flex flex-col gap-[var(--space-2)]">
+    // 포인터 플래그는 두 보기의 칸 묶음을 다 덮는 이 상자에서 켠다(캡처 — 칸의 focus 보다 먼저 돈다).
+    // 헤더 버튼도 이 안이지만 그 포커스는 `handleFocusCell` 을 타지 않는다. 푸는 쪽은 window 다(훅 주석).
+    <div className="flex flex-col gap-[var(--space-2)]" onPointerDownCapture={onPointerDownCapture}>
       <DateStripHeader
         // 월 표시는 주 보기에서 보이는 주의 월요일을, 월 보기에서 보고 있는 달을 따른다.
         anchorDate={isMonth ? activeDate : days[0]}
@@ -228,8 +252,8 @@ export function DateStrip({
           summaries={summaries}
           onCellRef={registerCell}
           onBlur={clearFocusOnLeave}
-          onSelect={select}
-          onFocusCell={setFocusedDate}
+          onSelect={handleSelect}
+          onFocusCell={handleFocusCell}
           onKeyDown={handleKeyDown}
           onDropTodo={onDropTodo}
         />
@@ -240,8 +264,9 @@ export function DateStrip({
           onBlur={clearFocusOnLeave}
           // 간격은 밀도 토큰 --cal-gap 이다(calendar-layout.md §2 R12, MonthGrid 와 같은 값). 넓은
           // 화면에서 `justify-between` 으로 늘리면 조밀한 주 블록이 흩어진 버튼 7개로 읽히므로, 남는
-          // 폭은 블록을 가운데로 미는 데만 쓴다.
-          className="flex snap-x snap-mandatory gap-[var(--cal-gap)] overflow-x-auto overscroll-x-contain md:justify-center md:overflow-x-visible"
+          // 폭은 블록을 가운데로 미는 데만 쓴다. **모든 폭에서** 가운데다(`safe center`, §2-B — 1열에서
+          // 왼쪽에 붙어 치우쳐 보였다). 넘치면 자동으로 시작 정렬이라 왼쪽 칸이 잘리지 않는다.
+          className="flex snap-x snap-mandatory justify-center-safe gap-[var(--cal-gap)] overflow-x-auto overscroll-x-contain md:overflow-x-visible"
         >
           {days.map((day) => (
             <DateCell
@@ -255,8 +280,8 @@ export function DateStrip({
               buttonRef={(element) => {
                 registerCell(day, element);
               }}
-              onSelect={select}
-              onFocusCell={setFocusedDate}
+              onSelect={handleSelect}
+              onFocusCell={handleFocusCell}
               onKeyDown={handleKeyDown}
               onDropTodo={onDropTodo}
             />
