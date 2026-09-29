@@ -11,6 +11,7 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 import type { DateKey } from '@/domain/date/date-key';
 
 import { Chevron } from '@/features/date-strip/components/Chevron';
+import { fadeInClass, scheduleFadeEnd } from '@/features/date-strip/lib/fade';
 import {
   monthLabel,
   moveMonthFocus,
@@ -43,23 +44,6 @@ const MONTHS = Array.from({ length: 12 }, (_, index) => index + 1);
  * 값이 갈릴 여지가 있는 것은 300ms 상수뿐이고, 그마저 같은 값으로 맞춰 뒀다.
  */
 const ANNOUNCE_DEBOUNCE_MS = 300;
-
-/**
- * 페이드인의 끝을 **두 번째 프레임**에 건다(R19, 리뷰 Minor — 한 프레임짜리 rAF 는 `opacity-0` 가 한 번도
- * 그려지기 전에 벗겨져 눈에는 아무 변화가 없었다, 실측 300ms 내 opacity 전부 1). 첫 rAF 는 아직 그 프레임의
- * 페인트 전이라 그 안에서 상태를 되돌리면 브라우저가 0 을 본 적이 없어 transition 이 시작되지 않는다 —
- * 한 프레임을 더 기다려야 0 → 1 이 `--motion-xfast` 동안 실제로 올라온다. 일 피커도 같은 함수를 쓴다.
- */
-export function scheduleFadeEnd(end: () => void): () => void {
-  let inner = 0;
-  const outer = requestAnimationFrame(() => {
-    inner = requestAnimationFrame(end);
-  });
-  return () => {
-    cancelAnimationFrame(outer);
-    cancelAnimationFrame(inner);
-  };
-}
 
 /** 방향키 → `moveMonthFocus` 의 이동 이름 (R16). Home/End/PageUp/PageDown 도 여기서 한 번에 잡는다. */
 const KEY_MOVE: Partial<Record<string, MonthGridMove>> = {
@@ -194,12 +178,9 @@ export function YearMonthPicker({ selectedDate, today, onSelect }: YearMonthPick
         aria-label="월 선택"
         className={cn(
           'grid grid-cols-3 gap-[var(--space-2)]',
-          'motion-safe:transition-opacity motion-safe:duration-[var(--motion-xfast)] motion-safe:ease-[var(--motion-ease)]',
-          // reduced-motion 에서는 `opacity-0` 자체를 `motion-safe:` 로 가둔다 — transition 이 꺼진
-          // 채로 opacity 만 0→100 으로 튀면 페이드가 아니라 깜빡임이 된다(R19 "reduced-motion 0ms"
-          // 위반). `motion-safe:opacity-0` 는 reduced-motion 에서 아예 매치되지 않아 값이 그대로
-          // 100 에 머문다 — JS 로 감속 설정을 따로 읽을 필요가 없다.
-          fading ? 'motion-safe:opacity-0' : 'opacity-100',
+          // 페이드 중에는 전환 없이 0 을 그리고, 끝나면 `--motion-xfast` 동안 1 로 올라온다(lib/fade.ts —
+          // reduced-motion 에서는 어느 쪽도 매치되지 않아 깜빡임 0ms, R19).
+          fadeInClass(fading),
         )}
       >
         {MONTHS.map((month) => {

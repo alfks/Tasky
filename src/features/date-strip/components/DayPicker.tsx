@@ -11,9 +11,9 @@ import type { DateKey } from '@/domain/date/date-key';
 import { weekdayColor } from '@/features/date-strip/components/DateCell';
 import { DayPickerCell } from '@/features/date-strip/components/DayPickerCell';
 import { DayPickerMonthStep } from '@/features/date-strip/components/DayPickerMonthStep';
-import { scheduleFadeEnd } from '@/features/date-strip/components/YearMonthPicker';
 import type { DayCellState } from '@/features/date-strip/lib/cell-classes';
 import { DAY_KEY_MOVE, moveDay } from '@/features/date-strip/lib/day-move';
+import { fadeInClass, scheduleFadeEnd } from '@/features/date-strip/lib/fade';
 import { WEEKDAY_LABELS, formatMonthLabel } from '@/features/date-strip/lib/format';
 import {
   chunkIntoWeeks,
@@ -125,9 +125,8 @@ export function DayPicker({ value, today, hint, onPick }: DayPickerProps) {
         aria-label="날짜 고르기"
         className={cn(
           'flex flex-col gap-[var(--space-1)]',
-          'motion-safe:transition-opacity motion-safe:duration-[var(--motion-xfast)] motion-safe:ease-[var(--motion-ease)]',
-          // reduced-motion 에서 opacity-0 가 깜빡임이 되지 않도록 motion-safe: 로 가둔다(R19 와 같다).
-          fading ? 'motion-safe:opacity-0' : 'opacity-100',
+          // 전환 없이 0 을 그린 뒤 1 로만 올라온다(lib/fade.ts, R19-a) — reduced-motion 은 깜빡임 0ms.
+          fadeInClass(fading),
         )}
       >
         <div role="row" className={ROW_CLASS}>
