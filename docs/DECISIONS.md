@@ -28,6 +28,7 @@
 | [ADR-0020](./decisions/ADR-0020-multi-device-sessions.md)                      | 다기기 세션 — 세션 전량 폐기는 재가입 경로에서만, 취소는 명시적 `logout-others` 로(ADR-0019 결정 5 근거를 부분 대체)             | accepted                             | 2026-09-21 | `worker/auth/**`, `src/repositories/sync-transport.ts`, `src/infra/sync/http-transport.ts`, `src/features/sync/**`, `tests/e2e/sync.spec.ts` |
 | [ADR-0021](./decisions/ADR-0021-cloudflare-web-analytics.md)                   | 방문 수 계측 — Cloudflare Web Analytics 비콘을 `index.html` 에 직접(공개 토큰 하드코딩, 구현과 같은 PR)                          | accepted                             | 2026-09-23 | `index.html`, `public/privacy.html`, `README.md`, `.env.example`                                                                             |
 | [ADR-0022](./decisions/ADR-0022-social-projection-and-authorization.md)        | 개인 동기화와 공유 사본·서버 권한 분리(Phase 3, 구현 예정)                                                                       | accepted                             | 2026-09-28 | 소셜 프로필·관계·공유·반응·계정 삭제·온라인 포트                                                                                             |
+| [ADR-0023](./decisions/ADR-0023-profile-in-settings.md)                        | 개인 프로필은 `Settings` 세 필드 — 사진은 클라이언트가 줄인 데이터 URL(≤16,384자), 형식 오류 필드만 버림(구현 예정)              | accepted                             | 2026-09-29 | `src/domain/theme/settings.ts`, `src/domain/profile/**`, `src/domain/backup/validate-rows.ts`, `src/features/profile/**`                     |
 
 ## 예정(초안 필요 시 번호 예약 없이 작성)
 
