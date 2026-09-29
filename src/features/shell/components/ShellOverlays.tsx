@@ -99,10 +99,10 @@ export function ShellOverlays({
         open={drawerOpen}
         onClose={onDrawerClose}
         title={APP_NAME}
-        closeLabel="카테고리 닫기"
+        closeLabel="사이드바 닫기"
         className="mr-auto h-full max-w-[300px] self-stretch"
         /*
-         * `[고정]` 을 눌러 고정을 켜면 이 드로어는 (열었던 `카테고리 열기` 버튼이 사라지는 것과
+         * `[고정]` 을 눌러 고정을 켜면 이 드로어는 (열었던 `사이드바 열기` 버튼이 사라지는 것과
          * 함께) 스스로 닫힌다(`useShellPanels` 의 "컬럼이 서면 드로어를 닫는다" 효과) — 즉 이
          * onClose 호출 없이 `open` 이 바뀌는 경로다. 그때 `Dialog` 기본 복귀 대상(열었던 요소)은
          * 이미 DOM 에서 사라져 있으므로, 방금 선 컬럼의 같은 표식(`SIDEBAR_PIN_TOGGLE_ATTR`)을
@@ -119,7 +119,7 @@ export function ShellOverlays({
           onSelectCategory={(id) => {
             onDrawerClose();
             /*
-             * `Dialog` 는 닫힐 때 **열었던 요소(카테고리 열기)로 무조건 되돌린다** — `returnFocus`
+             * `Dialog` 는 닫힐 때 **열었던 요소(사이드바 열기)로 무조건 되돌린다** — `returnFocus`
              * 는 그 요소가 사라졌을 때만 묻는 대체 대상이라(app-shell R14 규약, `Dialog.tsx`
              * `restoreFocus`), 열었던 요소가 아직 있으면 이 컴포넌트가 지금 여기서 목록으로 옮긴
              * 포커스를 **그 복귀 효과가 나중에 덮어쓴다**(실측: 되돌림 효과가 `useEffect` 로,

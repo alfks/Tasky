@@ -166,7 +166,7 @@ export function ShellHeader({
           <>
             <IconButton
               {...{ [DRAWER_OPENER_ATTR]: '' }}
-              label="카테고리 열기"
+              label="사이드바 열기"
               onClick={onOpenDrawer}
             >
               ☰

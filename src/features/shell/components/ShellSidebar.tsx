@@ -1,7 +1,8 @@
 'use client';
 
 // 사이드바 (app-shell.md §2-A · R1 `nav` · R12 하단 고정 영역 · R16~R18 면과 밀도).
-// 순서(위→아래): 앱 이름(R12) → 카테고리 → D-day(R6-a) → 오늘의 기록(R6-b) → 도구 줄(R12) → 계정 블록(R12-a).
+// 순서(위→아래): 앱 이름(R12) → 프로필 카드(profile.md) → 카테고리 → D-day(R6-a) → 오늘의 기록(R6-b)
+// → 도구 줄(R12) → 계정 블록(R12-a).
 import type { Category } from '@/domain/category/category';
 import type { CategoryId } from '@/domain/ids';
 
@@ -10,9 +11,10 @@ import { DdayPanelSection } from '@/features/calendar';
 import { CategoryList } from '@/features/category';
 import { useDateStripStore } from '@/features/date-strip';
 import { DiaryCard } from '@/features/diary';
+import { ProfileCard } from '@/features/profile';
 import { useRemovalReturnFocus } from '@/features/shell/hooks/useRemovalReturnFocus';
 import { APP_NAME, titleDateLabel } from '@/features/shell/lib/title';
-import { AccountBlockLauncher } from '@/features/sync';
+import { AccountBlockLauncher, useSyncStore } from '@/features/sync';
 import { ThemeModeToggle, ThemeSettingsPopover } from '@/features/theme';
 import { RoutineManager } from '@/features/todo';
 
@@ -89,6 +91,9 @@ export function ShellSidebar({
   // 오늘 판정도 같은 스토어의 `today`(자정 갱신 R12)라 여기서 시계를 다시 읽지 않는다.
   const selectedDate = useDateStripStore((state) => state.selectedDate);
   const today = useDateStripStore((state) => state.today);
+  // 프로필 카드의 이름 폴백(profile.md R10) — 계정 블록과 같은 출처(`SyncState.userEmail`). `profile`
+  // 은 `sync` 를 import 할 수 없어(lazy-boundary §D-10) 조립하는 여기서 읽어 내린다.
+  const email = useSyncStore((state) => state.email);
   const showPinRow = showTitle || showPinToggle;
   /*
    * `aria-pressed` 를 **일부러 쓰지 않는다.** 글자 자체가 "사이드바 고정" ↔ "사이드바 고정 해제"
@@ -99,7 +104,7 @@ export function ShellSidebar({
 
   return (
     <nav
-      aria-label="카테고리"
+      aria-label="사이드바"
       className="flex h-full min-h-0 flex-col gap-[var(--space-3)] overflow-hidden"
     >
       {showPinRow ? (
@@ -122,7 +127,7 @@ export function ShellSidebar({
       ) : null}
 
       {/*
-        카드 세 장(카테고리 → D-day → 오늘의 기록, R6-a·R6-b)은 **한 스크롤 영역** 안에 자연 높이(R16)
+        카드 네 장(프로필 → 카테고리 → D-day → 오늘의 기록, profile.md·R6-a·R6-b)은 **한 스크롤 영역** 안에 자연 높이(R16)
         로 쌓인다. 카드마다 안쪽 스크롤을 두면 컬럼이 짧을 때(1280×720·600) 셋이 동시에 60~100px
         "구멍" 이 되어 `[+ 기록하기]` 가 스크롤바 표식도 없는 상자 안으로 숨었다(리뷰 Major 2). 영역
         자체는 `shrink` 라 내용이 맞으면 자연 높이(도구 줄이 바로 아래 붙는다, R20), 넘칠 때만 통째로
@@ -136,6 +141,7 @@ export function ShellSidebar({
           framed ? null : 'px-[var(--space-1)]',
         )}
       >
+        <ProfileCard framed={framed} email={email} />
         <div data-shell-sidebar-card="" className={framed ? CARD_CLASS : undefined}>
           <CategoryList onSelect={onSelectCategory} onRemove={onRemoveCategory} />
         </div>

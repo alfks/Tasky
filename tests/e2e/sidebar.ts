@@ -20,7 +20,7 @@ import type { Locator, Page } from '@playwright/test';
  *
  * `via`(기본 `'pointer'`) — 무엇으로 여는지가 **뒤이은 포커스 단언에 영향을 준다**(실측,
  * hover-and-focus.spec.ts "포커스 링" 회귀). 크로미움의 `:focus-visible` 은 "가장 최근 입력이
- * 포인터였는가"를 본다 — `'카테고리 열기'` 버튼을 **마우스로 클릭**하면 그 뒤 같은 화면의 다른
+ * 포인터였는가"를 본다 — `'사이드바 열기'` 버튼을 **마우스로 클릭**하면 그 뒤 같은 화면의 다른
  * 버튼에 스크립트로 `.focus()` 를 걸어도(Playwright 의 `locator.focus()`) 링이 뜨지 않는다(실측:
  * `outline-style: none` 그대로, `:focus-visible` 이 거짓). `'keyboard'`(`Mod+\`, 이미 있는 배선 —
  * calendar-layout.md §1-A)로 열면 입력 양상이 키보드로 유지돼 뒤이은 `.focus()` 도 정상적으로
@@ -34,7 +34,7 @@ export async function openSidebarDrawer(
   if (via === 'keyboard') {
     await page.keyboard.press('Control+Backslash');
   } else {
-    await page.getByRole('button', { name: '카테고리 열기' }).click();
+    await page.getByRole('button', { name: '사이드바 열기' }).click();
   }
   const drawer = page.getByRole('dialog', { name: 'Tasky', exact: true });
   await expect(drawer).toBeVisible();

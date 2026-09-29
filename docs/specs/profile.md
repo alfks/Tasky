@@ -2,7 +2,7 @@
 
 # 프로필 스펙
 
-- 상태: approved · 관련 ADR: [ADR-0023](../decisions/ADR-0023-profile-in-settings.md) · 리서치 참조: 없음(사용자 피드백 3번, 2026-09-29) · 구현 상태: 예정(T-G)
+- 상태: approved · 관련 ADR: [ADR-0023](../decisions/ADR-0023-profile-in-settings.md) · 리서치 참조: 없음(사용자 피드백 3번, 2026-09-29) · 구현 상태: 코드 머지(T-G) — `implemented` 는 §7 마지막 항목(Worker 재배포 + 실기기 두 대 확인) 뒤에
 
 ## 1. 목표
 

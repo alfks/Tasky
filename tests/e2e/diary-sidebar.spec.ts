@@ -143,7 +143,7 @@ test('1280×720 고정 컬럼: 카드 세 장은 한 스크롤 영역에 흐르�
   const drawer = await openSidebarDrawer(page);
   await page.getByRole('button', { name: '사이드바 고정' }).click();
   await expect(drawer).toHaveCount(0);
-  const nav = page.getByRole('navigation', { name: '카테고리' });
+  const nav = page.getByRole('navigation', { name: '사이드바' });
   await expect(nav).toBeVisible();
 
   const add = nav.getByRole('button', { name: '+ 기록하기' });

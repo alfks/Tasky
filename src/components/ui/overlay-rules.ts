@@ -19,8 +19,9 @@ export const OVERLAY_ALWAYS_LIVE_ATTR = 'data-overlay-always-live';
  *
  * - 조합 중(`isComposing` 또는 `keyCode 229`)이면 무조건 막는다. Chromium 의 폼 암묵 제출은
  *   `isComposing` 을 보지 않아, 한글 확정 Enter 한 번이 파괴 버튼을 누른다(리뷰 B-1).
- * - 포커스가 버튼·링크에 있으면 "그 버튼만" 실행한다(기본 동작 유지).
- * - `textarea` 의 Enter 는 줄바꿈이다.
+ * - 포커스가 버튼·링크에 있으면 "그 버튼만" 실행한다(기본 동작 유지). **파일 입력**(`input[type=file]`)도
+ *   같은 부류다 — Enter 의 기본 동작이 제출이 아니라 파일 대화상자 열기이고, 시각만 숨긴 파일 입력에
+ *   키보드로 닿았을 때 Enter 가 죽으면 Space 만 남는다(profile.md §5·§7, backup 의 파일 선택도 같다).
  * - 나머지(텍스트 입력 등)는 전부 막는다 — 폼 암묵 제출이 이 기본 동작을 타고 온다.
  */
 export function applyOverlayEnterRule(e: KeyboardEvent): boolean {
@@ -33,7 +34,8 @@ export function applyOverlayEnterRule(e: KeyboardEvent): boolean {
   if (
     target instanceof HTMLButtonElement ||
     target instanceof HTMLAnchorElement ||
-    target instanceof HTMLTextAreaElement
+    target instanceof HTMLTextAreaElement ||
+    (target instanceof HTMLInputElement && target.type === 'file')
   ) {
     return false;
   }

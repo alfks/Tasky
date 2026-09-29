@@ -7,13 +7,19 @@ import type { SyncTable } from '@/domain/sync/wire';
 import { useDdayStore } from '@/features/calendar';
 import { useCategoryStore } from '@/features/category';
 import { useDiaryStore } from '@/features/diary';
+import type { SyncRuntime } from '@/features/sync/store/sync-store';
 import { useThemeStore } from '@/features/theme';
 import { useTimerStore } from '@/features/timer';
 import { useTodoStore } from '@/features/todo';
 
-/** `applyRemote` 가 돌려준 `adopted`(테이블별 채택 건수) 중 0 보다 큰 테이블만 재조회한다. */
+/**
+ * `applyRemote` 가 돌려준 `adopted`(테이블별 채택 건수) 중 0 보다 큰 테이블만 재조회한다.
+ * 프로필 재조회만 `rt` 로 받는다 — `@/features/profile` 배럴을 여기서 정적으로 import 하면 진입
+ * 청크가 갈라진다(`SyncRuntime.reloadProfile` 주석).
+ */
 export async function reloadAdoptedViews(
   adopted: Readonly<Record<SyncTable, number>>,
+  rt: Pick<SyncRuntime, 'reloadProfile'>,
 ): Promise<void> {
   const jobs: Promise<void>[] = [];
 
@@ -39,6 +45,8 @@ export async function reloadAdoptedViews(
   }
   if (adopted.settings > 0) {
     jobs.push(useThemeStore.getState().reloadFromStorage());
+    // 프로필 세 필드도 같은 설정 행이다(profile.md R15) — 테마와 나란히 다시 읽는다.
+    jobs.push(rt.reloadProfile());
   }
 
   await Promise.all(jobs);

@@ -148,7 +148,7 @@ describe('랜드마크와 골격 (R1·R10)', () => {
     expect(screen.getAllByRole('navigation')).toHaveLength(1);
     expect(screen.getAllByRole('main')).toHaveLength(1);
     expect(screen.getAllByRole('complementary')).toHaveLength(1);
-    expect(screen.getByRole('navigation')).toHaveAccessibleName('카테고리');
+    expect(screen.getByRole('navigation')).toHaveAccessibleName('사이드바');
     expect(screen.getByRole('complementary')).toHaveAccessibleName('오늘 요약');
   });
 
@@ -429,7 +429,7 @@ describe('붕괴 순서 (§2-B · R4)', () => {
       expect(screen.queryByRole('button', { name: '+ 할 일' })).not.toBeInTheDocument();
       // 다만 `mid` 는 고정이 불가능하다(R10) — 사이드바는 드로어(☰)로만 남는다.
       expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: '카테고리 열기' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '사이드바 열기' })).toBeInTheDocument();
     },
   );
 
@@ -442,7 +442,7 @@ describe('붕괴 순서 (§2-B · R4)', () => {
       expect(screen.getByRole('button', { name: '오늘 요약 열기' })).toBeInTheDocument();
       // 1열의 `main` 은 `ShellMain` — 헤더(☰)가 그 안에 있고, 하단 [+ 할 일] 이 붙는다.
       const main = screen.getByRole('main');
-      expect(within(main).getByRole('button', { name: '카테고리 열기' })).toBeInTheDocument();
+      expect(within(main).getByRole('button', { name: '사이드바 열기' })).toBeInTheDocument();
       expect(within(main).getByRole('button', { name: '+ 할 일' })).toBeInTheDocument();
     },
   );
@@ -466,16 +466,16 @@ describe('붕괴 순서 (§2-B · R4)', () => {
     setWidth(900);
     await mount();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '카테고리 열기' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '사이드바 열기' })).toBeInTheDocument();
   });
 
   it('☰ 를 누르면 드로어가 열리고 그 안에 카테고리 목록이 있다 (R7)', async () => {
     const user = userEvent.setup();
     setWidth(900);
     await mount();
-    await user.click(screen.getByRole('button', { name: '카테고리 열기' }));
+    await user.click(screen.getByRole('button', { name: '사이드바 열기' }));
     const drawer = await screen.findByRole('dialog', { name: 'Tasky' });
-    expect(within(drawer).getByRole('navigation')).toHaveAccessibleName('카테고리');
+    expect(within(drawer).getByRole('navigation')).toHaveAccessibleName('사이드바');
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
   });
 
@@ -507,7 +507,7 @@ describe('오늘의 기록은 사이드바에 있다 (diary.md §2 · app-shell 
     expect(within(main).queryByRole('region', { name: '오늘의 기록' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: '오늘의 기록' })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '카테고리 열기' }));
+    await user.click(screen.getByRole('button', { name: '사이드바 열기' }));
     const drawer = await screen.findByRole('dialog', { name: 'Tasky' });
     const diary = within(drawer).getByRole('region', { name: '오늘의 기록' });
     expect(await within(diary).findByRole('button', { name: '+ 기록하기' })).toBeInTheDocument();
@@ -519,7 +519,7 @@ describe('오늘의 기록은 사이드바에 있다 (diary.md §2 · app-shell 
     setWidth(1440);
     useShellUiStore.setState({ sidebarPinned: true });
     await mount();
-    const nav = screen.getByRole('navigation', { name: '카테고리' });
+    const nav = screen.getByRole('navigation', { name: '사이드바' });
     const diary = within(nav).getByRole('region', { name: '오늘의 기록' });
     expect(await within(diary).findByRole('button', { name: '+ 기록하기' })).toBeInTheDocument();
     expect(screen.getAllByRole('region', { name: '오늘의 기록' })).toHaveLength(1);
@@ -749,7 +749,7 @@ describe('포커스가 `<body>` 로 떨어지지 않는다 (R14 · §5 — 접�
     expect(screen.queryByRole('complementary')).toBeNull();
   });
 
-  it('사이드바를 접으면 포커스가 `카테고리 열기` 로 간다', async () => {
+  it('사이드바를 접으면 포커스가 `사이드바 열기` 로 간다', async () => {
     const user = userEvent.setup();
     useShellUiStore.setState({ sidebarPinned: true });
     await mount();
@@ -757,7 +757,7 @@ describe('포커스가 `<body>` 로 떨어지지 않는다 (R14 · §5 — 접�
     menu.focus();
     await user.keyboard('{Control>}\\{/Control}');
     await waitFor(() =>
-      expect(document.activeElement).toBe(screen.getByRole('button', { name: '카테고리 열기' })),
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: '사이드바 열기' })),
     );
     expect(screen.queryByRole('navigation')).toBeNull();
   });
@@ -970,17 +970,17 @@ describe('사이드바 기본값 (calendar-layout.md §1-A · R23~R24 — WU-3)'
   // 이 파일의 공용 `beforeEach` 가 이미 실제 기본값(`sidebarPinned: false`, 드로어)에서 시작한다 —
   // 여기서 다시 override 할 필요가 없다(리뷰 Major, 예전에는 이 반대였다).
 
-  it('1280(wide) 기본에서는 nav 컬럼이 없고 `카테고리 열기` 가 있다', async () => {
+  it('1280(wide) 기본에서는 nav 컬럼이 없고 `사이드바 열기` 가 있다', async () => {
     await mount();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '카테고리 열기' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '사이드바 열기' })).toBeInTheDocument();
   });
 
   it('고정을 켜면 nav 컬럼이 선다', async () => {
     useShellUiStore.setState({ sidebarPinned: true });
     await mount();
     expect(screen.getByRole('navigation')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '카테고리 열기' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '사이드바 열기' })).not.toBeInTheDocument();
   });
 
   it(
@@ -990,7 +990,7 @@ describe('사이드바 기본값 (calendar-layout.md §1-A · R23~R24 — WU-3)'
       const user = userEvent.setup();
       await mount();
 
-      await user.click(screen.getByRole('button', { name: '카테고리 열기' }));
+      await user.click(screen.getByRole('button', { name: '사이드바 열기' }));
       // 제목은 이제 항상 정확히 앱 이름 하나다(리뷰 Major 2 — `[고정]` 버튼이 더 이상 `title`
       // 안에 있지 않다). 예전에는 여기서 `/Tasky/` 로 느슨하게 잡아야 했는데, 그 회피 자체가
       // 신호였다.
@@ -1012,7 +1012,7 @@ describe('사이드바 기본값 (calendar-layout.md §1-A · R23~R24 — WU-3)'
       const user = userEvent.setup();
       await mount();
 
-      await user.click(screen.getByRole('button', { name: '카테고리 열기' }));
+      await user.click(screen.getByRole('button', { name: '사이드바 열기' }));
       const drawer = await screen.findByRole('dialog', { name: 'Tasky' });
       // 드로어 제목은 그대로고, `[고정]` 은 본문 첫 줄에 있다(리뷰 Major 2).
       await user.click(within(drawer).getByRole('button', { name: '사이드바 고정' }));
@@ -1021,7 +1021,7 @@ describe('사이드바 기본값 (calendar-layout.md §1-A · R23~R24 — WU-3)'
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
       const nav = screen.getByRole('navigation');
       expect(nav).toBeInTheDocument();
-      // `Dialog` 의 기본 복귀 대상(열었던 `카테고리 열기`)은 이미 사라졌으므로 `returnFocus` 가
+      // `Dialog` 의 기본 복귀 대상(열었던 `사이드바 열기`)은 이미 사라졌으므로 `returnFocus` 가
       // 같은 표식(`SIDEBAR_PIN_TOGGLE_ATTR`)으로 새로 선 컬럼의 버튼을 찾아야 한다.
       await waitFor(() =>
         expect(document.activeElement).toBe(

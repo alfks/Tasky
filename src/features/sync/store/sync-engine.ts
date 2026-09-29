@@ -110,7 +110,7 @@ async function applyResponse(
 
   const adoptedAny = result !== null && Object.values(result.adopted).some((n) => n > 0);
   if (adoptedAny && result !== null) {
-    await reloadAdoptedViews(result.adopted);
+    await reloadAdoptedViews(result.adopted, rt);
   }
   rt.setState((prev) => ({
     pendingCount,
