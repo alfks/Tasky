@@ -1,7 +1,7 @@
 'use client';
 
-// 메인 컬럼 — **<1024(narrow·compact)의 1열 경로 전용**(calendar-layout.md R8: "지금 구조 그대로").
-// ≥1024(wide·mid)에서는 `ShellDayPanel` 이 `main` 을 맡고 이 컴포넌트는 아예 마운트되지 않는다
+// 메인 컬럼 — **<680(compact)의 1열 경로 전용**(calendar-layout.md R8).
+// ≥680(wide·mid, 2영역)에서는 `ShellDayPanel` 이 `main` 을 맡고 이 컴포넌트는 아예 마운트되지 않는다
 // (app-shell.md §2-A · §2-C 네 상태 · R1 `main` · R3 고정 영역 + 목록만 스크롤).
 //
 // 목록·다이어리·빈 상태의 실제 렌더링(`DayPanelBody`)은 `ShellDayPanel.tsx` 가 갖고 있고 여기서는
@@ -44,7 +44,7 @@ type ShellMainProps = {
   todosEmpty: boolean;
   header: ReactNode;
   onCreateCategory: () => void;
-  /** 768px 미만의 하단 고정 `[+ 할 일]` (§2-B). */
+  /** 680px 미만(compact)의 하단 고정 `[+ 할 일]` (§2-B). */
   showBottomAdd: boolean;
   /** 투두 항목 메뉴 "타이머 시작" (timer.md §2) — `DayPanelBody` 로 그대로 흘려보낸다. */
   onStartTimer?: (todo: Todo) => void;
@@ -90,13 +90,14 @@ export function ShellMain({
   // 중복이었고, 빼도 회귀 테스트(`tests/e2e/narrow-viewport.spec.ts` 의 "마지막 할 일 행이…")가
   // 여전히 통과한다(최종 리뷰 Minor — 360px 죽은 공간 12px 감소).
   const bottomBarOffset = useBottomBarOffset();
-  // 막대가 없으면(≥768, narrow) 여분을 얹을 대상 자체가 없다 — 위 padding-top 과 같은 기본
-  // 여백(`--space-3`)만 남긴다. 막대가 있으면 그 실측 높이 그대로가 padding-bottom 이다.
+  // 막대가 없으면(`showBottomAdd` 거짓 — 지금은 이 컴포넌트가 compact 에서만 마운트되므로 거의
+  // 항상 있다) 여분을 얹을 대상 자체가 없다 — 위 padding-top 과 같은 기본 여백(`--space-3`)만
+  // 남긴다. 막대가 있으면 그 실측 높이 그대로가 padding-bottom 이다.
   const scrollAreaPaddingBottom = bottomBarOffset > 0 ? `${bottomBarOffset}px` : 'var(--space-3)';
   // 손대지 않은 첫 화면에서 마지막 행이 "거의 다 보이는데 살짝만 잘린" 애매한 상태로 뜨는 것을
   // 막는다 — padding-bottom(아래)은 스크롤 **끝**에만 여지를 주므로 이 경우는 못 잡는다
   // (`lib/scroll-clip-guard.ts` 머리주석에 전체 인과가 있다). `showBottomAdd` 일 때만 건다 — 막대가
-  // 없는 화면(≥768)은 이 애매함이 생길 자리 자체가 없다. `date` 를 넘겨 날짜가 바뀌면(목록이
+  // 없는 화면은 이 애매함이 생길 자리 자체가 없다. `date` 를 넘겨 날짜가 바뀌면(목록이
   // 통째로 바뀌면) 다시 판정하게 한다(`useGuardAmbiguousClip` 머리주석 — 최종 리뷰 Minor).
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   useGuardAmbiguousClip(scrollAreaRef, showBottomAdd, date);
@@ -109,23 +110,17 @@ export function ShellMain({
     >
       {/* R3: 고정 영역. 위쪽 여백은 셸 컨테이너의 `py` 가 이미 준다. */}
       {/*
-        max-w: 768~1023(narrow)은 이 컴포넌트가 그대로 그리는 유일한 폭 구간이다(<768 은 화면 자체가
-        좁아 760이 걸리지 않는다). 760 그대로 두면 목록 한 줄(예: "○ 장보기 ⏱25분 ⋯")이 채 절반도
-        못 채우는 폭에 가운데 정렬만 되어, 카드 오른쪽에 큰 빈 여백이 남는다 — 사용자가 애초에
-        불평한 "오른쪽이 빈다"가 1열 구간에서 그대로 재현된 것(리뷰 Major, 900·1023px 실측).
-        `md:`(Tailwind 기본 768px, `SHELL_BREAKPOINTS.narrow` 와 값이 같다 — calendar-layout.md R13과
-        같은 방식)로 768 이상에서만 **달력 컬럼의 위쪽 한계**(calendar-layout.md R2, 440~560)와 같은
-        560으로 좁힌다 — 3영역의 가운데 정렬과 같은 언어를 쓰라는 지침(calendar-layout.md §1-C
-        인접 절)을 따른 것이다. compact(<768)는 `md:` 가 걸리지 않아 지금과 같다(calendar-layout.md
-        R8 "지금 구조 그대로").
+        max-w 760 은 1열의 내용 폭 상한(app-shell.md §2-A-2)이다. 이 컴포넌트는 이제 <680 에서만
+        그려지므로 실제로는 한 번도 걸리지 않는다 — 옛 `narrow`(768~1023) 구간용 `md:max-w-[560px]`
+        (R8-a)는 그 구간이 2영역으로 바뀌면서 함께 폐지했다(calendar-layout.md R8).
       */}
-      <div className="mx-auto w-full max-w-[760px] shrink-0 px-[var(--space-4)] md:max-w-[560px]">
+      <div className="mx-auto w-full max-w-[760px] shrink-0 px-[var(--space-4)]">
         {failureCard === null ? header : null}
       </div>
 
       <div
         ref={scrollAreaRef}
-        className="mx-auto min-h-0 w-full max-w-[760px] flex-1 overflow-y-auto px-[var(--space-4)] pt-[var(--space-3)] md:max-w-[560px]"
+        className="mx-auto min-h-0 w-full max-w-[760px] flex-1 overflow-y-auto px-[var(--space-4)] pt-[var(--space-3)]"
         style={{ paddingBottom: scrollAreaPaddingBottom }}
       >
         <DayPanelBody

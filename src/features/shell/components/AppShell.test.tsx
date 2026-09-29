@@ -315,8 +315,8 @@ describe('달성률 낭독 (calendar-layout.md R5·R24 재배치 후 — 리뷰 
     expect(panelHead?.textContent).toContain('0%');
   });
 
-  it('인사이트 컬럼이 없으면(<1024) 헤더 버튼이 그 링을 맡는다', async () => {
-    setWidth(900);
+  it('인사이트 컬럼이 없으면(<680, 1열) 헤더 버튼이 그 링을 맡는다', async () => {
+    setWidth(600);
     await mount();
     const rings = screen.getAllByRole('img');
     expect(rings).toHaveLength(1);
@@ -324,7 +324,7 @@ describe('달성률 낭독 (calendar-layout.md R5·R24 재배치 후 — 리뷰 
   });
 
   it(
-    '인사이트를 접어도(≥1024) 링은 패널 머리 하나뿐이다 — 헤더 버튼은 텍스트로 낮춘다 ' +
+    '인사이트를 접어도(≥680, 2영역) 링은 패널 머리 하나뿐이다 — 헤더 버튼은 텍스트로 낮춘다 ' +
       '(리뷰 Minor, R5 중복 방지 확인)',
     async () => {
       useShellUiStore.setState({ insightCollapsed: true });
@@ -410,28 +410,46 @@ describe('상태 (§2-C)', () => {
 });
 
 describe('붕괴 순서 (§2-B · R4)', () => {
-  it(
-    '1024~1279(mid) 에서도 3영역 그대로다 — 사이드바만 드로어로 내려간다 ' +
-      '(calendar-layout.md R4·R10·R24, WU-4 가 갈아 끼운 진실)',
-    async () => {
-      setWidth(1100);
+  // 2영역의 하한은 680 이다(calendar-layout.md R2·R10 — 사용자 피드백 "창을 50% 로 줄여도 자리가
+  // 바뀌지 않게"). 1100 은 옛 `mid`, 900 은 옛 `narrow`(1열이었다), 720 은 1440 모니터의 반쪽,
+  // 680 은 경계 그 자체 — 넷 다 같은 2영역이어야 한다.
+  it.each([1100, 900, 720, 680])(
+    '%ipx(mid) 에서도 2영역 그대로다 — 사이드바만 드로어로 내려간다 ' +
+      '(calendar-layout.md R4·R10·R24)',
+    async (width) => {
+      setWidth(width);
       useShellUiStore.setState({ sidebarPinned: false });
       await mount();
-      // 인사이트는 여전히 컬럼이다 — 옛 §2-B 는 "1024~1279 는 오버레이" 였지만 calendar-layout.md
-      // R4·R24 가 그 문턱을 `wide` 하나에서 `wide|mid` 로 올렸다.
+      // 인사이트는 컬럼이다 — 옛 §2-B 는 "1024~1279 는 오버레이" 였지만 calendar-layout.md
+      // R4·R24 가 그 문턱을 `wide` 하나에서 `wide|mid` 로 올렸고, 이제 `mid` 는 680 부터다.
       expect(screen.getByRole('complementary')).toHaveAccessibleName('오늘 요약');
       expect(screen.queryByRole('button', { name: '오늘 요약 열기' })).not.toBeInTheDocument();
-      // 선택 날짜 패널도 여전히 `main` 이다 — 목록·다이어리가 그 안에 있다.
+      // 선택 날짜 패널이 `main` 이다 — 목록·다이어리가 그 안에 있고, 하단 [+ 할 일] 은 없다.
       expect(screen.getByRole('main')).toHaveTextContent(/할 일 추가/);
+      expect(screen.queryByRole('button', { name: '+ 할 일' })).not.toBeInTheDocument();
       // 다만 `mid` 는 고정이 불가능하다(R10) — 사이드바는 드로어(☰)로만 남는다.
       expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: '카테고리 열기' })).toBeInTheDocument();
     },
   );
 
-  it('오버레이를 열면 그때 `aria-controls` 가 실제 패널을 가리킨다 (<1024)', async () => {
+  it.each([679, 600])(
+    '%ipx(compact) 는 1열이다 — `main` 하나에 헤더·목록이 같이 있고 인사이트는 오버레이 버튼 (R8)',
+    async (width) => {
+      setWidth(width);
+      await mount();
+      expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '오늘 요약 열기' })).toBeInTheDocument();
+      // 1열의 `main` 은 `ShellMain` — 헤더(☰)가 그 안에 있고, 하단 [+ 할 일] 이 붙는다.
+      const main = screen.getByRole('main');
+      expect(within(main).getByRole('button', { name: '카테고리 열기' })).toBeInTheDocument();
+      expect(within(main).getByRole('button', { name: '+ 할 일' })).toBeInTheDocument();
+    },
+  );
+
+  it('오버레이를 열면 그때 `aria-controls` 가 실제 패널을 가리킨다 (<680)', async () => {
     const user = userEvent.setup();
-    setWidth(900);
+    setWidth(600);
     await mount();
     const opener = screen.getByRole('button', { name: '오늘 요약 열기' });
     // 접힘/펼침 버튼은 닫힌 상태를 말해야 하고(§5), 닫혀 있는 동안 패널은 DOM 에 없다 — 없는
@@ -444,7 +462,7 @@ describe('붕괴 순서 (§2-B · R4)', () => {
     expect(document.getElementById('shell-insight-overlay')).not.toBeNull();
   });
 
-  it('768~1023 에서는 사이드바가 ☰ 로 내려간다', async () => {
+  it('680~1279(mid) 에서는 사이드바가 ☰ 로 내려간다', async () => {
     setWidth(900);
     await mount();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
@@ -463,7 +481,7 @@ describe('붕괴 순서 (§2-B · R4)', () => {
 
   it('오버레이는 Esc 로 닫히고 포커스가 열었던 버튼으로 돌아온다 (R7)', async () => {
     const user = userEvent.setup();
-    setWidth(900);
+    setWidth(600);
     await mount();
     const opener = screen.getByRole('button', { name: '오늘 요약 열기' });
     await user.click(opener);
@@ -473,14 +491,14 @@ describe('붕괴 순서 (§2-B · R4)', () => {
     expect(document.activeElement).toBe(opener);
   });
 
-  it('768px 미만에서는 하단 고정 [+ 할 일] 이 붙는다', async () => {
+  it('680px 미만에서는 하단 고정 [+ 할 일] 이 붙는다', async () => {
     setWidth(400);
     await mount();
     expect(screen.getByRole('button', { name: '+ 할 일' })).toBeInTheDocument();
   });
 });
 
-describe('적재 배선 (Blocker: 1024px 미만·사이드바 접힘에서 앱이 비어 있던 자리)', () => {
+describe('적재 배선 (Blocker: 사이드바가 드로어인 폭·사이드바 접힘에서 앱이 비어 있던 자리)', () => {
   /** 카테고리 적재를 거는 유일한 경로가 사이드바였다 — 사이드바가 없는 화면을 전부 훑는다. */
   it.each([
     ['폭 900(드로어)', 900, false],
@@ -639,8 +657,8 @@ describe('로딩 (§2-C · Blocker: 스켈레톤이 적재를 진동시키던 �
 });
 
 describe('하단 고정 [+ 할 일] (§2-B)', () => {
-  it('768px 이상에서는 없다', async () => {
-    setWidth(900);
+  it('680px 이상(2영역)에서는 없다', async () => {
+    setWidth(680);
     await mount();
     expect(screen.queryByRole('button', { name: '+ 할 일' })).toBeNull();
   });
@@ -746,7 +764,7 @@ describe('타이머 칩의 "인사이트 열기" (R1)', () => {
 
   it('컬럼이 없으면 오버레이를 연다', async () => {
     const user = userEvent.setup();
-    setWidth(900);
+    setWidth(600);
     await mount();
     act(startRunningSession);
     await user.click(await screen.findByRole('button', { name: /집중 타이머/ }));
@@ -758,7 +776,7 @@ describe('타이머 칩의 "인사이트 열기" (R1)', () => {
 describe('붕괴와 오버레이의 상호작용 (§2-B · R4)', () => {
   it('폭이 넓어지면 컬럼이 서고 오버레이는 닫힌다', async () => {
     const user = userEvent.setup();
-    setWidth(900);
+    setWidth(600);
     await mount();
     await user.click(screen.getByRole('button', { name: '오늘 요약 열기' }));
     await screen.findByRole('dialog', { name: '오늘 요약' });
@@ -774,7 +792,7 @@ describe('붕괴와 오버레이의 상호작용 (§2-B · R4)', () => {
     await mount();
     expect(screen.getByRole('complementary')).toBeInTheDocument();
     act(() => {
-      setWidth(900);
+      setWidth(600);
       window.dispatchEvent(new Event('resize'));
     });
     await waitFor(() => expect(screen.queryByRole('complementary')).toBeNull());
@@ -929,7 +947,7 @@ describe('사이드바 기본값 (calendar-layout.md §1-A · R23~R24 — WU-3)'
   });
 
   it(
-    '드로어로 카테고리를 선택해도 본문 그룹으로 포커스가 인계된다 — <1024 경로가 1280 에서도 돈다 ' +
+    '드로어로 카테고리를 선택해도 본문 그룹으로 포커스가 인계된다 — 드로어 경로가 1280 에서도 돈다 ' +
       '(useCategoryFocus, app-shell R14)',
     async () => {
       const user = userEvent.setup();

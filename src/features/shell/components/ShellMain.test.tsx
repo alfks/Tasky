@@ -1,4 +1,4 @@
-// `ShellMain` — <1024 전용 껍데기 (app-shell.md §2-A · R1 `main` · calendar-layout.md R8·R21).
+// `ShellMain` — <680(compact, 1열) 전용 껍데기 (app-shell.md §2-A · R1 `main` · calendar-layout.md R8·R21).
 //
 // 본문(빈 상태 문구·목록·다이어리)의 진짜 규칙은 `DayPanelBody` 가 갖고 있고 `ShellDayPanel.test.tsx`
 // 가 지킨다 — 여기서 묻는 것은 **이 껍데기가 그 본문을 실제로 감싸 넣는가** 하나다: 넘긴 `header` 가

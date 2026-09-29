@@ -7,15 +7,16 @@
 // 달성률(컬럼이 없을 때만, 오버레이를 여는 버튼)이다.
 //
 // **팔레트 입구가 왜 헤더인가.** 셸에서 **모든 폭에 렌더되는 영역은 이 헤더뿐**이다: 사이드바는
-// <1024 에서 드로어로 접히고(§2-B), 인사이트 컬럼은 <1280 에서 사라진다 — `단축키 ?` 버튼이 거기
-// 있어서 1024 이하에서는 팔레트를 가리키는 어포던스가 화면에 **하나도** 없었다(T-36 실측: 5개 폭에서
+// 모든 폭에서 드로어가 기본이고(calendar-layout.md §1-A), 인사이트 컬럼은 <680(compact) 에서
+// 사라진다 — 옛 셸에서는 `단축키 ?` 버튼이 인사이트 컬럼에만 있어서 그 컬럼이 없는 폭(당시 <1280)
+// 에서는 팔레트를 가리키는 어포던스가 화면에 **하나도** 없었다(T-36 실측: 5개 폭에서
 // 검색/명령 어포던스 0개). 사이드바는 R12 가 "상단에는 앱 이름만, 그 외 진입점을 더하지 않는다" 로
 // 이미 닫아 두었고, 인사이트는 접을 수 있어 입구를 둘 자리가 아니다. 남는 자리는 여기 하나다.
 //
 // **달성률을 헤더에서 두 번 말하지 않는다.** 인사이트 컬럼이 서 있을 때(이제 `wide`·`mid` 양쪽,
 // calendar-layout.md R24) 같은 숫자는 선택 날짜 패널의 머리에 링 20px 로 이미 있다
 // (calendar-layout.md R5, `ShellDayPanel`) — 그래서 그 갈래에서는 헤더가 **아무것도** 맡지 않는다.
-// 컬럼이 없을 때(<1024)만 여기 링이 달린 버튼이 되어 오버레이를 연다(R6).
+// 컬럼이 없을 때(<680, compact 1열)만 여기 링이 달린 버튼이 되어 오버레이를 연다(R6).
 //
 // **앱 이름(h1)도 여기로 옮겨 왔다(calendar-layout.md R6).** 사이드바가 드로어가 기본이 되면서
 // (calendar-layout.md §1-A) `h1` 이 화면에서 사라지는 자리가 생겼다 — 사이드바가 컬럼일 때는
@@ -98,16 +99,20 @@ const PALETTE_CHORDS = chordsOf('palette.open');
  */
 function PaletteEntry() {
   const openPalette = useCommandStore((state) => state.openPalette);
+  // `sm:` 폭(272)은 **상한**이지 고정 폭이 아니다(`sm:shrink sm:min-w-0`): 2영역의 하한(680,
+  // calendar-layout.md R10)에서 달력 컬럼은 336px 뿐이라 ☰ 32 + 간격 8 + 272 = 312 로 이미 꽉 차,
+  // 입구가 `shrink-0` 이면 타이머 칩(R15)이 컬럼 밖으로 밀려 패널 머리 위에 겹쳤다(720 실측,
+  // FEEL_REPORT §14). 줄어들 때는 안내 문구만 말줄임된다 — 🔍·단축키 표시는 그대로다.
   return (
     <button
       type="button"
       {...{ [PALETTE_OPENER_ATTR]: '' }}
       onClick={openPalette}
-      className="flex h-[var(--control-hit-min)] w-[var(--control-hit-min)] shrink-0 items-center justify-center gap-[var(--space-2)] rounded-[var(--radius-full)] border border-border bg-surface px-0 text-sm text-muted hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus sm:w-[17rem] sm:justify-start sm:px-[var(--space-3)]"
+      className="flex h-[var(--control-hit-min)] w-[var(--control-hit-min)] shrink-0 items-center justify-center gap-[var(--space-2)] rounded-[var(--radius-full)] border border-border bg-surface px-0 text-sm text-muted hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus sm:w-[17rem] sm:min-w-0 sm:shrink sm:justify-start sm:px-[var(--space-3)]"
     >
       <span aria-hidden="true">🔍</span>
-      <span className="sr-only sm:not-sr-only">{PALETTE_ENTRY_LABEL}</span>
-      <ShortcutKeys chords={PALETTE_CHORDS} className="ml-auto max-sm:sr-only" />
+      <span className="sr-only sm:not-sr-only sm:min-w-0 sm:truncate">{PALETTE_ENTRY_LABEL}</span>
+      <ShortcutKeys chords={PALETTE_CHORDS} className="ml-auto shrink-0 max-sm:sr-only" />
     </button>
   );
 }
@@ -119,11 +124,11 @@ type ShellHeaderProps = {
   /** 인사이트가 컬럼으로 서 있는가. 아니면 달성률이 오버레이를 여는 버튼이 된다(R6). */
   insightIsColumn: boolean;
   /**
-   * 3영역(≥1024)이라 **선택 날짜 패널이 항상 같이 떠 있는가** — `AppShell` 의 `threeRegion`
+   * 2영역(≥680)이라 **선택 날짜 패널이 항상 같이 떠 있는가** — `AppShell` 의 `threeRegion`
    * 그대로다. 인사이트를 접어도(`insightIsColumn` 이 거짓이어도) `wide`·`mid` 에서는 패널 머리가
    * 이미 같은 달성률 링을 보여주므로(calendar-layout.md R5), 그 갈래에서는 이 헤더가 **링을
-   * 반복하지 않는다** — 텍스트만 있는 버튼으로 낮춘다(리뷰 Minor, R5 중복 방지). <1024(패널이
-   * 아예 없는 폭)에서만 이 버튼이 유일한 자리라 원래대로 링+퍼센트를 보여준다.
+   * 반복하지 않는다** — 텍스트만 있는 버튼으로 낮춘다(리뷰 Minor, R5 중복 방지). <680(compact —
+   * 패널이 아예 없는 1열)에서만 이 버튼이 유일한 자리라 원래대로 링+퍼센트를 보여준다.
    */
   dayPanelVisible: boolean;
   insightOverlayOpen: boolean;
