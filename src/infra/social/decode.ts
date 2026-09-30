@@ -10,14 +10,9 @@ import type {
   RequestView,
   SocialMe,
 } from '@/domain/social/social';
-import { category } from '@/infra/social/category-decode';
 
-export class SocialProtocolError extends Error {
-  constructor() {
-    super('소셜 응답 형식이 올바르지 않습니다.');
-    this.name = 'SocialProtocolError';
-  }
-}
+import { category } from '@/infra/social/category-decode';
+import { SocialProtocolError } from '@/infra/social/protocol-error';
 
 function exact(value: unknown, keys: readonly string[]): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {

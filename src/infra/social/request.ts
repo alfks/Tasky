@@ -2,7 +2,7 @@ import type { SocialErrorCode, SocialResponse } from '@/domain/social/social';
 
 import type { SocialRepositoryFailure } from '@/repositories/social-repository';
 
-import { SocialProtocolError } from '@/infra/social/decode';
+import { SocialProtocolError } from '@/infra/social/protocol-error';
 
 const CODES: readonly SocialErrorCode[] = [
   'unauthorized',
