@@ -65,7 +65,6 @@ function isPrivacyOnly(state: MemorySocialState, dto: SocialCategoryInput): bool
   return (
     old !== undefined &&
     dto.visibility === 'private' &&
-    old.visibility !== 'private' &&
     dto.name === old.name &&
     dto.color === old.color &&
     dto.emoji === old.emoji

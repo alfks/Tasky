@@ -191,7 +191,7 @@ export function setReaction(
   if (post === undefined) return fail('unavailable', state.now());
   if (active && state.mode !== 'enabled') return fail('social-disabled', state.now());
   const key = `${self.id}:${postId}`;
-  if (post.authorId === self.id || (active && !postReadable(state, self.id, post)))
+  if (post.authorId === self.id || !postReadable(state, self.id, post))
     return fail('unavailable', state.now());
   if (active) state.reactions.add(key);
   else state.reactions.delete(key);
