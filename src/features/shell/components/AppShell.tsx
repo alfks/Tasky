@@ -267,7 +267,11 @@ function ShellBody() {
                 </main>
               }
             >
-              <SocialWorkspace onReturn={returnFromSocial} initialPublic={initialPublic} />
+              <SocialWorkspace
+                onReturn={returnFromSocial}
+                initialPublic={initialPublic}
+                onManageCategories={publication.bridge.openManager}
+              />
             </Suspense>
           ) : reportsOpen ? (
             <ReportsScreen />
