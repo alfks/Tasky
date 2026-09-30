@@ -17,3 +17,6 @@
 # 서비스워커는 절대 오래 캐시하지 않는다 — 새 버전 감지(specs/pwa.md R4)가 막힌다.
 /sw.js
   Cache-Control: no-cache
+
+/*
+  Referrer-Policy: no-referrer

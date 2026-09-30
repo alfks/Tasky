@@ -122,3 +122,47 @@ describe('index.html: SPA 셸 배선 — 지워도 빌드가 초록인 줄들', 
     );
   });
 });
+
+describe('초대 bootstrap: 문서 진입과 같은 문서 fragment 이동', () => {
+  it('원문을 먼저 주소에서 제거하고 이벤트에는 원문을 싣지 않는다', () => {
+    const script = [...readFileSync('index.html', 'utf8').matchAll(/<script>([\s\S]*?)<\/script>/g)]
+      .map((match) => match[1])
+      .find((source) => source.includes('tasky.social.invite.v1'));
+    expect(script).toBeDefined();
+    const token = 'a'.repeat(64);
+    const stored = new Map<string, string>();
+    const signals: Event[] = [];
+    let hashchange: (() => void) | undefined;
+    const fakeWindow = {
+      location: { hash: `#invite=${token}`, pathname: '/', search: '?social=public' },
+      history: {
+        replaceState: (_state: unknown, _title: string, path: string) => {
+          expect(path).toBe('/?social=public');
+          fakeWindow.location.hash = '';
+        },
+      },
+      sessionStorage: {
+        removeItem: (key: string) => stored.delete(key),
+        setItem: (key: string, value: string) => stored.set(key, value),
+      },
+      dispatchEvent: (event: Event) => {
+        expect(fakeWindow.location.hash).toBe('');
+        signals.push(event);
+      },
+      addEventListener: (_event: string, listener: () => void) => {
+        hashchange = listener;
+      },
+    };
+    // 읽은 앱 bootstrap 자체를 제한한 창에서 실행한다. 원문을 재구현한 테스트가 아니다.
+    new Function('window', 'Event', script!)(fakeWindow, Event);
+    expect(JSON.parse(stored.get('tasky.social.invite.v1')!).token).toBe(token);
+    fakeWindow.location.hash = `#invite=${'b'.repeat(64)}`;
+    hashchange?.();
+    expect(JSON.parse(stored.get('tasky.social.invite.v1')!).token).toBe('b'.repeat(64));
+    expect(signals.map((signal) => signal.type)).toEqual([
+      'tasky-social-invite',
+      'tasky-social-invite',
+    ]);
+    expect(signals.every((signal) => !('detail' in signal))).toBe(true);
+  });
+});

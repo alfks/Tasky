@@ -24,6 +24,7 @@
   -->
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
     <title>Tasky</title>
     <meta name="description" content="감성 투두·일정 관리 웹앱" />
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -44,6 +45,29 @@
     />
     <!-- prettier-ignore -->
     <script>(function(){try{var e=document.documentElement;var s=null;try{var r=window.localStorage.getItem("tasky.theme.v1");if(r)s=JSON.parse(r)}catch(_){}var m=s&&(s.theme==="light"||s.theme==="dark"||s.theme==="system")?s.theme:"system";var q=window.matchMedia;var d=m==="dark"||(m==="system"&&typeof q==="function"&&q("(prefers-color-scheme: dark)").matches);var t=d?"dark":"light";e.setAttribute("data-theme",t);e.style.setProperty("color-scheme",t);var a=s&&s.accent?s.accent[t]:null;if(typeof a==="string"&&/^#[0-9A-Fa-f]{6}$/.test(a))e.style.setProperty("--color-accent",a);var c=document.querySelector('meta[name="theme-color"]');if(c)c.setAttribute("content",d?"#141418":"#FAFAFC");}catch(_){}})();</script>
+    <!-- 초대 원문은 모듈과 분석 스크립트 실행 전에 주소에서 지운다. 로그인 왕복에만 탭 저장소를 쓴다. -->
+    <script>
+      (function () {
+        function consumeInvite() {
+          if (!window.location.hash.startsWith('#invite=')) return;
+          var token = window.location.hash.slice(8);
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+          try {
+            window.sessionStorage.removeItem('tasky.social.invite.v1');
+            if (/^[0-9a-f]{64}$/.test(token))
+              window.sessionStorage.setItem(
+                'tasky.social.invite.v1',
+                JSON.stringify({ token: token, savedAt: Date.now() }),
+              );
+          } catch (_) {
+            /* 탭 저장이 불가능하면 원문을 복원하지 않는다. */
+          }
+          window.dispatchEvent(new Event('tasky-social-invite'));
+        }
+        consumeInvite();
+        window.addEventListener('hashchange', consumeInvite);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
