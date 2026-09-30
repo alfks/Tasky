@@ -227,6 +227,10 @@ const SRC_SYNTAX = [
 const SOCIAL_POST_DTO_SYNTAX = SRC_SYNTAX.filter(
   (rule) => !rule.selector.includes("[key.name='createdAt']"),
 );
+/** ADR-0024의 공개 projection updatedAt은 개인 Meta가 아니다. 다른 보호 규칙은 유지한다. */
+const SOCIAL_CATEGORY_DTO_SYNTAX = SRC_SYNTAX.filter(
+  (rule) => !rule.selector.includes("[key.name='updatedAt']"),
+);
 /** 도메인 결정성(ADR-0005 규칙 2). meta.ts 예외 블록도 반드시 이 배열을 그대로 쓴다 — flat config 는 규칙 단위 덮어쓰기라 빠뜨리면 통째로 사라진다 */
 const DOMAIN_DETERMINISM = [
   {
@@ -548,6 +552,26 @@ const config = [
       allow: ALLOW.repositories,
       patterns: [TEST_FILE, onlyPackages('repositories', PACKAGES.repositories)],
       syntax: SOCIAL_POST_DTO_SYNTAX,
+    }),
+  },
+  {
+    files: ['src/infra/social/category-decode.ts'],
+    rules: layerRules({
+      target: './src/infra',
+      label: 'infra',
+      allow: ALLOW.infra,
+      patterns: [TEST_FILE, onlyPackages('infra', PACKAGES.infra), NO_DB_IMPORT],
+      syntax: SOCIAL_CATEGORY_DTO_SYNTAX,
+    }),
+  },
+  {
+    files: ['src/repositories/memory/social/categories.ts'],
+    rules: layerRules({
+      target: './src/repositories',
+      label: 'repositories',
+      allow: ALLOW.repositories,
+      patterns: [TEST_FILE, onlyPackages('repositories', PACKAGES.repositories)],
+      syntax: SOCIAL_CATEGORY_DTO_SYNTAX,
     }),
   },
   {

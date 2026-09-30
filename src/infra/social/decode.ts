@@ -10,6 +10,7 @@ import type {
   RequestView,
   SocialMe,
 } from '@/domain/social/social';
+import { category } from '@/infra/social/category-decode';
 
 export class SocialProtocolError extends Error {
   constructor() {
@@ -135,6 +136,7 @@ export function block(value: unknown): { blocked: boolean; pairVersion: number }
 }
 
 export function post(value: unknown): PostView {
+  const hasCategory = typeof value === 'object' && value !== null && 'category' in value;
   const data = exact(value, [
     'id',
     'author',
@@ -143,6 +145,7 @@ export function post(value: unknown): PostView {
     'createdAt',
     'reactionCount',
     'myReaction',
+    ...(hasCategory ? ['category'] : []),
   ]);
   const author = exact(data.author, ['id', 'nickname']);
   if (!isHappenedOn(data.happenedOn)) throw new SocialProtocolError();
@@ -154,6 +157,7 @@ export function post(value: unknown): PostView {
     createdAt: number(data.createdAt),
     reactionCount: number(data.reactionCount),
     myReaction: boolean(data.myReaction),
+    ...(hasCategory ? { category: category(data.category) } : {}),
   };
 }
 

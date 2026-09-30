@@ -22,6 +22,7 @@ import {
   sentRequest,
 } from '@/infra/social/decode';
 import { createSocialRequest } from '@/infra/social/request';
+import { category } from '@/infra/social/category-decode';
 
 function pageQuery(input?: PageInput): Readonly<Record<string, string | number | undefined>> {
   return { cursor: input?.cursor, limit: input?.limit };
@@ -32,6 +33,13 @@ export function createHttpSocialRepository(transport: typeof fetch = fetch): Soc
   const send = createSocialRequest(transport);
   return {
     me: () => send('/me', me),
+    categories: (input) =>
+      send('/categories/mine', (value) => page(value, category), { query: pageQuery(input) }),
+    category: ({ id }) => send(`/categories/${id}`, category),
+    saveCategory: (input, { key }) =>
+      send('/categories', category, { method: 'POST', body: input, key }),
+    revokeCategory: (input, { key }) =>
+      send('/categories/revoke', category, { method: 'POST', body: input, key }),
     createProfile: (input) => send('/profile', profile, { method: 'POST', body: input }),
     renameProfile: (input, { key }) =>
       send('/profile/name', profileVersion, {

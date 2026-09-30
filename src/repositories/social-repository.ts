@@ -14,6 +14,9 @@ import type {
   SocialMe,
   SocialErrorCode,
   SocialResponse,
+  SocialCategoryView,
+  SocialCategoryInput,
+  PublicPageInput,
 } from '@/domain/social/social';
 
 export type CommandKey = { key: string };
@@ -25,6 +28,20 @@ export type SocialRepositoryFailure = Error & {
 
 export interface SocialRepository {
   me(): Promise<SocialResponse<SocialMe>>;
+  /** 소유자의 공개 category 관리 목록. */
+  categories(page?: PageInput): Promise<SocialResponse<Page<SocialCategoryView>>>;
+  /** 현재 읽기 권한으로 canonical projection을 확인한다. */
+  category(input: { id: SocialId }): Promise<SocialResponse<SocialCategoryView>>;
+  /** 서버에서 현재 버전/소유권을 확인해 범위와 metadata를 저장한다. */
+  saveCategory(
+    input: SocialCategoryInput,
+    options: CommandKey,
+  ): Promise<SocialResponse<SocialCategoryView>>;
+  /** 공개 category를 철회하되 소유자 공유 관리에는 사본을 남긴다. */
+  revokeCategory(
+    input: { id: SocialId; expectedVersion: number },
+    options: CommandKey,
+  ): Promise<SocialResponse<SocialCategoryView>>;
   createProfile(input: { nickname: string }): Promise<SocialResponse<ProfileView>>;
   renameProfile(
     input: { nickname: string; expectedVersion: number },
@@ -85,4 +102,14 @@ export interface SocialRepository {
     input: { postId: SocialId; active: boolean },
     options: CommandKey,
   ): Promise<SocialResponse<{ postId: SocialId; active: boolean }>>;
+}
+
+/** 인증 예외는 이 좁은 공개 읽기 포트뿐이며 mutation을 제공하지 않는다. */
+export interface PublicSocialRepository {
+  feed(page?: PublicPageInput): Promise<SocialResponse<Page<PostView>>>;
+  categories(page?: PageInput): Promise<SocialResponse<Page<SocialCategoryView>>>;
+  post(input: { id: SocialId }): Promise<SocialResponse<PostView>>;
+  validatePosts(input: {
+    ids: readonly SocialId[];
+  }): Promise<SocialResponse<{ allowedIds: readonly SocialId[] }>>;
 }

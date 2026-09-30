@@ -7,7 +7,7 @@ import type { DiaryRepository } from '@/repositories/diary-repository';
 import type { FocusSessionRepository } from '@/repositories/focus-session-repository';
 import type { RoutineRepository } from '@/repositories/routine-repository';
 import type { SettingsRepository } from '@/repositories/settings-repository';
-import type { SocialRepository } from '@/repositories/social-repository';
+import type { PublicSocialRepository, SocialRepository } from '@/repositories/social-repository';
 import type { SyncRepository } from '@/repositories/sync-repository';
 import type { SyncTransport } from '@/repositories/sync-transport';
 import type { TodoRepository } from '@/repositories/todo-repository';
@@ -82,4 +82,17 @@ export function getSocialRepository(): SocialRepository {
     throw new Error('소셜 저장소가 주입되지 않았습니다. setSocialRepository() 를 먼저 호출하세요.');
   }
   return currentSocial;
+}
+
+let currentPublicSocial: PublicSocialRepository | undefined;
+
+/** 로그인 없는 public 읽기만 별도로 주입한다. */
+export function setPublicSocialRepository(next: PublicSocialRepository): void {
+  currentPublicSocial = next;
+}
+
+/** 공개 읽기 포트에도 기본값을 만들지 않는다. */
+export function getPublicSocialRepository(): PublicSocialRepository {
+  if (currentPublicSocial === undefined) throw new Error('공개 읽기 저장소가 주입되지 않았습니다.');
+  return currentPublicSocial;
 }

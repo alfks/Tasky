@@ -28,6 +28,10 @@ export function createLazySocialRepository(
 
   return {
     me: () => dispatch((r) => r.me()),
+    categories: (page) => dispatch((r) => r.categories(page)),
+    category: (input) => dispatch((r) => r.category(input)),
+    saveCategory: (input, options) => dispatch((r) => r.saveCategory(input, options)),
+    revokeCategory: (input, options) => dispatch((r) => r.revokeCategory(input, options)),
     createProfile: (input) => dispatch((r) => r.createProfile(input)),
     renameProfile: (input, options) => dispatch((r) => r.renameProfile(input, options)),
     friends: (page) => dispatch((r) => r.friends(page)),
