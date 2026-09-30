@@ -33,7 +33,8 @@ export async function completedRecord(page: Page, category: string, text: string
 }
 
 export async function openAudience(page: Page, category: string) {
-  await openSidebarDrawer(page);
+  const drawer = page.getByRole('dialog', { name: 'Tasky', exact: true });
+  if (!(await drawer.isVisible())) await openSidebarDrawer(page);
   await page.getByRole('button', { name: `${category} 메뉴`, exact: true }).click();
   await page.getByRole('menuitem', { name: '공개 범위', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '카테고리 공개 범위 확인', exact: true });
