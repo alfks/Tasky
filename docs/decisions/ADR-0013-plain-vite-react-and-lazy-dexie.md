@@ -2,7 +2,7 @@
 
 # ADR-0013: 빌드 스택을 순수 Vite + React SPA 로 되돌리고 Dexie 를 지연 로드한다
 
-- 상태: accepted
+- 상태: partially superseded by [ADR-0025](ADR-0025-optional-online-chunks.md) (결정 8·규칙 7의 동적 chunk preload 중 신규 온라인 진입점만, 나머지 유지)
 - 날짜: 2026-09-16
 - 관련: **ADR-0010 을 supersede**(ADR-0001 의 "Next.js App Router" 부분도 같이 대체), docs/specs/pwa.md, docs/specs/theme.md §3-E·§3-F, docs/TECH_PLAN.md §1·§10
 
