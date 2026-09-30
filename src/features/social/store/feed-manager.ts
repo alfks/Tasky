@@ -274,6 +274,7 @@ export function createSocialFeedManager(
       invalidate('closed');
     },
     refresh: () => loadPage(null, [null]),
+    refreshCurrent: () => loadPage(state.cursorStack[state.pageIndex] ?? null, state.cursorStack),
     setView: async (view: FeedView) => {
       if (deps.anonymous || view === state.view) return;
       update({ view });
