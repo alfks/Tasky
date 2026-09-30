@@ -188,10 +188,10 @@ test.describe('카테고리 공개 범위', () => {
       page.getByText('이 기기의 연결 표식을 저장했어요. 개인 이름과 할 일은 그대로예요.'),
     ).toBeVisible();
     expect(commands).toHaveLength(countBeforeAttach);
-    await page
-      .getByRole('dialog', { name: '공유 카테고리 관리', exact: true })
-      .getByRole('button', { name: '닫기', exact: true })
-      .click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: '공유 카테고리 관리', exact: true })).toHaveCount(
+      0,
+    );
     await page.getByRole('button', { name: '내 할 일로' }).click();
     const linked = await openAudience(page, localName);
     await expect(linked.getByText(secondCategory, { exact: true })).toBeVisible();
