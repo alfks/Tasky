@@ -5,7 +5,10 @@ import { join } from 'node:path';
 
 import { defineConfig, devices } from '@playwright/test';
 
-const PORT = 3100;
+const SOCIAL_TESTS = process.env.TASKY_E2E_SOCIAL === '1';
+const PORT = SOCIAL_TESTS ? 3101 : 3100;
+const SOCIAL_RUN = process.env.TASKY_E2E_SOCIAL_RUN ?? 'local';
+const SOCIAL_SUBS = ['owner', 'peer', 'public'].map((role) => `e2e-social-${SOCIAL_RUN}-${role}`);
 
 /**
  * 이 환경에는 Chromium 이 이미 설치돼 있고(`PLAYWRIGHT_BROWSERS_PATH`), **`playwright install` 은 막혀 있다**
@@ -16,7 +19,8 @@ const PORT = 3100;
  */
 function installedChromium(): string | undefined {
   const root = process.env.PLAYWRIGHT_BROWSERS_PATH;
-  if (root === undefined || root === '' || !existsSync(root)) return undefined;
+  if (root === undefined || root === '' || !existsSync(root))
+    return existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined;
   const candidates = readdirSync(root)
     .filter((d) => d.startsWith('chromium'))
     // headless_shell 을 먼저 본다(헤드리스 기본 채널), 없으면 전체 chrome.
@@ -63,7 +67,7 @@ const config = defineConfig({
     command:
       `pnpm build && ` +
       `pnpm exec wrangler d1 migrations apply tasky --local --persist-to .wrangler/e2e && ` +
-      `pnpm start --port ${PORT} --var AUTH_STUB:1 --var SESSION_SECRET:e2e --persist-to .wrangler/e2e`,
+      `pnpm start --port ${PORT} --var AUTH_STUB:1 --var SESSION_SECRET:e2e ${SOCIAL_TESTS ? `--var SOCIAL_MODE:enabled --var SOCIAL_ALLOWLIST:'${JSON.stringify(SOCIAL_SUBS)}'` : ''} --persist-to .wrangler/e2e`,
     url: `http://127.0.0.1:${PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
