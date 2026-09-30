@@ -7,7 +7,7 @@
 // 배선만 하고 테스트가 없으면 다음 리팩터에서 조용히 사라지므로 여기서 호출 자체를 단언한다.
 //
 // infra 모듈을 통째로 모킹한다: 이 테스트의 관심은 Dexie 가 아니라 **조립 지점이 무엇을 부르는가** 다.
-// `providers.tsx` 는 모듈 스코프에서 주입을 시작하므로 매 테스트마다 모듈 레지스트리를 리셋한다.
+// 개인 provider 마운트 때 주입을 시작한다. 매 테스트마다 모듈 레지스트리를 리셋한다.
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -39,6 +39,7 @@ vi.mock('@/repositories/container', () => ({
   setRepositories: vi.fn(),
   setSyncTransport: vi.fn(),
   setSocialRepository: vi.fn(),
+  setPublicSocialRepository: vi.fn(),
   getRepositories: () => ({ sync: { getState: async () => ({ userSub: 'social-user' }) } }),
   getSyncTransport: () => ({ me: socialIdentity }),
 }));
@@ -170,5 +171,17 @@ describe('Providers 의 저장소 배선', () => {
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('사생활 보호 모드');
     expect(alert.textContent, '스키마 실패 문구가 잘못 떴다').not.toContain('백업 내보내기');
+  });
+});
+
+describe('익명 PublicProviders', () => {
+  it('공개 화면을 렌더해도 개인 DB/동기화/프로필 저장소를 시작하지 않는다', async () => {
+    vi.resetModules();
+    const { PublicProviders } = await import('@/app/providers');
+    render(<PublicProviders>공개 읽기</PublicProviders>);
+    expect(screen.getByText('공개 읽기')).toBeInTheDocument();
+    expect(createIndexedDbRepositories).not.toHaveBeenCalled();
+    expect(openIndexedDb).not.toHaveBeenCalled();
+    expect(createHttpSocialRepository).not.toHaveBeenCalled();
   });
 });
