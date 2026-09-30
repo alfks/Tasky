@@ -9,18 +9,10 @@ import {
   type FeedScope,
   type FeedTuple,
 } from './cursor';
+import { visiblePostView, type VisiblePostRow } from './visibility-sql';
 import { sql } from '../db/sql';
 
-export type FeedRow = {
-  id: string;
-  author: string;
-  text: string;
-  happened_on: string;
-  created_at: number;
-  nickname: string;
-  reactionCount: number;
-  myReaction: number;
-};
+export type FeedRow = VisiblePostRow;
 
 export type FeedSeek = { beforeCreatedAt: number; beforeId: string };
 
@@ -41,6 +33,7 @@ function prepareFeedRead(actor: SocialActor) {
       CASE WHEN pair.lo = me.id THEN pair.hi ELSE pair.lo END
     JOIN users pu ON pu.sub = peer.sub
     WHERE ?8 = 'feed'
+      AND (?9 IS NULL OR peer.sub IN (SELECT value FROM json_each(?9)))
       AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = pu.sub)
       AND NOT EXISTS (SELECT 1 FROM social_blocks b WHERE
         (b.blocker = me.id AND b.blocked = peer.id) OR
@@ -51,13 +44,22 @@ function prepareFeedRead(actor: SocialActor) {
     FROM eligible_authors a
     CROSS JOIN json_each((SELECT json_group_array(json_object('id',id,'createdAt',created_at))
       FROM (
-        SELECT p.id,p.created_at FROM social_posts p
-        WHERE p.author = a.id AND (p.created_at,p.id) < (?5,?6)
-        ORDER BY p.created_at DESC,p.id DESC LIMIT min(3,?7)
+        SELECT id,created_at FROM (
+          SELECT p.id,p.created_at FROM social_posts p
+          WHERE a.id = ?1 AND p.author = a.id AND (p.created_at,p.id) < (?5,?6)
+          UNION ALL
+          SELECT hint.id,hint.created_at FROM social_friend_posts hint
+          WHERE a.id <> ?1 AND hint.author = a.id AND (hint.created_at,hint.id) < (?5,?6)
+        ) ORDER BY created_at DESC,id DESC LIMIT min(3,?7)
       ))) j
   ), seed_top AS MATERIALIZED (
-    SELECT id,created_at FROM seed_rows
-    ORDER BY created_at DESC,id DESC LIMIT ?7
+    SELECT candidate.id,candidate.created_at FROM seed_rows candidate
+    JOIN social_posts allowed ON allowed.id = candidate.id
+    JOIN eligible_authors eligible ON eligible.id = allowed.author
+    LEFT JOIN social_categories category ON category.id = allowed.category_id AND category.owner = allowed.author
+    WHERE allowed.author = ?1 OR allowed.category_id IS NULL OR
+      (category.deleted_at IS NULL AND category.visibility IN ('friends','public'))
+    ORDER BY candidate.created_at DESC,candidate.id DESC LIMIT ?7
   ), bounds AS MATERIALIZED (
     SELECT CASE WHEN COUNT(*) = ?7
         THEN (SELECT created_at FROM seed_top ORDER BY created_at,id LIMIT 1)
@@ -72,24 +74,40 @@ function prepareFeedRead(actor: SocialActor) {
     FROM eligible_authors a CROSS JOIN bounds b
     CROSS JOIN json_each((SELECT json_group_array(json_object('id',id,'createdAt',created_at))
       FROM (
-        SELECT p.id,p.created_at FROM social_posts p
-        WHERE p.author = a.id
-          AND (p.created_at,p.id) >= (b.lo_created_at,b.lo_id)
-          AND (p.created_at,p.id) < (?5,?6)
-        ORDER BY p.created_at DESC,p.id DESC LIMIT ?7
+        SELECT id,created_at FROM (
+          SELECT p.id,p.created_at FROM social_posts p
+          WHERE a.id = ?1 AND p.author = a.id
+            AND (p.created_at,p.id) >= (b.lo_created_at,b.lo_id)
+            AND (p.created_at,p.id) < (?5,?6)
+          UNION ALL
+          SELECT hint.id,hint.created_at FROM social_friend_posts hint
+          WHERE a.id <> ?1 AND hint.author = a.id
+            AND (hint.created_at,hint.id) >= (b.lo_created_at,b.lo_id)
+            AND (hint.created_at,hint.id) < (?5,?6)
+        ) ORDER BY created_at DESC,id DESC LIMIT ?7
       ))) j
   ), page_ids AS (
     SELECT c.id,c.created_at FROM candidate_rows c
+    JOIN social_posts allowed ON allowed.id = c.id
+    JOIN eligible_authors eligible ON eligible.id = allowed.author
+    LEFT JOIN social_categories category ON category.id = allowed.category_id AND category.owner = allowed.author
+    WHERE allowed.author = ?1 OR allowed.category_id IS NULL OR
+      (category.deleted_at IS NULL AND category.visibility IN ('friends','public'))
     ORDER BY c.created_at DESC,c.id DESC LIMIT ?7
   )
   SELECT post.id,post.author,post.text,post.happened_on,post.created_at,
-    author.nickname,
+    author.nickname,cat.id AS category_id,cat.name AS category_name,cat.color AS category_color,
+    cat.emoji AS category_emoji,cat.visibility AS category_visibility,cat.version AS category_version,
+    cat.updated_at AS category_updated_at,
     (SELECT COUNT(*) FROM social_reactions r
       JOIN social_profiles reactor ON reactor.id = r.reactor
       JOIN users ru ON ru.sub = reactor.sub
-      JOIN social_pairs pair ON pair.lo = MIN(post.author,reactor.id)
+      LEFT JOIN social_pairs pair ON pair.lo = MIN(post.author,reactor.id)
         AND pair.hi = MAX(post.author,reactor.id) AND pair.state = 'accepted'
-      WHERE r.post_id = post.id
+      WHERE r.post_id = post.id AND reactor.id <> post.author
+        AND ((cat.owner = post.author AND cat.deleted_at IS NULL AND cat.visibility = 'public')
+          OR ((post.category_id IS NULL OR (cat.owner = post.author AND cat.deleted_at IS NULL AND cat.visibility = 'friends'))
+            AND pair.state = 'accepted'))
         AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = ru.sub)
         AND NOT EXISTS (SELECT 1 FROM social_blocks b WHERE
           (b.blocker = post.author AND b.blocked = reactor.id) OR
@@ -98,7 +116,11 @@ function prepareFeedRead(actor: SocialActor) {
       WHERE mine.post_id = post.id AND mine.reactor = ?1) AS myReaction
   FROM page_ids page
   JOIN social_posts post ON post.id = page.id
+  JOIN eligible_authors eligible ON eligible.id = post.author
   JOIN social_profiles author ON author.id = post.author
+  LEFT JOIN social_categories cat ON cat.id = post.category_id AND cat.owner = post.author
+  WHERE post.author = ?1 OR post.category_id IS NULL OR
+    (cat.owner = post.author AND cat.deleted_at IS NULL AND cat.visibility IN ('friends','public'))
   ORDER BY post.created_at DESC,post.id DESC`);
 }
 
@@ -119,6 +141,7 @@ export async function queryFeedRows(
       seek.beforeId,
       pageSize + 1,
       scope,
+      actor.policySubs === undefined ? null : JSON.stringify(actor.policySubs),
     )
     .all<FeedRow>();
   return result;
@@ -161,18 +184,6 @@ function rowTuple(row: FeedRow): FeedTuple {
   return { createdAt: row.created_at, id: row.id };
 }
 
-function postView(row: FeedRow): PostView {
-  return {
-    id: row.id,
-    author: { id: row.author, nickname: row.nickname },
-    text: row.text,
-    happenedOn: row.happened_on,
-    createdAt: row.created_at,
-    reactionCount: row.reactionCount,
-    myReaction: row.myReaction === 1,
-  };
-}
-
 /** Cursor validation precedes the body SQL, which repeats A/F/V in one snapshot. */
 export async function readFeedPage(
   actor: SocialActor,
@@ -209,5 +220,5 @@ export async function readFeedPage(
           cursor?.expiresAt,
         )
       : null;
-  return { ok: true, value: { items: items.map(postView), nextCursor } };
+  return { ok: true, value: { items: items.map(visiblePostView), nextCursor } };
 }

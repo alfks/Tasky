@@ -229,6 +229,7 @@ describe('feed indexed candidate query', () => {
           bounds.beforeId,
           51,
           'feed',
+          null,
         )
         .all<{ detail: string }>();
       expect(

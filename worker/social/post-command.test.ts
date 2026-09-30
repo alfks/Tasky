@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { createSocialActor } from './actor';
+import { saveCategory } from './category-command';
 import { createPost } from './post-command';
+import { deletePost } from './post-delete';
 import { createD1Fixture } from '../test/d1-harness';
 
 const NOW = 1_800_000_000_000;
@@ -150,6 +152,85 @@ describe('post creation transaction', () => {
         .first<{ n: number }>();
       expect(receipt?.n).toBe(0);
       expect(daily?.n).toBe(0);
+    } finally {
+      await fx.dispose();
+    }
+  }, 15_000);
+});
+
+describe('public membership transaction', () => {
+  it('public post RETURNING은 trigger 영향을 구분하고 hint 실패는 사본과 receipt를 롤백한다', async () => {
+    const fx = await createD1Fixture();
+    try {
+      await seed(fx.db);
+      const actor = await createSocialActor(
+        fx.db,
+        { ok: true, sub: 'actor', sid: 'sid', expiresAt: EXPIRY },
+        NOW,
+      );
+      const cat = await saveCategory(actor, KEY, {
+        name: '공부',
+        color: '#7CC6FF',
+        expectedVersion: 0,
+        visibility: 'public',
+      });
+      if (!cat.ok) throw new Error('category failed');
+      const dto = {
+        text: '공개',
+        happenedOn: '2026-09-28',
+        categoryId: cat.value.id,
+        categoryVersion: 1,
+      };
+      const second = `v1.${NOW}.${'2'.repeat(32)}`;
+      const post = await createPost(actor, second, dto);
+      expect(post.ok).toBe(true);
+      if (!post.ok) throw new Error('post failed');
+      expect(post.value.didApply).toBe(true);
+      expect(await createPost(actor, second, dto)).toEqual({
+        ok: true,
+        value: { id: post.value.id, didApply: false },
+      });
+      expect(
+        (
+          await fx.db
+            .prepare('SELECT COUNT(*) AS n FROM social_public_posts')
+            .first<{ n: number }>()
+        )?.n,
+      ).toBe(1);
+      await deletePost(actor, `v1.${NOW}.${'3'.repeat(32)}`, { id: post.value.id });
+      expect(
+        (
+          await fx.db
+            .prepare('SELECT COUNT(*) AS n FROM social_public_posts')
+            .first<{ n: number }>()
+        )?.n,
+      ).toBe(0);
+      await fx.db
+        .prepare(
+          'CREATE TRIGGER skip_hint BEFORE INSERT ON social_public_posts BEGIN SELECT RAISE(IGNORE); END',
+        )
+        .run();
+      const failedKey = `v1.${NOW}.${'4'.repeat(32)}`;
+      await expect(createPost(actor, failedKey, dto)).rejects.toThrow();
+      expect(
+        (await fx.db.prepare('SELECT COUNT(*) AS n FROM social_posts').first<{ n: number }>())?.n,
+      ).toBe(0);
+      expect(
+        (
+          await fx.db
+            .prepare('SELECT COUNT(*) AS n FROM social_commands WHERE key = ?')
+            .bind(failedKey)
+            .first<{ n: number }>()
+        )?.n,
+      ).toBe(0);
+      expect(
+        (
+          await fx.db
+            .prepare("SELECT count FROM social_limits WHERE subject = ? AND bucket = 'post-create'")
+            .bind(`p:${PROFILE}`)
+            .first<{ count: number }>()
+        )?.count,
+      ).toBe(1);
     } finally {
       await fx.dispose();
     }
