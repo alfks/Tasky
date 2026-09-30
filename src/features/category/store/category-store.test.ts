@@ -415,3 +415,43 @@ describe('T-12b 이음새', () => {
     ]);
   });
 });
+
+describe('서버 확인 후 지연된 로컬 캐시', () => {
+  it('캐시 모듈을 기다리는 사이 계정이 바뀌면 기존 개인 카테고리를 쓰지 않는다', async () => {
+    await seedThree();
+    const original = find('공부');
+    let sameAccount = true;
+    const pending = state().confirmAudience(
+      original.id,
+      { id: 'a'.repeat(32), visibility: 'public', version: 1 },
+      () => sameAccount,
+    );
+    sameAccount = false;
+    expect(await pending).toBe(false);
+    expect(state().byId[original.id]).toEqual(original);
+    expect(await getRepositories().categories.getById(original.id)).toEqual(original);
+  });
+  it('원격 응답 뒤 로컬 연결이 바뀌면 queued guard가 새 연결을 보존한다', async () => {
+    await seedThree();
+    const original = find('공부');
+    const newer = {
+      ...original,
+      socialCategoryId: 'b'.repeat(32),
+      socialCategoryVersion: 3,
+      name: '새 이름',
+    };
+    const pending = state().confirmAudience(
+      original.id,
+      { id: 'a'.repeat(32), visibility: 'public', version: 1 },
+      () => {
+        const latest = state().byId[original.id];
+        return (
+          latest.socialCategoryId === original.socialCategoryId && latest.name === original.name
+        );
+      },
+    );
+    store.setState({ byId: { ...state().byId, [original.id]: newer } });
+    expect(await pending).toBe(false);
+    expect(state().byId[original.id]).toEqual(newer);
+  });
+});

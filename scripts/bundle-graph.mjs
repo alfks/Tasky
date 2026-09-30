@@ -8,6 +8,7 @@ export const OPTIONAL_SOURCE_ROOTS = [
   'src/features/category/components/CategoryAudienceController.tsx',
   'src/infra/social/http-repository.ts',
   'src/infra/social/public-repository.ts',
+  'src/domain/category/visibility-cache.ts',
 ];
 
 export function chunkGraph(bundle) {
