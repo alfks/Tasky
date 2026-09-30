@@ -188,9 +188,8 @@ async function offModeAndRestore(ctx: Context, p1: string, p2: string): Promise<
   expect(await reactionRows(ctx)).toEqual(beforeOffReactions);
   await expect(b.repo.feed()).rejects.toMatchObject({ code: 'social-disabled', retryAfter: 60 });
   expect(b.seen.at(-1)).toMatchObject({ status: 503, retryAfter: '60', envelopeOk: true });
-  await expect(b.repo.validatePosts({ ids: [p1] })).rejects.toMatchObject({
-    code: 'social-disabled',
-  });
+  expect((await b.repo.validatePosts({ ids: [p1] })).data.allowedIds).toEqual([]);
+  expect((await a.repo.validatePosts({ ids: [p1, p2] })).data.allowedIds).toEqual([p1, p2]);
   expect(
     (await b.repo.setReaction({ postId: p1, active: false }, { key: key(207) })).data.active,
   ).toBe(false);
