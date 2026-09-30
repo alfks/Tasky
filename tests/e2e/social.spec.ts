@@ -203,7 +203,13 @@ test.describe('공유 복구와 키보드', () => {
     });
     await context.setOffline(true);
     await expect(dialog.getByRole('button', { name: '완료 여부 확인' })).toBeVisible();
-    await expect(draft).toBeDisabled();
+    await expect(draft).toHaveCount(0);
+    await expect(dialog.getByRole('region', { name: '공유 미리보기' })).toHaveCount(0);
+    await expect(dialog.getByText('이전 요청의 계정을 확인하고 있어요.')).toBeVisible();
+    await expect(dialog.getByLabel('기록 날짜')).toBeDisabled();
+    for (const radio of await dialog.getByRole('radio').all()) await expect(radio).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: '완료 여부 확인' })).toBeDisabled();
+    expect(sent).toHaveLength(1);
     expect(Object.keys(sent[0].body as Record<string, unknown>).sort()).toEqual([
       'categoryId',
       'categoryVersion',
@@ -213,6 +219,8 @@ test.describe('공유 복구와 키보드', () => {
     releaseFirst();
     await context.setOffline(false);
     await expect(dialog.getByRole('button', { name: '완료 여부 확인' })).toBeEnabled();
+    await expect(draft).toHaveValue(text);
+    await expect(draft).toBeDisabled();
     await page.keyboard.press('Escape');
     await page
       .getByRole('alertdialog', { name: '완료 여부를 나중에 확인할까요?' })
