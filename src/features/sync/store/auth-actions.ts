@@ -146,6 +146,8 @@ export async function performLogout(
   const exported = await exportBackup();
   if (!exported) return false;
   await wipeLocalAndMirrors(rt);
+  // 승인된 로컬 정리 뒤에만 제출 중인 공유 명령도 로그아웃 경계를 알린다.
+  window.dispatchEvent(new Event('tasky-social-logout'));
   try {
     await getSyncTransport().logout();
   } catch {

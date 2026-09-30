@@ -328,9 +328,33 @@ describe('auth-actions: deferUpload·resumeIfDeferred(R7 보류 — 리뷰 Major
 describe('auth-actions: 로그아웃·계정 삭제 — 내보내기 실패면 아무것도 안 한다', () => {
   it('performLogout 은 exportBackup 이 false 면 false 를 돌려주고 phase 를 안 바꾼다', async () => {
     const { rt, state } = fakeRuntime();
+    const signal = vi.fn();
+    window.addEventListener('tasky-social-logout', signal);
     const ok = await performLogout(rt, async () => false);
+    window.removeEventListener('tasky-social-logout', signal);
+    expect(signal).not.toHaveBeenCalled();
     expect(ok).toBe(false);
     expect(state.phase).toBeUndefined();
+  });
+
+  it('승인된 로컬 정리 뒤 서버 응답보다 먼저 명시적 로그아웃을 알린다', async () => {
+    const category = createCategory({ name: '공부', color: '#CFEB8F', existing: [] }, deps);
+    await getRepositories().categories.upsert(category);
+    const observed: Promise<unknown>[] = [];
+    const signal = () => observed.push(getRepositories().categories.getById(category.id));
+    window.addEventListener('tasky-social-logout', signal);
+    const base = createMemorySyncTransport(createMemorySyncServer(), null);
+    const logout = vi.fn(async () => {
+      expect(observed).toHaveLength(1);
+      expect(await observed[0]).toBeUndefined();
+    });
+    setSyncTransport({ ...base, logout });
+    try {
+      expect(await performLogout(fakeRuntime().rt, async () => true)).toBe(true);
+      expect(logout).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener('tasky-social-logout', signal);
+    }
   });
 
   it('performDeleteAccount 는 exportBackup 이 false 면 false', async () => {

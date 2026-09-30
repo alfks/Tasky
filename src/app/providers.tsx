@@ -172,8 +172,11 @@ function SocialSessionBridge() {
     });
     document.addEventListener('visibilitychange', visibility);
     window.addEventListener('focus', focus);
+    const logout = () => invalidateSocialSession('account');
+    window.addEventListener('tasky-social-logout', logout);
     return () => {
       window.removeEventListener('focus', focus);
+      window.removeEventListener('tasky-social-logout', logout);
       document.removeEventListener('visibilitychange', visibility);
       stopSync();
       stopBroadcast();
