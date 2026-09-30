@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { canReadCategory, canReactToCategory } from '@/domain/social/category-access';
 import { VISIBILITY_READ_VECTORS } from '@/domain/social/visibility-vectors';
 

@@ -14,9 +14,8 @@ import { canonicalCommandRequest } from '@/domain/social/idempotency';
 import { parsePostInput, type Validation } from '@/domain/social/input';
 import type { InviteCreated, SocialMode } from '@/domain/social/social';
 
-import { sha256 } from '@/repositories/memory/social/hash';
 import { categoryMethods } from '@/repositories/memory/social/categories';
-import { createMemoryPublicRepository } from '@/repositories/memory/social/public';
+import { sha256 } from '@/repositories/memory/social/hash';
 import {
   createInvite,
   listInvites,
@@ -42,6 +41,7 @@ import {
   setReaction,
   validate,
 } from '@/repositories/memory/social/posts';
+import { createMemoryPublicRepository } from '@/repositories/memory/social/public';
 import { blocks, friends, requests, transition } from '@/repositories/memory/social/relations';
 import type { PublicSocialRepository, SocialRepository } from '@/repositories/social-repository';
 
