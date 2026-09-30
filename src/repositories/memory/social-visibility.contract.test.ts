@@ -219,4 +219,50 @@ describe('공통 공개범위 벡터(memory 포트)', () => {
     expect((await owner.myPosts()).data.items.map((post) => post.id)).toEqual([mine.id]);
     await expect(server.publicForActor().feed()).rejects.toMatchObject({ code: 'social-disabled' });
   });
+  it('R8 off에서 성공 receipt는 최신 canonical을 읽고 private 동일 metadata 재저장은 허용한다', async () => {
+    const { server, owner } = await setup();
+    const category = (await owner.saveCategory(INPUT, commandKey(1))).data;
+    const privateInput = {
+      ...INPUT,
+      id: category.id,
+      expectedVersion: category.version,
+      visibility: 'private' as const,
+    };
+    const narrowed = (await owner.saveCategory(privateInput, commandKey(2))).data;
+    server.state.mode = 'off';
+    expect((await owner.saveCategory(INPUT, commandKey(1))).data).toMatchObject({
+      visibility: 'private',
+      version: narrowed.version,
+    });
+    await expect(
+      owner.saveCategory({ ...privateInput, expectedVersion: narrowed.version }, commandKey(3)),
+    ).resolves.toMatchObject({ data: { visibility: 'private' } });
+  });
+  it('R12 신규 응원 취소는 현재 권한을 확인하고 과거 성공 취소 receipt는 replay한다', async () => {
+    const { owner, peer } = await setup();
+    const category = (await owner.saveCategory(INPUT, commandKey(1))).data;
+    const post = (
+      await owner.createPost(
+        {
+          text: '완료',
+          happenedOn: '2026-09-30',
+          categoryId: category.id,
+          categoryVersion: category.version,
+        },
+        commandKey(2),
+      )
+    ).data;
+    await peer.setReaction({ postId: post.id, active: true }, commandKey(3));
+    await peer.setReaction({ postId: post.id, active: false }, commandKey(4));
+    await owner.saveCategory(
+      { ...INPUT, id: category.id, expectedVersion: category.version, visibility: 'private' },
+      commandKey(5),
+    );
+    await expect(
+      peer.setReaction({ postId: post.id, active: false }, commandKey(6)),
+    ).rejects.toMatchObject({ code: 'unavailable' });
+    await expect(
+      peer.setReaction({ postId: post.id, active: false }, commandKey(4)),
+    ).resolves.toMatchObject({ data: { active: false } });
+  });
 });

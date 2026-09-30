@@ -245,7 +245,7 @@ function createMemorySocialRepository(state: MemorySocialState, sub: string): So
     },
     setReaction: async (input, { key }) => {
       const parsed = valid(state, parseReactionInput(input));
-      return command(
+      const result = await command(
         state,
         sub,
         key,
@@ -256,6 +256,9 @@ function createMemorySocialRepository(state: MemorySocialState, sub: string): So
         },
         { gate: parsed.active ? 'write' : 'revoke' },
       );
+      if (parsed.active && !validate(state, sub, [parsed.postId]).includes(parsed.postId))
+        return fail('unavailable', state.now());
+      return result;
     },
   };
 }

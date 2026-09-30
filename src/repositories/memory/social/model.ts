@@ -140,9 +140,6 @@ export async function command<T>(
   options: { receiptData?: (data: T) => T | Promise<T>; gate?: 'write' | 'revoke' } = {},
 ): Promise<SocialResponse<T>> {
   const current = actor(state, sub);
-  if (options.gate !== 'revoke' && state.mode !== 'enabled') {
-    return fail('social-disabled', state.now());
-  }
   const receiptKey = `${current.id}:${key}`;
   const pending = state.pendingCommands.get(receiptKey);
   if (pending !== undefined) {
@@ -157,6 +154,9 @@ export async function command<T>(
       return fail(receipt?.command.resultCode ?? 'temporary', state.now());
     }
     return answer(state, receipt.data as T);
+  }
+  if (options.gate !== 'revoke' && state.mode !== 'enabled') {
+    return fail('social-disabled', state.now());
   }
   const record = (resultCode: 'ok' | SocialErrorCode, data: unknown): void => {
     state.receipts.set(receiptKey, {
