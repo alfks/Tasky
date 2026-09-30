@@ -219,6 +219,8 @@ type FocusSession = Meta & {
 
 `shell`이 category 공개 확인과 완료 항목 선택을 조립한다. category/social feature 간 직접 import 없이 값과 handler를 주입하며, 원본 id·메모는 social DTO에 넣지 않는다. 공개 변경 확인 뒤 개인 binding을 기록할 때에도 현재 계정·원래 binding/metadata를 다시 검사한다. 소셜 API·화면은 ADR-0025의 온라인 선택 그래프로 분리하고 기존 개인 preload/offline 자산을 유지한다. 테스트는 개인 memory와 별도 social fake를 주입한다. infra import 허용 지점은 §1의 기존 제한을 유지한다.
 
+소셜 명령의 미확정 결과는 선택 그래프 안의 `social-command-intents.ts`가 탭 메모리에 보관한다. 원래 요청·키를 유지하는 최대 64개 항목은 화면 해제로 삭제하지 않으며, `social-command-observer.ts`의 15초 관측 기한은 서버 취소를 뜻하지 않는다. `SocialPendingCommands`는 원래 카드나 가입 화면이 사라져도 명시적인 결과 확인을 제공한다. 표시에는 현재 계정의 읽기 증명을 공유하고, 명령 재시도는 별도의 최신 계정 검증을 거친다. 개인 초기 진입이나 익명 공개 화면은 이 복구 경로를 시작하지 않는다.
+
 ## 7. 관련 ADR
 
 - [ADR-0001](./decisions/ADR-0001-nextjs-app-router.md) Next.js App Router + PWA (빌드·PWA 통합 지점은 ADR-0010 → ADR-0013이 보정, App Router 부분은 폐기)
