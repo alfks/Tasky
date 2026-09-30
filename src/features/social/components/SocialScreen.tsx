@@ -64,7 +64,7 @@ export function SocialScreen({
     };
     window.addEventListener('tasky-social-invite', receiveInvite);
     const stop = onSocialInvalidation((reason) => {
-      if (['auth', 'account', 'closed', 'revoked', 'provider', 'cross-tab'].includes(reason)) {
+      if (reason === 'account') {
         setSharing(false);
         setInvite(false);
         setNotice('');

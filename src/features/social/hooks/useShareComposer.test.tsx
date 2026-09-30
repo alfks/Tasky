@@ -6,7 +6,10 @@ import type { SocialCategoryView } from '@/domain/social/social';
 import { useShareComposer } from '@/features/social/hooks/useShareComposer';
 
 const { repository, invalidations, readiness } = vi.hoisted(() => ({
-  repository: { createPost: vi.fn() },
+  repository: {
+    createPost: vi.fn(),
+    me: vi.fn(async () => ({ data: { profile: { id: 'actor' } }, serverTime: 1 })),
+  },
   invalidations: new Set<(reason: string) => void>(),
   readiness: new Set<() => void>(),
 }));
@@ -33,7 +36,7 @@ const category: SocialCategoryView = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
-  invalidations.clear();
+  for (const listener of invalidations) listener('account');
   readiness.clear();
 });
 it('409는 문장을 보존하고 최신 공개 범위를 읽은 뒤 새 명시 클릭을 기다린다', async () => {
