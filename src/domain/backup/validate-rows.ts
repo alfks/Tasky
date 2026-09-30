@@ -115,6 +115,7 @@ const SETTINGS_KEYS = whitelist<Settings>()([
   'profileName',
   'profileBio',
   'profileAvatar',
+  'profileVersion',
 ]);
 
 /**
@@ -305,6 +306,7 @@ export function readSettings(value: unknown, path: string): Settings {
   optionalInstant(row, 'seededAt', path);
   optionalInstant(row, 'lastBackupAt', path);
   dropInvalidProfileFields(row);
+  if (row['profileVersion'] !== 1) delete row['profileVersion'];
   return entity;
 }
 

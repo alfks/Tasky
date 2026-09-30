@@ -23,6 +23,8 @@ export type PushInput = {
   updatedAt: string;
   deleted: boolean;
   bodyJson: string;
+  /** ADR-0026: 구버전 설정 쓰기의 누락된 프로필을 원자적으로 보존한다. */
+  preserveProfile?: boolean;
 };
 
 export type ApplyOutcome =
@@ -37,7 +39,15 @@ const UPDATE_SQL = sql`INSERT INTO entities (sub, tbl, id, seq, deleted, device_
   VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(seq),0)+1 FROM entities WHERE sub = ?1), ?4, ?5, ?6, ?7)
   ON CONFLICT(sub,tbl,id) DO UPDATE SET
     seq = excluded.seq, deleted = excluded.deleted, device_id = excluded.device_id,
-    updated_at = excluded.updated_at, body = excluded.body
+    updated_at = excluded.updated_at,
+    body = CASE WHEN ?8 = 1 AND excluded.tbl = 'settings'
+      AND excluded.deleted = 0 AND entities.deleted = 0 THEN
+      json_patch(excluded.body, json_object(
+        'profileName', COALESCE(json_extract(excluded.body, '$.profileName'), json_extract(entities.body, '$.profileName')),
+        'profileBio', COALESCE(json_extract(excluded.body, '$.profileBio'), json_extract(entities.body, '$.profileBio')),
+        'profileAvatar', COALESCE(json_extract(excluded.body, '$.profileAvatar'), json_extract(entities.body, '$.profileAvatar')),
+        'profileVersion', COALESCE(json_extract(excluded.body, '$.profileVersion'), json_extract(entities.body, '$.profileVersion'))
+      )) ELSE excluded.body END
   WHERE entities.updated_at <= excluded.updated_at
   RETURNING seq`;
 
@@ -86,6 +96,7 @@ export async function pushOne(
       deviceId,
       storedUpdatedAt,
       input.bodyJson,
+      ...(isCreateAttempt ? [] : [input.preserveProfile ? 1 : 0]),
     )
     .run<{ seq: number }>();
   const applied = result.results[0];
@@ -104,12 +115,14 @@ export async function pull(
   cursor: number,
   deviceId: string,
   limit: number,
+  includeOwnSettings = false,
 ): Promise<PulledRow[]> {
   const rows = await db
     .prepare(
-      sql`SELECT tbl, id, seq, body FROM entities WHERE sub = ? AND seq > ? AND device_id <> ? ORDER BY seq LIMIT ?`,
+      sql`SELECT tbl, id, seq, body FROM entities WHERE sub = ?
+        AND ((seq > ? AND device_id <> ?) OR (? = 1 AND tbl = 'settings')) ORDER BY seq LIMIT ?`,
     )
-    .bind(sub, cursor, deviceId, limit)
+    .bind(sub, cursor, deviceId, includeOwnSettings ? 1 : 0, limit)
     .all<PulledRow>();
   return rows.results;
 }

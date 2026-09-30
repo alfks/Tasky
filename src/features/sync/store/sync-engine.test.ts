@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createCategory, updateCategory } from '@/domain/category/category.rules';
 import type { SyncRequest, SyncResponse } from '@/domain/sync/wire';
+import { setThemeMode } from '@/domain/theme/settings.rules';
 
 import { getRepositories, setRepositories, setSyncTransport } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
@@ -11,6 +12,8 @@ import type { SessionInfo, SyncTransport } from '@/repositories/sync-transport';
 
 import { resetEngineForTest, startEngine } from '@/features/sync/store/sync-engine';
 import type { SyncRuntime, SyncStoreState } from '@/features/sync/store/sync-store';
+import { fixedDeps } from '@/test/fixtures/deps';
+import { makeSettings } from '@/test/fixtures/settings';
 
 /** 응답을 미리 준 순서대로 돌려주는 트랜스포트 — 엔진의 사이클·재실행 로직만 겨냥한다. */
 function fakeTransport(
@@ -70,6 +73,91 @@ describe('sync-engine: 프로필 재조회 회복', () => {
   afterEach(() => {
     resetEngineForTest();
     vi.useRealTimers();
+  });
+
+  it('업데이트 후 자기 설정을 끝 페이지까지 다시 받아 프로필을 회복하고 다음부터 일반 풀을 한다', async () => {
+    const settings = makeSettings({ profileName: '밀리', profileVersion: 1 });
+    const response = { cursor: 100, applied: [], rejected: [], gcFloor: 0 };
+    const { transport, calls } = fakeTransport(
+      [
+        {
+          ...response,
+          pulled: [{ tbl: 'settings', id: 'default', seq: 1, row: settings }],
+          more: true,
+        },
+        { ...response, pulled: [], more: false },
+      ],
+      { sub: 'profile-sync', email: 'a@example.com', expiresAt: '' },
+    );
+    setSyncTransport(transport);
+    const repo = getRepositories();
+    await repo.sync.setState({ deviceId: 'd1', userSub: 'profile-sync', cursor: 100 });
+    const { rt } = fakeRuntime();
+    startEngine(rt);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls.map((request) => request.includeOwnSettings)).toEqual([true, true]);
+    expect(await repo.settings.get()).toMatchObject({ profileName: '밀리', profileVersion: 1 });
+    expect(await repo.sync.getState()).toMatchObject({ settingsProfileVersion: 1, cursor: 100 });
+
+    window.dispatchEvent(new Event('focus'));
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(calls[2]?.includeOwnSettings).toBe(false);
+  });
+
+  it('첫 복구 중 대기 중인 설정 편집이 있으면 완료하지 않고 ack 뒤 프로필을 다시 받는다', async () => {
+    const repo = getRepositories();
+    const local = setThemeMode(makeSettings(), 'dark', fixedDeps());
+    const edited = setThemeMode(local, 'light', fixedDeps());
+    const remote = makeSettings({ ...local, profileName: '밀리', profileVersion: 1 });
+    await repo.settings.upsert(local);
+    await repo.sync.setState({ deviceId: 'd1', userSub: 'profile-sync', cursor: 100 });
+    await repo.sync.enqueueAll();
+    const response = {
+      cursor: 100,
+      applied: [{ tbl: 'settings' as const, id: 'default', seq: 2 }],
+      rejected: [],
+      pulled: [{ tbl: 'settings' as const, id: 'default', seq: 2, row: remote }],
+      more: false,
+      gcFloor: 0,
+    };
+    const { transport, calls } = fakeTransport(
+      [
+        response,
+        {
+          ...response,
+          applied: [{ tbl: 'settings', id: 'default', seq: 3 }],
+          pulled: [
+            {
+              tbl: 'settings',
+              id: 'default',
+              seq: 3,
+              row: makeSettings({ ...edited, profileName: '밀리', profileVersion: 1 }),
+            },
+          ],
+        },
+      ],
+      { sub: 'profile-sync', email: 'a@example.com', expiresAt: '' },
+    );
+    const sync = transport.sync;
+    transport.sync = async (request) => {
+      const result = await sync(request);
+      // 푸시한 rev 2가 응답되기 전에 테마를 다시 고쳐 rev 3이 대기열에 남는다.
+      if (calls.length === 1) await repo.settings.upsert(edited);
+      return result;
+    };
+    setSyncTransport(transport);
+    const { rt } = fakeRuntime();
+    startEngine(rt);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await repo.settings.get()).toEqual(edited);
+    expect((await repo.sync.getState())?.settingsProfileVersion).toBeUndefined();
+
+    window.dispatchEvent(new Event('focus'));
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(calls.map((request) => request.includeOwnSettings)).toEqual([true, true]);
+    expect(await repo.sync.countOutbox()).toBe(0);
+    expect(await repo.settings.get()).toMatchObject({ profileName: '밀리', theme: 'light' });
+    expect((await repo.sync.getState())?.settingsProfileVersion).toBe(1);
   });
 
   it('첫 재조회가 실패해도 다음 정상 왕복에서 다시 읽는다', async () => {

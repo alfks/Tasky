@@ -16,7 +16,12 @@ import {
 
 export type UserDb = {
   push(deviceId: string, input: PushInput, receivedAt: string): Promise<ApplyOutcome>;
-  pull(cursor: number, deviceId: string, limit: number): Promise<PulledRow[]>;
+  pull(
+    cursor: number,
+    deviceId: string,
+    limit: number,
+    includeOwnSettings?: boolean,
+  ): Promise<PulledRow[]>;
   touchDevice(deviceId: string, now: string): Promise<void>;
   setDeviceLastSeq(deviceId: string, lastSeq: number): Promise<void>;
   gcFloor(): Promise<number>;
@@ -26,7 +31,8 @@ export type UserDb = {
 export function forUser(db: D1Database, sub: string): UserDb {
   return {
     push: (deviceId, input, receivedAt) => pushOne(db, sub, deviceId, input, receivedAt),
-    pull: (cursor, deviceId, limit) => pull(db, sub, cursor, deviceId, limit),
+    pull: (cursor, deviceId, limit, includeOwnSettings) =>
+      pull(db, sub, cursor, deviceId, limit, includeOwnSettings),
     touchDevice: (deviceId, now) => touchDevice(db, sub, deviceId, now),
     setDeviceLastSeq: (deviceId, lastSeq) => setDeviceLastSeq(db, sub, deviceId, lastSeq),
     gcFloor: () => gcFloor(db, sub),

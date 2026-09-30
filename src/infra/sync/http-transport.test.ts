@@ -102,6 +102,13 @@ describe('createHttpSyncTransport', () => {
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({ 'X-Tasky': '1', 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          protocol: 1,
+          deviceId: 'd',
+          cursor: 0,
+          changes: [],
+          settingsProfileVersion: 1,
+        }),
       }),
     );
   });

@@ -222,12 +222,14 @@ async function pushAndPull(repo: SyncRepository, state: SyncState): Promise<bool
   if (toDropPhysical.length > 0) await repo.dropOutbox(toDropPhysical);
 
   let response;
+  const includeOwnSettings = state.settingsProfileVersion !== 1;
   try {
     response = await getSyncTransport().sync({
       protocol: 1,
       deviceId: state.deviceId,
       cursor: state.cursor,
       changes,
+      includeOwnSettings,
     });
   } catch (error) {
     if (isTransportError(error) && error.kind === 'unauthorized') stopPolling();
@@ -239,6 +241,11 @@ async function pushAndPull(repo: SyncRepository, state: SyncState): Promise<bool
   }
   await ackApplied(repo, entries, response.applied);
   await applyResponse(repo, state, response);
+  // 대기 중인 설정 편집이 있으면 applyRemote가 서버 프로필을 보류한다. ack 뒤 다시 받아야 한다.
+  if (includeOwnSettings && !response.more && (await repo.countOutbox()) === 0) {
+    const latest = (await repo.getState()) ?? state;
+    await repo.setState({ ...latest, settingsProfileVersion: 1 });
+  }
   return response.more;
 }
 

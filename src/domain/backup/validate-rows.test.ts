@@ -283,4 +283,12 @@ describe('readSettings — 프로필 세 필드 (profile.md R8 · ADR-0023 규�
     expect('profileBio' in restored).toBe(false);
     expect('profileAvatar' in restored).toBe(false);
   });
+  it('프로필 삭제 표식은 숫자 1만 보존하며 구버전 행에는 추가하지 않는다 (ADR-0026)', () => {
+    expect(readSettings(makeSettings({ profileVersion: 1 }), 'settings').profileVersion).toBe(1);
+    for (const profileVersion of [undefined, null, 0, 2, '1']) {
+      expect(
+        readSettings({ ...makeSettings(), profileVersion }, 'settings').profileVersion,
+      ).toBeUndefined();
+    }
+  });
 });
