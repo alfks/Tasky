@@ -120,7 +120,7 @@ async function saveCategory(
     key,
     await sha256(canonicalCommandRequest('POST', '/api/social/categories', 1, dto)),
     () => writeCategory(state, sub, dto),
-    { gate: isPrivacyOnly(state, dto) ? 'revoke' : 'write' },
+    { gate: isPrivacyOnly(state, dto) ? 'revoke' : 'write', replayInDisabled: true },
   );
   const self = actor(state, sub);
   return answer(state, categoryView(state, result.data.id, self.id));

@@ -137,9 +137,15 @@ export async function command<T>(
   key: string,
   signature: string,
   work: () => T | Promise<T>,
-  options: { receiptData?: (data: T) => T | Promise<T>; gate?: 'write' | 'revoke' } = {},
+  options: {
+    receiptData?: (data: T) => T | Promise<T>;
+    gate?: 'write' | 'revoke';
+    replayInDisabled?: boolean;
+  } = {},
 ): Promise<SocialResponse<T>> {
   const current = actor(state, sub);
+  if (!options.replayInDisabled && options.gate !== 'revoke' && state.mode !== 'enabled')
+    return fail('social-disabled', state.now());
   const receiptKey = `${current.id}:${key}`;
   const pending = state.pendingCommands.get(receiptKey);
   if (pending !== undefined) {
