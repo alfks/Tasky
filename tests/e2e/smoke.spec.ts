@@ -5,9 +5,15 @@
 //
 // 셀렉터는 전부 **역할(role) + 접근 이름**이다. 클래스·색·DOM 구조에 걸면 면·토큰·레이아웃을
 // 바꾸는 다른 티켓이 이 테스트를 부수고, 반대로 **화면이 깨져도 통과하는** 느슨한 단언이 된다.
-import { expect, test } from './fixtures/stub-login';
-import { closeSidebarDrawer, createCategoryInDialog, openSidebarDrawer } from './sidebar';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 
+import { expect, randomAccount, stubLogin, test } from './fixtures/stub-login';
+import { closeSidebarDrawer, createCategoryInDialog, openSidebarDrawer } from './sidebar';
+import { openSocial } from './social';
+import { classifyGraph, graphClosure } from '../../scripts/bundle-graph.mjs';
+
+import type { GraphChunk } from '../../scripts/bundle-graph.mjs';
 import type { CDPSession, Locator, Page } from '@playwright/test';
 
 /** 메모리 모드 배너 문구(`StorageFailureCard.MEMORY_MODE_BANNER_TEXT`). */
@@ -242,4 +248,96 @@ test('핵심 흐름: 카테고리 생성 → 한글 투두 → 체크 → 편집
   await expect(ring).toHaveAccessibleName('오늘 달성률 100퍼센트, 1개 중 1개 완료');
 
   expect(errors).toEqual([]);
+});
+
+test('cold 개인 로드·첫 SW 설치는 온라인 선택 JS/API를 캐시하지 않고 off에서도 오프라인 쓰기가 된다', async ({
+  browser,
+}, testInfo) => {
+  test.skip(process.env.TASKY_E2E_SOCIAL === '1', '기본 off 개인/PWA 서버에서 검증');
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const requested = new Set<string>();
+  context.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith('/assets/') && url.pathname.endsWith('.js'))
+      requested.add(url.pathname.slice(1));
+  });
+  await stubLogin(page, randomAccount());
+  await waitForShell(page);
+  await expect(page.getByRole('region', { name: 'todo', exact: true })).toBeVisible();
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await expect
+    .poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null))
+    .toBe(true);
+  const graph = JSON.parse(readFileSync('dist/client/bundle-graph.json', 'utf8')) as GraphChunk[];
+  const { required, optional } = classifyGraph(graph);
+  const cached = await page.evaluate(async () => {
+    const paths: string[] = [];
+    for (const name of await caches.keys())
+      for (const request of await (await caches.open(name)).keys())
+        paths.push(new URL(request.url).pathname.slice(1));
+    return paths;
+  });
+  expect([...required].every((file) => cached.includes(file))).toBe(true);
+  expect([...optional].filter((file) => requested.has(file) || cached.includes(file))).toEqual([]);
+  expect(cached.filter((path) => path.startsWith('api/') || path.startsWith('auth/'))).toEqual([]);
+  const networkGzip = [...requested].reduce(
+    (bytes, path) => bytes + gzipSync(readFileSync(`dist/client/${path}`), { level: 9 }).byteLength,
+    0,
+  );
+  const entry = graphClosure(
+    graph,
+    graph.filter((chunk) => chunk.entry).map((chunk) => chunk.file),
+  );
+  const entryGzip = [...entry].reduce(
+    (bytes, path) => bytes + gzipSync(readFileSync(`dist/client/${path}`), { level: 9 }).byteLength,
+    0,
+  );
+  const evidencePath = testInfo.outputPath('cold-network.json');
+  writeFileSync(
+    evidencePath,
+    JSON.stringify(
+      {
+        compressionLevel: 9,
+        entryGzip,
+        networkGzip,
+        requested: [...requested].sort(),
+        cached: cached.sort(),
+        optional: [...optional].sort(),
+      },
+      null,
+      2,
+    ),
+  );
+  await testInfo.attach('cold-network.json', {
+    path: evidencePath,
+    contentType: 'application/json',
+  });
+  await openSocial(page);
+  await expect(
+    page.getByText(
+      '지금은 공유 기능을 사용할 수 없어요. 내 공유 기록은 확인하고 삭제할 수 있어요.',
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: '시작하기', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: '내 할 일로' }).click();
+  await context.setOffline(true);
+  await page.reload();
+  await waitForShell(page);
+  const group = page.getByRole('region', { name: 'todo', exact: true });
+  await group.getByRole('button', { name: '+ 할 일 추가' }).click();
+  await page
+    .getByRole('textbox', { name: 'todo에 할 일 추가', exact: true })
+    .fill('오프라인 개인 기록');
+  await page.keyboard.press('Enter');
+  await expect(
+    group.getByRole('checkbox', { name: '오프라인 개인 기록', exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    group.getByRole('checkbox', { name: '오프라인 개인 기록', exact: true }),
+  ).toBeVisible();
+  expect(entryGzip).toBeLessThanOrEqual(167500);
+  expect(networkGzip).toBeLessThanOrEqual(221000);
+  await context.close();
 });
