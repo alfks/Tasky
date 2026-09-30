@@ -44,6 +44,33 @@ export async function deleteAccountProjection(
       .bind(session.sub, session.sub, nonce),
     db
       .prepare(
+        sql`DELETE FROM social_friend_posts WHERE author IN
+      (SELECT id FROM social_profiles WHERE sub = ?)
+      AND EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = ? AND d.execution_nonce = ?)`,
+      )
+      .bind(session.sub, session.sub, nonce),
+    db
+      .prepare(
+        sql`DELETE FROM social_public_posts WHERE category_id IN
+      (SELECT cat.id FROM social_categories cat JOIN social_profiles p ON p.id = cat.owner WHERE p.sub = ?)
+      AND EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = ? AND d.execution_nonce = ?)`,
+      )
+      .bind(session.sub, session.sub, nonce),
+    db
+      .prepare(
+        sql`DELETE FROM social_public_categories WHERE id IN
+      (SELECT cat.id FROM social_categories cat JOIN social_profiles p ON p.id = cat.owner WHERE p.sub = ?)
+      AND EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = ? AND d.execution_nonce = ?)`,
+      )
+      .bind(session.sub, session.sub, nonce),
+    db
+      .prepare(
+        sql`DELETE FROM social_categories WHERE owner IN (SELECT id FROM social_profiles WHERE sub = ?)
+      AND EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub = ? AND d.execution_nonce = ?)`,
+      )
+      .bind(session.sub, session.sub, nonce),
+    db
+      .prepare(
         sql`DELETE FROM social_pairs WHERE
       (lo IN (SELECT id FROM social_profiles WHERE sub = ?)
        OR hi IN (SELECT id FROM social_profiles WHERE sub = ?))
@@ -106,5 +133,5 @@ export async function deleteAccountProjection(
       .bind(session.sub, session.sub, nonce),
     marker().bind(session.sub, nonce),
   ]);
-  return results[0].meta.changes === 1 && results[12].results.length === 1;
+  return results[0].meta.changes === 1 && results.at(-1)?.results.length === 1;
 }
