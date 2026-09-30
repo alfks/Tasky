@@ -89,11 +89,25 @@ post 페이지 limit 기본 20/최대 50, created_at/id 내림차순·페이지 
 초대 fragment는 src/app/main.tsx보다 앞선 bootstrap 시점에 바로 history.replaceState로 제거한다. sessionStorage 제한 key의 24시간 token은 로그인 왕복 전용이며 계정 전환·로그아웃·사용·취소·만료에 지운다. analytics가 token을 읽기 전에 처리하고 no-referrer를 유지한다.
 공개범위 선택과 metadata는 명시적인 preview 확인 후 저장한다. 확대 확인에는 대상·현재/다음 범위·기존 사본 수·logged-out 읽기·이미 본 자료 회수 한계를 보여 준다.
 축소 busy 상태에서도 확인 badge는 이전 값을 유지한다. 실패 안내: `공개 범위를 변경하지 못했어요. 현재 공개 범위는 …예요.`
-범위 확인 중 공유를 막고 같은 계정의 일시 실패에는 초안/key를 메모리에 유지한다. 다른 계정/로그아웃/닫기에는 지운다. 요청 성공/실패 모두 세대가 바뀌면 폐기한다.
+범위 확인 중 공유를 막고 같은 계정의 일시 실패에는 미전송 초안을 메모리에 유지한다. 공유 작성 초안은 다른 계정/로그아웃/닫기에 지우고, 세대가 바뀐 화면 응답은 폐기한다. 이미 제출된 미확정 category command의 불변 요청은 아래 복구 계약으로 별도 관리한다.
 공유 preview는 제목·날짜·sanitized category·확인된 audience만 표시한다. Enter/IME로 게시하지 않고 explicit 버튼만 사용한다. 미전송 문장은 Esc/뒤로/탭 변경에서 버리기 확인한다.
 피드의 30초 검증·5초 deadline·35초 hard lease, 페이지 교체·새 기록 버튼·offline/hidden 가림·응원 상태·focus 복귀·불가 상태 안내는 기존 Phase 3 계약을 유지한다. 공개 화면도 동일한 권한 검증과 가림을 적용한다.
 
-## 7. 검증과 출시
+## 7. 공개 연결과 미확정 명령 복구
+
+이 절은 기존 API·개인 자료 분리·공개범위 권위를 유지하며 이미 제출한 category command의 수명과 수동 복구만 명확히 한다. 새 API·의존성·영속 outbox·자동 mutation은 없다.
+
+1. **소유권과 조회**: 기존 `categories({limit,cursor})` 소유자 목록·`category({id})`의 엄격한 소유자 관리 응답 계약으로 확인한다. `postCount`가 선택적으로 있다는 사실만으로 소유권을 추정하지 않는다. 개인 원본 id는 서버 DTO에 넣지 않는다. 조회 budget/cursor가 소진되거나 페이지가 불완전하면 미해결로 남기며 연결을 없다고 판정하지 않는다.
+2. **미확정 registry**: category의 `category-publication-recovery.ts`에 검증된 actor와 개인 category별 탭 메모리 entry를 두고 원래 정규화 DTO·key·출발 binding/version/metadata CAS를 불변 보관한다. 연결 없는 서버 철회는 명령 종류와 remote id로 구분한다. 상태는 submitting/uncertain, 계정별 미해결 최대 32개다. 상한에서 새 요청만 막고 기존 확인은 허용하며 미확정 항목을 자동 축출하지 않는다. modal 관측 generation과 command 수명은 별개다. 최초 제출의 local binding/version/metadata CAS는 재열기에도 유지한다. 새 observer의 검증 session token은 바뀔 수 있지만 출발 CAS를 현재 자료로 교체하지 않는다. 창 닫기/dispose 후 같은 검증 계정에서 복구하며 재로드/백업에는 보관하지 않는다.
+3. **수명과 인증**: accountDeletedNotice/accountSwitchedNotice·account-deleted 410은 entry를 폐기한다. sync phase starting/locked/error처럼 ready가 아닌 auth 신호·401은 격리하여 UI/읽기/변경을 막고, 새 검증과 me 확인에서 같은 actor이면 복구·다른 actor이면 폐기한다. 명시적 logout은 `performLogout`의 백업 승인 이후 실제 로컬 wipe 경계에서 전용 clear를 호출하며 백업 취소 때 지우지 않는다. closed/revoked/recheck/provider/cross-tab/activation/offline/hidden은 관측/늦은 응답 적용을 무효화하되 미확정 entry를 유지하고 같은 actor 재검증 전 잠근다. cross-tab payload는 identity 근거가 아닌 무효화 신호뿐이다. 관련 없는 B의 성공/철회는 A의 entry를 지우지 않는다.
+4. **관측과 탈출**: 서버 요청 시작부터 15,000 ms 뒤 결과를 모르면 uncertain으로 전환한다. 원래 fetch가 서버에서 중단/실패했다고 가정하지 않고 늦은 결과는 관측 generation으로 폐기한다. 타이머는 종료/dispose에 정리하되 command entry는 남긴다. bounded submitting 동안 X/Esc/outside/cancel을 막고 deadline 뒤 `[같은 요청 다시 확인]` 또는 `[나중에 확인]`을 제공한다. 재확인은 동일 DTO/key이며 입력은 잠근다. 나중에 확인은 서버 공개 가능성을 알리고 닫기만 한다. offline/hidden/복귀/창 재열기는 POST를 자동 시작하지 않는다. mode off에서는 자동 조회·새 공개·미확정 공개 재전송을 하지 않으며 기존 API가 허용하는 명시적 owner 확인/철회는 제공한다.
+5. **재로드·복원 표시**: 개인 binding 없는 항목의 모든 category 문맥·backup/import 안내는 `공유 연결 없음`과 서버 관리 안내를 사용한다. 라디오 private 기본은 개인 설정이고 기존 서버 사본의 private 증거가 아니다. 연결 캐시는 마지막 확인 범위/미확정 표시로 구분한다. 공개 상태를 이름으로 추측하거나 mapping을 자동 복원하지 않는다. import가 표식을 없애도 이전 서버 projection은 자동 변경하지 않는다. 로그아웃·off 화면은 자동 네트워크 조회를 시작하지 않는다.
+6. **수동 관리**: 친구 관리의 `[공유 카테고리 관리]`에서 소유자 목록을 명시적으로 불러오고 페이지를 수동 이동한다. 현재 metadata/audience/postCount·기기 연결 유무를 표시한다. 연결되지 않은 항목은 다른 기기의 정상 projection일 수 있다. 자동 연결·삭제·철회하지 않으며 tombstone은 비활성 표시하고 연결 대상에서 제외한다. 미확정 복구 창에서 관리로 이동할 때 `[나중에 확인]`으로 서버 공개 가능성을 안내하고 registry를 유지한 채 이전 창을 미완료로 닫는다. 안내 없이 자동으로 닫지 않는다.
+7. **명시적 연결**: 미확정 entry가 없는 unbound 개인 L과 살아 있는 unlinked 내 서버 R을 고른다. fresh owner canonical을 준비해 L/R 양쪽 이름·R 범위/사본 수·모두 공개 안내를 확인받는다. 확인 때 같은 id/version/visibility를 재조회하고 달라지면 새 preview와 재확인을 요구한다. 로컬 commit은 account·출발 binding/version·metadata CAS를 queued write 안에서 검사하고 visibility/socialCategoryId/socialCategoryVersion 표식만 쓴다. 개인 삭제/수정·기존 binding·중복 R 연결·revoked R·pending unknown을 거절하며 이름/할 일/서버 metadata를 변경하지 않는다. 이후 범위 확인의 preview/DTO는 `metadata ?? confirmed ?? category`로 R의 실제 canonical을 사용한다. 서버 read와 개인 write는 원자적이지 않으므로 결과 표시는 마지막 확인 상태이며 동시 원격 공개 확대를 고정했다고 주장하지 않는다.
+8. **철회와 결과 적용**: 관리 철회는 기존 category와 사본/다른 기기에 미치는 영향을 확인받고 현재 version·새 key를 쓴다. uncertain 재확인만 동일 key/DTO를 쓴다. 409는 현재 canonical을 읽어 새 명시 확인을 받으며 자동 재실행하지 않는다. 서버 완료 후 정확히 일치하는 local binding만 CAS로 정리한다. 성공 receipt의 최신 canonical은 해당 intent만 해소하며, 뒤의 revoke를 오래된 save 응답으로 덮어쓰지 않는다. canonical revoked는 연결을 지우고 private로 정리한다. 현재 canonical이 원래 audience/metadata와 다르면 실제 값을 반영하되 요청한 상태로 성공했다고 안내하지 않는다. 로컬 CAS 실패는 현재 자료를 유지하고 연결되지 않은 서버 결과와 수동 연결을 안내한다. unknown create를 잊거나 attach로 우회하지 않는다.
+9. **배선과 검증**: state는 registry/controller/hook/cache, category UI는 badge/modal/manager, 셸은 category-social 조립과 logout 경계를 맡는다. local source id/본문은 registry·개인 경계 밖에 전송하지 않는다. 검증은 lost create/revoke→닫기/재열기 동일 key·DTO와 단일 효과, unrelated revoked·provider·cross-tab 유지, 늦은 observer 적용 금지, offline/hidden 무자동 POST, 401 같은 actor 복구·410/logout/다른 actor 폐기, 상한/무축출, off 명시 cleanup, canonical replay/출발 CAS 경합, reload/import 중립 표시, 다른 기기 projection 보존, marker-only attach/중복·revoked·pending·changed 거절, 불완전 owner 페이지 연결 보존, 소유권 추정 금지, 409 재확인, L/R 다른 이름의 실제 R preview, 키보드·busy·uncertain 탈출을 포함한다.
+
+## 8. 검증과 출시
 
 공통 벡터를 domain/memory/실 Miniflare D1에서 직접 실행한다. 범위별 owner/friend/stranger/anonymous/두 방향 block, legacy null, unavailable category, profile/account 삭제를 직접 HTTP 포함해 검증한다.
 private 기본·cross-owner category binding·categoryVersion stale·idempotent lost response·SQL batch 중간 실패·범위 확대/축소·동시 게시/철회·단일 조회/validate/반응 경합을 테스트한다.
