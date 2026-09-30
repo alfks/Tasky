@@ -69,6 +69,10 @@ export function BackupExportSection({
       <h3 id="backup-export-heading" className="text-base font-semibold">
         내보내기
       </h3>
+      <p className="text-sm text-muted">
+        백업은 개인 자료와 연결 표식을 보관해요. 복원해도 서버 공유는 자동으로 변경되지 않아요. 공유
+        연결 없음인 카테고리의 이전 공개 상태는 공유 카테고리 관리에서 확인해 주세요.
+      </p>
       {isEmpty ? (
         <p className="text-sm text-muted">아직 내보낼 데이터가 없어요</p>
       ) : (
