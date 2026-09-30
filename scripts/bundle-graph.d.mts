@@ -43,3 +43,9 @@ export function artifactSizes<T extends { url: string }>(
   sizeOf: (file: T) => number,
 ): { networkGzip: number; optionalGzip: number; totalGzip: number };
 export function inspectPrecacheGraph(graph: GraphChunk[], urls: string[]): string[];
+
+export const PERSONAL_DIALOG_MODULES: string[];
+export function bundleGroup(
+  moduleId: string,
+): 'personal-dialogs' | 'shared-primitives' | 'react-vendor' | undefined;
+export function inspectBundleGroups(graph: GraphChunk[]): string[];
