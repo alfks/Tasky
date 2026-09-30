@@ -23,7 +23,7 @@ export function useCategoryAudience(category: Category, deps: CategoryAudienceDe
     controller.resume();
     const unsubscribe = subscribeInvalidation?.(controller.invalidate);
     const stopReady = subscribeReady?.(() => {
-      void controller.refresh();
+      void controller.refresh(true);
     });
     void controller.refresh();
     return () => {
@@ -38,5 +38,6 @@ export function useCategoryAudience(category: Category, deps: CategoryAudienceDe
     refresh: controller.refresh,
     change: controller.change,
     revoke: controller.revoke,
+    retry: controller.retry,
   };
 }

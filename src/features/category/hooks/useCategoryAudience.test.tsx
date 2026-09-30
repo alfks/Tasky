@@ -9,6 +9,7 @@ import type { SocialRepository } from '@/repositories/social-repository';
 
 import { useCategoryAudience } from '@/features/category/hooks/useCategoryAudience';
 import { createCategoryAudienceController } from '@/features/category/store/category-audience';
+import { createPublicationRecovery } from '@/features/category/store/category-publication-recovery';
 import { makeCategory } from '@/test/fixtures/category';
 
 const canonical: SocialCategoryView = {
@@ -74,6 +75,7 @@ function fixture(linked = true) {
     },
     online: () => online,
     persist,
+    recovery: createPublicationRecovery(),
     key: () => `key-${++keyNumber}`,
   };
   const controller = createCategoryAudienceController(category, deps);
@@ -164,7 +166,7 @@ describe('카테고리 서버 범위와 명시적 변경', () => {
       answer({ ...canonical, visibility: 'private', version: 5, revoked: true }),
     );
     expect(await f.controller.change('public')).toBe(false);
-    expect(f.persist).toHaveBeenLastCalledWith(null);
+    expect(f.persist).toHaveBeenLastCalledWith(null, f.category, expect.any(Function));
     expect(f.controller.getSnapshot().confirmed).toBeNull();
     expect(f.controller.getSnapshot().error).toBe('conflict');
     expect(f.saveCategory.mock.calls[1]).toEqual(f.saveCategory.mock.calls[0]);
@@ -205,6 +207,8 @@ describe('카테고리 서버 범위와 명시적 변경', () => {
     expect(await change).toBe(true);
     expect(f.persist).toHaveBeenCalledWith(
       expect.objectContaining({ visibility: 'public', version: 4 }),
+      f.category,
+      expect.any(Function),
     );
   });
 
