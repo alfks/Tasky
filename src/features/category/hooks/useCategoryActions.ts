@@ -9,6 +9,7 @@ import {
 
 /** 매 렌더 새 객체를 만들지만 필드가 전부 같은 참조라 `useShallow` 가 리렌더를 막는다. */
 const selectActions = (state: CategoryStore): CategoryActions => ({
+  confirmAudience: state.confirmAudience,
   load: state.load,
   createCategory: state.createCategory,
   updateCategory: state.updateCategory,

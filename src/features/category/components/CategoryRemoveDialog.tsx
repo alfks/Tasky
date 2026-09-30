@@ -20,9 +20,11 @@ import {
 } from '@/features/category/components/CategoryRemoveDialogChoices';
 import {
   removalDescription,
+  publicationRemovalNote,
   removalTitle,
 } from '@/features/category/components/CategoryRemoveDialogText';
 import { useActiveCategories } from '@/features/category/hooks/useCategories';
+import { useCategoryPublication } from '@/features/category/hooks/useCategoryPublication';
 import type {
   CategoryRemovalController,
   CategoryRemovalCounts,
@@ -176,6 +178,7 @@ type PromptProps = {
  * 지우려던 카테고리 A 에 쓰던 새 이름이 B 의 대화상자에 그대로 떠 있다.
  */
 function RemovalPrompt({ category, counts, controller, returnFocus }: PromptProps) {
+  const publication = useCategoryPublication();
   const targets = useActiveCategories().filter((other) => other.id !== category.id);
   const setStatus = useCategoryStore((state) => state.setStatus);
   const [kind, setKind] = useState<RemovalChoiceKind>(targets.length > 0 ? 'move' : 'create');
@@ -235,7 +238,12 @@ function RemovalPrompt({ category, counts, controller, returnFocus }: PromptProp
     }
   };
 
-  const description = removalDescription(counts);
+  const description = (
+    <>
+      {removalDescription(counts)}
+      {publicationRemovalNote(category, publication.pendingCategoryIds)}
+    </>
+  );
 
   // R11 축약 — 미완료가 없으면 고를 것이 없다. 투두 삭제와 같은 공용 확인 대화상자를 쓴다.
   if (counts.incomplete === 0) {
