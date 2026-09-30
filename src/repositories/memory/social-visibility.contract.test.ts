@@ -204,4 +204,19 @@ describe('공통 공개범위 벡터(memory 포트)', () => {
     ).rejects.toMatchObject({ code: 'limit-reached' });
     expect(server.state.posts.size).toBe(20);
   });
+  it('R8 off에서도 내 사본 관리만 검증하고 foreign/public은 섞어 반환하지 않는다', async () => {
+    const { server, owner, peer } = await setup();
+    const mine = (
+      await owner.createPost({ text: '내 완료', happenedOn: '2026-09-30' }, commandKey(1))
+    ).data;
+    const other = (
+      await peer.createPost({ text: '다른 완료', happenedOn: '2026-09-30' }, commandKey(2))
+    ).data;
+    server.state.mode = 'off';
+    expect((await owner.validatePosts({ ids: [mine.id, other.id] })).data.allowedIds).toEqual([
+      mine.id,
+    ]);
+    expect((await owner.myPosts()).data.items.map((post) => post.id)).toEqual([mine.id]);
+    await expect(server.publicForActor().feed()).rejects.toMatchObject({ code: 'social-disabled' });
+  });
 });
