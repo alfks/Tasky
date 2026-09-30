@@ -1,8 +1,9 @@
 import { expect } from '@playwright/test';
 
+import { stubLogin } from './fixtures/stub-login';
 import { closeSidebarDrawer, createCategory, openSidebarDrawer } from './sidebar';
 
-import type { Locator, Page } from '@playwright/test';
+import type { Browser, Locator, Page } from '@playwright/test';
 
 export async function openSocial(page: Page): Promise<void> {
   await openSidebarDrawer(page);
@@ -130,4 +131,74 @@ export async function measureSocialText(label: Locator) {
       bounds: { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom },
     };
   });
+}
+
+/** 두 실제 클라이언트의 rename CAS: 기존 초안은 유지하고 새 명시 click만 최신 version/key를 쓴다. */
+export async function nicknameConflict(page: Page, browser: Browser): Promise<void> {
+  await page.getByRole('button', { name: '별명 변경', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '친구에게 보일 별명 변경', exact: true });
+  await dialog.getByRole('textbox', { name: '친구에게 보일 별명', exact: true }).fill('별이');
+  const context = await browser.newContext();
+  const other = await context.newPage();
+  await stubLogin(other, socialAccount('owner'));
+  await joinSocial(other, '별이');
+  await other.getByRole('button', { name: '별명 변경', exact: true }).click();
+  const second = other.getByRole('dialog', { name: '친구에게 보일 별명 변경', exact: true });
+  await second
+    .getByRole('textbox', { name: '친구에게 보일 별명', exact: true })
+    .fill('별이 다른 창');
+  await second.getByRole('button', { name: '별명 저장', exact: true }).click();
+  await expect(second).toHaveCount(0);
+  const sent: { key: string | undefined; body: { expectedVersion: number } }[] = [];
+  page.on('request', (request) => {
+    if (
+      request.method() === 'POST' &&
+      new URL(request.url()).pathname === '/api/social/profile/name'
+    ) {
+      sent.push({ key: request.headers()['idempotency-key'], body: request.postDataJSON() });
+    }
+  });
+  await dialog.getByRole('button', { name: '별명 저장', exact: true }).click();
+  await expect(dialog.getByText(/현재 별명: 별이 다른 창/)).toBeVisible();
+  await expect(
+    dialog.getByRole('textbox', { name: '친구에게 보일 별명', exact: true }),
+  ).toHaveValue('별이');
+  await expect(dialog.getByRole('button', { name: '별명 저장', exact: true })).toBeEnabled();
+  expect(sent).toHaveLength(1);
+  await dialog.getByRole('button', { name: '별명 저장', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText('친구에게 보이는 이름: 별이', { exact: true })).toBeVisible();
+  expect(sent).toHaveLength(2);
+  expect(sent[1].body.expectedVersion).toBe(sent[0].body.expectedVersion + 1);
+  expect(sent[1].key).not.toBe(sent[0].key);
+  await context.close();
+}
+
+/** 실제 scroll container의 읽던 위치와 재렌더된 cheer button focus를 함께 검증한다. */
+export async function cheerWithoutJump(page: Page, text: string): Promise<void> {
+  const card = page.getByRole('article').filter({ hasText: text });
+  const button = card.getByRole('button', { name: '응원하기', exact: true });
+  await button.scrollIntoViewIfNeeded();
+  const readingTop = () =>
+    card.evaluate((element) => {
+      let ancestor = element.parentElement;
+      while (ancestor !== null) {
+        if (
+          /(auto|scroll)/.test(getComputedStyle(ancestor).overflowY) &&
+          ancestor.scrollHeight > ancestor.clientHeight
+        )
+          return ancestor.scrollTop;
+        ancestor = ancestor.parentElement;
+      }
+      return window.scrollY;
+    });
+  const top = await readingTop();
+  expect(top).toBeGreaterThan(0);
+  await button.click();
+  await expect(card.getByRole('button', { name: '응원 취소', exact: true })).toBeFocused();
+  await expect(card.getByRole('button', { name: '응원 취소', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect.poll(readingTop).toBe(top);
 }

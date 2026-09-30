@@ -5,6 +5,8 @@ import { expect, test } from '@playwright/test';
 import { stubLogin } from './fixtures/stub-login';
 import {
   completedRecord,
+  cheerWithoutJump,
+  nicknameConflict,
   joinSocial,
   measureSocialText,
   openSocial,
@@ -27,6 +29,7 @@ test.describe('Phase 3 소셜 실제 Worker 왕복', () => {
     await completedRecord(pa, category, text);
     await joinSocial(pa, '별이');
     await joinSocial(pb, '달이');
+    await nicknameConflict(pa, browser);
     const friendsLoaded = pa.waitForResponse(
       (response) => new URL(response.url()).pathname === '/api/social/friends' && response.ok(),
     );
@@ -63,11 +66,21 @@ test.describe('Phase 3 소셜 실제 Worker 왕복', () => {
     await setAudience(pa, category, 'friends');
     await openSocial(pa);
     await shareRecord(pa, text);
+    for (let index = 0; index < 2; index += 1) {
+      await pa.getByRole('button', { name: '기록 공유', exact: true }).click();
+      const chooser = pa.getByRole('dialog', { name: '완료한 기록 공유', exact: true });
+      await chooser.getByRole('radio', { name: new RegExp(text) }).check();
+      await chooser
+        .getByRole('textbox', { name: '공유 문장', exact: true })
+        .fill(`위쪽 보기 ${index} ` + '완료한 기록을 남겨요 '.repeat(18));
+      await chooser.getByRole('button', { name: '공유하기', exact: true }).click();
+      await expect(chooser).toHaveCount(0);
+    }
     await pb.getByRole('button', { name: '피드', exact: true }).click();
     await pb.getByRole('button', { name: '새로고침', exact: true }).click();
     await expect(pb.getByRole('article').filter({ hasText: text })).toBeVisible();
     const peerCard = pb.getByRole('article').filter({ hasText: text });
-    await peerCard.getByRole('button', { name: '응원하기' }).click();
+    await cheerWithoutJump(pb, text);
     await expect(peerCard.getByRole('button', { name: '응원 취소' })).toBeVisible();
     await pb.screenshot({ path: testInfo.outputPath('social-feed-1280.png'), fullPage: true });
     await peerCard.getByRole('button', { name: '별이 기록 더 보기' }).click();
@@ -118,7 +131,6 @@ test.describe('공유 복구와 키보드', () => {
     await completedRecord(page, category, text);
     await joinSocial(page, '별이');
     await page.getByRole('button', { name: '내 할 일로' }).click();
-    await setAudience(page, category, 'public');
     await openSocial(page);
     await page.getByRole('button', { name: '기록 공유', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '완료한 기록 공유', exact: true });
@@ -130,9 +142,26 @@ test.describe('공유 복구와 키보드', () => {
     await expect(discard.getByRole('button', { name: '계속 작성' })).toBeFocused();
     await discard.getByRole('button', { name: '계속 작성' }).click();
     await expect(draft).toHaveValue(`${text} 수정`);
+    let prematurePosts = 0;
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/social/posts')
+        prematurePosts += 1;
+    });
+    await dialog.getByRole('button', { name: '공개 범위 바꾸기', exact: true }).click();
+    const scope = page.getByRole('dialog', { name: '카테고리 공개 범위 확인', exact: true });
+    await scope.getByRole('radio', { name: '모두 공개', exact: true }).check();
+    await scope.getByRole('button', { name: '모두에게 공개하기', exact: true }).click();
+    await expect(scope).toHaveCount(0);
+    await expect(draft).toHaveValue(`${text} 수정`);
+    await expect(dialog.getByRole('radio', { name: new RegExp(text) })).toBeChecked();
+    await expect(dialog.getByRole('button', { name: '공유하기', exact: true })).toBeEnabled();
+    await expect(dialog.getByRole('region', { name: '공유 미리보기' })).toContainText('모두 공개');
+    expect(prematurePosts).toBe(0);
     await draft.fill(text);
     const sent: { key: string | undefined; body: unknown }[] = [];
     let first = true;
+    let firstCommitted = false;
+    let releaseFirst!: () => void;
     await page.route('**/api/social/posts', async (route) => {
       if (route.request().method() !== 'POST') return route.continue();
       sent.push({
@@ -143,6 +172,10 @@ test.describe('공유 복구와 키보드', () => {
       if (first) {
         first = false;
         expect(response.ok()).toBe(true);
+        firstCommitted = true;
+        await new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        });
         await route.abort('failed');
       } else await route.fulfill({ response });
     });
@@ -169,6 +202,8 @@ test.describe('공유 복구와 키보드', () => {
     await expect(dialog.getByRole('button', { name: '공유하기', exact: true })).toBeEnabled();
     expect(sent).toHaveLength(0);
     await dialog.getByRole('button', { name: '공유하기', exact: true }).click();
+    await expect.poll(() => firstCommitted).toBe(true);
+    await context.setOffline(true);
     await expect(dialog.getByRole('button', { name: '완료 여부 확인' })).toBeVisible();
     await expect(draft).toBeDisabled();
     expect(Object.keys(sent[0].body as Record<string, unknown>).sort()).toEqual([
@@ -177,7 +212,7 @@ test.describe('공유 복구와 키보드', () => {
       'happenedOn',
       'text',
     ]);
-    await context.setOffline(true);
+    releaseFirst();
     await context.setOffline(false);
     await expect(dialog.getByRole('button', { name: '완료 여부 확인' })).toBeEnabled();
     await page.setViewportSize({ width: 360, height: 800 });
