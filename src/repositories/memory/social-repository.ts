@@ -15,6 +15,8 @@ import { parsePostInput, type Validation } from '@/domain/social/input';
 import type { InviteCreated, SocialMode } from '@/domain/social/social';
 
 import { sha256 } from '@/repositories/memory/social/hash';
+import { categoryMethods } from '@/repositories/memory/social/categories';
+import { createMemoryPublicRepository } from '@/repositories/memory/social/public';
 import {
   createInvite,
   listInvites,
@@ -41,10 +43,11 @@ import {
   validate,
 } from '@/repositories/memory/social/posts';
 import { blocks, friends, requests, transition } from '@/repositories/memory/social/relations';
-import type { SocialRepository } from '@/repositories/social-repository';
+import type { PublicSocialRepository, SocialRepository } from '@/repositories/social-repository';
 
 export type MemorySocialServer = {
   forActor: (sub: string) => SocialRepository;
+  publicForActor: (sub?: string) => PublicSocialRepository;
   /** 계약 벡터가 현재 관계·receipt를 주입할 때만 사용한다. */
   state: MemorySocialState;
 };
@@ -73,6 +76,7 @@ export function createMemorySocialServer(
   const state = createSocialState(options.now ?? Date.now, options.mode ?? 'enabled');
   return {
     state,
+    publicForActor: (sub) => createMemoryPublicRepository(state, sub),
     forActor: (sub) => {
       state.sessionActive.add(sub);
       return createMemorySocialRepository(state, sub);
@@ -82,6 +86,7 @@ export function createMemorySocialServer(
 
 function createMemorySocialRepository(state: MemorySocialState, sub: string): SocialRepository {
   return {
+    ...categoryMethods(state, sub),
     me: async () => {
       requireSession(state, sub);
       return answer(state, { profile: state.profiles.get(sub) ?? null, mode: state.mode });
