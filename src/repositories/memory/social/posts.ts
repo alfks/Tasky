@@ -130,10 +130,10 @@ export function validate(
   sub: string,
   ids: readonly SocialId[],
 ): readonly SocialId[] {
-  actor(state, sub);
-  if (state.mode === 'off') return fail('social-disabled', state.now());
+  const self = actor(state, sub);
   return ids.filter((id) => {
     const post = state.posts.get(id);
+    if (state.mode === 'off') return post?.authorId === self.id;
     return post !== undefined && canRead(state, sub, post);
   });
 }
