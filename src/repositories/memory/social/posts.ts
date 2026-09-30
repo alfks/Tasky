@@ -79,7 +79,7 @@ export function postView(
       state.reactions.has(`${viewerId}:${post.id}`),
     ...(post.category === undefined
       ? {}
-      : { category: categoryView(state, post.category.id, viewerId) }),
+      : { category: categoryView(state, post.category.id, null) }),
   };
 }
 
@@ -154,6 +154,10 @@ export function createPost(state: MemorySocialState, sub: string, input: PostInp
     return fail('unavailable', state.now());
   if (category !== undefined && category.version !== parsed.value.categoryVersion)
     return fail('conflict', state.now());
+  const ownPosts = [...state.posts.values()].filter((post) => post.authorId === self.id);
+  const dayStart = Math.floor(state.now() / 86_400_000) * 86_400_000;
+  if (ownPosts.length >= 1000 || ownPosts.filter((post) => post.createdAt >= dayStart).length >= 20)
+    return fail('limit-reached', state.now());
   const id = nextId(state);
   state.posts.set(id, {
     id,

@@ -164,4 +164,44 @@ describe('공통 공개범위 벡터(memory 포트)', () => {
       ),
     ).rejects.toMatchObject({ code: 'conflict' });
   });
+  it('R13 inactive owner 즉시 숨김과 post DTO owner 관리 필드 생략', async () => {
+    const { server, owner } = await setup();
+    const category = (await owner.saveCategory(INPUT, commandKey(1))).data;
+    const created = (
+      await owner.createPost(
+        {
+          text: '완료',
+          happenedOn: '2026-09-30',
+          categoryId: category.id,
+          categoryVersion: category.version,
+        },
+        commandKey(2),
+      )
+    ).data;
+    const publicPort = server.publicForActor();
+    expect((await publicPort.feed()).data.items).toHaveLength(1);
+    await owner.revokeCategory(
+      { id: category.id, expectedVersion: category.version },
+      commandKey(3),
+    );
+    const ownPost = (await owner.myPosts()).data.items[0];
+    expect(ownPost.category).not.toHaveProperty('postCount');
+    expect(ownPost.category).not.toHaveProperty('revoked');
+    expect((await owner.category({ id: category.id })).data.revoked).toBe(true);
+    server.state.deleted.add('owner');
+    expect((await publicPort.validatePosts({ ids: [created.id] })).data.allowedIds).toEqual([]);
+    await expect(publicPort.post({ id: created.id })).rejects.toMatchObject({
+      code: 'unavailable',
+    });
+  });
+  it('R7 actor당 하루 사본20개 상한은 동일 key 재시도를 중복 생성하지 않는다', async () => {
+    const { server, owner } = await setup();
+    for (let index = 1; index <= 20; index += 1)
+      await owner.createPost({ text: '완료', happenedOn: '2026-09-30' }, commandKey(index));
+    await owner.createPost({ text: '완료', happenedOn: '2026-09-30' }, commandKey(20));
+    await expect(
+      owner.createPost({ text: '완료', happenedOn: '2026-09-30' }, commandKey(21)),
+    ).rejects.toMatchObject({ code: 'limit-reached' });
+    expect(server.state.posts.size).toBe(20);
+  });
 });
