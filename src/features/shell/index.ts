@@ -7,3 +7,8 @@ export { AppShell } from '@/features/shell/components/AppShell';
 // 토스트 허브: feature 가 자기 뷰포트를 띄우는 대신 여기에 밀어 넣는다(app-shell R8).
 export { useShellToastStore, MAX_VISIBLE_TOASTS } from '@/features/shell/store/shell-toast-store';
 export type { ShellToastState } from '@/features/shell/store/shell-toast-store';
+
+/** 공개 진입에서는 개인 앱의 저장소를 열지 않는다. */
+export function loadPublicWorkspace() {
+  return import('@/features/shell/components/PublicWorkspace');
+}
