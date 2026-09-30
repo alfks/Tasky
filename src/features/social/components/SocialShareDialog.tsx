@@ -28,12 +28,13 @@ export function SocialShareDialog({
   const [discard, setDiscard] = useState(false);
   const form = useShareComposer(onShared);
   const close = () => {
-    if (form.text !== '') setDiscard(true);
+    if (form.command.busy) return;
+    if (form.command.hasIntent() || form.text !== '') setDiscard(true);
     else onClose();
   };
   const locked = form.command.busy || form.uncertain;
   const canShare = form.uncertain
-    ? form.command.retryAllowed
+    ? form.command.ownerVerified && form.command.retryAllowed
     : form.category !== null && form.category.visibility !== 'private' && !form.checking;
   const audience =
     form.previewCategory?.visibility === 'public'
@@ -67,13 +68,29 @@ export function SocialShareDialog({
       >
         <div className="flex flex-col gap-[var(--space-4)]">
           <p ref={headingRef} tabIndex={-1} className="text-sm text-muted outline-none">
-            직접 고른 한 건만 별도 사본으로 공유해요. 새로고침하면 작성 중인 문장은 지워져요.
+            직접 고른 한 건만 별도 사본으로 공유해요. 보내지 않은 초안은 새로고침하면 지워져요.
           </p>
+          {form.command.busy ? (
+            <p role="status">요청 결과를 확인하고 있어요. 확인이 끝난 뒤 닫을 수 있어요.</p>
+          ) : null}
+          {form.command.hasIntent() && !form.command.ownerVerified ? (
+            <>
+              <p role="status">이전 요청의 계정을 확인하고 있어요.</p>
+              <Button
+                variant="outline"
+                loading={form.command.proofChecking}
+                disabled={!form.command.proofAllowed}
+                onClick={form.command.verifyOwner}
+              >
+                계정 다시 확인
+              </Button>
+            </>
+          ) : null}
           <label className="flex flex-col gap-[var(--space-2)]">
             기록 날짜
             <input
               type="date"
-              value={date}
+              value={form.recoveryInput?.happenedOn ?? date}
               disabled={locked}
               onChange={(event) => onDateChange(event.target.value)}
               className="min-h-[var(--control-height)] min-w-0 rounded-[var(--radius-md)] border border-border bg-surface px-[var(--space-3)] focus-visible:outline-2 focus-visible:outline-focus"
@@ -104,12 +121,13 @@ export function SocialShareDialog({
               </label>
             ))}
           </fieldset>
-          {form.selected === null ? null : (
+          {(form.uncertain && !form.command.ownerVerified) ||
+          (form.selected === null && form.recoveryInput === null) ? null : (
             <>
               <label className="flex flex-col gap-[var(--space-2)]">
                 공유 문장
                 <textarea
-                  value={form.text}
+                  value={form.recoveryInput?.text ?? form.text}
                   disabled={locked}
                   onChange={(event) => form.setText(event.target.value)}
                   aria-describedby="share-preview-help"
@@ -123,11 +141,20 @@ export function SocialShareDialog({
                 className="rounded-[var(--radius-lg)] border border-border bg-surface-2 p-[var(--space-3)]"
               >
                 <p className="text-sm text-muted">
-                  {form.selected.happenedOn} · {form.uncertain ? '확인 중인 원래 요청: ' : ''}{' '}
-                  {form.previewCategory?.emoji}{' '}
-                  {form.previewCategory?.name ?? form.selected.categoryLabel} · {audience}
+                  {form.recoveryInput?.happenedOn ?? form.selected?.happenedOn} ·{' '}
+                  {form.uncertain ? '확인 중인 원래 요청: ' : ''}{' '}
+                  {form.selected === null ? (
+                    '이전에 보낸 공유 요청'
+                  ) : (
+                    <>
+                      {form.previewCategory?.emoji}{' '}
+                      {form.previewCategory?.name ?? form.selected.categoryLabel} · {audience}
+                    </>
+                  )}
                 </p>
-                <p className="mt-[var(--space-2)] break-words whitespace-pre-wrap">{form.text}</p>
+                <p className="mt-[var(--space-2)] break-words whitespace-pre-wrap">
+                  {form.recoveryInput?.text ?? form.text}
+                </p>
               </section>
               <p id="share-preview-help" className="text-sm text-muted">
                 {form.uncertain
@@ -146,7 +173,7 @@ export function SocialShareDialog({
                 </p>
               ) : null}
               {form.checking ? <p role="status">공개 범위를 확인하고 있어요.</p> : null}
-              {!form.uncertain && !form.checking && !canShare ? (
+              {!form.uncertain && !form.checking && !canShare && form.selected !== null ? (
                 <>
                   <p>
                     이 기기의 공유 연결이 없거나 나만 보기 범위예요. 공유하려면 공개 범위를 직접
@@ -183,7 +210,9 @@ export function SocialShareDialog({
       <Dialog
         open={discard}
         role="alertdialog"
-        title="작성 중인 문장을 버릴까요?"
+        title={
+          form.command.hasIntent() ? '완료 여부를 나중에 확인할까요?' : '작성 중인 문장을 버릴까요?'
+        }
         onClose={() => setDiscard(false)}
         initialFocusRef={continueRef}
         footer={
@@ -192,19 +221,18 @@ export function SocialShareDialog({
               계속 작성
             </Button>
             <Button
-              variant="danger"
+              variant={form.command.hasIntent() ? 'outline' : 'danger'}
               onClick={() => {
-                form.command.abandon();
                 onClose();
               }}
             >
-              버리기
+              {form.command.hasIntent() ? '나중에 확인' : '버리기'}
             </Button>
           </>
         }
       >
         <p>
-          {form.uncertain
+          {form.command.hasIntent()
             ? '공유 사본이 이미 만들어졌을 수 있어요. 닫은 뒤 내 공유에서 완료 여부를 확인해 주세요.'
             : '보내지 않은 문장은 저장되지 않아요.'}
         </p>

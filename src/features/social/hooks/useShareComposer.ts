@@ -23,6 +23,15 @@ export function useShareComposer(
   const pendingInput = useRef<PostInput | null>(null);
   const pendingCategory = useRef<SocialCategoryView | null>(null);
   const command = useSocialCommand('share');
+  let recoveryInput: PostInput | null = null;
+  if (command.ownerVerified && command.pending?.operation === 'share') {
+    try {
+      const parsed = parsePostInput(JSON.parse(command.pending.signature));
+      if (parsed.ok) recoveryInput = parsed.value;
+    } catch {
+      /* 형식이 잘못된 의도는 내용 없이 원래 명령만 확인한다. */
+    }
+  }
   useEffect(
     () =>
       onSocialInvalidation((reason) => {
@@ -60,6 +69,15 @@ export function useShareComposer(
     void reconcile(choice);
   };
   const share = async () => {
+    const current = sequence.current;
+    const allowed = captureSocialDispatch();
+    if (command.hasIntent()) {
+      if (!command.ownerVerified || !command.retryAllowed) return;
+      const result = await command.retry<{ id: string }>();
+      if (result !== null && current === sequence.current && allowed())
+        onShared(result.id, 'recovered');
+      return;
+    }
     if (selected === null) return;
     if (
       pendingInput.current === null &&
@@ -97,7 +115,7 @@ export function useShareComposer(
       pendingInput.current = null;
       pendingCategory.current = null;
     }
-    if (result !== null) {
+    if (result !== null && current === sequence.current && allowed()) {
       pendingInput.current = null;
       pendingCategory.current = null;
       onShared(
@@ -129,6 +147,7 @@ export function useShareComposer(
     share,
     reconcile: () => (selected === null ? Promise.resolve() : reconcile(selected)),
     uncertain: command.uncertain,
+    recoveryInput,
     previewCategory: command.uncertain ? pendingCategory.current : category,
   };
 }

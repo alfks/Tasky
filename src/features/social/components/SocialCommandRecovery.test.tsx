@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 
@@ -194,4 +194,66 @@ it('초대 A unknown 뒤 B landing은 A완료와 B동의를 섞지 않으며 B�
   await waitFor(() => expect(done).toHaveBeenCalledOnce());
   expect(f.repository.sendRequest.mock.calls[2][0]).toEqual({ token: tokenB });
   expect(f.repository.sendRequest.mock.calls[2][1].key).not.toBe(first[1].key);
+});
+
+it('FIRST busy Esc/X는 unsent discard를 열지 않으며 deadline 뒤 나중에 확인은 원래 pair를 보존한다', async () => {
+  vi.useFakeTimers();
+  try {
+    f.repository.createPost.mockImplementation(() => new Promise(() => undefined));
+    const close = vi.fn();
+    render(
+      <SocialShareDialog
+        choices={[
+          {
+            key: 'only-local',
+            text: 'FIRST 문장',
+            happenedOn: '2026-09-30',
+            categoryLabel: '공개',
+            resolveCategory: async () => ({
+              id: 'a'.repeat(32),
+              name: '공개',
+              color: '#112233',
+              visibility: 'public',
+              version: 1,
+              updatedAt: 1,
+            }),
+            onChangeAudience: vi.fn(),
+          },
+        ]}
+        date="2026-09-30"
+        loading={false}
+        onDateChange={vi.fn()}
+        onClose={close}
+        onShared={vi.fn()}
+      />,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole('radio'));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '공유하기' }));
+    });
+    expect(f.repository.createPost).toHaveBeenCalledOnce();
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' });
+      fireEvent.click(screen.getAllByRole('button', { name: '닫기' })[0]);
+      fireEvent.mouseDown(document.body);
+    });
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(close).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(screen.getByRole('button', { name: '완료 여부 확인' })).toBeEnabled();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(
+      screen.getByRole('alertdialog', { name: '완료 여부를 나중에 확인할까요?' }),
+    ).toBeVisible();
+    expect(screen.queryByRole('button', { name: '버리기' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '나중에 확인' }));
+    expect(close).toHaveBeenCalledOnce();
+    expect(f.repository.createPost).toHaveBeenCalledOnce();
+  } finally {
+    vi.useRealTimers();
+  }
 });
