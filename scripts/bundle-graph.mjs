@@ -6,6 +6,7 @@ export const OPTIONAL_SOURCE_ROOTS = [
   'src/features/social/components/SocialScreen.tsx',
   'src/features/social/components/PublicScreen.tsx',
   'src/features/category/components/CategoryAudienceController.tsx',
+  'src/features/category/components/CategoryPublicationManager.tsx',
   'src/infra/social/http-repository.ts',
   'src/infra/social/public-repository.ts',
   'src/domain/category/visibility-cache.ts',
