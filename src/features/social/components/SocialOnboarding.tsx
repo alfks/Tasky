@@ -8,9 +8,9 @@ import { Button } from '@/components/ui/Button';
 
 type SocialOnboardingProps = { enabled: boolean; onReady: () => void };
 export function SocialOnboarding({ enabled, onReady }: SocialOnboardingProps) {
-  const [nickname, setNickname] = useState('');
+  const command = useSocialCommand('profile');
+  const [nickname, setNickname] = useState(command.pending?.signature ?? '');
   const [invalid, setInvalid] = useState(false);
-  const command = useSocialCommand();
   const start = async () => {
     const parsed = parseNickname(nickname);
     if (!parsed.ok) {
@@ -41,7 +41,7 @@ export function SocialOnboarding({ enabled, onReady }: SocialOnboardingProps) {
             setInvalid(false);
           }}
           maxLength={40}
-          disabled={command.busy}
+          disabled={command.busy || command.uncertain}
           className="h-[var(--control-height)] rounded-[var(--radius-md)] border border-border bg-surface px-[var(--space-3)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         />
       </label>
@@ -50,8 +50,12 @@ export function SocialOnboarding({ enabled, onReady }: SocialOnboardingProps) {
       </p>
       {invalid ? <p role="alert">별명을 1~20자로 입력해 주세요.</p> : null}
       {command.error === null ? null : <p role="alert">{socialFailureMessage(command.error)}</p>}
-      <Button disabled={!enabled} loading={command.busy} onClick={() => void start()}>
-        시작하기
+      <Button
+        disabled={!enabled || (command.uncertain && !command.retryAllowed)}
+        loading={command.busy}
+        onClick={() => void start()}
+      >
+        {command.uncertain ? '완료 여부 확인' : '시작하기'}
       </Button>
     </section>
   );

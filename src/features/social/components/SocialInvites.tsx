@@ -11,7 +11,7 @@ export function SocialInvites({ enabled }: SocialInvitesProps) {
   const invites = useSocialResource((repo, cursor) =>
     repo.invites(cursor === undefined ? undefined : { cursor }),
   );
-  const command = useSocialCommand();
+  const command = useSocialCommand('invites');
   const [link, setLink] = useState('');
   const [notice, setNotice] = useState('');
   const create = async () => {
@@ -58,8 +58,18 @@ export function SocialInvites({ enabled }: SocialInvitesProps) {
       <h3 id="social-invites-heading" className="text-base font-semibold">
         친구 초대
       </h3>
-      <Button disabled={!enabled} loading={command.busy} onClick={() => void create()}>
-        초대 만들기
+      <Button
+        disabled={
+          !enabled ||
+          (command.uncertain &&
+            (!command.retryAllowed || command.pending?.operation !== 'invite-create'))
+        }
+        loading={command.busy}
+        onClick={() => void create()}
+      >
+        {command.uncertain && command.pending?.operation === 'invite-create'
+          ? '완료 여부 확인'
+          : '초대 만들기'}
       </Button>
       {link === '' ? null : (
         <div className="flex flex-col gap-[var(--space-2)]">
@@ -80,6 +90,18 @@ export function SocialInvites({ enabled }: SocialInvitesProps) {
       <p role="status" aria-live="polite" className="text-sm text-muted">
         {notice}
       </p>
+      {command.uncertain && command.pending?.operation !== 'invite-create' ? (
+        <Button
+          disabled={!command.retryAllowed}
+          onClick={() =>
+            void command.retry().then(async (result) => {
+              if (result !== null) await invites.refresh();
+            })
+          }
+        >
+          완료 여부 확인
+        </Button>
+      ) : null}
       {invites.busy ? <p role="status">초대를 불러오는 중</p> : null}
       {command.error === null && invites.error === null ? null : (
         <p role="alert">{socialFailureMessage(command.error ?? invites.error)}</p>
@@ -98,6 +120,7 @@ export function SocialInvites({ enabled }: SocialInvitesProps) {
                 variant="outline"
                 size="sm"
                 loading={command.busy}
+                disabled={command.uncertain}
                 onClick={() => void revoke(invite.inviteId)}
               >
                 초대 취소
