@@ -55,6 +55,10 @@ export type SyncChange = {
 /** 한 왕복의 요청 본문 (protocol v1). */
 export type SyncRequest = {
   protocol: 1;
+  /** ADR-0026: 프로필 호환성 프로토콜을 지원한다. 행 표식과 함께 명시적 삭제를 판정한다. */
+  settingsProfileVersion?: 1;
+  /** 업데이트 후 첫 동기화에서 커서 이전·자기 기기의 설정도 받아 프로필을 회복한다. */
+  includeOwnSettings?: boolean;
   deviceId: string;
   /** 풀 커서 — 이 seq **이후**부터 받는다. */
   cursor: number;
@@ -105,6 +109,8 @@ export function isResyncResponse(response: SyncResponse): response is SyncResync
  * 다른 기기로 퍼진다.
  */
 export type SyncState = {
+  /** ADR-0026: 이 기기가 업데이트 후 서버 설정을 다시 받았는지 (개인 동기화 대상 아님). */
+  settingsProfileVersion?: 1;
   /** 이 브라우저 프로필의 UUID. 로그아웃·계정 전환에도 유지(스펙 §4). */
   deviceId: string;
   /** 로그인된 구글 계정의 `sub`. 없으면 로그인 전(R8) 또는 로그아웃 후. */

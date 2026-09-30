@@ -86,6 +86,11 @@ export async function handleSync(
         updatedAt: entity.updatedAt,
         deleted: entity.deletedAt !== undefined,
         bodyJson: JSON.stringify(entity),
+        preserveProfile:
+          change.tbl === 'settings' &&
+          (body.settingsProfileVersion !== 1 ||
+            !('profileVersion' in read.entity) ||
+            read.entity.profileVersion !== 1),
       },
       now,
     );
@@ -96,7 +101,12 @@ export async function handleSync(
     }
   }
 
-  const rows = await userDb.pull(body.cursor, body.deviceId, REQUEST_LIMIT + 1);
+  const rows = await userDb.pull(
+    body.cursor,
+    body.deviceId,
+    REQUEST_LIMIT + 1,
+    body.settingsProfileVersion === 1 && body.includeOwnSettings === true,
+  );
   const more = rows.length > REQUEST_LIMIT;
   const page = rows.slice(0, REQUEST_LIMIT);
   const pulled: PulledRow[] = page.map((r) => ({
@@ -111,7 +121,7 @@ export async function handleSync(
   // 제외하므로, 커서를 그 seq 까지 앞당기면 **같은 요청 구간에 다른 기기가 끼워 넣은 로우**를
   // 다음 풀에서 건너뛸 수 있다(자기 seq 가 다른 기기 seq 사이에 낄 수 있으므로).
   const pulledMax = pulled.length > 0 ? Math.max(...pulled.map((r) => r.seq)) : undefined;
-  const cursor = pulledMax ?? body.cursor;
+  const cursor = Math.max(body.cursor, pulledMax ?? body.cursor);
   await userDb.setDeviceLastSeq(body.deviceId, cursor);
 
   const response: SyncOkResponse = { cursor, applied, rejected, pulled, more, gcFloor: floor };

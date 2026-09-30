@@ -25,4 +25,6 @@ export type Settings = Meta & {
   profileBio?: string;
   /** 사진 — 클라이언트가 96px 로 줄인 `data:image/webp|jpeg;base64,…` ≤ 16,384자 (profile.md R5). */
   profileAvatar?: string;
+  /** ADR-0026: 프로필 편집기가 저장한 행. 누락된 프로필 필드도 의도적인 삭제다. */
+  profileVersion?: 1;
 };

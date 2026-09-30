@@ -11,6 +11,7 @@ import type { SessionInfo, SyncTransport } from '@/repositories/sync-transport';
 
 import { resetEngineForTest, startEngine } from '@/features/sync/store/sync-engine';
 import type { SyncRuntime, SyncStoreState } from '@/features/sync/store/sync-store';
+import { makeSettings } from '@/test/fixtures/settings';
 
 /** 응답을 미리 준 순서대로 돌려주는 트랜스포트 — 엔진의 사이클·재실행 로직만 겨냥한다. */
 function fakeTransport(
@@ -70,6 +71,35 @@ describe('sync-engine: 프로필 재조회 회복', () => {
   afterEach(() => {
     resetEngineForTest();
     vi.useRealTimers();
+  });
+
+  it('업데이트 후 자기 설정을 끝 페이지까지 다시 받아 프로필을 회복하고 다음부터 일반 풀을 한다', async () => {
+    const settings = makeSettings({ profileName: '밀리', profileVersion: 1 });
+    const response = { cursor: 100, applied: [], rejected: [], gcFloor: 0 };
+    const { transport, calls } = fakeTransport(
+      [
+        {
+          ...response,
+          pulled: [{ tbl: 'settings', id: 'default', seq: 1, row: settings }],
+          more: true,
+        },
+        { ...response, pulled: [], more: false },
+      ],
+      { sub: 'profile-sync', email: 'a@example.com', expiresAt: '' },
+    );
+    setSyncTransport(transport);
+    const repo = getRepositories();
+    await repo.sync.setState({ deviceId: 'd1', userSub: 'profile-sync', cursor: 100 });
+    const { rt } = fakeRuntime();
+    startEngine(rt);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls.map((request) => request.includeOwnSettings)).toEqual([true, true]);
+    expect(await repo.settings.get()).toMatchObject({ profileName: '밀리', profileVersion: 1 });
+    expect(await repo.sync.getState()).toMatchObject({ settingsProfileVersion: 1, cursor: 100 });
+
+    window.dispatchEvent(new Event('focus'));
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(calls[2]?.includeOwnSettings).toBe(false);
   });
 
   it('첫 재조회가 실패해도 다음 정상 왕복에서 다시 읽는다', async () => {

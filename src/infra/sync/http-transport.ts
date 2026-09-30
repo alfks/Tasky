@@ -56,7 +56,8 @@ export function createHttpSyncTransport(): SyncTransport {
       const response = await safeFetch('/api/sync', {
         method: 'POST',
         headers: HEADERS,
-        body: JSON.stringify(body),
+        // ADR-0026: 프로필을 아는 클라이언트의 의도적인 삭제와 구버전 필드 누락을 구분한다.
+        body: JSON.stringify({ ...body, settingsProfileVersion: 1 }),
       });
       if (!response.ok) {
         throw failureFor(response.status);

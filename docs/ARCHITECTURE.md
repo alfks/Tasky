@@ -176,6 +176,7 @@ type Settings = Meta & {
   accentColor: string;
   seededAt?: string;
   lastBackupAt?: string;
+  profileVersion?: 1; // 명시적인 프로필 편집·삭제 표식 (ADR-0026)
   profileName?: string; // 프로필 세 필드 — ADR-0023, 규칙·상한은 domain/profile/profile.rules.ts
   profileBio?: string;
   profileAvatar?: string; // data:image/webp|jpeg;base64,… ≤ 16,384자(클라이언트가 96px 로 줄인 것)
@@ -195,6 +196,7 @@ type FocusSession = Meta & {
 ```
 
 - `Meta`는 네 엔티티 모두 **예외 없이** 갖는다. `id`는 UUID v4(`lib/id.ts#newId()`), 시각은 ISO 8601 UTC(`toISOString()` 형식), `rev`는 쓰기마다 +1. 모든 변경은 도메인 `touch(entity, now)`를 거치고 그 결과(`Persistable<T>`)만 `upsert` 할 수 있다(타입으로 강제). 근거: ADR-0005 · ADR-0007.
+- 혼합 버전 설정 동기화는 [ADR-0026](./decisions/ADR-0026-legacy-profile-sync.md)를 따른다. `settingsProfileVersion: 1` 요청과 `profileVersion: 1` 행은 프로필 생략을 삭제로 처리하고, 구버전 요청의 누락된 프로필은 D1 갱신 문 안에서 보존한다.
 - `Settings`는 단일 행(고정 id `'default'`)이다. 별도 key-value 테이블은 타입 안정성을 잃고, 다른 저장소(localStorage)는 계약 테스트·동기화 경로에서 빠지므로 기각. `Settings`는 삭제되지 않으므로 `deletedAt`이 설정되지 않는다(타입은 공통 유지 — 계약 테스트 단순화).
 - 소프트 삭제 필터는 `query.ts`(IndexedDB)·`memory/live.ts` 한 곳씩. 카테고리 삭제 시 투두는 `categoryId`를 유지한다(ADR-0005 삭제 행).
 - **툼스톤을 읽는 유일한 경로는 `DatasetRepository.readAll()`**이다(TECH_PLAN §6, ADR-0009 규칙 4 — 호출처 셋: 백업 내보내기, 병합 가져오기의 현재 스냅샷, "삭제됨" 그룹 표시). 엔티티 레포지토리에는 `includeDeleted` 옵션이 없다.

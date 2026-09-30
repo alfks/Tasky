@@ -2,7 +2,7 @@
 
 # ADR-0023: 개인 프로필은 `Settings` 행의 세 필드 — 사진은 클라이언트가 줄인 데이터 URL
 
-- 상태: accepted
+- 상태: partially superseded by [ADR-0026](ADR-0026-legacy-profile-sync.md) (혼합 버전·Worker 무변경 규칙)
 - 날짜: 2026-09-29
 - 관련: [profile.md](../specs/profile.md) · 티켓 T-A(이 문서)·T-G(구현) · ADR-0005(공통 필드·충돌 정책)·ADR-0018(로우 단위 LWW·동기화 테이블)·ADR-0022(소셜 프로필은 별개)
 - 구현: 예정(T-G). 이 결정의 승인은 기능 출시를 뜻하지 않는다.

@@ -119,6 +119,7 @@ export function setProfile(
   const { profileName: _n, profileBio: _b, profileAvatar: _a, ...rest } = settings;
   const next: Settings = {
     ...rest,
+    profileVersion: 1,
     ...(name === undefined ? {} : { profileName: name }),
     ...(bio === undefined ? {} : { profileBio: bio }),
     ...(avatar === undefined ? {} : { profileAvatar: avatar }),

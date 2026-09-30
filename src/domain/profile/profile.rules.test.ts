@@ -152,6 +152,7 @@ describe('setProfile — R7 (ADR-0023 규칙 4)', () => {
       profileName: '밀리',
       profileBio: '오늘도 한 칸씩',
       profileAvatar: 'data:image/webp;base64,AAAA',
+      profileVersion: 1,
       rev: settings.rev + 1,
       updatedAt: LATER,
     });
@@ -167,6 +168,7 @@ describe('setProfile — R7 (ADR-0023 규칙 4)', () => {
     expect('profileName' in next).toBe(false);
     expect('profileBio' in next).toBe(false);
     expect('profileAvatar' in next).toBe(false);
+    expect(next.profileVersion).toBe(1);
     expect(next.rev).toBe(settings.rev + 1);
   });
 

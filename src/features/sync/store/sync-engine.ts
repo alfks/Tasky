@@ -222,12 +222,14 @@ async function pushAndPull(repo: SyncRepository, state: SyncState): Promise<bool
   if (toDropPhysical.length > 0) await repo.dropOutbox(toDropPhysical);
 
   let response;
+  const includeOwnSettings = state.settingsProfileVersion !== 1;
   try {
     response = await getSyncTransport().sync({
       protocol: 1,
       deviceId: state.deviceId,
       cursor: state.cursor,
       changes,
+      includeOwnSettings,
     });
   } catch (error) {
     if (isTransportError(error) && error.kind === 'unauthorized') stopPolling();
@@ -239,6 +241,10 @@ async function pushAndPull(repo: SyncRepository, state: SyncState): Promise<bool
   }
   await ackApplied(repo, entries, response.applied);
   await applyResponse(repo, state, response);
+  if (includeOwnSettings && !response.more) {
+    const latest = (await repo.getState()) ?? state;
+    await repo.setState({ ...latest, settingsProfileVersion: 1 });
+  }
   return response.more;
 }
 
