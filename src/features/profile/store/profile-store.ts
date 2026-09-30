@@ -67,11 +67,14 @@ function fieldsOf(settings: Settings | undefined): ProfileMirror {
 }
 
 export function createProfileStore(deps: MetaDeps = defaultDeps) {
+  // 늦게 끝난 첫 읽기가 동기화로 채택한 최신 프로필을 덮지 않게 읽기/쓰기에 순서를 매긴다.
+  let epoch = 0;
   return create<ProfileStore>()((set, get) => ({
     ...initialState,
 
     init: async () => {
       if (get().status !== 'idle') return;
+      const ticket = ++epoch;
       const mirror = readProfileMirror();
       set({
         status: 'loading',
@@ -79,41 +82,53 @@ export function createProfileStore(deps: MetaDeps = defaultDeps) {
       });
       try {
         const fields = fieldsOf(await getRepositories().settings.get());
+        if (ticket !== epoch) return;
         set({ ...fields, status: 'ready', hydrated: true });
         writeProfileMirror(fields);
       } catch {
+        if (ticket !== epoch) return;
         // 미러가 있었으면 그대로 두고, 없었으면 이제야 폴백을 보여준다(읽기가 "끝났다").
         set({ status: 'error', hydrated: true });
       }
     },
 
     save: async (change) => {
+      ++epoch;
       try {
         // 쓰기 경로에서만 행을 만든다 — 읽기(`init`·`reload`)는 행이 없으면 그냥 "미설정" 이다. 새로 만든
         // 기본 행은 따로 쓰지 않는다: `change` 의 결과가 곧 그 행이다(쓰기 한 번).
         const repository = getRepositories().settings;
         const next = change((await repository.get()) ?? createSettings(deps));
         await repository.upsert(next);
+        ++epoch;
         const fields = fieldsOf(next);
-        set({ ...fields, hydrated: true });
+        set({ ...fields, status: 'ready', hydrated: true });
         writeProfileMirror(fields);
         return true;
       } catch {
+        if (get().status === 'loading') set({ status: 'error', hydrated: true });
         return false;
       }
     },
 
     reloadFromStorage: async () => {
+      const ticket = ++epoch;
       try {
         const fields = fieldsOf(await getRepositories().settings.get());
-        set({ ...fields, hydrated: true });
+        if (ticket !== epoch) return;
+        set({ ...fields, status: 'ready', hydrated: true });
         writeProfileMirror(fields);
       } catch {
-        /* 원격 채택 뒤 재조회 실패 — 화면은 그대로, 다음 풀에서 다시 읽는다. */
+        // 원격 채택 뒤 재조회 실패 — 미러는 보존하고 다음 정상 왕복에서 다시 읽는다.
+        // 이 읽기가 느린 init 을 무효화했다면 loading 에 영원히 머물지 않게 끝낸다.
+        if (ticket === epoch && get().status === 'loading') {
+          set({ status: 'error', hydrated: true });
+        }
       }
     },
 
     forgetLocal: () => {
+      ++epoch;
       clearProfileMirror();
       set({ ...fieldsOf(undefined), ...initialState });
     },

@@ -3,7 +3,7 @@
 // 산다. **스토어·`@/lib/*` 를 직접 import 하지 않는다**: 지연 청크가 진입 모듈을 정적으로 끌면 rolldown
 // 이 그 모듈(과 그 의존 — `settings.rules` 등)을 진입에서 떼어 별도 청크로 만든다(실측, `ProfileCard`
 // 머리주석). 카드(진입)가 `save`·`deps`·초기값을 prop 으로 준다.
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import type { MetaDeps, Persistable } from '@/domain/meta';
 import {
@@ -39,6 +39,7 @@ function messageOf(error: unknown): string {
 }
 
 export function useProfileForm({ initial, save, deps }: ProfileFormDeps) {
+  const original = useRef(initial).current;
   const [name, setName] = useState(initial.name ?? '');
   const [bio, setBio] = useState(initial.bio ?? '');
   const [avatar, setAvatar] = useState(initial.avatar);
@@ -88,9 +89,24 @@ export function useProfileForm({ initial, save, deps }: ProfileFormDeps) {
     }
     if (!valid) return 'invalid';
 
+    const nameDirty = name !== (original.name ?? '');
+    const bioDirty = bio !== (original.bio ?? '');
+    const avatarDirty = avatar !== original.avatar;
+    if (!nameDirty && !bioDirty && !avatarDirty) return 'saved';
+
     setSaving(true);
     try {
-      const ok = await save((settings) => setProfile(settings, { name, bio, avatar }, deps));
+      const ok = await save((settings) =>
+        setProfile(
+          settings,
+          {
+            name: nameDirty ? name : (settings.profileName ?? ''),
+            bio: bioDirty ? bio : (settings.profileBio ?? ''),
+            avatar: avatarDirty ? avatar : settings.profileAvatar,
+          },
+          deps,
+        ),
+      );
       return ok ? 'saved' : 'failed';
     } finally {
       setSaving(false);

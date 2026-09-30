@@ -25,6 +25,7 @@ const WRITE_DEBOUNCE_MS = 1_500;
 
 let started = false;
 let running = false;
+let rerunRequested = false;
 /** `startEngine` 이 한 번 받아 두는 진입 상태 핸들 — 값으로 `sync-store.ts` 를 import 하지 않기
  * 위해 인자로 받는다(머리주석). `started` 가드 덕분에 엔진 수명 동안 하나로 고정된다. */
 let rt: SyncRuntime;
@@ -62,7 +63,10 @@ function restartPollingIfVisible(): void {
 }
 
 async function runCycle(): Promise<void> {
-  if (running) return;
+  if (running) {
+    rerunRequested = true;
+    return;
+  }
   running = true;
   try {
     await cycleOnce();
@@ -70,6 +74,10 @@ async function runCycle(): Promise<void> {
     console.error('동기화 사이클이 실패했습니다.', error);
   } finally {
     running = false;
+    if (rerunRequested) {
+      rerunRequested = false;
+      void runCycle();
+    }
   }
 }
 
@@ -111,6 +119,10 @@ async function applyResponse(
   const adoptedAny = result !== null && Object.values(result.adopted).some((n) => n > 0);
   if (adoptedAny && result !== null) {
     await reloadAdoptedViews(result.adopted, rt);
+  }
+  // 프로필 재조회가 한번 실패해도 다음 정상 왕복에서 회복한다. 채택된 설정이 있으면 위에서 읽었다.
+  if (result?.adopted.settings === undefined || result.adopted.settings === 0) {
+    await rt.reloadProfile();
   }
   rt.setState((prev) => ({
     pendingCount,
@@ -307,6 +319,7 @@ export function startEngine(runtime: SyncRuntime): void {
 export function resetEngineForTest(): void {
   started = false;
   running = false;
+  rerunRequested = false;
   stopPolling();
   if (debounceTimer !== null) {
     clearTimeout(debounceTimer);

@@ -60,6 +60,74 @@ function fakeRuntime(): { rt: SyncRuntime; state: Partial<SyncStoreState> } {
   return { rt, state };
 }
 
+describe('sync-engine: 프로필 재조회 회복', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    resetEngineForTest();
+    setRepositories(createMemoryRepositories());
+  });
+
+  afterEach(() => {
+    resetEngineForTest();
+    vi.useRealTimers();
+  });
+
+  it('첫 재조회가 실패해도 다음 정상 왕복에서 다시 읽는다', async () => {
+    const { transport } = fakeTransport([], {
+      sub: 'profile-sync',
+      email: 'a@example.com',
+      expiresAt: '',
+    });
+    setSyncTransport(transport);
+    await getRepositories().sync.setState({ deviceId: 'd1', userSub: 'profile-sync', cursor: 0 });
+    const { rt } = fakeRuntime();
+    const reload = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('temporary'))
+      .mockResolvedValue(undefined);
+    rt.reloadProfile = reload;
+    startEngine(rt);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reload).toHaveBeenCalledTimes(1);
+
+    window.dispatchEvent(new Event('focus'));
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(reload).toHaveBeenCalledTimes(2);
+  });
+
+  it('진행 중 들어온 포커스 트리거를 첫 왕복 뒤 다시 실행한다', async () => {
+    let finishFirst!: (response: SyncResponse) => void;
+    const firstResponse = new Promise<SyncResponse>((resolve) => {
+      finishFirst = resolve;
+    });
+    let calls = 0;
+    const { transport } = fakeTransport([], {
+      sub: 'profile-sync',
+      email: 'a@example.com',
+      expiresAt: '',
+    });
+    transport.sync = async () => {
+      calls += 1;
+      return calls === 1
+        ? firstResponse
+        : { cursor: 0, applied: [], rejected: [], pulled: [], more: false, gcFloor: 0 };
+    };
+    setSyncTransport(transport);
+    await getRepositories().sync.setState({ deviceId: 'd1', userSub: 'profile-sync', cursor: 0 });
+    const { rt } = fakeRuntime();
+    startEngine(rt);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toBe(1);
+
+    window.dispatchEvent(new Event('focus'));
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(calls).toBe(1);
+    finishFirst({ cursor: 0, applied: [], rejected: [], pulled: [], more: false, gcFloor: 0 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toBe(2);
+  });
+});
+
 describe('sync-engine: 트리거 — 보이는 동안에만 폴링(돌연변이 5 대상)', () => {
   let visibility: DocumentVisibilityState = 'visible';
 
