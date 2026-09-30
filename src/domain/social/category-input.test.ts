@@ -18,6 +18,8 @@ describe('공개 category DTO', () => {
       { memo: '비밀' },
       { visibility: 'everyone' },
       { name: '제목\n줄바꿈' },
+      { emoji: '\u202e' },
+      { emoji: '\u0000' },
     ])
       expect(parseCategoryInput({ ...INPUT, ...extra }).ok).toBe(false);
   });
