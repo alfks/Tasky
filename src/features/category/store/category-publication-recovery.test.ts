@@ -10,7 +10,6 @@ import {
   observePublication,
 } from '@/features/category/store/category-publication-recovery';
 import { makeCategory } from '@/test/fixtures/category';
-
 const canonical: SocialCategoryView = {
   id: 'remote',
   name: '서버 이름',
@@ -21,6 +20,7 @@ const canonical: SocialCategoryView = {
 };
 const answer = <T>(data: T): SocialResponse<T> => ({ data, serverTime: 1 });
 const original = makeCategory({ name: canonical.name, color: canonical.color });
+const normalizedOrigin = { ...original, visibility: 'private' as const };
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -206,7 +206,7 @@ describe('미확정 카테고리 명령의 탭 수명', () => {
     await next.refresh();
     f.persist.mockResolvedValueOnce(false);
     expect(await next.retry()).toBe(false);
-    expect(f.persist).toHaveBeenLastCalledWith(canonical, original, expect.any(Function));
+    expect(f.persist).toHaveBeenLastCalledWith(canonical, normalizedOrigin, expect.any(Function));
     expect(f.saveCategory.mock.calls[1]).toEqual(f.saveCategory.mock.calls[0]);
     expect(f.recovery.list()).toHaveLength(0);
     expect(next.getSnapshot().error).toBe('conflict');

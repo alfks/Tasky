@@ -109,3 +109,19 @@ export function reportPublicationError(
   if (allowed() && (code === 'unauthorized' || code === 'account-deleted')) notify?.(code);
   return code;
 }
+
+/** 성공한 자기 연결 표식 쓰기만 다음 개인 CAS 기준으로 반영한다. */
+export function publicationOriginAfterConfirmation(
+  original: Category,
+  canonical: SocialCategoryView | null,
+): Category {
+  const { socialCategoryId: _id, socialCategoryVersion: _version, ...rest } = original;
+  return canonical === null
+    ? { ...rest, visibility: 'private' }
+    : {
+        ...rest,
+        visibility: canonical.visibility,
+        socialCategoryId: canonical.id,
+        socialCategoryVersion: canonical.version,
+      };
+}
