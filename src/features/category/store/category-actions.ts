@@ -17,6 +17,7 @@ import {
   transitionCategory,
   updateCategory as updateCategoryRule,
 } from '@/domain/category/category.rules';
+import type { CategoryVisibility } from '@/domain/category/visibility';
 import type { CategoryId } from '@/domain/ids';
 import { createSettings } from '@/domain/theme/settings.rules';
 
@@ -27,6 +28,12 @@ import type { CategoryContext, CategoryWriter } from '@/features/category/store/
 
 /** 스토어의 액션 부분. 쓰기 액션은 성공 여부를 돌려준다 — 다이얼로그가 닫을지 판단한다. */
 export type CategoryActions = {
+  /** 서버에서 확인한 연결만 최신 개인 카테고리에 기록한다. */
+  confirmAudience: (
+    id: CategoryId,
+    canonical: { id: string; visibility: CategoryVisibility; version: number } | null,
+    allowed?: () => boolean,
+  ) => Promise<boolean>;
   /**
    * 카테고리 전량(활성 + 종료, 툼스톤 제외)을 읽어 메모리를 교체하고, 첫 실행이면 시드한다 (R18).
    * 종료된 것까지 들고 있는 이유: "종료됨 (n)" 섹션(R8)과 이름 유일성·개수 제한의 모집단(R2·R6)이
@@ -193,6 +200,18 @@ export function createCategoryActions(
   writer: CategoryWriter,
 ): CategoryActions {
   return {
+    confirmAudience: async (id, canonical, allowed = () => true) => {
+      const { clearCategoryVisibility, confirmCategoryVisibility } =
+        await import('@/domain/category/visibility-cache');
+      return writer.commit(() => {
+        if (!allowed()) return null;
+        const category = ctx.get().byId[id];
+        if (category === undefined) return null;
+        return canonical === null
+          ? clearCategoryVisibility(category, ctx.deps)
+          : confirmCategoryVisibility(category, canonical, ctx.deps);
+      });
+    },
     ...createLoadAction(ctx, writer),
     ...createEntryActions(ctx, writer),
     ...createOrderActions(ctx, writer),

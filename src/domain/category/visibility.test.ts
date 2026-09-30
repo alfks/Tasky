@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
+import { categoryVisibility, isCategoryVisibility } from '@/domain/category/visibility';
 import {
-  categoryVisibility,
   clearCategoryVisibility,
   confirmCategoryVisibility,
-  isCategoryVisibility,
-} from '@/domain/category/visibility';
+} from '@/domain/category/visibility-cache';
 
 import { makeCategory } from '@/test/fixtures/category';
 const deps = { now: () => '2026-09-30T12:00:00.000Z', id: () => 'unused' };
