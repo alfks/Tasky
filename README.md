@@ -182,7 +182,7 @@ Dexie(IndexedDB, 지연 로드) · Serwist(PWA) · Vitest · Playwright · pnpm 
 
 - **Phase 1 (MVP)** — 날짜 스트립, 카테고리별 할 일, 체크·달성률, 테마/색상 · _구현됨_
 - **Phase 2** — 통계, 루틴, 다이어리, D-day · _구현됨_ / 구글 로그인 필수 + 서버 동기화([ADR-0015](./docs/decisions/ADR-0015-google-auth-and-realtime-sync.md), 위 [여러 기기에서 쓰기](#여러-기기에서-쓰기--동기화) 참고) · _서버·저장 계층·화면 전부 구현됨(#129), 배포는 개발자가 로컬에서 수동으로 계속함 — Worker 는 배포 주소에 붙어 있는 것이 확인됐으나(#126 이후) #129 클라이언트까지 포함하는지·구글 실왕복은 미검증_
-- **Phase 3** — 초대한 친구·선택한 기록 공유·응원·공개 범위 · _[상세 설계 승인](./docs/specs/social.md), 구현 예정_
+- **Phase 3** — 초대한 친구·선택한 기록 공유·응원·공개 범위 · **구현됨, 기본 off 유지**. [릴리스 판정](./docs/phase3-release.md)의 실제 운영 검증은 미완료.
 
 ## 라이선스
 
@@ -196,3 +196,19 @@ Dexie(IndexedDB, 지연 로드) · Serwist(PWA) · Vitest · Playwright · pnpm 
 - **Cloudflare Web Analytics** — 앱 화면(`index.html`)이 `static.cloudflareinsights.com` 의 비콘
   스크립트를 불러옵니다. 번들에 포함되지 않는 외부 런타임 스크립트이고, Cloudflare 가 받는 정보는
   [Cloudflare 개인정보처리방침](https://www.cloudflare.com/privacypolicy/)을 따릅니다.
+
+## 친구 공유와 카테고리 공개 범위
+
+Phase 3의 친구 초대·요청·관리, 완료 기록 공유·응원, 내 공유 정리와 익명 공개 읽기를 구현했다.
+카테고리는 나만 보기·친구만·모두 공개로 설정하며 이름/색/이모지와 직접 고른 사본만 공개한다.
+원래 할 일과 메모는 공개하지 않는다. 공개된 이름 변경·삭제와 범위 확대/축소는 서버 확인과
+명시적 동의를 거친다. 전체 명세와 구현 추적은 [릴리스 판정](docs/phase3-release.md)에 있다.
+
+운영 설정은 기본 `SOCIAL_MODE=off`다. 구현/PR 머지는 활성화를 뜻하지 않는다. 실제 Google 로그인,
+실제 참여자 3명 검증, 원격 D1 비용과 공개 운영 게이트는 증거가 없으면 UNVERIFIED로 남긴다.
+로컬 브라우저 검증은 별도 enabled 서버와 정확한 테스트 계정 allowlist를 쓴다.
+
+```bash
+TASKY_E2E_SOCIAL=1 pnpm exec playwright test social.spec.ts category-visibility.spec.ts --workers=1
+pnpm test:e2e # 기본 off 개인 화면 회귀
+```
