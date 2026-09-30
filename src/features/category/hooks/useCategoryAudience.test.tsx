@@ -34,8 +34,14 @@ function fixture(linked = true) {
   let keyNumber = 0;
   const category = makeCategory(
     linked
-      ? { visibility: 'friends', socialCategoryId: canonical.id, socialCategoryVersion: 1 }
-      : {},
+      ? {
+          name: canonical.name,
+          color: canonical.color,
+          visibility: 'friends',
+          socialCategoryId: canonical.id,
+          socialCategoryVersion: 1,
+        }
+      : { name: canonical.name, color: canonical.color },
   );
   const me = vi
     .fn<SocialRepository['me']>()
@@ -149,6 +155,24 @@ describe('카테고리 서버 범위와 명시적 변경', () => {
     expect(f.controller.getSnapshot().confirmed?.visibility).toBe('public');
   });
 
+  it('응답 소실 뒤 외부 철회의 tombstone 재생을 연결하지 않고 새 공개는 새 projection으로 확인한다', async () => {
+    const f = fixture();
+    await f.controller.refresh();
+    f.saveCategory.mockRejectedValueOnce(new Error('응답 소실'));
+    expect(await f.controller.change('public')).toBe(false);
+    f.saveCategory.mockResolvedValueOnce(
+      answer({ ...canonical, visibility: 'private', version: 5, revoked: true }),
+    );
+    expect(await f.controller.change('public')).toBe(false);
+    expect(f.persist).toHaveBeenLastCalledWith(null);
+    expect(f.controller.getSnapshot().confirmed).toBeNull();
+    expect(f.controller.getSnapshot().error).toBe('conflict');
+    expect(f.saveCategory.mock.calls[1]).toEqual(f.saveCategory.mock.calls[0]);
+    expect(await f.controller.change('public')).toBe(true);
+    expect(f.saveCategory.mock.calls[2][0]).not.toHaveProperty('id');
+    expect(f.saveCategory.mock.calls[2][1].key).toBe('key-2');
+  });
+
   it('409는 최신 범위를 읽되 재전송하지 않고 새 확인 클릭에 새 key를 쓴다', async () => {
     const f = fixture();
     await f.controller.refresh();
@@ -239,6 +263,9 @@ describe('카테고리 서버 범위와 명시적 변경', () => {
     );
     await f.controller.refresh();
     expect(await f.controller.change('public')).toBe(false);
+    f.saveCategory.mockResolvedValueOnce(
+      answer({ ...canonical, visibility: 'private', version: 4 }),
+    );
     expect(await f.controller.change('private')).toBe(true);
     expect(f.saveCategory.mock.calls[0][0].name).toBe(canonical.name);
     expect(f.saveCategory.mock.calls[0][0].visibility).toBe('private');

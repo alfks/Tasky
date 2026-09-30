@@ -58,7 +58,10 @@ function codeOf(error: unknown): SocialErrorCode {
       return 'temporary';
   }
 }
-function sameIntent(left: SocialCategoryInput, right: SocialCategoryInput): boolean {
+function sameIntent(
+  left: Pick<SocialCategoryInput, 'visibility' | 'name' | 'color' | 'emoji'>,
+  right: Pick<SocialCategoryInput, 'visibility' | 'name' | 'color' | 'emoji'>,
+): boolean {
   return (
     left.visibility === right.visibility &&
     left.name === right.name &&
@@ -159,14 +162,17 @@ export function createCategoryAudienceController(
           ? await repository.saveCategory(command.input, { key: command.key })
           : await repository.revokeCategory(command.input, { key: command.key });
       if (!current(captured, allowed)) return false;
-      const canonical = command.kind === 'revoke' ? null : response.data;
+      const canonical =
+        command.kind === 'revoke' || response.data.revoked === true ? null : response.data;
       if (!(await deps.persist(canonical))) throw new Error('확인 결과를 저장하지 못했어요.');
       if (!current(captured, allowed)) return false;
       pending = null;
       boundId = canonical?.id;
       checked = true;
-      update({ phase: 'ready', confirmed: canonical, error: null });
-      return true;
+      const matches =
+        command.kind === 'revoke' || (canonical !== null && sameIntent(command.input, canonical));
+      update({ phase: 'ready', confirmed: canonical, error: matches ? null : 'conflict' });
+      return matches;
     } catch (error) {
       if (!current(captured, allowed)) return false;
       const code = codeOf(error);
