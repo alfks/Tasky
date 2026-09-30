@@ -22,10 +22,12 @@ import {
   planCategoryRemovalUndo,
   type CategoryRemovalChoice,
 } from '@/domain/category/removal';
+import { categoryVisibility } from '@/domain/category/visibility';
 import type { DatasetWrite } from '@/domain/dataset';
 
 import { getRepositories } from '@/repositories/container';
 
+import { publicationOriginMatches } from '@/features/category/store/category-publication-contract';
 import type { CategoryRemovalMemo } from '@/features/category/store/category-state';
 import type { CategoryContext, CategoryWriter } from '@/features/category/store/category-writes';
 
@@ -40,12 +42,13 @@ export type CategoryRemovalActions = {
     choice: CategoryRemovalChoice;
     /** 지난 기록에서도 이름·색을 지우기로 골랐는가 (category R22). 기본 `false`. */
     hideHistory?: boolean;
+    allowed?: () => boolean;
   }) => Promise<boolean>;
   /**
    * 되돌리기 (R15). `pendingRemoval` 이 없으면 `false` + `error` 는 그대로(되돌릴 것이 없는 것은 실패가 아니다).
    * 실행 직전에 슬롯을 비워 **두 번 눌러도 두 번 되감기지 않게** 하고, 쓰기가 실패하면 슬롯을 되돌려 놓는다.
    */
-  undoRemoval: () => Promise<boolean>;
+  undoRemoval: (allowed?: () => boolean) => Promise<boolean>;
   /** 되돌리기 창이 닫혔을 때(6초 경과·토스트 닫음). 메모를 버린다. */
   clearPendingRemoval: () => void;
 };
@@ -72,15 +75,25 @@ async function planRemoval(
   category: Category,
   choice: CategoryRemovalChoice,
   hideHistory: boolean,
-  box: { memo?: CategoryRemovalMemo },
+  box: { memo?: CategoryRemovalMemo; planned?: Category },
 ): Promise<DatasetWrite[]> {
   const repositories = getRepositories();
   const todos = await repositories.todos.listByCategory(category.id);
   // ① 만 대상 그룹의 현재 투두가 필요하다(R14-a 의 날짜별 시작값). ②는 방금 만든 빈 카테고리, ③은 이동이 없다.
   const targetTodos =
     choice.incomplete === 'move' ? await repositories.todos.listByCategory(choice.targetId) : [];
+  const latest = ctx.get().byId[category.id];
+  if (
+    !publicationOriginMatches(latest, category) ||
+    latest === undefined ||
+    categoryVisibility(latest) !== 'private' ||
+    latest.socialCategoryId !== undefined ||
+    latest.socialCategoryVersion !== undefined
+  )
+    return [];
+  box.planned = latest;
   const { writes, result } = planCategoryRemoval({
-    category,
+    category: latest,
     todos,
     targetTodos,
     choice,
@@ -92,7 +105,7 @@ async function planRemoval(
   const createdCategory = createdIn(writes, result.createdCategoryId);
   box.memo = {
     result,
-    category,
+    category: latest,
     // 삭제 **직전** 값 그대로. 완료 투두도 들어 있지만 되돌리기는 `result` 에 실린 것만 되감는다.
     todos,
     ...(createdCategory === undefined ? {} : { createdCategory }),
@@ -105,37 +118,61 @@ export function createRemovalActions(
   ctx: CategoryContext,
   writer: CategoryWriter,
 ): CategoryRemovalActions {
+  let undoMemo: CategoryRemovalMemo | null = null;
   return {
-    removeCategory: async ({ category, choice, hideHistory = false }) => {
-      const box: { memo?: CategoryRemovalMemo } = {};
-      const saved = await writer.applyWrites(() =>
-        planRemoval(ctx, category, choice, hideHistory, box),
+    removeCategory: async ({ category, choice, hideHistory = false, allowed = () => true }) => {
+      const box: { memo?: CategoryRemovalMemo; planned?: Category } = {};
+      const current = () =>
+        allowed() && (box.planned === undefined || ctx.get().byId[category.id] === box.planned);
+      const saved = await writer.applyWrites(
+        () => planRemoval(ctx, category, choice, hideHistory, box),
+        current,
       );
       const memo = box.memo;
-      if (!saved || memo === undefined) {
+      if (!saved || memo === undefined || !allowed()) {
         return false;
       }
       ctx.set({ pendingRemoval: memo });
       return true;
     },
 
-    undoRemoval: async () => {
+    undoRemoval: async (allowed = () => true) => {
       const memo = ctx.get().pendingRemoval;
-      if (memo === null) {
+      if (memo === null || !allowed()) {
         return false;
       }
+      const created = memo.createdCategory;
+      const createdRow = created === undefined ? undefined : ctx.get().byId[created.id];
+      const eligible = () =>
+        allowed() &&
+        ctx.get().byId[memo.category.id] === undefined &&
+        (created === undefined ||
+          (createdRow !== undefined &&
+            publicationOriginMatches(createdRow, created) &&
+            ctx.get().byId[created.id] === createdRow));
+      if (!eligible()) return false;
+      undoMemo = memo;
       ctx.set({ pendingRemoval: null });
+      const current = () => eligible() && undoMemo === memo && ctx.get().pendingRemoval === null;
       const undone = await writer.applyWrites(
-        () => planCategoryRemovalUndo({ ...memo, deps: ctx.deps }).writes,
+        () =>
+          planCategoryRemovalUndo({
+            ...memo,
+            ...(createdRow === undefined ? {} : { createdCategory: createdRow }),
+            deps: ctx.deps,
+          }).writes,
+        current,
       );
-      if (!undone) {
+      if (!undone && current()) {
         // 저장이 실패했으면 삭제 결과가 그대로 남아 있다 — 다시 누를 수 있게 슬롯을 복구한다.
         ctx.set({ pendingRemoval: memo });
       }
-      return undone;
+      if (undoMemo === memo) undoMemo = null;
+      return undone && allowed();
     },
 
     clearPendingRemoval: () => {
+      undoMemo = null;
       ctx.set({ pendingRemoval: null });
     },
   };

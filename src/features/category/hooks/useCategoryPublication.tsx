@@ -15,6 +15,7 @@ export type CategoryPublicationBridge = {
     next: { name: string; color: string; emoji?: string },
   ) => Promise<boolean>;
   beforeRemove: (category: Category) => Promise<boolean>;
+  captureRemovalGuard?: () => () => boolean;
 };
 
 // 개인 전용 카테고리는 기존대로 편집한다. 조립이 빠진 공개 연결은 조용히 수정하지 않는다.
@@ -23,6 +24,7 @@ const SAFE_DEFAULT: CategoryPublicationBridge = {
   openVisibility: () => undefined,
   beforeMetadataChange: personalOnly,
   beforeRemove: personalOnly,
+  captureRemovalGuard: () => () => true,
 };
 const PublicationContext = createContext<CategoryPublicationBridge>(SAFE_DEFAULT);
 
