@@ -6,7 +6,7 @@
 //
 // 픽스처는 **비대칭**이다: 미완료 3건 사이에 완료 1건이 `order` 1 로 끼어 있어, 수열 좌표와
 // 화면 좌표가 다르다 — 둘을 섞으면 엉뚱한 자리에 떨어진다.
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Category } from '@/domain/category/category';
@@ -40,6 +40,12 @@ const 국어 = makeTodo({ seq: 4, categoryId: 공부.id, title: '국어', order:
 
 function 데이터전송() {
   return { setData: vi.fn(), setDragImage: vi.fn(), effectAllowed: '', types: [] };
+}
+
+function pointer(node: Element, type: string, y: number): void {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.assign(event, { pointerId: 1, isPrimary: true, button: 0, clientX: 20, clientY: y });
+  fireEvent(node, event);
 }
 
 beforeEach(async () => {
@@ -87,6 +93,46 @@ function 끌어놓기(from: string, to: string, after: boolean): void {
 }
 
 describe('드래그 순서 변경 (R11)', () => {
+  it('제목을 길게 누른 뒤 행 위에 놓으면 재정렬되고 뒤따른 클릭은 메뉴를 열지 않는다', async () => {
+    await 화면();
+    const source = 행('수학');
+    const over = 행('영어');
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: () => over,
+    });
+    vi.useFakeTimers();
+    try {
+      pointer(source.querySelector('[data-todo-title]')!, 'pointerdown', 20);
+      act(() => vi.advanceTimersByTime(400));
+      pointer(source, 'pointermove', 1);
+      pointer(source, 'pointerup', 1);
+      fireEvent.click(source.querySelector('[data-todo-title]')!);
+    } finally {
+      vi.useRealTimers();
+      Reflect.deleteProperty(document, 'elementFromPoint');
+    }
+    expect(screen.queryByRole('menu')).toBeNull();
+    await waitFor(() => expect(제목들()).toEqual(['영어', '수학', '국어', '과학']));
+  });
+
+  it('길게 누르기 전에 세로로 움직이면 드래그가 취소되고 다음 탭은 메뉴를 연다', async () => {
+    await 화면();
+    const source = 행('수학');
+    vi.useFakeTimers();
+    try {
+      pointer(source.querySelector('[data-todo-title]')!, 'pointerdown', 20);
+      pointer(source, 'pointermove', 40);
+      act(() => vi.advanceTimersByTime(500));
+      pointer(source, 'pointerup', 40);
+      fireEvent.click(source.querySelector('[data-todo-title]')!);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(screen.getByRole('menu', { name: '수학 메뉴' })).toBeInTheDocument();
+    expect(제목들()).toEqual(['수학', '영어', '국어', '과학']);
+  });
+
   it('뒤쪽 행의 아래에 떨어뜨리면 그 뒤로 간다', async () => {
     await 화면();
 

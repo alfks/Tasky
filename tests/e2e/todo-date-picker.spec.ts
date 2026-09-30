@@ -49,7 +49,7 @@ test('항목 메뉴 → 날짜 고르기 → 다음 달 → 칸 확정 → 옮�
   await waitForShell(page);
   const group = await seedTodo(page);
 
-  await group.getByRole('button', { name: `${TITLE} 메뉴` }).click();
+  await group.getByRole('button', { name: TITLE, exact: true }).click();
   await page.getByRole('menuitem', { name: '날짜 바꾸기…', exact: true }).click();
 
   const picker = page.getByRole('grid', { name: '날짜 고르기' });
@@ -80,7 +80,7 @@ test('편집 패널 → 날짜 버튼 → 내일 → 저장 → 다음 날 목�
   await waitForShell(page);
   const group = await seedTodo(page);
 
-  await group.getByRole('button', { name: `${TITLE} 메뉴` }).click();
+  await group.getByRole('button', { name: TITLE, exact: true }).click();
   await page.getByRole('menuitem', { name: '수정', exact: true }).click();
   const panel = group.getByRole('group', { name: `${TITLE} 편집` });
   await expect(panel).toBeVisible();

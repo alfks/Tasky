@@ -9,12 +9,14 @@ import type { CategoryId, TodoId } from '@/domain/ids';
 import type { Todo } from '@/domain/todo/todo';
 
 import { TODO_DRAG_MIME } from '@/features/date-strip';
+import { useDateStripStore } from '@/features/date-strip';
 import { RoutineDialog } from '@/features/todo/components/RoutineDialog';
 import { FLIP_ATTR } from '@/features/todo/components/todo-focus';
 import { TodoEditPanel } from '@/features/todo/components/TodoEditPanel';
 import { TodoItemDatePicker } from '@/features/todo/components/TodoItemDatePicker';
 import { TodoItemMenu } from '@/features/todo/components/TodoItemMenu';
 import { useTodoItemActions } from '@/features/todo/components/useTodoItemActions';
+import { useTodoLongPress } from '@/features/todo/components/useTodoLongPress';
 import { describeRoutineRecurrence, TODO_MESSAGES as M } from '@/features/todo/messages';
 import { useTodoStore } from '@/features/todo/store/todo-store';
 
@@ -60,6 +62,7 @@ type TodoItemProps = TodoItemHandlers & {
   draggingId: TodoId | null;
   onDragChange: (id: TodoId | null) => void;
   onDropOn: (overId: TodoId, event: ReactDragEvent<HTMLElement>) => void;
+  onPointerDrop: (sourceId: TodoId, overId: TodoId, after: boolean) => void;
 };
 
 /** 메모는 목록에서 첫 줄만 1줄로 줄여 보여 준다 (R2). */
@@ -78,6 +81,7 @@ export function TodoItem({
   draggingId,
   onDragChange,
   onDropOn,
+  onPointerDrop,
   onEditChange,
   onRequestDelete,
   onAnnounce,
@@ -87,10 +91,12 @@ export function TodoItem({
 }: TodoItemProps) {
   const rowRef = useRef<HTMLLIElement>(null);
   const titleRef = useRef<HTMLButtonElement>(null);
-  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const today = useDateStripStore((state) => state.today);
   const titleId = useId();
+  const menuHintId = useId();
   const [pickingDate, setPickingDate] = useState(false);
   const [registeringRoutine, setRegisteringRoutine] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const canReorder = !readOnly && !todo.done;
   // 루틴에서 나온 투두만 🔁 배지를 단다. 루틴이 삭제되면(R10) `routines` 에서 빠져 배지도 사라진다.
   const routine = useTodoStore((state) =>
@@ -111,6 +117,13 @@ export function TodoItem({
       onToggled,
       onMovedToDate,
     });
+  const longPress = useTodoLongPress(rowRef, todo.id, canReorder, onDragChange, onPointerDrop);
+
+  const openMenu = (): void => {
+    snapshotFocus();
+    setPickingDate(false);
+    setMenuOpen(true);
+  };
 
   const handleKeyDown = (e: ReactKeyboardEvent<HTMLLIElement>): void => {
     // 행 자신이 포커스일 때만. 안쪽 입력·버튼에서 올라온 키까지 여기서 처리하면 편집 중 Space 가
@@ -118,16 +131,17 @@ export function TodoItem({
     //
     // `isImeKey` 는 **지금은 닿지 않는** 방어선이다(조합 중이면 편집 요소가 포커스라 위 가드에서 먼저
     // 돌아선다) — 행이 언젠가 인라인 편집을 품으면 필요해지므로 남긴다. 빼면 그 변경이 조용히 R4 를 깬다.
-    if (e.target !== e.currentTarget || isImeKey(e.nativeEvent)) return;
+    if (isImeKey(e.nativeEvent)) return;
+    if (e.target !== e.currentTarget && e.target !== titleRef.current) return;
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       e.preventDefault();
       move(e.key === 'ArrowUp' ? -1 : 1);
-    } else if (e.key === ' ') {
+    } else if (e.target === e.currentTarget && e.key === ' ') {
       e.preventDefault();
-      toggle(!todo.done);
-    } else if (e.key === 'Enter') {
+      openMenu();
+    } else if (e.target === e.currentTarget && e.key === 'Enter') {
       e.preventDefault();
-      if (!readOnly) onEditChange(todo.id, 'title');
+      openMenu();
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
       onRequestDelete(todo, returnFocus);
@@ -146,22 +160,38 @@ export function TodoItem({
   // 위에 있어도 받지 않고 지나가 **그룹 섹션**이 받는다(= 카테고리 이동) — 항목 위냐 빈 자리냐로
   // 손짓의 뜻이 갈리면 안 되므로 경계는 "같은 카테고리인가" 하나다(`dragover` 는 전파 경로 어디서든
   // `preventDefault` 되면 드롭이 허용되고, 섹션이 그 자리에서 막아 준다).
-  // 메뉴가 열리면 아직 떠 있는 피커를 먼저 내린다 — 같은 `⋯` 에 둘이 겹쳐 열리지 않게(리뷰 Minor).
-  const openMenu = (): void => {
-    snapshotFocus();
-    setPickingDate(false);
-  };
+  // 메뉴가 열리면 아직 떠 있는 피커를 먼저 내린다 — 같은 앵커에 둘이 겹쳐 열리지 않게 한다.
   const sameGroup = draggingId !== null && sequence.some((item) => item.id === draggingId);
   const dropTarget = sameGroup && draggingId !== todo.id && canReorder;
   const memo = memoPreview(todo.memo);
   const minutes = Math.round((todo.focusSeconds ?? 0) / 60);
 
   return (
-    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- 행 자체가 포커스를 받는 것이 스펙이다(todo.md §5: 항목 행 tabindex=0 + Space/Enter/Delete/Alt+↑↓). 행 안에 버튼이 여럿이라 행을 button 으로 바꿀 수 없고, 모든 동작에 같은 일을 하는 시맨틱 버튼(체크박스·제목·⋯ 메뉴)이 함께 있다.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- 행은 포커스 복구를 위해 tabindex=-1이다. 체크박스와 제목 메뉴 버튼은 각각 독립 컨트롤이라 행을 button으로 감쌀 수 없다.
     <li
       ref={rowRef}
       {...{ [FLIP_ATTR]: todo.id }}
-      tabIndex={0}
+      data-todo-id={todo.id}
+      tabIndex={-1}
+      onPointerDown={longPress.onPointerDown}
+      onPointerMove={longPress.onPointerMove}
+      onPointerUp={longPress.onPointerUp}
+      onPointerCancel={longPress.onPointerCancel}
+      onContextMenu={longPress.onContextMenu}
+      onClickCapture={(event) => {
+        if (!longPress.consumeClick()) return;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onClick={(event) => {
+        if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) return;
+        const element = event.target instanceof Element ? event.target : event.target.parentElement;
+        if (
+          element?.closest('button:not([data-todo-title]), input, textarea, a, [data-no-row-menu]')
+        )
+          return;
+        openMenu();
+      }}
       onKeyDown={handleKeyDown}
       onDragOver={dropTarget ? (e) => e.preventDefault() : undefined}
       onDrop={
@@ -175,11 +205,10 @@ export function TodoItem({
       className={cn(
         // 세로 패딩은 좁은 화면에서 --todo-row-py 로 줄어든다(theme.md §3-D R32) — 데스크탑 값은
         // --space-1 과 같아 변화가 없다.
-        'flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] px-[var(--space-2)] py-[var(--todo-row-py)]',
+        'flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] px-[var(--space-2)] py-[var(--todo-row-py)] select-none [&_input]:select-text [&_textarea]:select-text',
         // 호버는 **앱에 이미 있는 언어 그대로** `--color-surface-2` 다(theme.md §3 표: "hover, 트랙,
         // 스켈레톤"). 본뜬 곳: `CategoryListItem.tsx`:95 · `Menu.tsx`:127 · `TodoAddRow.tsx`:126 —
-        // 전부 `hover:bg-surface-2`. 행은 포커스를 받는 컨트롤이므로(todo.md §5, tabindex=0 +
-        // Space/Enter/Delete/Alt+↑↓) 다른 클릭 대상과 같은 신호를 내야 한다.
+        // 전부 `hover:bg-surface-2`. 행을 클릭하면 메뉴가 열리므로 같은 신호를 내야 한다.
         //
         // **터치에서 눌어붙지 않는다**: Tailwind 4 의 `hover:` 는 기본으로 `@media (hover:hover)` 안에
         // 들어간다(빌드 CSS 에서 확인 — `@media (hover:hover){.hover\:bg-surface-2:hover{…}}`).
@@ -188,11 +217,12 @@ export function TodoItem({
         'transition-colors duration-[var(--motion-fast)] ease-[var(--motion-ease)]',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
         draggingId === todo.id && 'opacity-50',
+        'data-[todo-drop-target]:ring-2 data-[todo-drop-target]:ring-accent',
       )}
       style={color === undefined ? undefined : { ['--cat-color' as string]: color }}
     >
       {/* 행의 터치 치수는 좁은 화면에서 --todo-row-hit-min(28px, WCAG 2.5.8 하한 위)으로 줄어든다
-          (theme.md §3-D R32; 데스크탑은 --control-hit-min 과 같은 32px). 세 자식(손잡이·체크박스·⋯)이
+          (theme.md §3-D R32; 데스크탑은 --control-hit-min 과 같은 32px). 두 자식(손잡이·체크박스)이
           같은 토큰으로 함께 줄어야 행 높이(= max 자식 높이)가 실제로 작아진다. */}
       <div className="flex min-h-[var(--todo-row-hit-min)] items-center gap-[var(--space-1)]">
         {canReorder ? (
@@ -219,14 +249,16 @@ export function TodoItem({
           ref={titleRef}
           id={titleId}
           type="button"
-          disabled={readOnly}
-          onClick={() => onEditChange(todo.id, 'title')}
+          data-todo-title=""
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          aria-describedby={menuHintId}
           className={cn(
             'min-w-0 flex-1 truncate rounded-[var(--radius-sm)] bg-transparent px-[var(--space-1)] text-left text-base',
             // `readOnly` 면 `disabled` 라, 투명 배경 버튼의 기존 언어인 `Button.tsx`:27(ghost:
             // `bg-transparent text-text hover:enabled:bg-surface-2`)·`DateCell.tsx`:123 을 그대로 쓴다 —
             // `enabled:` 가 빠지면 누를 수 없는 제목이 눌리는 척한다.
-            'hover:enabled:bg-surface-2',
+            'hover:bg-surface-2',
             'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
             'transition-colors duration-[var(--motion-fast)] ease-[var(--motion-ease)]',
             todo.done ? 'text-muted line-through' : 'text-text',
@@ -234,6 +266,9 @@ export function TodoItem({
         >
           {todo.title}
         </button>
+        <span id={menuHintId} className="sr-only">
+          메뉴 열기
+        </span>
 
         {memo === null ? null : (
           <span aria-label={M.hasMemo} role="img" className="shrink-0 text-xs text-muted">
@@ -265,11 +300,13 @@ export function TodoItem({
         <TodoItemMenu
           todo={todo}
           readOnly={readOnly}
+          today={today}
+          onToday={() => goToDate(today)}
           moveTargets={categories}
-          triggerClassName="size-[var(--todo-row-hit-min)]"
-          triggerRef={menuTriggerRef}
+          triggerRef={titleRef}
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
           returnFocus={returnFocus}
-          onOpen={openMenu}
           onEdit={() => onEditChange(todo.id, 'title')}
           onAddMemo={() => onEditChange(todo.id, 'memo')}
           onStartTimer={onStartTimer === undefined ? undefined : () => onStartTimer(todo)}
@@ -288,7 +325,7 @@ export function TodoItem({
       {pickingDate ? (
         <TodoItemDatePicker
           todo={todo}
-          anchorRef={menuTriggerRef}
+          anchorRef={titleRef}
           returnFocus={returnFocus}
           onPick={goToDate}
           onClose={() => setPickingDate(false)}

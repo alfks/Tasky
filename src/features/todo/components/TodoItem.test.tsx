@@ -83,7 +83,7 @@ describe('🔁 배지', () => {
     expect(badge).toHaveAttribute('title', '루틴: 매주 목 반복');
   });
 
-  it('배지는 탭 스톱이 아니다 — 행 단축키(Space 로 완료 토글)를 그대로 살려 둔다(리뷰 Major 4)', async () => {
+  it('배지는 탭 스톱이 아니고 Space 로 메뉴를 열 수 있다', async () => {
     const user = userEvent.setup();
     await 화면();
     const badge = screen.getByRole('img', { name: '루틴: 매주 목 반복' });
@@ -95,7 +95,8 @@ describe('🔁 배지', () => {
     expect(row).toHaveFocus();
     await user.keyboard(' ');
 
-    expect(screen.getByRole('checkbox', { name: '아침 스트레칭' })).toBeChecked();
+    expect(screen.getByRole('menu', { name: '아침 스트레칭 메뉴' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: '아침 스트레칭' })).not.toBeChecked();
   });
 
   it('routines 맵에 그 루틴이 없으면(삭제됨, R10) 배지가 사라진다 — 원본 없이 아이콘만 남지 않는다', async () => {
@@ -119,7 +120,7 @@ describe('날짜 바꾸기… (R10-b)', () => {
     const user = userEvent.setup();
     await 화면();
 
-    await user.click(screen.getByRole('button', { name: '독서 메뉴' }));
+    await user.click(screen.getByRole('button', { name: '독서' }));
     await user.click(screen.getByRole('menuitem', { name: '날짜 바꾸기…' }));
 
     const grid = await screen.findByRole('grid', { name: '날짜 고르기' });
@@ -146,16 +147,16 @@ describe('날짜 바꾸기… (R10-b)', () => {
     });
   });
 
-  it('Esc 는 변경 없이 닫고 포커스가 그 행의 ⋯ 로 돌아온다 — 행 <li> 에는 팝업 속성이 붙지 않는다', async () => {
+  it('Esc 는 변경 없이 닫고 포커스가 제목 버튼으로 돌아온다', async () => {
     const user = userEvent.setup();
     await 화면();
 
-    await user.click(screen.getByRole('button', { name: '독서 메뉴' }));
+    await user.click(screen.getByRole('button', { name: '독서' }));
     await user.click(screen.getByRole('menuitem', { name: '날짜 바꾸기…' }));
     await screen.findByRole('grid', { name: '날짜 고르기' });
-    const menuButton = screen.getByRole('button', { name: '독서 메뉴' });
+    const menuButton = screen.getByRole('button', { name: '독서' });
     const row = screen.getByRole('checkbox', { name: '독서' }).closest('li');
-    // 앵커는 ⋯ 버튼이다(listitem 에는 aria-haspopup 이 허용되지 않는다, 리뷰 Minor).
+    // 앵커는 제목 버튼이다(listitem 에는 aria-haspopup 이 허용되지 않는다).
     expect(row).not.toHaveAttribute('aria-haspopup');
     expect(row).not.toHaveAttribute('aria-expanded');
     expect(menuButton).toHaveAttribute('aria-haspopup', 'grid');
@@ -171,15 +172,15 @@ describe('날짜 바꾸기… (R10-b)', () => {
     expect(menuButton).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('피커가 열린 채 같은 행의 ⋯ 를 누르면 피커가 먼저 닫히고 메뉴만 열린다(겹치지 않는다)', async () => {
+  it('피커가 열린 채 같은 행 제목을 누르면 피커가 먼저 닫히고 메뉴만 열린다', async () => {
     const user = userEvent.setup();
     await 화면();
 
-    await user.click(screen.getByRole('button', { name: '독서 메뉴' }));
+    await user.click(screen.getByRole('button', { name: '독서' }));
     await user.click(screen.getByRole('menuitem', { name: '날짜 바꾸기…' }));
     await screen.findByRole('grid', { name: '날짜 고르기' });
 
-    await user.click(screen.getByRole('button', { name: '독서 메뉴' }));
+    await user.click(screen.getByRole('button', { name: '독서' }));
 
     expect(screen.getByRole('menu')).toBeInTheDocument();
     expect(screen.queryByRole('grid', { name: '날짜 고르기' })).toBeNull();

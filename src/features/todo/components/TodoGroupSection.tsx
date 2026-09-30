@@ -119,15 +119,13 @@ export function TodoGroupSection({
   const handleDropOn = (overId: TodoId, event: ReactDragEvent<HTMLElement>): void => {
     if (draggingId === null) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const index = dropTargetIndex(
-      group.sequence,
-      draggingId,
-      overId,
-      isAfterMidpoint(rect, event.clientY),
-    );
+    handlePointerDrop(draggingId, overId, isAfterMidpoint(rect, event.clientY));
+  };
+
+  const handlePointerDrop = (sourceId: TodoId, overId: TodoId, after: boolean): void => {
+    const index = dropTargetIndex(group.sequence, sourceId, overId, after);
     onDragChange(null);
-    if (index === null) return;
-    void reorder(draggingId, index);
+    if (index !== null) void reorder(sourceId, index);
   };
 
   /**
@@ -179,6 +177,7 @@ export function TodoGroupSection({
     draggingId,
     onDragChange,
     onDropOn: handleDropOn,
+    onPointerDrop: handlePointerDrop,
     onEditChange,
     onRequestDelete,
     onAnnounce,

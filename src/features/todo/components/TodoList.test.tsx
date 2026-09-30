@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { Category } from '@/domain/category/category';
+import type { DateKey } from '@/domain/date/date-key';
 import type { Persistable } from '@/domain/meta';
 import type { Todo } from '@/domain/todo/todo';
 
@@ -15,6 +16,7 @@ import { getRepositories, setRepositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
 import { CommandLayer } from '@/features/command';
+import { useDateStripStore } from '@/features/date-strip';
 import { TodoList } from '@/features/todo/components/TodoList';
 import { useTodoStore } from '@/features/todo/store/todo-store';
 import { makeCategory } from '@/test/fixtures/category';
@@ -53,6 +55,7 @@ const 투두들 = [수학, 영어, 국어, 달리기, 김치];
 
 beforeEach(async () => {
   setRepositories(createMemoryRepositories());
+  useDateStripStore.setState({ today: FIXTURE_DATE });
   useTodoStore.setState({ byId: {}, date: null, status: 'idle', error: null });
   const repo = getRepositories().todos;
   for (const todo of 투두들) {
@@ -178,7 +181,7 @@ describe('삭제된 카테고리 그룹 (R16)', () => {
     const group = screen.getByRole('region', { name: '삭제된 카테고리' });
 
     expect(within(group).getByRole('checkbox', { name: '김치찌개' })).toBeDisabled();
-    expect(within(group).getByRole('button', { name: '김치찌개' })).toBeDisabled();
+    expect(within(group).getByRole('button', { name: '김치찌개' })).toBeEnabled();
     expect(within(group).queryByRole('button', { name: '+ 할 일 추가' })).toBeNull();
   });
 
@@ -217,7 +220,7 @@ describe('삭제된 카테고리 그룹 (R16)', () => {
     화면();
     await 목록이보일때까지();
 
-    await user.click(screen.getByRole('button', { name: '김치찌개 메뉴' }));
+    await user.click(screen.getByRole('button', { name: '김치찌개' }));
 
     expect(screen.getAllByRole('menuitem').map((i) => i.textContent)).toEqual([
       '다른 카테고리로 옮기기',
@@ -230,7 +233,7 @@ describe('삭제된 카테고리 그룹 (R16)', () => {
     화면();
     await 목록이보일때까지();
 
-    await user.click(screen.getByRole('button', { name: '김치찌개 메뉴' }));
+    await user.click(screen.getByRole('button', { name: '김치찌개' }));
     await user.click(screen.getByRole('menuitem', { name: '다른 카테고리로 옮기기' }));
     await user.click(screen.getByRole('menuitem', { name: '📚 공부' }));
 
@@ -281,12 +284,39 @@ describe('삭제된 카테고리의 이름·색 복원 (category R22)', () => {
 });
 
 describe('날짜 이동 (R10)', () => {
+  it('다른 날짜의 할 일을 오늘로 옮기고 되돌릴 수 있다', async () => {
+    const user = userEvent.setup();
+    const today = '2026-01-16' as DateKey;
+    useDateStripStore.setState({ today });
+    화면();
+    await 목록이보일때까지();
+
+    await user.click(screen.getByRole('button', { name: '달리기' }));
+    await user.click(screen.getByRole('menuitem', { name: '오늘하기' }));
+
+    await waitFor(async () => {
+      expect(screen.queryByRole('checkbox', { name: '달리기' })).toBeNull();
+      expect((await getRepositories().todos.getById(달리기.id))?.date).toBe(today);
+    });
+    await user.click(screen.getByRole('button', { name: '되돌리기' }));
+    expect(await screen.findByRole('checkbox', { name: '달리기' })).toBeInTheDocument();
+    expect((await getRepositories().todos.getById(달리기.id))?.date).toBe(FIXTURE_DATE);
+  });
+
+  it('오늘 할 일에는 오늘하기 항목이 없다', async () => {
+    const user = userEvent.setup();
+    화면();
+    await 목록이보일때까지();
+    await user.click(screen.getByRole('button', { name: '달리기' }));
+    expect(screen.queryByRole('menuitem', { name: '오늘하기' })).toBeNull();
+  });
+
   it('"내일로" 는 목록에서 내리고 되돌리기 토스트를 띄운다', async () => {
     const user = userEvent.setup();
     화면();
     await 목록이보일때까지();
 
-    await user.click(screen.getByRole('button', { name: '달리기 메뉴' }));
+    await user.click(screen.getByRole('button', { name: '달리기' }));
     await user.click(screen.getByRole('menuitem', { name: '내일로' }));
 
     expect(await screen.findByText('1월 16일로 옮겼어요')).toBeInTheDocument();
@@ -302,7 +332,7 @@ describe('날짜 이동 (R10)', () => {
     화면();
     await 목록이보일때까지();
 
-    await user.click(screen.getByRole('button', { name: '수학 메뉴' }));
+    await user.click(screen.getByRole('button', { name: '수학' }));
     await user.click(screen.getByRole('menuitem', { name: '내일로' }));
 
     await waitFor(() => {
@@ -322,7 +352,7 @@ describe('편집 패널 날짜 필드 (R10-c)', () => {
     화면();
     await 목록이보일때까지();
 
-    await user.click(screen.getByRole('button', { name: '달리기 메뉴' }));
+    await user.click(screen.getByRole('button', { name: '달리기' }));
     await user.click(screen.getByRole('menuitem', { name: '수정' }));
     const panel = screen.getByRole('group', { name: '달리기 편집' });
     const dateButton = within(panel).getByRole('button', { name: '날짜 1월 15일 (목)' });

@@ -79,26 +79,25 @@ function 제목들(): string[] {
 }
 
 describe('행 포커스 키 (§5)', () => {
-  it('Space 로 완료를 토글한다', async () => {
+  it('Space 로 메뉴를 연다', async () => {
     const user = userEvent.setup();
     await 화면();
 
     행('수학').focus();
     await user.keyboard(' ');
 
-    await waitFor(() => {
-      expect(screen.getByRole('checkbox', { name: '수학' })).toBeChecked();
-    });
+    expect(screen.getByRole('menu', { name: '수학 메뉴' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: '수학' })).not.toBeChecked();
   });
 
-  it('Enter 로 편집 패널을 연다', async () => {
+  it('Enter 로 메뉴를 연다', async () => {
     const user = userEvent.setup();
     await 화면();
 
     행('영어').focus();
     await user.keyboard('{Enter}');
 
-    expect(screen.getByRole('group', { name: '영어 편집' })).toBeInTheDocument();
+    expect(screen.getByRole('menu', { name: '영어 메뉴' })).toBeInTheDocument();
   });
 
   it('Alt+↓ 는 한 칸 내리고 결과를 낭독한다', async () => {
@@ -141,6 +140,7 @@ describe('행 포커스 키 (§5)', () => {
 
     행('영어').focus();
     await user.keyboard('{Enter}');
+    await user.click(screen.getByRole('menuitem', { name: '수정' }));
     await user.keyboard(' 추가{Backspace}');
 
     expect(screen.queryByRole('alertdialog')).toBeNull();
@@ -175,7 +175,7 @@ describe('삭제 확인 (R13)', () => {
     const user = userEvent.setup();
     await 화면();
 
-    await user.click(screen.getByRole('button', { name: '영어 메뉴' }));
+    await user.click(screen.getByRole('button', { name: '영어' }));
     await user.click(screen.getByRole('menuitem', { name: '삭제' }));
 
     expect(확인창()).toBeInTheDocument();
@@ -187,6 +187,7 @@ describe('삭제 확인 (R13)', () => {
 
     행('영어').focus();
     await user.keyboard('{Enter}');
+    await user.click(screen.getByRole('menuitem', { name: '수정' }));
     await user.click(
       within(screen.getByRole('group', { name: '영어 편집' })).getByRole('button', {
         name: '삭제',
@@ -282,7 +283,7 @@ describe('삭제 뒤 포커스 복귀 (§5·app-shell R14)', () => {
     const user = userEvent.setup();
     await 화면();
 
-    await user.click(screen.getByRole('button', { name: '영어 메뉴' }));
+    await user.click(screen.getByRole('button', { name: '영어' }));
     await user.click(screen.getByRole('menuitem', { name: '삭제' }));
     await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '삭제' }));
 
@@ -298,6 +299,7 @@ describe('편집 패널 (R14·R12)', () => {
     await 화면();
 
     await user.click(screen.getByRole('button', { name: '영어' }));
+    await user.click(screen.getByRole('menuitem', { name: '수정' }));
     const panel = screen.getByRole('group', { name: '영어 편집' });
     await user.clear(within(panel).getByLabelText('제목'));
     await user.type(within(panel).getByLabelText('제목'), '영어 듣기{Enter}');
@@ -313,6 +315,7 @@ describe('편집 패널 (R14·R12)', () => {
     await 화면();
 
     await user.click(screen.getByRole('button', { name: '영어' }));
+    await user.click(screen.getByRole('menuitem', { name: '수정' }));
     const memo = within(screen.getByRole('group', { name: '영어 편집' })).getByLabelText('메모');
     await user.type(memo, '듣기{Enter}쓰기');
     expect(screen.getByRole('group', { name: '영어 편집' })).toBeInTheDocument();
@@ -330,6 +333,7 @@ describe('편집 패널 (R14·R12)', () => {
     await 화면();
 
     await user.click(screen.getByRole('button', { name: '영어' }));
+    await user.click(screen.getByRole('menuitem', { name: '수정' }));
     await user.type(
       within(screen.getByRole('group', { name: '영어 편집' })).getByLabelText('제목'),
       '!!{Escape}',
@@ -344,6 +348,7 @@ describe('편집 패널 (R14·R12)', () => {
     await 화면();
 
     await user.click(screen.getByRole('button', { name: '영어' }));
+    await user.click(screen.getByRole('menuitem', { name: '수정' }));
     const panel = screen.getByRole('group', { name: '영어 편집' });
     const title = within(panel).getByLabelText('제목');
     await user.clear(title);
@@ -360,6 +365,7 @@ describe('편집 패널 (R14·R12)', () => {
     await 화면();
 
     await user.click(screen.getByRole('button', { name: '영어' }));
+    await user.click(screen.getByRole('menuitem', { name: '수정' }));
     const memo = within(screen.getByRole('group', { name: '영어 편집' })).getByLabelText('메모');
     await user.type(memo, '듣기');
     fireEvent.keyDown(memo, { key: 'Enter', ctrlKey: true, isComposing: true });
@@ -373,6 +379,7 @@ describe('편집 패널 (R14·R12)', () => {
     await 화면();
 
     await user.click(screen.getByRole('button', { name: '영어' }));
+    await user.click(screen.getByRole('menuitem', { name: '수정' }));
     const title = within(screen.getByRole('group', { name: '영어 편집' })).getByLabelText('제목');
     fireEvent.keyDown(title, { key: 'Escape', isComposing: true });
 
@@ -384,7 +391,9 @@ describe('편집 패널 (R14·R12)', () => {
     await 화면();
 
     await user.click(screen.getByRole('button', { name: '영어' }));
+    await user.click(screen.getByRole('menuitem', { name: '수정' }));
     await user.click(screen.getByRole('button', { name: '국어' }));
+    await user.click(screen.getByRole('menuitem', { name: '수정' }));
 
     expect(screen.getAllByRole('group', { name: /편집/u })).toHaveLength(1);
     expect(screen.getByRole('group', { name: '국어 편집' })).toBeInTheDocument();
@@ -398,6 +407,7 @@ describe('편집 패널을 닫은 뒤 포커스 (§5·app-shell R14)', () => {
   /** 편집 패널을 열고 그 패널을 돌려준다. */
   async function 패널열기(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
     await user.click(screen.getByRole('button', { name: '영어' }));
+    await user.click(screen.getByRole('menuitem', { name: '수정' }));
     return screen.getByRole('group', { name: '영어 편집' });
   }
 
