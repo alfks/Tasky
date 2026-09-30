@@ -7,11 +7,18 @@ import {
   currentProfile,
   type SocialActor,
 } from './actor';
+import { handleCategory } from './category-handler';
 import { readFeedPage } from './feed-read';
 import { socialError, socialJson, readSocialBody, validOrigin, type Handled } from './http';
 import { handleInvite } from './invite-handler';
 import { limitSubject, reserveLimit } from './limits';
-import { effectiveSocialMode, routeAllowed, socialRoute, type Route } from './policy';
+import {
+  effectiveSocialMode,
+  routeAllowed,
+  socialRoute,
+  socialPolicySubs,
+  type Route,
+} from './policy';
 import { handlePost } from './post-handler';
 import { handleProfile } from './profile-handler';
 import { handleReaction } from './reaction-handler';
@@ -39,6 +46,8 @@ async function dispatch(
   key: string | null,
   mode: 'off' | 'read-only' | 'enabled',
 ): Promise<Handled> {
+  if (route.path.startsWith('/api/social/categories'))
+    return handleCategory(actor, route.path, url, body, key, env.SESSION_SECRET, mode);
   if (route.path === '/api/social/feed' || route.path === '/api/social/posts/mine') {
     const scope = route.path === '/api/social/feed' ? 'feed' : 'posts:mine';
     const result = await readFeedPage(actor, url, env.SESSION_SECRET, scope);
@@ -52,7 +61,8 @@ async function dispatch(
     return handleProfile(actor, route.path, body, key, mode);
   if (route.path.startsWith('/api/social/invites'))
     return handleInvite(actor, route.path, body, key, env.SESSION_SECRET);
-  if (route.path.startsWith('/api/social/posts')) return handlePost(actor, route.path, body, key);
+  if (route.path.startsWith('/api/social/posts'))
+    return handlePost(actor, route.path, body, key, mode);
   if (route.path === '/api/social/reactions/set') return handleReaction(actor, body, key);
   return handleRelation(actor, route.path, body, key);
 }
@@ -89,7 +99,7 @@ async function handleAuthenticated(
 ): Promise<Response> {
   const mode = effectiveSocialMode(env, session.sub);
   if (!routeAllowed(mode, route.minMode)) return socialError('social-disabled', nowMs, session);
-  const actor = await createSocialActor(env.DB, session, nowMs);
+  const actor = await createSocialActor(env.DB, session, nowMs, socialPolicySubs(env));
   let body: unknown = undefined;
   if (route.method === 'POST') {
     const parsed = await readSocialBody(request);

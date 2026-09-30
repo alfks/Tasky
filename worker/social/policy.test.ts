@@ -8,9 +8,9 @@ const env = (mode: string | undefined, allowlist: string | undefined) =>
   ({ SOCIAL_MODE: mode, SOCIAL_ALLOWLIST: allowlist }) as Env;
 
 describe('social fail-closed policy', () => {
-  it('정확한 22경로와 mode 우선순위를 고정한다', () => {
-    expect(SOCIAL_ROUTES).toHaveLength(22);
-    expect(new Set(SOCIAL_ROUTES.map((route) => `${route.method} ${route.path}`)).size).toBe(22);
+  it('정확한 25경로와 mode 우선순위를 고정한다', () => {
+    expect(SOCIAL_ROUTES).toHaveLength(25);
+    expect(new Set(SOCIAL_ROUTES.map((route) => `${route.method} ${route.path}`)).size).toBe(25);
     expect(socialRoute('DELETE', '/api/social/me')).toBeNull();
     expect(socialRoute('GET', '/api/social/invites/preview')).toBeNull();
     for (const route of SOCIAL_ROUTES) {
