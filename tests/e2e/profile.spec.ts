@@ -220,13 +220,13 @@ test('키보드: Shift+Tab 으로 "사진 고르기" 에 닿으면 링이 label 
   const input = dialog.getByLabel('사진 고르기');
   await expect(input).toBeFocused();
   // 링은 input(시각만 숨김)이 아니라 버튼 모양의 label 에 그려진다(§5). 계산된 스타일로 잰다(규칙 1).
+  const chooser = page.waitForEvent('filechooser');
   const ring = await dialog.getByText('사진 고르기').evaluate((el) => {
     const style = getComputedStyle(el);
     return { style: style.outlineStyle, width: style.outlineWidth };
   });
   expect(ring.style).toBe('solid');
   expect(ring.width).toBe('2px');
-  const chooser = page.waitForEvent('filechooser');
   await page.keyboard.press('Enter');
   const opened = await chooser;
   expect(opened.isMultiple()).toBe(false);
