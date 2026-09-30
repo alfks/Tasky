@@ -46,15 +46,39 @@ export function isHappenedOn(value: unknown): value is string {
   return day >= 1 && day <= days[month - 1];
 }
 
-/** 공유 명령은 text와 happenedOn만 수락한다. 원본 id 등은 초과 필드로 거절된다. */
+/** 공유 DTO는 사본과 공개 category/version만 받는다. 원본 id 등은 거절된다. */
 export function parsePostInput(value: unknown): Validation<PostInput> {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['text', 'happenedOn'])) return INVALID;
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ['text', 'happenedOn', 'categoryId', 'categoryVersion'])
+  )
+    return INVALID;
+  if ((value.categoryId === undefined) !== (value.categoryVersion === undefined)) return INVALID;
+  if (
+    value.categoryId !== undefined &&
+    (!isSocialId(value.categoryId) ||
+      !Number.isSafeInteger(value.categoryVersion) ||
+      Number(value.categoryVersion) < 0)
+  )
+    return INVALID;
   if (typeof value.text !== 'string' || CONTROL.test(value.text)) return INVALID;
   const text = value.text.trim();
   if ([...text].length < 1 || [...text].length > 280 || !isHappenedOn(value.happenedOn)) {
     return INVALID;
   }
-  return { ok: true, value: { text, happenedOn: value.happenedOn } };
+  return {
+    ok: true,
+    value: {
+      text,
+      happenedOn: value.happenedOn,
+      ...(value.categoryId === undefined
+        ? {}
+        : {
+            categoryId: value.categoryId as string,
+            categoryVersion: Number(value.categoryVersion),
+          }),
+    },
+  };
 }
 
 export function parsePageInput(value: unknown): Validation<PageInput> {
