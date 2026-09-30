@@ -1,8 +1,13 @@
-import type { PostView, ProfileView, SocialErrorCode, SocialMode } from '@/domain/social/social';
+import type { PageInput, PostView } from '@/domain/social/social';
 
-import type { SocialRepository } from '@/repositories/social-repository';
+import type { PublicSocialRepository, SocialRepository } from '@/repositories/social-repository';
 
-import { socialErrorCode, uniquePosts } from '@/features/social/lib/feed-validation';
+import {
+  socialErrorCode,
+  uniquePosts,
+  type FeedSnapshot,
+  type FeedView,
+} from '@/features/social/lib/feed-validation';
 import { validatePage, type FeedClock } from '@/features/social/lib/validate-page';
 import type {
   SocialInvalidation,
@@ -10,35 +15,24 @@ import type {
   SocialSessionScope,
 } from '@/features/social/session-lifecycle';
 
-export type FeedSnapshot = {
-  phase: 'blocked' | 'loading' | 'ready' | 'error';
-  mode: SocialMode | null;
-  profile: ProfileView | null;
-  items: readonly PostView[];
-  canShow: boolean;
-  cursorStack: readonly (string | null)[];
-  pageIndex: number;
-  nextCursor: string | null;
-  firstHeadId: string | null;
-  hasNew: boolean;
-  leaseUntil: number;
-  error: SocialErrorCode | null;
-};
-
-export type FeedDependencies = {
+type ReadDependencies = { clock: FeedClock; online: () => boolean; visible: () => boolean };
+export type FeedDependencies = ReadDependencies & {
+  anonymous?: false;
   repository: () => SocialRepository;
-  clock: FeedClock;
+  publicRepository?: () => PublicSocialRepository;
   capture: () => () => boolean;
   activate: () => Promise<SocialSessionScope | null>;
   deactivate: () => void;
   attach: (client: SocialSessionClient) => () => void;
   invalidateSession: (reason: SocialInvalidation) => void;
-  online: () => boolean;
-  visible: () => boolean;
 };
-
+export type AnonymousFeedDependencies = ReadDependencies & {
+  anonymous: true;
+  repository: () => PublicSocialRepository;
+};
 const INITIAL: FeedSnapshot = {
   phase: 'blocked',
+  view: 'friends',
   mode: null,
   profile: null,
   items: [],
@@ -51,97 +45,104 @@ const INITIAL: FeedSnapshot = {
   leaseUntil: 0,
   error: null,
 };
-
 export function createSocialFeedManager(
-  deps: FeedDependencies,
+  deps: FeedDependencies | AnonymousFeedDependencies,
   onChange: (state: FeedSnapshot) => void,
   onInvalidate?: (reason: SocialInvalidation) => void,
 ) {
-  let state: FeedSnapshot = INITIAL;
+  let state: FeedSnapshot = { ...INITIAL, view: deps.anonymous ? 'public' : 'friends' };
   let generation = 0;
   let open = false;
   let viewEpoch = 0;
+  let categoryId: string | undefined;
   let timer: unknown;
   let leaseTimer: unknown;
   let detach: (() => void) | null = null;
-
+  const capture = () => (deps.anonymous ? () => true : deps.capture());
   function update(partial: Partial<FeedSnapshot>): void {
     state = { ...state, ...partial };
     onChange(state);
   }
-
   function stopTimer(): void {
     if (timer !== undefined) deps.clock.clear(timer);
     if (leaseTimer !== undefined) deps.clock.clear(leaseTimer);
     timer = undefined;
     leaseTimer = undefined;
   }
-
   function current(captured: number, allowed: () => boolean): boolean {
     return open && generation === captured && allowed() && deps.online() && deps.visible();
   }
-
   function invalidate(reason: SocialInvalidation): void {
     generation += 1;
     stopTimer();
-    const purge =
-      reason === 'closed' ||
-      reason === 'auth' ||
-      reason === 'account' ||
-      reason === 'revoked' ||
-      reason === 'cross-tab' ||
-      reason === 'provider';
+    const purge = ['closed', 'auth', 'account', 'revoked', 'cross-tab', 'provider'].includes(
+      reason,
+    );
     update({
       phase: 'blocked',
       canShow: false,
       leaseUntil: 0,
       error: null,
-      ...(purge
-        ? {
-            items: [],
-            profile: null,
-            mode: null,
-            cursorStack: [null],
-            pageIndex: 0,
-            nextCursor: null,
-            firstHeadId: null,
-            hasNew: false,
-          }
-        : {}),
+      ...(purge ? { ...INITIAL, view: state.view } : {}),
     });
     onInvalidate?.(reason);
   }
-
+  function source(): Pick<PublicSocialRepository, 'feed' | 'validatePosts'> {
+    if (deps.anonymous) return deps.repository();
+    if (state.view === 'public') {
+      if (deps.publicRepository === undefined) throw new Error('공개 읽기가 연결되지 않았습니다.');
+      return deps.publicRepository();
+    }
+    const repository = deps.repository();
+    return {
+      feed:
+        state.view === 'mine'
+          ? (page) => repository.myPosts(page)
+          : (page) => repository.feed(page),
+      validatePosts: (input) => repository.validatePosts(input),
+    };
+  }
+  function readPage(cursor?: string | null) {
+    const page: PageInput = cursor ? { cursor } : {};
+    return source().feed(categoryId === undefined ? page : { ...page, categoryId });
+  }
+  async function checkIdentity(captured: number, allowed: () => boolean): Promise<boolean> {
+    if (deps.anonymous) return true;
+    const identity = await deps.repository().me();
+    if (!current(captured, allowed)) return false;
+    update({ mode: identity.data.mode, profile: identity.data.profile });
+    if (identity.data.profile === null || (identity.data.mode === 'off' && state.view !== 'mine')) {
+      update({ phase: 'ready', items: [], canShow: false, leaseUntil: 0, nextCursor: null });
+      return false;
+    }
+    return true;
+  }
   function schedulePoll(): void {
     stopTimer();
     const captured = generation;
     leaseTimer = deps.clock.schedule(
       () => {
         leaseTimer = undefined;
-        if (open && generation === captured && deps.clock.now() >= state.leaseUntil) {
+        if (open && generation === captured && deps.clock.now() >= state.leaseUntil)
           update({ canShow: false });
-        }
       },
       Math.max(0, state.leaseUntil - deps.clock.now()),
     );
     timer = deps.clock.schedule(
       () => {
         timer = undefined;
-        if (deps.clock.now() >= state.leaseUntil) {
+        if (deps.clock.now() >= state.leaseUntil && !deps.anonymous) {
           deps.invalidateSession('recheck');
           void deps.activate();
-          return;
-        }
-        void validateCurrent();
+        } else void validateCurrent();
       },
       Math.max(0, state.leaseUntil - deps.clock.now() - 5_000),
     );
   }
-
   function failed(error: unknown, captured: number, allowed: () => boolean): void {
     if (!current(captured, allowed)) return;
     const code = socialErrorCode(error);
-    if (code === 'unauthorized' || code === 'account-deleted') {
+    if (!deps.anonymous && (code === 'unauthorized' || code === 'account-deleted')) {
       deps.invalidateSession(code === 'unauthorized' ? 'auth' : 'account');
       return;
     }
@@ -149,10 +150,15 @@ export function createSocialFeedManager(
     stopTimer();
     update({ phase: 'error', items: [], canShow: false, leaseUntil: 0, error: code });
   }
-
+  function show(items: readonly PostView[], startedAt: number): boolean {
+    if (deps.clock.now() >= startedAt + 35_000) return false;
+    update({ phase: 'ready', items, canShow: true, leaseUntil: startedAt + 35_000 });
+    schedulePoll();
+    return true;
+  }
   async function loadPage(cursor: string | null, stack: readonly (string | null)[]): Promise<void> {
     const captured = ++generation;
-    const allowed = deps.capture();
+    const allowed = capture();
     stopTimer();
     update({
       phase: 'loading',
@@ -167,91 +173,65 @@ export function createSocialFeedManager(
     });
     if (!current(captured, allowed)) return;
     try {
-      const repo = deps.repository();
-      const identity = await repo.me();
-      if (!current(captured, allowed)) return;
-      if (identity.data.profile === null || identity.data.mode === 'off') {
-        update({ phase: 'ready', profile: identity.data.profile, mode: identity.data.mode });
-        return;
-      }
-      const response = await repo.feed(cursor === null ? undefined : { cursor });
+      if (!(await checkIdentity(captured, allowed))) return;
+      const response = await readPage(cursor);
       if (!current(captured, allowed)) return;
       const items = uniquePosts(response.data.items);
-      const validationStartedAt = deps.clock.now();
+      const startedAt = deps.clock.now();
       const permitted = await validatePage(
-        repo,
+        source(),
         items.map((post) => post.id),
         deps.clock,
       );
       if (!current(captured, allowed)) return;
-      if (deps.clock.now() >= validationStartedAt + 35_000) {
+      if (
+        !show(
+          items.filter((post) => permitted.has(post.id)),
+          startedAt,
+        )
+      ) {
         failed(new Error('검증 유효 시간이 지났습니다.'), captured, allowed);
         return;
       }
       update({
-        phase: 'ready',
-        mode: identity.data.mode,
-        profile: identity.data.profile,
-        items: items.filter((post) => permitted.has(post.id)),
-        canShow: true,
-        leaseUntil: validationStartedAt + 35_000,
         nextCursor: response.data.nextCursor,
         firstHeadId: cursor === null ? (items[0]?.id ?? null) : state.firstHeadId,
       });
-      schedulePoll();
     } catch (error) {
       failed(error, captured, allowed);
     }
   }
-
   async function validateCurrent(): Promise<void> {
     const captured = ++generation;
-    const allowed = deps.capture();
+    const allowed = capture();
     stopTimer();
     update({ canShow: false, phase: 'loading' });
     if (!current(captured, allowed)) return;
     try {
-      const identity = await deps.repository().me();
+      if (!(await checkIdentity(captured, allowed))) return;
+      const startedAt = deps.clock.now();
+      const permitted = await validatePage(
+        source(),
+        state.items.map((post) => post.id),
+        deps.clock,
+      );
       if (!current(captured, allowed)) return;
-      if (identity.data.profile === null || identity.data.mode === 'off') {
-        generation += 1;
-        update({
-          phase: 'ready',
-          profile: identity.data.profile,
-          mode: identity.data.mode,
-          items: [],
-          canShow: false,
-          leaseUntil: 0,
-          nextCursor: null,
-        });
-        return;
-      }
-      const ids = state.items.map((post) => post.id);
-      const validationStartedAt = deps.clock.now();
-      const permitted = await validatePage(deps.repository(), ids, deps.clock);
+      const first = await readPage();
       if (!current(captured, allowed)) return;
-      const first = await deps.repository().feed();
-      if (!current(captured, allowed)) return;
-      if (deps.clock.now() >= validationStartedAt + 35_000) {
+      if (
+        !show(
+          state.items.filter((post) => permitted.has(post.id)),
+          startedAt,
+        )
+      ) {
         failed(new Error('검증 유효 시간이 지났습니다.'), captured, allowed);
         return;
       }
-      const filtered = state.items.filter((post) => permitted.has(post.id));
-      update({
-        phase: 'ready',
-        profile: identity.data.profile,
-        mode: identity.data.mode,
-        items: filtered,
-        canShow: true,
-        leaseUntil: validationStartedAt + 35_000,
-        hasNew: (first.data.items[0]?.id ?? null) !== state.firstHeadId,
-      });
-      schedulePoll();
+      update({ hasNew: (first.data.items[0]?.id ?? null) !== state.firstHeadId });
     } catch (error) {
       failed(error, captured, allowed);
     }
   }
-
   const client: SocialSessionClient = {
     invalidate,
     resume: () => {
@@ -259,31 +239,46 @@ export function createSocialFeedManager(
       else void loadPage(state.cursorStack[state.pageIndex] ?? null, state.cursorStack);
     },
   };
-
   return {
     getSnapshot: () => state,
     visibleItems: () =>
-      state.canShow && deps.clock.now() < state.leaseUntil && deps.online() && deps.visible()
+      state.canShow &&
+      deps.clock.now() < state.leaseUntil &&
+      deps.online() &&
+      deps.visible() &&
+      capture()()
         ? state.items
         : [],
-    open: async () => {
+    open: async (filterCategoryId?: string) => {
       if (open) return;
       open = true;
+      categoryId = filterCategoryId;
       const openedAt = ++viewEpoch;
+      if (deps.anonymous) {
+        await loadPage(null, [null]);
+        return;
+      }
       detach = deps.attach(client);
       const scope = await deps.activate();
       if (scope === null && open && viewEpoch === openedAt) invalidate('auth');
+      else if (scope !== null && open && viewEpoch === openedAt && state.phase === 'blocked')
+        client.resume?.(scope);
     },
     close: () => {
       if (!open) return;
       open = false;
       viewEpoch += 1;
-      deps.deactivate();
+      if (!deps.anonymous) deps.deactivate();
       detach?.();
       detach = null;
       invalidate('closed');
     },
     refresh: () => loadPage(null, [null]),
+    setView: async (view: FeedView) => {
+      if (deps.anonymous || view === state.view) return;
+      update({ view });
+      if (open) await loadPage(null, [null]);
+    },
     next: () =>
       state.nextCursor === null
         ? Promise.resolve()

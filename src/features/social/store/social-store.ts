@@ -3,9 +3,10 @@ import { create } from 'zustand';
 
 import type { PostView } from '@/domain/social/social';
 
-import { getSocialRepository } from '@/repositories/container';
+import { getPublicSocialRepository, getSocialRepository } from '@/repositories/container';
 
-import type { FeedClock } from '@/features/social/lib/validate-page';
+import type { FeedSnapshot, FeedView } from '@/features/social/lib/feed-validation';
+import { browserFeedClock } from '@/features/social/lib/validate-page';
 import {
   activateSocialSession,
   attachSocialClient,
@@ -13,7 +14,7 @@ import {
   deactivateSocialSession,
   invalidateSocialSession,
 } from '@/features/social/session-lifecycle';
-import { createSocialFeedManager, type FeedSnapshot } from '@/features/social/store/feed-manager';
+import { createSocialFeedManager } from '@/features/social/store/feed-manager';
 
 export type SocialStore = FeedSnapshot & {
   draft: string;
@@ -23,6 +24,7 @@ export type SocialStore = FeedSnapshot & {
   refresh: () => Promise<void>;
   next: () => Promise<void>;
   previous: () => Promise<void>;
+  setView: (view: FeedView) => Promise<void>;
   setDraft: (text: string) => void;
   /** 명시적 재시도만 같은 key를 쓴다. 성공 뒤에는 잊어버린다. */
   keyFor: (operation: string) => string;
@@ -30,15 +32,12 @@ export type SocialStore = FeedSnapshot & {
 };
 
 /** 만료 판정은 시스템 시각 변경의 영향을 받지 않는 경과 시간 축을 쓴다. */
-export const socialFeedClock: FeedClock = {
-  now: () => performance.now(),
-  schedule: (run, ms) => window.setTimeout(run, ms),
-  clear: (handle) => window.clearTimeout(handle as number),
-};
+export const socialFeedClock = browserFeedClock;
 
 const manager = createSocialFeedManager(
   {
     repository: getSocialRepository,
+    publicRepository: getPublicSocialRepository,
     clock: socialFeedClock,
     capture: captureSocialDispatch,
     activate: activateSocialSession,
@@ -74,6 +73,7 @@ export const useSocialStore = create<SocialStore>()((set, get) => ({
   refresh: manager.refresh,
   next: manager.next,
   previous: manager.previous,
+  setView: manager.setView,
   setDraft: (draft) => set({ draft }),
   keyFor: (operation) => {
     const existing = get().retryKeys[operation];

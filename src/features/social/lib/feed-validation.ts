@@ -1,5 +1,21 @@
-import type { PostView, SocialErrorCode } from '@/domain/social/social';
+import type { PostView, ProfileView, SocialErrorCode, SocialMode } from '@/domain/social/social';
 
+export type FeedView = 'friends' | 'public' | 'mine';
+export type FeedSnapshot = {
+  phase: 'blocked' | 'loading' | 'ready' | 'error';
+  view: FeedView;
+  mode: SocialMode | null;
+  profile: ProfileView | null;
+  items: readonly PostView[];
+  canShow: boolean;
+  cursorStack: readonly (string | null)[];
+  pageIndex: number;
+  nextCursor: string | null;
+  firstHeadId: string | null;
+  hasNew: boolean;
+  leaseUntil: number;
+  error: SocialErrorCode | null;
+};
 export function uniquePosts(items: readonly PostView[]): PostView[] {
   const seen = new Set<string>();
   return items.filter((post) => {
