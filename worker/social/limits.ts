@@ -113,5 +113,20 @@ export async function collectSocialGarbage(db: D1Database, nowMs: number): Promi
       .run<{ subject: string }>();
     removed += limits.results.length;
   }
+  if (removed < 500) {
+    const categories = await db
+      .prepare(
+        sql`DELETE FROM social_categories WHERE id IN
+      (SELECT cat.id FROM social_categories cat WHERE cat.deleted_at IS NOT NULL AND cat.updated_at <= ?1
+        AND NOT EXISTS (SELECT 1 FROM social_posts post WHERE post.category_id = cat.id)
+        ORDER BY cat.updated_at,cat.id LIMIT ?2)
+      AND deleted_at IS NOT NULL AND updated_at <= ?1
+      AND NOT EXISTS (SELECT 1 FROM social_posts post WHERE post.category_id = social_categories.id)
+      RETURNING id`,
+      )
+      .bind(nowMs - fortyEightHours, 500 - removed)
+      .run<{ id: string }>();
+    removed += categories.results.length;
+  }
   return removed;
 }
