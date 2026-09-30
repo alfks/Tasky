@@ -15,6 +15,8 @@ type SocialPostCardProps = {
   post: PostView;
   own: boolean;
   canWrite: boolean;
+  canCancelReaction?: boolean;
+  onReactionStart?: () => { complete: () => Promise<void>; cancel: () => void };
   anonymous?: boolean;
   onChanged: () => void;
   returnFocus: () => HTMLElement | null;
@@ -23,28 +25,42 @@ export function SocialPostCard({
   post,
   own,
   canWrite,
+  canCancelReaction = false,
+  onReactionStart,
   anonymous = false,
   onChanged,
   returnFocus,
 }: SocialPostCardProps) {
   const menuRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const continueRef = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const close = () => {
+    if (command.busy) return;
+    if (command.uncertain) setLeaving(true);
+    else setConfirm(null);
+  };
   const [confirm, setConfirm] = useState<'delete' | 'block' | null>(null);
-  const command = useSocialCommand();
+  const command = useSocialCommand(`post-${post.id}`);
   const reaction = async () => {
+    const restore = onReactionStart?.();
     const input = { postId: post.id, active: !post.myReaction };
-    if (
-      (await command.run(`reaction-${post.id}`, JSON.stringify(input), (repo, options) =>
-        repo.setReaction(input, options),
-      )) !== null
-    )
-      onChanged();
+    const result = command.uncertain
+      ? await command.retry()
+      : await command.run(`reaction-${post.id}`, JSON.stringify(input), (repo, options) =>
+          repo.setReaction(input, options),
+        );
+    if (result !== null) {
+      if (restore) await restore.complete();
+      else onChanged();
+    } else restore?.cancel();
   };
   const apply = async () => {
     const action = confirm;
-    const result =
-      action === 'delete'
+    const result = command.uncertain
+      ? await command.retry()
+      : action === 'delete'
         ? await command.run(`delete-${post.id}`, post.id, (repo, options) =>
             repo.deletePost({ id: post.id }, options),
           )
@@ -82,6 +98,7 @@ export function SocialPostCard({
           <IconButton
             ref={menuRef}
             label={`${post.author.nickname} 기록 더 보기`}
+            disabled={command.uncertain}
             onClick={() => setMenuOpen((open) => !open)}
           >
             ⋯
@@ -114,11 +131,15 @@ export function SocialPostCard({
             variant="outline"
             size="sm"
             aria-pressed={post.myReaction}
-            disabled={!canWrite}
+            disabled={
+              command.uncertain
+                ? !command.retryAllowed || !command.pending?.operation.startsWith('reaction-')
+                : !canWrite && !(canCancelReaction && post.myReaction)
+            }
             loading={command.busy}
             onClick={() => void reaction()}
           >
-            {post.myReaction ? '응원 취소' : '응원하기'}
+            {command.uncertain ? '완료 여부 확인' : post.myReaction ? '응원 취소' : '응원하기'}
           </Button>
         )}
         <span aria-label={`응원 ${post.reactionCount}개`} className="text-sm text-muted">
@@ -151,23 +172,21 @@ export function SocialPostCard({
           open
           role="alertdialog"
           title={confirm === 'delete' ? '공유한 기록을 삭제할까요?' : '작성자를 차단할까요?'}
-          onClose={() => {
-            if (!command.busy) setConfirm(null);
-          }}
+          onClose={close}
           initialFocusRef={cancelRef}
           returnFocus={returnFocus}
           footer={
             <>
-              <Button
-                ref={cancelRef}
-                variant="outline"
-                disabled={command.busy}
-                onClick={() => setConfirm(null)}
-              >
+              <Button ref={cancelRef} variant="outline" disabled={command.busy} onClick={close}>
                 취소
               </Button>
-              <Button variant="danger" loading={command.busy} onClick={() => void apply()}>
-                {confirm === 'delete' ? '공유 삭제' : '차단'}
+              <Button
+                variant="danger"
+                disabled={command.uncertain && !command.retryAllowed}
+                loading={command.busy}
+                onClick={() => void apply()}
+              >
+                {command.uncertain ? '완료 여부 확인' : confirm === 'delete' ? '공유 삭제' : '차단'}
               </Button>
             </>
           }
@@ -182,6 +201,39 @@ export function SocialPostCard({
           )}
         </Dialog>
       )}
+      {command.uncertain &&
+      !command.pending?.operation.startsWith('reaction-') &&
+      confirm === null ? (
+        <Button disabled={!command.retryAllowed} onClick={() => void apply()}>
+          완료 여부 확인
+        </Button>
+      ) : null}
+      <Dialog
+        open={leaving}
+        role="alertdialog"
+        title="완료 여부를 나중에 확인할까요?"
+        onClose={() => setLeaving(false)}
+        initialFocusRef={continueRef}
+        footer={
+          <>
+            <Button ref={continueRef} variant="outline" onClick={() => setLeaving(false)}>
+              같은 요청으로 확인
+            </Button>
+            <Button
+              onClick={() => {
+                setLeaving(false);
+                setConfirm(null);
+              }}
+            >
+              나중에 확인
+            </Button>
+          </>
+        }
+      >
+        <p>
+          요청이 이미 적용됐을 수 있어요. 완료 여부 확인에서 같은 요청으로 다시 확인할 수 있어요.
+        </p>
+      </Dialog>
     </article>
   );
 }
