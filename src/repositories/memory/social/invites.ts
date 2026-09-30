@@ -18,7 +18,7 @@ import {
   transition,
 } from '@/repositories/memory/social/relations';
 
-const INVITE_MS = 7 * 24 * 60 * 60 * 1000;
+const INVITE_MS = 24 * 60 * 60 * 1000;
 
 export async function createInvite(
   state: MemorySocialState,
