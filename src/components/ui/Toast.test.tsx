@@ -45,9 +45,9 @@ function renderToasts(toasts: readonly ToastItem[]) {
 }
 
 describe('ToastViewport', () => {
-  it('액션이 있으면 6초, 없으면 3초 뒤에 id 와 함께 닫힌다', () => {
+  it('액션 유무에 관계없이 3초 뒤에 id 와 함께 닫힌다', () => {
     const { unmount } = renderToasts([undoToast]);
-    advance(5999);
+    advance(2999);
     expect(onClose).not.toHaveBeenCalled();
     advance(1);
     expect(onClose).toHaveBeenCalledWith('undo');
@@ -96,13 +96,13 @@ describe('ToastViewport', () => {
     renderToasts([undoToast]);
     const toast = screen.getByText('삭제했어요').parentElement as HTMLElement;
 
-    advance(3000);
+    advance(1000);
     fireEvent.mouseEnter(toast);
     advance(60000);
     expect(onClose).not.toHaveBeenCalled();
 
     fireEvent.mouseLeave(toast);
-    advance(2999);
+    advance(1999);
     expect(onClose).not.toHaveBeenCalled();
     advance(1);
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -117,7 +117,7 @@ describe('ToastViewport', () => {
     expect(onClose).not.toHaveBeenCalled();
 
     act(() => action.blur());
-    advance(6000);
+    advance(3000);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -256,7 +256,7 @@ describe('✕ 닫기 버튼', () => {
     advance(60_000);
     expect(onClose).not.toHaveBeenCalled();
     act(() => dismiss.blur());
-    advance(6000);
+    advance(3000);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
   it('모달이 떠 있어도 ✕ 가 inert 아래로 들어가지 않고 눌린다', () => {
