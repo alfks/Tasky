@@ -7,6 +7,7 @@ import { isCategoryVisibility } from '@/domain/category/visibility';
 import { isSocialId, type Validation } from '@/domain/social/input';
 import type { SocialCategoryInput } from '@/domain/social/social';
 
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/u;
 const INVALID: Validation<never> = { ok: false, code: 'validation' };
 
 function record(value: unknown, keys: readonly string[]): Record<string, unknown> | null {
@@ -33,7 +34,7 @@ export function parseCategoryInput(value: unknown): Validation<SocialCategoryInp
     (input.emoji !== undefined && typeof input.emoji !== 'string')
   )
     return INVALID;
-  if (/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/u.test(input.name))
+  if (CONTROL.test(input.name) || (typeof input.emoji === 'string' && CONTROL.test(input.emoji)))
     return INVALID;
   try {
     const name = validateCategoryName(input.name, []);
