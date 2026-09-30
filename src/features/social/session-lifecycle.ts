@@ -17,11 +17,14 @@ export type SocialSessionClient = {
 };
 
 let epoch = 0;
-let active = false;
+const owners = new Set<symbol>();
+let feedOwner: symbol | null = null;
+let verification: { epoch: number; promise: Promise<SocialSessionScope | null> } | null = null;
 let scope: SocialSessionScope | null = null;
 let verifier: (() => Promise<string | null>) | null = null;
 let client: SocialSessionClient | null = null;
 const listeners = new Set<(reason: SocialInvalidation) => void>();
+const readyListeners = new Set<(ready: SocialSessionScope) => void>();
 
 /** Provider만 등록한다. 반환 cleanup은 이전 Provider가 새 등록을 지우지 않는다. */
 export function configureSocialVerifier(verify: () => Promise<string | null>): () => void {
@@ -55,46 +58,101 @@ export function onSocialInvalidation(listener: (reason: SocialInvalidation) => v
   return () => listeners.delete(listener);
 }
 
-/** 화면 활성화 외에는 신원 확인 왕복을 시작하지 않는다. */
-export async function activateSocialSession(): Promise<SocialSessionScope | null> {
-  active = true;
-  invalidateSocialSession('activation');
+/** 관계·초대 화면은 인증 재확인 완료 후에만 새 목록을 읽는다. */
+export function onSocialReady(listener: (ready: SocialSessionScope) => void): () => void {
+  readyListeners.add(listener);
+  return () => readyListeners.delete(listener);
+}
+
+/** 화면 소유자가 있을 때만 확인하며 같은 세대의 왕복은 공유한다. */
+async function verifyScope(): Promise<SocialSessionScope | null> {
+  if (scope !== null) return scope;
+  if (verification?.epoch === epoch) return verification.promise;
   const captured = epoch;
   const verify = verifier;
   if (verify === null) return null;
-  let token: string | null;
+  const promise = (async () => {
+    let token: string | null;
+    try {
+      token = await verify();
+    } catch {
+      return null;
+    }
+    if (owners.size === 0 || epoch !== captured || token === null) return null;
+    scope = { token, epoch };
+    client?.resume?.(scope);
+    for (const listener of readyListeners) listener(scope);
+    return scope;
+  })();
+  verification = { epoch: captured, promise };
   try {
-    token = await verify();
-  } catch {
+    return await promise;
+  } finally {
+    if (verification?.promise === promise) verification = null;
+  }
+}
+
+function releaseOwner(owner: symbol): void {
+  if (!owners.delete(owner)) return;
+  if (owners.size === 0) invalidateSocialSession('closed');
+}
+
+/** 범위 편집기는 피드를 활성화하지 않고 자기 소유권만 해제한다. */
+export async function acquireSocialSession(): Promise<{
+  scope: SocialSessionScope;
+  release: () => void;
+} | null> {
+  const owner = Symbol();
+  owners.add(owner);
+  const acquired = await verifyScope();
+  if (acquired === null || !owners.has(owner)) {
+    releaseOwner(owner);
     return null;
   }
-  if (!active || epoch !== captured || token === null) return null;
-  scope = { token, epoch };
-  client?.resume?.(scope);
-  return scope;
+  return { scope: acquired, release: () => releaseOwner(owner) };
+}
+
+/** 기존 피드 소유권과 Provider의 재확인 왕복을 유지한다. */
+export async function activateSocialSession(): Promise<SocialSessionScope | null> {
+  if (feedOwner === null) {
+    feedOwner = Symbol();
+    owners.add(feedOwner);
+  }
+  if (scope === null && verification?.epoch !== epoch) invalidateSocialSession('activation');
+  return verifyScope();
+}
+
+/** Provider의 복귀 확인은 새 화면 소유권을 만들지 않는다. */
+export async function recheckSocialSession(): Promise<SocialSessionScope | null> {
+  return owners.size === 0 ? null : verifyScope();
 }
 
 export function deactivateSocialSession(): void {
-  active = false;
-  invalidateSocialSession('closed');
+  if (feedOwner === null) return;
+  releaseOwner(feedOwner);
+  feedOwner = null;
 }
 
 /** 각 호출이 획득한 세대만 승인한다. lazy import 대기 전·후 모두 확인한다. */
 export function captureSocialDispatch(): () => boolean {
   const captured = scope;
-  return () => active && captured !== null && scope === captured && epoch === captured.epoch;
+  return () =>
+    owners.size > 0 && captured !== null && scope === captured && epoch === captured.epoch;
 }
 
 export function isSocialSessionActive(): boolean {
-  return active;
+  return owners.size > 0;
 }
 
 /** 테스트 파일 사이에 모듈 전역 상태가 새지 않게 한다. */
 export function resetSocialSessionForTest(): void {
   epoch = 0;
-  active = false;
+  owners.clear();
+  feedOwner = null;
+  verification = null;
   scope = null;
   verifier = null;
   client = null;
   listeners.clear();
+  readyListeners.clear();
 }
