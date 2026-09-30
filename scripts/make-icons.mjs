@@ -4,7 +4,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { deflateSync, inflateSync } from 'node:zlib';
 
-const BACKGROUND = [245, 243, 238]; // #F5F3EE — docs/specs/pwa.md R2-b
+const BACKGROUND = [247, 247, 247]; // #F7F7F7 — docs/specs/pwa.md R2-b
 const EDGE_FLOOR = 130; // 갈색 외곽선 안쪽으로 플러드 필이 넘어가지 않게 한다.
 const TARGETS = [
   { master: 'assets/seal-icon-master-192.png', output: 'public/icon-192.png', size: 192 },

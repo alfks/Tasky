@@ -10,7 +10,7 @@
 
 ## 여기 있는 것
 
-- `seal-icon-master-{192,512,180}.png` — 현재 배포 마스코트의 크기별 흰 배경 원본. `scripts/make-icons.mjs`가 외곽 배경만 `#F5F3EE`로 바꿔 `public/icon-*.png` 네 종을 만든다. 512 원본은 maskable에도 사용한다. 세 크기를 따로 보존해야 각각의 현재 캐릭터 픽셀을 재생성 시 그대로 유지할 수 있다.
+- `seal-icon-master-{192,512,180}.png` — 현재 배포 마스코트의 크기별 흰 배경 원본. `scripts/make-icons.mjs`가 외곽 배경만 `#F7F7F7`로 바꿔 `public/icon-*.png` 네 종을 만든다. 512 원본은 maskable에도 사용한다. 세 크기를 따로 보존해야 각각의 현재 캐릭터 픽셀을 재생성 시 그대로 유지할 수 있다.
 - `seal-sheet.png` — 초기 하프물범 일러스트 자료. 현재 설치 아이콘의 재생성 원본은 아니다.
 
 ## 규칙
