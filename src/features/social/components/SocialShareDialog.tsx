@@ -32,15 +32,17 @@ export function SocialShareDialog({
     else onClose();
   };
   const locked = form.command.busy || form.uncertain;
-  const canShare =
-    form.uncertain ||
-    (form.category !== null && form.category.visibility !== 'private' && !form.checking);
+  const canShare = form.uncertain
+    ? form.command.retryAllowed
+    : form.category !== null && form.category.visibility !== 'private' && !form.checking;
   const audience =
-    form.category?.visibility === 'public'
+    form.previewCategory?.visibility === 'public'
       ? '모두 공개'
-      : form.category?.visibility === 'friends'
+      : form.previewCategory?.visibility === 'friends'
         ? '친구만'
-        : '나만 보기';
+        : form.previewCategory?.visibility === 'private'
+          ? '나만 보기'
+          : '공유 연결 확인 필요';
   return (
     <>
       <Dialog
@@ -121,22 +123,34 @@ export function SocialShareDialog({
                 className="rounded-[var(--radius-lg)] border border-border bg-surface-2 p-[var(--space-3)]"
               >
                 <p className="text-sm text-muted">
-                  {form.selected.happenedOn} · {form.category?.emoji}{' '}
-                  {form.category?.name ?? form.selected.categoryLabel} · {audience}
+                  {form.selected.happenedOn} · {form.uncertain ? '확인 중인 원래 요청: ' : ''}{' '}
+                  {form.previewCategory?.emoji}{' '}
+                  {form.previewCategory?.name ?? form.selected.categoryLabel} · {audience}
                 </p>
                 <p className="mt-[var(--space-2)] break-words whitespace-pre-wrap">{form.text}</p>
               </section>
               <p id="share-preview-help" className="text-sm text-muted">
+                {form.uncertain
+                  ? '미리보기는 처음 보낸 요청이에요. 현재 공개 범위는 달라졌을 수 있어요. '
+                  : ''}
                 {audience === '모두 공개'
                   ? '로그인하지 않은 사람도 볼 수 있어요. 원래 할 일을 수정하거나 지워도 이 공유는 남아요.'
-                  : '현재 친구와 앞으로 추가할 친구가 볼 수 있어요. 원래 할 일을 수정하거나 지워도 이 공유는 남아요. 내 공유에서 따로 지울 수 있어요.'}
+                  : audience === '친구만'
+                    ? '현재 친구와 앞으로 추가할 친구가 볼 수 있어요. 원래 할 일을 수정하거나 지워도 이 공유는 남아요. 내 공유에서 따로 지울 수 있어요.'
+                    : '공개 범위를 직접 확인한 뒤 공유할 수 있어요. 개인 할 일은 자동으로 공유되지 않아요.'}
               </p>
+              {form.uncertain ? (
+                <p role="status">
+                  완료 여부를 확인해야 해요. 같은 요청으로 확인하기 전에는 문장이나 공개 범위를 바꿀
+                  수 없어요.
+                </p>
+              ) : null}
               {form.checking ? <p role="status">공개 범위를 확인하고 있어요.</p> : null}
-              {!form.checking && !canShare ? (
+              {!form.uncertain && !form.checking && !canShare ? (
                 <>
                   <p>
-                    이 카테고리는 나만 볼 수 있어요. 다른 사람에게 공유하려면 공개 범위를 먼저 바꿔
-                    주세요.
+                    이 기기의 공유 연결이 없거나 나만 보기 범위예요. 공유하려면 공개 범위를 직접
+                    확인해 주세요.
                   </p>
                   <Button
                     variant="outline"
@@ -177,7 +191,13 @@ export function SocialShareDialog({
             <Button ref={continueRef} variant="outline" onClick={() => setDiscard(false)}>
               계속 작성
             </Button>
-            <Button variant="danger" onClick={onClose}>
+            <Button
+              variant="danger"
+              onClick={() => {
+                form.command.abandon();
+                onClose();
+              }}
+            >
               버리기
             </Button>
           </>

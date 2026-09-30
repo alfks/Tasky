@@ -5,7 +5,11 @@ import type { PostInput, SocialCategoryView } from '@/domain/social/social';
 
 import type { CompletedSocialChoice } from '@/features/social/components/SocialScreen';
 import { useSocialCommand } from '@/features/social/hooks/useSocialCommand';
-import { onSocialInvalidation, onSocialReady } from '@/features/social/session-lifecycle';
+import {
+  captureSocialDispatch,
+  onSocialInvalidation,
+  onSocialReady,
+} from '@/features/social/session-lifecycle';
 
 export function useShareComposer(
   onShared: (id: string, audience: 'friends' | 'public' | 'recovered') => void,
@@ -17,27 +21,31 @@ export function useShareComposer(
   const [invalid, setInvalid] = useState(false);
   const sequence = useRef(0);
   const pendingInput = useRef<PostInput | null>(null);
-  const command = useSocialCommand();
+  const pendingCategory = useRef<SocialCategoryView | null>(null);
+  const command = useSocialCommand('share');
   useEffect(
     () =>
       onSocialInvalidation((reason) => {
         sequence.current += 1;
         setCategory(null);
-        if (['auth', 'account', 'closed', 'provider', 'revoked', 'cross-tab'].includes(reason)) {
+        setChecking(false);
+        if (reason === 'account') {
           setText('');
           setSelected(null);
           pendingInput.current = null;
+          pendingCategory.current = null;
         }
       }),
     [],
   );
   const reconcile = async (choice: CompletedSocialChoice) => {
     const current = ++sequence.current;
+    const allowed = captureSocialDispatch();
     setChecking(true);
     setCategory(null);
     try {
       const confirmed = await choice.resolveCategory();
-      if (current === sequence.current) setCategory(confirmed);
+      if (current === sequence.current && allowed()) setCategory(confirmed);
     } catch {
       if (current === sequence.current) setCategory(null);
     } finally {
@@ -45,6 +53,7 @@ export function useShareComposer(
     }
   };
   const select = (choice: CompletedSocialChoice) => {
+    if (command.busy || command.uncertain) return;
     setSelected(choice);
     setText(choice.text);
     setInvalid(false);
@@ -70,18 +79,27 @@ export function useShareComposer(
     }
     const recovering = pendingInput.current !== null;
     const submitted = pendingInput.current ?? parsed.value;
+    if (pendingInput.current === null) pendingCategory.current = category;
     pendingInput.current = submitted;
     const result = await command.run(
       'share',
       JSON.stringify(submitted),
       (repo, options) => repo.createPost(submitted, options),
-      async (code) => {
-        if (code !== 'temporary' && code !== 'request-pending') pendingInput.current = null;
+      async (code, uncertain) => {
+        if (!uncertain) {
+          pendingInput.current = null;
+          pendingCategory.current = null;
+        }
         if (code === 'conflict' || code === 'unavailable') await reconcile(selected);
       },
     );
+    if (result === null && !command.hasIntent()) {
+      pendingInput.current = null;
+      pendingCategory.current = null;
+    }
     if (result !== null) {
       pendingInput.current = null;
+      pendingCategory.current = null;
       onShared(
         result.id,
         recovering ? 'recovered' : category?.visibility === 'public' ? 'public' : 'friends',
@@ -93,6 +111,12 @@ export function useShareComposer(
     if (selected !== null) void reconcile(selected);
   };
   useEffect(() => onSocialReady(() => resume.current()), []);
+  useEffect(
+    () => () => {
+      sequence.current += 1;
+    },
+    [],
+  );
   return {
     selected,
     text,
@@ -104,6 +128,7 @@ export function useShareComposer(
     select,
     share,
     reconcile: () => (selected === null ? Promise.resolve() : reconcile(selected)),
-    uncertain: command.error === 'temporary' || command.error === 'request-pending',
+    uncertain: command.uncertain,
+    previewCategory: command.uncertain ? pendingCategory.current : category,
   };
 }
