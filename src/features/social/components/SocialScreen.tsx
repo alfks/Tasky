@@ -6,10 +6,16 @@ import { InviteLanding } from '@/features/social/components/InviteLanding';
 import { SocialFeed } from '@/features/social/components/SocialFeed';
 import { SocialFriendsPanel } from '@/features/social/components/SocialFriendsPanel';
 import { SocialOnboarding } from '@/features/social/components/SocialOnboarding';
+import { SocialPendingCommands } from '@/features/social/components/SocialPendingCommands';
 import { SocialProfileSettings } from '@/features/social/components/SocialProfileSettings';
 import { SocialShareDialog } from '@/features/social/components/SocialShareDialog';
 import { pendingInviteToken } from '@/features/social/lib/invite-fragment';
-import { captureSocialDispatch, onSocialInvalidation } from '@/features/social/session-lifecycle';
+import {
+  captureSocialDispatch,
+  onSocialInvalidation,
+  invalidateSocialSession,
+  recheckSocialSession,
+} from '@/features/social/session-lifecycle';
 import { useSocialStore } from '@/features/social/store/social-store';
 
 import { Button } from '@/components/ui/Button';
@@ -50,6 +56,9 @@ export function SocialScreen({
   const phase = useSocialStore((state) => state.phase);
   const mode = useSocialStore((state) => state.mode);
   const profile = useSocialStore((state) => state.profile);
+  const view = useSocialStore((state) => state.view);
+  const pageIndex = useSocialStore((state) => state.pageIndex);
+  const cursor = useSocialStore((state) => state.cursorStack[state.pageIndex]);
   useEffect(() => {
     aliveRef.current = true;
     void useSocialStore
@@ -131,6 +140,17 @@ export function SocialScreen({
         {phase === 'loading' && profile === null ? (
           <p role="status">친구 화면을 불러오는 중</p>
         ) : null}
+        <SocialPendingCommands
+          onOwnState={() => chooseTab('mine')}
+          navigationKey={`${tab}:${view}:${pageIndex}:${cursor ?? ''}`}
+          onResolved={async (operation, sameAccount) => {
+            if (/^(delete|block|unblock|remove)-/.test(operation)) {
+              invalidateSocialSession('revoked');
+              await recheckSocialSession();
+            }
+            if (sameAccount()) await useSocialStore.getState().refreshCurrent();
+          }}
+        />
         {profile === null && phase === 'ready' ? (
           <SocialOnboarding
             enabled={mode === 'enabled'}
