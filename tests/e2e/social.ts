@@ -81,6 +81,46 @@ export async function shareRecord(page: Page, text: string): Promise<void> {
   await expect(page.getByRole('article').filter({ hasText: text })).toBeFocused();
 }
 
+/** 실제 삭제가 완료된 뒤 응답만 잃는다. 사라진 카드 대신 원래 요청을 panel에서 확인한다. */
+export async function recoverMissingDelete(page: Page, text: string) {
+  const sent: { key: string | null; body: unknown }[] = [];
+  await page.route('**/api/social/posts/delete', async (route) => {
+    sent.push({
+      key: route.request().headers()['idempotency-key'] ?? null,
+      body: route.request().postDataJSON(),
+    });
+    const response = await route.fetch();
+    expect(response.ok()).toBe(true);
+    if (sent.length === 1) await route.abort('failed');
+    else await route.fulfill({ response });
+  });
+  await page
+    .getByRole('article')
+    .filter({ hasText: text })
+    .getByRole('button', { name: '별이 기록 더 보기' })
+    .click();
+  await page.getByRole('menuitem', { name: '공유 삭제', exact: true }).click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: '공유 삭제', exact: true })
+    .click();
+  await expect(
+    page.getByRole('alertdialog').getByRole('button', { name: '완료 여부 확인' }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.getByRole('alertdialog').getByRole('button', { name: '나중에 확인' }).click();
+  await page.getByRole('button', { name: '새로고침', exact: true }).click();
+  await expect(page.getByRole('article').filter({ hasText: text })).toHaveCount(0);
+  const panel = page.getByRole('region', { name: '확인 중인 요청', exact: true });
+  await expect(panel.getByText('공유 삭제', { exact: true })).toBeVisible();
+  expect(sent).toHaveLength(1);
+  await panel.getByRole('button', { name: '완료 여부 확인' }).click();
+  await expect(panel.getByText(/이전 요청의 완료 여부를 확인했어요/)).toBeVisible();
+  expect(sent).toHaveLength(2);
+  expect(sent[1]).toEqual(sent[0]);
+  await page.unroute('**/api/social/posts/delete');
+}
+
 /** enabled 대상은 런별 정확히 세 계정이다. 임의 가입자는 기본 off를 유지한다. */
 export function socialAccount(role: 'owner' | 'peer' | 'public') {
   const sub = `e2e-social-${process.env.TASKY_E2E_SOCIAL_RUN ?? 'local'}-${role}`;

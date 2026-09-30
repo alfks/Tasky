@@ -9,6 +9,7 @@ import {
   nicknameConflict,
   joinSocial,
   measureSocialText,
+  recoverMissingDelete,
   openSocial,
   setAudience,
   shareRecord,
@@ -100,16 +101,7 @@ test.describe('Phase 3 소셜 실제 Worker 왕복', () => {
     ).toBeVisible();
     await pb.getByRole('button', { name: '피드', exact: true }).click();
 
-    await pa
-      .getByRole('article')
-      .filter({ hasText: text })
-      .getByRole('button', { name: '별이 기록 더 보기' })
-      .click();
-    await pa.getByRole('menuitem', { name: '공유 삭제', exact: true }).click();
-    await pa
-      .getByRole('alertdialog')
-      .getByRole('button', { name: '공유 삭제', exact: true })
-      .click();
+    await recoverMissingDelete(pa, text);
     await expect(pa.getByRole('article').filter({ hasText: text })).toHaveCount(0);
     await pb.getByRole('button', { name: '새로고침', exact: true }).click();
     await expect(pb.getByText('친구를 초대해 완료한 일을 나눠 보세요')).toBeVisible();
@@ -203,6 +195,12 @@ test.describe('공유 복구와 키보드', () => {
     expect(sent).toHaveLength(0);
     await dialog.getByRole('button', { name: '공유하기', exact: true }).click();
     await expect.poll(() => firstCommitted).toBe(true);
+    await page.keyboard.press('Escape');
+    await dialog.getByRole('button', { name: '닫기', exact: true }).first().click();
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: '완료 여부 확인' })).toBeEnabled({
+      timeout: 20_000,
+    });
     await context.setOffline(true);
     await expect(dialog.getByRole('button', { name: '완료 여부 확인' })).toBeVisible();
     await expect(draft).toBeDisabled();
@@ -215,6 +213,16 @@ test.describe('공유 복구와 키보드', () => {
     releaseFirst();
     await context.setOffline(false);
     await expect(dialog.getByRole('button', { name: '완료 여부 확인' })).toBeEnabled();
+    await page.keyboard.press('Escape');
+    await page
+      .getByRole('alertdialog', { name: '완료 여부를 나중에 확인할까요?' })
+      .getByRole('button', { name: '나중에 확인' })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    await page.getByRole('button', { name: '기록 공유', exact: true }).click();
+    await expect(dialog.getByRole('textbox', { name: '공유 문장' })).toHaveValue(text);
+    await expect(dialog.getByRole('radio', { checked: true })).toHaveCount(0);
+    expect(sent).toHaveLength(1);
     await page.setViewportSize({ width: 360, height: 800 });
     await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
     await page.screenshot({
