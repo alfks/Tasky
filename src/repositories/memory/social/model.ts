@@ -64,6 +64,7 @@ export type MemorySocialState = {
   cursors: Map<string, CursorReceipt>;
   sessionActive: Set<string>;
   deleted: Set<string>;
+  successfulCreates: Map<string, { windowStart: number; count: number }>;
 };
 
 export function createSocialState(now: () => number, mode: SocialMode): MemorySocialState {
@@ -83,6 +84,7 @@ export function createSocialState(now: () => number, mode: SocialMode): MemorySo
     cursors: new Map(),
     sessionActive: new Set(),
     deleted: new Set(),
+    successfulCreates: new Map(),
   };
 }
 
@@ -109,6 +111,7 @@ export function facts(state: MemorySocialState, sub: string): ActorFacts {
 }
 
 export function actor(state: MemorySocialState, sub: string): ProfileView {
+  clearDeletedQuota(state, sub);
   const access = actorAccess(facts(state, sub));
   if (!access.allowed) return fail(access.code, state.now());
   const profile = state.profiles.get(sub);
@@ -117,8 +120,36 @@ export function actor(state: MemorySocialState, sub: string): ProfileView {
 }
 
 export function requireSession(state: MemorySocialState, sub: string): void {
+  clearDeletedQuota(state, sub);
   if (!state.sessionActive.has(sub)) fail('unauthorized', state.now());
   if (state.deleted.has(sub)) fail('account-deleted', state.now());
+}
+
+function clearDeletedQuota(state: MemorySocialState, sub: string): void {
+  if (!state.deleted.has(sub)) return;
+  const id = state.profiles.get(sub)?.id;
+  if (id === undefined) return;
+  state.successfulCreates.delete(`${id}:post-create`);
+  state.successfulCreates.delete(`${id}:invite-create`);
+}
+
+export function creationQuota(
+  state: MemorySocialState,
+  profileId: SocialId,
+  bucket: 'post-create' | 'invite-create',
+): { record: () => void } {
+  const windowStart = Math.floor(state.now() / 86_400_000) * 86_400_000;
+  for (const [key, value] of state.successfulCreates) {
+    if (value.windowStart !== windowStart) state.successfulCreates.delete(key);
+  }
+  const key = `${profileId}:${bucket}`;
+  const current = state.successfulCreates.get(key);
+  if ((current?.count ?? 0) >= 20) fail('limit-reached', state.now());
+  return {
+    record: () => {
+      state.successfulCreates.set(key, { windowStart, count: (current?.count ?? 0) + 1 });
+    },
+  };
 }
 
 export function attemptCommand(
