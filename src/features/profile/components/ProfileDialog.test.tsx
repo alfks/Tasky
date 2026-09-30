@@ -3,6 +3,9 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { setProfile } from '@/domain/profile/profile.rules';
+import { createSettings } from '@/domain/theme/settings.rules';
+
 import { getRepositories, setRepositories } from '@/repositories/container';
 import { createMemoryRepositories } from '@/repositories/memory/repositories';
 
@@ -91,6 +94,50 @@ describe('ProfileDialog — 제출 검증 (R1·R2)', () => {
 });
 
 describe('ProfileDialog — 저장·취소', () => {
+  it('편집 중 원격으로 바뀐 소개와 사진은 이름만 고쳐 저장해도 보존한다', async () => {
+    const user = userEvent.setup();
+    const deps = fixedDeps();
+    const repository = getRepositories().settings;
+    await repository.upsert(
+      setProfile(
+        createSettings(deps),
+        {
+          name: '처음',
+          bio: '옛 소개',
+          avatar: AVATAR,
+        },
+        deps,
+      ),
+    );
+    useProfileStore.setState({ name: '처음', bio: '옛 소개', avatar: AVATAR });
+    render(<ProfileDialog {...dialogProps()} />);
+
+    const remoteAvatar = 'data:image/webp;base64,BBBB';
+    await repository.upsert(
+      setProfile(
+        (await repository.get())!,
+        {
+          name: '처음',
+          bio: '새 소개',
+          avatar: remoteAvatar,
+        },
+        deps,
+      ),
+    );
+    await useProfileStore.getState().reloadFromStorage();
+    await user.clear(screen.getByLabelText('이름'));
+    await user.type(screen.getByLabelText('이름'), '내 이름');
+    await user.click(screen.getByRole('button', { name: '저장' }));
+
+    await waitFor(async () => {
+      expect(await repository.get()).toMatchObject({
+        profileName: '내 이름',
+        profileBio: '새 소개',
+        profileAvatar: remoteAvatar,
+      });
+    });
+  });
+
   it('Enter 로 저장하면 설정 행에 다듬은 값이 쓰이고 스토어가 바뀌고 닫힌다(성공 토스트 없음)', async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();

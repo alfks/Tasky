@@ -1,6 +1,6 @@
 // 읽기 조건: 프로필 카드·편집 대화상자(docs/specs/profile.md)를 고치거나 이 스펙이 빨간불일 때.
 //
-// 재는 것: 드로어의 프로필 카드에서 ✎ → 이름·소개 저장 → 카드 반영 → 새로고침 뒤 유지 → 포커스가 ✎ 로
+// 재는 것: 달력 위 프로필 카드에서 ✎ → 이름·소개 저장 → 카드 반영 → 새로고침 뒤 유지 → 포커스가 ✎ 로
 // 복귀 · 사진 실변환(R3~R6 — jsdom 은 캔버스가 없어 여기서만 잰다): 투명 PNG 의 배경이 흰색, 회전 6
 // JPEG 가 바로 서는지, 4000×4000 노이즈가 상한(16,384자) 안으로 줄어드는지, WebP 미지원(강제 폴백)에서
 // JPEG 인지 · 키보드로 "사진 고르기" 에 닿아 링이 label 위에 보이고 Enter 가 파일 대화상자를 여는지 ·
@@ -26,9 +26,6 @@ const FIXTURES = fileURLToPath(new URL('./fixtures/', import.meta.url));
 /** 드로어가 이미 열려 있으면(직전 대화상자를 닫은 뒤 등) 그대로 쓰고, 아니면 연다. */
 async function openProfileEditor(page: Page): Promise<Locator> {
   await page.waitForSelector('main#shell-main');
-  if ((await page.getByRole('dialog', { name: 'Tasky', exact: true }).count()) === 0) {
-    await openSidebarDrawer(page);
-  }
   await page.getByRole('button', { name: '프로필 편집' }).click();
   const dialog = page.getByRole('dialog', { name: '프로필 편집' });
   await expect(dialog).toBeVisible();
@@ -36,7 +33,7 @@ async function openProfileEditor(page: Page): Promise<Locator> {
 }
 
 function profileCard(page: Page): Locator {
-  return page.getByRole('region', { name: '프로필' });
+  return page.getByRole('region', { name: '프로필', exact: true });
 }
 
 /** 저장된 사진(`img alt=""`) — 대화상자 미리보기와 카드 둘 다 같은 모양이다. */
@@ -86,12 +83,11 @@ test('이름·소개를 저장하면 카드에 보이고 새로고침 뒤에도 
 
   await page.reload();
   await page.waitForSelector('main#shell-main');
-  await openSidebarDrawer(page);
   await expect(profileCard(page)).toContainText(NAME);
   await expect(profileCard(page)).toContainText(BIO);
 });
 
-test('고정 컬럼(240)에서 빈 상태 자리표시 문구가 잘리지 않고, 드로어(300)에서 60자 소개가 한 줄이다(§7)', async ({
+test('달력 컬럼에서 빈 상태 자리표시 문구가 잘리지 않고, 60자 소개가 한 줄이다', async ({
   page,
 }) => {
   await page.waitForSelector('main#shell-main');
@@ -99,7 +95,7 @@ test('고정 컬럼(240)에서 빈 상태 자리표시 문구가 잘리지 않�
   await drawer.getByRole('button', { name: '사이드바 고정' }).click();
   await expect(drawer).toHaveCount(0);
   const column = page.getByRole('navigation', { name: '사이드바' });
-  const placeholder = column.getByText('한 줄 소개를 적어 보세요');
+  const placeholder = profileCard(page).getByText('한 줄 소개를 적어 보세요');
   await expect(placeholder).toBeVisible();
   // 잘림은 계산된 박스로 잰다(규칙 1) — 리뷰 B-M1 이 잡은 4px 부족이 다시 오면 여기서 빨개진다.
   const box = await placeholder.evaluate((el) => ({
@@ -109,7 +105,7 @@ test('고정 컬럼(240)에서 빈 상태 자리표시 문구가 잘리지 않�
   expect(box.scroll, '자리표시 문구가 말줄임됐다').toBeLessThanOrEqual(box.client);
 
   // 고정 컬럼에는 드로어가 없다 — ✎ 를 바로 누른다.
-  await column.getByRole('button', { name: '프로필 편집' }).click();
+  await profileCard(page).getByRole('button', { name: '프로필 편집' }).click();
   const dialog = page.getByRole('dialog', { name: '프로필 편집' });
   await expect(dialog).toBeVisible();
   await dialog.getByLabel('한 줄 소개').fill('나'.repeat(60));
@@ -117,7 +113,6 @@ test('고정 컬럼(240)에서 빈 상태 자리표시 문구가 잘리지 않�
   await expect(dialog).toHaveCount(0);
   await column.getByRole('button', { name: '사이드바 고정 해제' }).click();
   await page.setViewportSize({ width: 960, height: 800 });
-  await openSidebarDrawer(page);
   const bio = profileCard(page).getByText('나'.repeat(60));
   const lineBox = await bio.evaluate((el) => ({
     height: el.clientHeight,
@@ -217,7 +212,6 @@ test('키보드: Shift+Tab 으로 "사진 고르기" 에 닿으면 링이 label 
 }) => {
   // 셸이 서기 전에는 `Mod+\` 배선이 없다 — hover-and-focus.spec 과 같은 순서로 기다린 뒤 키보드로 연다.
   await page.waitForSelector('main#shell-main');
-  await openSidebarDrawer(page, 'keyboard');
   await page.getByRole('button', { name: '프로필 편집' }).focus();
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: '프로필 편집' });
@@ -256,7 +250,6 @@ test('두 기기: A 가 적은 이름이 B 의 카드에 동기화돼 보인다(
   await expect(profileCard(pageA)).toContainText(NAME);
 
   await pageB.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-  await openSidebarDrawer(pageB);
   await expect(profileCard(pageB)).toContainText(NAME, { timeout: 15_000 });
 
   await ctxA.close();

@@ -1,5 +1,5 @@
 // 스토어 액션 — 저장소·상태·미러 셋이 한 방향으로 움직이는지 (profile.md R7·R14·R15, ADR-0023 규칙 4).
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { setProfile } from '@/domain/profile/profile.rules';
 import { createSettings, setAccentColor } from '@/domain/theme/settings.rules';
@@ -121,6 +121,53 @@ describe('save — 새로 읽은 행 위에 쓴다 (R7, ADR-0023 규칙 4)', () 
 });
 
 describe('reloadFromStorage — 풀 채택 뒤 다시 읽기 (R15)', () => {
+  it('느린 init 이 먼저 시작해도 나중에 채택한 원격 값을 덮지 않는다', async () => {
+    const repository = getRepositories().settings;
+    let finishInit: (value: Awaited<ReturnType<typeof repository.get>>) => void = () => {};
+    vi.spyOn(repository, 'get').mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishInit = resolve;
+        }),
+    );
+    const store = createProfileStore(deps);
+    const initialRead = store.getState().init();
+    await repository.upsert(
+      setProfile(createSettings(deps), { name: '다른 기기', bio: '', avatar: AVATAR }, deps),
+    );
+    await store.getState().reloadFromStorage();
+    finishInit(undefined);
+    await initialRead;
+
+    expect(store.getState()).toMatchObject({ status: 'ready', name: '다른 기기', avatar: AVATAR });
+    expect(mirror()).toEqual({ name: '다른 기기', avatar: AVATAR });
+  });
+
+  it('원격 재조회 실패 뒤 loading 에 갇히지 않고 다음 재조회에서 회복한다', async () => {
+    const repository = getRepositories().settings;
+    let finishInit: (value: Awaited<ReturnType<typeof repository.get>>) => void = () => {};
+    vi.spyOn(repository, 'get')
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishInit = resolve;
+          }),
+      )
+      .mockRejectedValueOnce(new Error('read failed'));
+    const store = createProfileStore(deps);
+    const initialRead = store.getState().init();
+    await store.getState().reloadFromStorage();
+    finishInit(undefined);
+    await initialRead;
+    expect(store.getState()).toMatchObject({ status: 'error', hydrated: true });
+
+    await repository.upsert(
+      setProfile(createSettings(deps), { name: '복구', bio: '', avatar: undefined }, deps),
+    );
+    await store.getState().reloadFromStorage();
+    expect(store.getState()).toMatchObject({ status: 'ready', name: '복구' });
+  });
+
   it('저장소의 새 값으로 상태·미러가 바뀐다', async () => {
     const store = createProfileStore(deps);
     await store.getState().init();
