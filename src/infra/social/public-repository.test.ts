@@ -47,10 +47,13 @@ describe('익명/선택 인증 공개 HTTP port', () => {
     expect(fetcher.mock.calls[0][1]?.body).toBeUndefined();
     expect(fetcher.mock.calls[0][1]?.headers).not.toHaveProperty('Idempotency-Key');
   });
-  it('category projection에서 source/owner 필드가 섞이면 응답 전체를 거절한다', async () => {
-    const repo = createHttpPublicSocialRepository(async () =>
-      result({ items: [{ ...CATEGORY, sourceCategoryId: 'private' }], nextCursor: null }),
-    );
-    await expect(repo.categories()).rejects.toMatchObject({ code: 'temporary' });
-  });
+  it.each([{ sourceCategoryId: 'private' }, { postCount: 2 }, { revoked: true }])(
+    'category projection의 비공개 필드 %j를 거절한다',
+    async (privateFields) => {
+      const repo = createHttpPublicSocialRepository(async () =>
+        result({ items: [{ ...CATEGORY, ...privateFields }], nextCursor: null }),
+      );
+      await expect(repo.categories()).rejects.toMatchObject({ code: 'temporary' });
+    },
+  );
 });

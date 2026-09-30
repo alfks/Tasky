@@ -6,6 +6,15 @@ import { SocialProtocolError } from '@/infra/social/protocol-error';
 
 /** 신뢰하지 않는 응답은 원본/owner/계정 필드를 포함해 모두 거절한다. */
 export function category(value: unknown): SocialCategoryView {
+  return parseCategory(value, false);
+}
+
+/** 소유자 전용 정리 화면만 사본 수와 철회 상태를 받는다. */
+export function ownerCategory(value: unknown): SocialCategoryView {
+  return parseCategory(value, true);
+}
+
+function parseCategory(value: unknown, owner: boolean): SocialCategoryView {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
     throw new SocialProtocolError();
   const data = value as Record<string, unknown>;
@@ -17,8 +26,7 @@ export function category(value: unknown): SocialCategoryView {
     'visibility',
     'version',
     'updatedAt',
-    'postCount',
-    'revoked',
+    ...(owner ? ['postCount', 'revoked'] : []),
   ];
   if (
     Object.keys(data).some((key) => !keys.includes(key)) ||
