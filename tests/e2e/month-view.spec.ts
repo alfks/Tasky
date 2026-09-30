@@ -72,14 +72,12 @@ test('월 보기로 바꾸면 달력 격자가 나오고, 체크하면 그 달�
   await expect(todayCell(page, 'radio')).toBeChecked();
 });
 
-test('360 폭 6줄 달에서 격자가 뷰포트 안에 들어오고 고정 영역이 320px 이하다(calendar-layout.md R9)', async ({
+test('360 폭 6줄 달에서 프로필과 달력 격자가 첫 화면에 모두 보인다(calendar-layout.md R9)', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 360, height: 740 });
   await page.goto('/');
   await waitForShell(page);
-
-  await page.getByRole('button', { name: '월 보기로 전환' }).click();
 
   // R9 의 목표치는 **6줄(42칸) 달** 기준이라, 지금 달이 6줄이 아니면 나올 때까지 다음 달로 넘긴다.
   let cellCount = await page.getByRole('gridcell').count();
@@ -100,20 +98,21 @@ test('360 폭 6줄 달에서 격자가 뷰포트 안에 들어오고 고정 영�
 
   // 격자 자체도 뷰포트 폭 안에 있다.
   const grid = page.getByRole('grid', { name: '날짜 선택' });
+  // 연속 월 전환 뒤 브라우저가 포커스된 버튼을 위해 스크롤 위치를 옮길 수 있다.
+  // 첫 화면의 실제 배치를 재려면 같은 스크롤 뷰포트를 맨 위로 되돌린다.
+  await page.locator('main#shell-main').evaluate((main) => main.firstElementChild?.scrollTo(0, 0));
   const box = await grid.boundingBox();
   expect(box, '격자 박스를 읽지 못했다').not.toBeNull();
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(overflow.innerWidth);
 
-  // 고정 영역(셸 상단 줄 + 스트립 헤더 + 격자) ≤ 320px(R9) — 격자 바로 아래부터 목록이 스크롤된다.
-  // 기준선은 **셸 상단 줄의 위**(`사이드바 열기` 버튼의 y)다 — 그 위의 페이지 여백(안전 영역 거터)은
-  // 달력 블록 소관이 아니라 셸의 바깥 여백이라 R9 의 "고정 영역"에 포함되지 않는다.
-  const shellTop = await page.getByRole('button', { name: '사이드바 열기' }).boundingBox();
-  expect(shellTop, '셸 상단 줄 기준점을 읽지 못했다').not.toBeNull();
-  expect(
-    box!.y + box!.height - shellTop!.y,
-    '고정 영역(셸 상단 줄 + 스트립 헤더 + 격자)이 320px 을 넘는다',
-  ).toBeLessThanOrEqual(320);
+  // 새 compact 레이아웃은 프로필/달력에 첫 스크롤 화면을 할당한다. 6주 달에서도 둘 다
+  // 가시 영역에 있어야 하며, 할 일은 아래로 스크롤해 접근한다.
+  const profile = await page.getByRole('region', { name: '프로필', exact: true }).boundingBox();
+  expect(profile).not.toBeNull();
+  expect(profile!.y).toBeGreaterThanOrEqual(0);
+  expect(profile!.y + profile!.height).toBeLessThan(box!.y);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(740);
 });
 
 test('월 보기에서 ↑/↓ 는 일주일을 옮기고 ‹ › 는 한 달을 옮긴다', async ({ page }) => {
@@ -203,7 +202,7 @@ test.describe('터치', () => {
   }) => {
     await page.goto('/');
     await waitForShell(page);
-    await page.getByRole('button', { name: '월 보기로 전환' }).click();
+    await expect(page.getByRole('grid', { name: '날짜 선택' })).toBeVisible();
     const { target, name, targetMonth } = await pickOutsideCell(page);
 
     // 터치는 호환 마우스 이벤트(mousedown → focus → mouseup → click)가 pointerup **뒤에** 온다 — 포인터가

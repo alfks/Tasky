@@ -37,7 +37,7 @@ async function documentFitsViewport(page: Page, label: string): Promise<void> {
   );
 }
 
-async function box(page: Page, role: 'main' | 'radiogroup', name?: string) {
+async function box(page: Page, role: 'main' | 'radiogroup' | 'grid', name?: string) {
   const locator =
     name === undefined ? page.getByRole(role) : page.getByRole(role, { name, exact: true });
   const rect = await locator.boundingBox();
@@ -99,7 +99,7 @@ test('679px 에서는 1열이다 — 패널이 스트립 아래로 내려가고 
   await page.goto('/');
   await waitForShell(page, 679);
 
-  const strip = await box(page, 'radiogroup', '날짜 선택');
+  const strip = await box(page, 'grid', '날짜 선택');
   // 1열의 `main` 은 `ShellMain` — 스트립을 **안에** 품는다. 그래서 "아래" 는 `main` 의 y 가 아니라
   // 목록 영역(첫 그룹 `region`)의 y 로 잰다.
   const group = await page.getByRole('region', { name: 'todo' }).boundingBox();

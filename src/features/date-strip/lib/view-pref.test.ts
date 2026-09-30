@@ -11,6 +11,7 @@ import {
 afterEach(() => {
   window.localStorage.clear();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('R14. 보기 모드는 기기별로 기억한다', () => {
@@ -36,6 +37,33 @@ describe('R14. 보기 모드는 기기별로 기억한다', () => {
   it('값이 없으면 주 보기다', () => {
     expect(readViewPref()).toBe('week');
     expect(DEFAULT_VIEW).toBe('week');
+  });
+
+  it('좁은 화면에 저장된 선택이 없으면 월 보기로 시작한다', () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: true })),
+    );
+    expect(readViewPref()).toBe('month');
+    expect(window.localStorage.getItem(VIEW_PREF_KEY)).toBeNull();
+  });
+
+  it('좁은 화면에서도 사용자가 저장한 주 보기를 존중한다', () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: true })),
+    );
+    writeViewPref('week');
+    expect(readViewPref()).toBe('week');
+  });
+
+  it('넓은 화면에서도 사용자가 저장한 월 보기를 존중한다', () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: false })),
+    );
+    writeViewPref('month');
+    expect(readViewPref()).toBe('month');
   });
 
   it('쓰레기 값은 주 보기로 떨어진다 — 깨진 JSON·다른 타입·모르는 보기 이름', () => {

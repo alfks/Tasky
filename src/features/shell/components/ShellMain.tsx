@@ -7,7 +7,6 @@
 // 목록·다이어리·빈 상태의 실제 렌더링(`DayPanelBody`)은 `ShellDayPanel.tsx` 가 갖고 있고 여기서는
 // 가져다 쓸 뿐이다 — 두 갈래가 각자 그 본문을 그리면 한쪽만 고쳐지는 순간 다른 쪽에서 조용히
 // 되살아난다(calendar-layout.md R21).
-import { useRef } from 'react';
 import type { ReactNode } from 'react';
 
 import type { Category } from '@/domain/category/category';
@@ -16,9 +15,7 @@ import type { Todo } from '@/domain/todo/todo';
 
 import { useCommandStore } from '@/features/command';
 import { DayPanelBody, SKELETON_DELAY_MS } from '@/features/shell/components/ShellDayPanel';
-import { useBottomBarOffset } from '@/features/shell/hooks/useBottomBarOffset';
 import { useDelayedFlag } from '@/features/shell/hooks/useDelayedFlag';
-import { useGuardAmbiguousClip } from '@/features/shell/hooks/useGuardAmbiguousClip';
 import { SHELL_MAIN_ID } from '@/features/shell/lib/main-id';
 
 import { Button } from '@/components/ui/Button';
@@ -43,6 +40,7 @@ type ShellMainProps = {
   /** 그날 투두가 0개인가 (§2-C 두 번째 빈 상태). */
   todosEmpty: boolean;
   header: ReactNode;
+  profile?: ReactNode;
   onCreateCategory: () => void;
   /** 680px 미만(compact)의 하단 고정 `[+ 할 일]` (§2-B). */
   showBottomAdd: boolean;
@@ -71,6 +69,7 @@ export function ShellMain({
   failureCard,
   todosEmpty,
   header,
+  profile,
   onCreateCategory,
   showBottomAdd,
   onStartTimer,
@@ -83,56 +82,36 @@ export function ShellMain({
   const showTodoSkeleton = useDelayedFlag(todosFirstLoading, SKELETON_DELAY_MS);
   // 누를 대상이 없을 때는 비활성이다 — 눌러도 아무 일 없는 버튼을 화면의 유일한 버튼으로 두지 않는다.
   const canAddTodo = todoAreaLive && !showTodoSkeleton && runTodoNew !== undefined;
-  // 하단 막대가 목록 스크롤 영역의 마지막 줄을 가리지 않게, 그 막대의 **실측** 높이만큼
-  // padding-bottom 을 준다. **최종 리뷰가 "flex 형제라 겹칠 수 없으니 불필요하지 않은가"를
-  // 물었다 — 실측으로 확인하니 여전히 필요했다**(`lib/bottom-bar.ts` 머리주석에 실측 근거).
-  // 다만 그 위에 얹던 여분의 `--space-3`(12px, 아래 padding-top 과 맞추려던 것)는 뺐다 — 순수하게
-  // 중복이었고, 빼도 회귀 테스트(`tests/e2e/narrow-viewport.spec.ts` 의 "마지막 할 일 행이…")가
-  // 여전히 통과한다(최종 리뷰 Minor — 360px 죽은 공간 12px 감소).
-  const bottomBarOffset = useBottomBarOffset();
-  // 막대가 없으면(`showBottomAdd` 거짓 — 지금은 이 컴포넌트가 compact 에서만 마운트되므로 거의
-  // 항상 있다) 여분을 얹을 대상 자체가 없다 — 위 padding-top 과 같은 기본 여백(`--space-3`)만
-  // 남긴다. 막대가 있으면 그 실측 높이 그대로가 padding-bottom 이다.
-  const scrollAreaPaddingBottom = bottomBarOffset > 0 ? `${bottomBarOffset}px` : 'var(--space-3)';
-  // 손대지 않은 첫 화면에서 마지막 행이 "거의 다 보이는데 살짝만 잘린" 애매한 상태로 뜨는 것을
-  // 막는다 — padding-bottom(아래)은 스크롤 **끝**에만 여지를 주므로 이 경우는 못 잡는다
-  // (`lib/scroll-clip-guard.ts` 머리주석에 전체 인과가 있다). `showBottomAdd` 일 때만 건다 — 막대가
-  // 없는 화면은 이 애매함이 생길 자리 자체가 없다. `date` 를 넘겨 날짜가 바뀌면(목록이
-  // 통째로 바뀌면) 다시 판정하게 한다(`useGuardAmbiguousClip` 머리주석 — 최종 리뷰 Minor).
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
-  useGuardAmbiguousClip(scrollAreaRef, showBottomAdd, date);
-
+  // 첫 스크롤 화면은 프로필·달력에 쓰고, 같은 스크롤 영역 아래에 할 일 목록을 둔다.
+  // 하단 버튼은 flex 형제이므로 스크롤 뷰포트를 가리지 않는다.
   return (
     <main
       id={SHELL_MAIN_ID}
       tabIndex={-1}
       className="flex min-h-0 min-w-0 flex-1 flex-col outline-none"
     >
-      {/* R3: 고정 영역. 위쪽 여백은 셸 컨테이너의 `py` 가 이미 준다. */}
-      {/*
-        max-w 760 은 1열의 내용 폭 상한(app-shell.md §2-A-2)이다. 이 컴포넌트는 이제 <680 에서만
-        그려지므로 실제로는 한 번도 걸리지 않는다 — 옛 `narrow`(768~1023) 구간용 `md:max-w-[560px]`
-        (R8-a)는 그 구간이 2영역으로 바뀌면서 함께 폐지했다(calendar-layout.md R8).
-      */}
-      <div className="mx-auto w-full max-w-[760px] shrink-0 px-[var(--space-4)]">
-        {failureCard === null ? header : null}
-      </div>
-
-      <div
-        ref={scrollAreaRef}
-        className="mx-auto min-h-0 w-full max-w-[760px] flex-1 overflow-y-auto px-[var(--space-4)] pt-[var(--space-3)]"
-        style={{ paddingBottom: scrollAreaPaddingBottom }}
-      >
-        <DayPanelBody
-          date={date}
-          categories={categories}
-          categoriesPending={categoriesPending}
-          todosFirstLoading={todosFirstLoading}
-          failureCard={failureCard}
-          todosEmpty={todosEmpty}
-          onCreateCategory={onCreateCategory}
-          onStartTimer={onStartTimer}
-        />
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain">
+        <section
+          aria-label="프로필과 달력"
+          className="mx-auto grid min-h-full w-full max-w-[760px] min-w-0 grid-cols-1 grid-rows-[minmax(min-content,1fr)_minmax(min-content,4fr)]"
+        >
+          <div className="min-w-0 pt-[var(--space-2)]">{profile}</div>
+          <div className="flex w-full min-w-0 flex-col justify-center pb-[var(--space-3)]">
+            {failureCard === null ? header : null}
+          </div>
+        </section>
+        <div className="mx-auto w-full max-w-[760px] min-w-0 px-[var(--space-4)] pt-[var(--space-3)] pb-[var(--space-4)]">
+          <DayPanelBody
+            date={date}
+            categories={categories}
+            categoriesPending={categoriesPending}
+            todosFirstLoading={todosFirstLoading}
+            failureCard={failureCard}
+            todosEmpty={todosEmpty}
+            onCreateCategory={onCreateCategory}
+            onStartTimer={onStartTimer}
+          />
+        </div>
       </div>
 
       {showBottomAdd && todoAreaLive ? (

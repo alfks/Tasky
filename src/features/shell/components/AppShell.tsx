@@ -16,6 +16,7 @@ import {
   useCategoryStore,
 } from '@/features/category';
 import { useDateStripStore } from '@/features/date-strip';
+import { ProfileCard } from '@/features/profile';
 import { ReportsScreen, useReportsStore } from '@/features/reports';
 import { MemoryModeBanner } from '@/features/shell/components/MemoryModeBanner';
 import { ShellDayPanel } from '@/features/shell/components/ShellDayPanel';
@@ -45,6 +46,7 @@ import { APP_NAME } from '@/features/shell/lib/title';
 import { useShellStorageStore } from '@/features/shell/store/shell-storage-store';
 import { useShellToastStore } from '@/features/shell/store/shell-toast-store';
 import { useCompletion } from '@/features/stats';
+import { useSyncStore } from '@/features/sync';
 import { useThemeSync } from '@/features/theme';
 import { useTodoStore } from '@/features/todo';
 
@@ -67,6 +69,7 @@ function ShellBody() {
   const noticeOffset = useTopNoticeOffset();
 
   const date = useDateStripStore((s) => s.selectedDate);
+  const profileEmail = useSyncStore((s) => s.email);
   const categories = useCategories();
   // 본문 목록·인사이트 패널 전용(category R17·R22) — 사이드바·선택지·팔레트는 여전히 `categories`
   // 그대로 쓴다(아래 `focusCategory`·`ShellSidebar`). 자세한 이유는 훅 주석.
@@ -246,7 +249,8 @@ function ShellBody() {
           // `min-w-0` 은 래퍼가 줄어들 때도 자식의 `min-w` 가 지켜지게 한다(flex 기본 `min-width:auto`
           // 가 래퍼 자체를 늘리는 것을 막는다). 잉크 실측은 FEEL_REPORT §14.
           <div className="flex min-h-0 min-w-0 flex-1 justify-center gap-[var(--space-6)]">
-            <div className="flex min-h-0 max-w-[440px] min-w-[var(--shell-calendar-col-min)] flex-1 flex-col gap-[var(--space-3)]">
+            <div className="flex min-h-0 max-w-[440px] min-w-[var(--shell-calendar-col-min)] flex-[2] flex-col gap-[var(--space-3)]">
+              <ProfileCard email={profileEmail} />
               <div className="shrink-0">{failureCard === null ? header : null}</div>
               {insightIsColumn ? (
                 <aside
@@ -286,6 +290,7 @@ function ShellBody() {
             onCreateCategory={handleCreateCategory}
             onStartTimer={startTimerForTodo}
             header={header}
+            profile={<ProfileCard email={profileEmail} />}
           />
         )}
       </div>
