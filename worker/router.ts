@@ -14,6 +14,7 @@ import {
 import { requireSession } from './auth/session';
 import { handleStubLogin } from './auth/stub';
 import { forUser } from './db/user-db';
+import { handlePublicRequest } from './social/public-router';
 import { handleSocialRequest } from './social/router';
 import { handleSync } from './sync/handler';
 
@@ -76,6 +77,7 @@ export async function handleRequest(request: Request, env: Env, now: string): Pr
   const { pathname } = url;
   const { method } = request;
 
+  if (pathname.startsWith('/api/social/public/')) return handlePublicRequest(request, env, now);
   if (pathname.startsWith('/api/social/')) return handleSocialRequest(request, env, now);
 
   if (method === 'GET' && pathname === '/auth/login') return handleLogin(request, env);
