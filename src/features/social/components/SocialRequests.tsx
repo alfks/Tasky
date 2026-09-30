@@ -15,9 +15,16 @@ export function SocialRequests({ direction, enabled }: SocialRequestsProps) {
   const requests = useSocialResource((repo, cursor) =>
     repo.requests(direction, cursor === undefined ? undefined : { cursor }),
   );
-  const command = useSocialCommand();
+  const command = useSocialCommand(`requests-${direction}`);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const continueRef = useRef<HTMLButtonElement>(null);
+  const [leaving, setLeaving] = useState(false);
+  const close = () => {
+    if (command.busy) return;
+    if (command.uncertain) setLeaving(true);
+    else setBlockRequest(null);
+  };
   const [blockRequest, setBlockRequest] = useState<RequestView | null>(null);
   const act = async (request: RequestView, action: 'accept' | 'decline' | 'cancel' | 'block') => {
     const input = { peerId: request.peer.id, expectedVersion: request.pairVersion };
@@ -67,6 +74,23 @@ export function SocialRequests({ direction, enabled }: SocialRequestsProps) {
       {command.error === null && requests.error === null ? null : (
         <p role="alert">{socialFailureMessage(command.error ?? requests.error)}</p>
       )}
+      {command.uncertain ? (
+        <Button
+          disabled={!command.retryAllowed}
+          onClick={() =>
+            void command.retry().then(async (result) => {
+              if (result === null) return;
+              setBlockRequest(null);
+              invalidateSocialSession('revoked');
+              await recheckSocialSession();
+              await requests.refresh();
+              headingRef.current?.focus();
+            })
+          }
+        >
+          완료 여부 확인
+        </Button>
+      ) : null}
       <ul className="flex flex-col gap-[var(--space-2)]">
         {requests.items.map((request) => (
           <li
@@ -79,7 +103,7 @@ export function SocialRequests({ direction, enabled }: SocialRequestsProps) {
                 <>
                   <Button
                     size="sm"
-                    disabled={!enabled || requests.busy}
+                    disabled={!enabled || requests.busy || command.uncertain}
                     loading={command.busy}
                     onClick={() => void act(request, 'accept')}
                   >
@@ -89,6 +113,7 @@ export function SocialRequests({ direction, enabled }: SocialRequestsProps) {
                     variant="outline"
                     size="sm"
                     loading={command.busy}
+                    disabled={command.uncertain}
                     onClick={() => void act(request, 'decline')}
                   >
                     거절
@@ -97,6 +122,7 @@ export function SocialRequests({ direction, enabled }: SocialRequestsProps) {
                     variant="ghost"
                     size="sm"
                     loading={command.busy}
+                    disabled={command.uncertain}
                     onClick={() => setBlockRequest(request)}
                   >
                     차단
@@ -107,6 +133,7 @@ export function SocialRequests({ direction, enabled }: SocialRequestsProps) {
                   variant="outline"
                   size="sm"
                   loading={command.busy}
+                  disabled={command.uncertain}
                   onClick={() => void act(request, 'cancel')}
                 >
                   요청 취소
@@ -121,27 +148,21 @@ export function SocialRequests({ direction, enabled }: SocialRequestsProps) {
           open
           role="alertdialog"
           title={`${blockRequest.peer.nickname}님 차단`}
-          onClose={() => {
-            if (!command.busy) setBlockRequest(null);
-          }}
+          onClose={close}
           initialFocusRef={cancelRef}
           returnFocus={() => headingRef.current}
           footer={
             <>
-              <Button
-                ref={cancelRef}
-                variant="outline"
-                disabled={command.busy}
-                onClick={() => setBlockRequest(null)}
-              >
+              <Button ref={cancelRef} variant="outline" disabled={command.busy} onClick={close}>
                 취소
               </Button>
               <Button
                 variant="danger"
                 loading={command.busy}
+                disabled={command.uncertain && !command.retryAllowed}
                 onClick={() => void act(blockRequest, 'block')}
               >
-                확인
+                {command.uncertain ? '완료 여부 확인' : '확인'}
               </Button>
             </>
           }
@@ -152,6 +173,32 @@ export function SocialRequests({ direction, enabled }: SocialRequestsProps) {
           )}
         </Dialog>
       )}
+      <Dialog
+        open={leaving}
+        role="alertdialog"
+        title="완료 여부를 나중에 확인할까요?"
+        onClose={() => setLeaving(false)}
+        initialFocusRef={continueRef}
+        footer={
+          <>
+            <Button ref={continueRef} variant="outline" onClick={() => setLeaving(false)}>
+              같은 요청으로 확인
+            </Button>
+            <Button
+              onClick={() => {
+                setLeaving(false);
+                setBlockRequest(null);
+              }}
+            >
+              나중에 확인
+            </Button>
+          </>
+        }
+      >
+        <p>
+          요청이 이미 적용됐을 수 있어요. 완료 여부 확인에서 같은 요청으로 다시 확인할 수 있어요.
+        </p>
+      </Dialog>
       <SocialPagination
         pageIndex={requests.pageIndex}
         nextCursor={requests.nextCursor}

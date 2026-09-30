@@ -17,13 +17,20 @@ export function SocialConnections({ blocked = false }: SocialConnectionsProps) {
       ? repo.blocks(cursor === undefined ? undefined : { cursor })
       : repo.friends(cursor === undefined ? undefined : { cursor }),
   );
-  const command = useSocialCommand();
+  const command = useSocialCommand(`connections-${blocked}`);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const continueRef = useRef<HTMLButtonElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [pending, setPending] = useState<{
     friend: FriendView;
     action: 'remove' | 'block' | 'unblock';
   } | null>(null);
+  const [leaving, setLeaving] = useState(false);
+  const close = () => {
+    if (command.busy) return;
+    if (command.uncertain) setLeaving(true);
+    else setPending(null);
+  };
   const [notice, setNotice] = useState('');
   const apply = async () => {
     if (pending === null) return;
@@ -80,6 +87,23 @@ export function SocialConnections({ blocked = false }: SocialConnectionsProps) {
           </Button>
         </p>
       )}
+      {command.uncertain ? (
+        <Button
+          disabled={!command.retryAllowed}
+          onClick={() =>
+            void command.retry().then(async (result) => {
+              if (result === null) return;
+              setPending(null);
+              invalidateSocialSession('revoked');
+              await recheckSocialSession();
+              await list.refresh();
+              headingRef.current?.focus();
+            })
+          }
+        >
+          완료 여부 확인
+        </Button>
+      ) : null}
       <ul className="flex flex-col gap-[var(--space-2)]">
         {list.items.map((friend) => (
           <li
@@ -92,6 +116,7 @@ export function SocialConnections({ blocked = false }: SocialConnectionsProps) {
                 <Button
                   variant="outline"
                   size="sm"
+                  disabled={command.uncertain}
                   onClick={() => setPending({ friend, action: 'unblock' })}
                 >
                   차단 해제
@@ -101,6 +126,7 @@ export function SocialConnections({ blocked = false }: SocialConnectionsProps) {
                   <Button
                     variant="outline"
                     size="sm"
+                    disabled={command.uncertain}
                     onClick={() => setPending({ friend, action: 'remove' })}
                   >
                     친구 삭제
@@ -108,6 +134,7 @@ export function SocialConnections({ blocked = false }: SocialConnectionsProps) {
                   <Button
                     variant="ghost"
                     size="sm"
+                    disabled={command.uncertain}
                     onClick={() => setPending({ friend, action: 'block' })}
                   >
                     차단
@@ -133,23 +160,21 @@ export function SocialConnections({ blocked = false }: SocialConnectionsProps) {
           open
           title={`${pending.friend.nickname}님 ${pending.action === 'remove' ? '친구 삭제' : pending.action === 'block' ? '차단' : '차단 해제'}`}
           role="alertdialog"
-          onClose={() => {
-            if (!command.busy) setPending(null);
-          }}
+          onClose={close}
           initialFocusRef={cancelRef}
           returnFocus={() => headingRef.current}
           footer={
             <>
-              <Button
-                ref={cancelRef}
-                variant="outline"
-                disabled={command.busy}
-                onClick={() => setPending(null)}
-              >
+              <Button ref={cancelRef} variant="outline" disabled={command.busy} onClick={close}>
                 취소
               </Button>
-              <Button variant="danger" loading={command.busy} onClick={() => void apply()}>
-                확인
+              <Button
+                variant="danger"
+                disabled={command.uncertain && !command.retryAllowed}
+                loading={command.busy}
+                onClick={() => void apply()}
+              >
+                {command.uncertain ? '완료 여부 확인' : '확인'}
               </Button>
             </>
           }
@@ -166,6 +191,32 @@ export function SocialConnections({ blocked = false }: SocialConnectionsProps) {
           )}
         </Dialog>
       )}
+      <Dialog
+        open={leaving}
+        role="alertdialog"
+        title="완료 여부를 나중에 확인할까요?"
+        onClose={() => setLeaving(false)}
+        initialFocusRef={continueRef}
+        footer={
+          <>
+            <Button ref={continueRef} variant="outline" onClick={() => setLeaving(false)}>
+              같은 요청으로 확인
+            </Button>
+            <Button
+              onClick={() => {
+                setLeaving(false);
+                setPending(null);
+              }}
+            >
+              나중에 확인
+            </Button>
+          </>
+        }
+      >
+        <p>
+          관계가 이미 변경됐을 수 있어요. 완료 여부 확인에서 같은 요청으로 다시 확인할 수 있어요.
+        </p>
+      </Dialog>
     </section>
   );
 }
