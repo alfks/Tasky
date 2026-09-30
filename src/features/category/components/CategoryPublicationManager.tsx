@@ -250,12 +250,14 @@ export function CategoryPublicationManager({
                       {manager.hasPendingRemote(category.id) ? (
                         <p>확인 필요: 철회가 적용됐을 수 있어요.</p>
                       ) : null}
-                      {category.revoked ? null : (
+                      {category.revoked && !manager.hasPendingRemote(category.id) ? null : (
                         <div className="mt-[var(--space-2)] flex flex-wrap gap-[var(--space-2)]">
                           <Button
                             variant="outline"
                             size="sm"
-                            disabled={linked || checking || snapshot.mode !== 'enabled'}
+                            disabled={
+                              category.revoked || linked || checking || snapshot.mode !== 'enabled'
+                            }
                             onClick={() => {
                               setSelectedRemote(category.id);
                               setSelectedLocal('');

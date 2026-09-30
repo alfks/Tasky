@@ -65,7 +65,16 @@ function fixture() {
           }),
       }) as unknown as SocialRepository,
   };
-  return { dependencies, persist, saveCategory, revokeCategory, local: () => local };
+  return {
+    dependencies,
+    persist,
+    saveCategory,
+    revokeCategory,
+    local: () => local,
+    markRevoked: () => {
+      remote = { ...remote, visibility: 'private', revoked: true, version: 4 };
+    },
+  };
 }
 describe('공유 카테고리 관리의 명시 선택과 확인', () => {
   it('L/R 양쪽 이름과 실제 공개 범위를 확인하기 전에는 연결하지 않으며 개인 이름을 유지한다', async () => {
@@ -96,7 +105,10 @@ describe('공유 카테고리 관리의 명시 선택과 확인', () => {
     const f = fixture();
     const user = userEvent.setup();
     const close = vi.fn();
-    f.revokeCategory.mockRejectedValueOnce(Object.assign(new Error('lost'), { code: 'temporary' }));
+    f.revokeCategory.mockImplementationOnce(async () => {
+      f.markRevoked();
+      throw Object.assign(new Error('lost'), { code: 'temporary' });
+    });
     const view = render(
       <CategoryPublicationManager dependencies={f.dependencies} onClose={close} />,
     );
@@ -113,7 +125,9 @@ describe('공유 카테고리 관리의 명시 선택과 확인', () => {
     view.unmount();
     render(<CategoryPublicationManager dependencies={f.dependencies} onClose={close} />);
     await screen.findByRole('heading', { name: '서버 R' });
-    await user.click(screen.getByRole('button', { name: /공유 철회|완료 여부 확인/ }));
+    expect(screen.getByText(/철회됨/)).toBeVisible();
+    expect(screen.getByRole('button', { name: '연결하기' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: '완료 여부 확인' }));
     await user.click(await screen.findByRole('button', { name: '같은 요청 다시 확인' }));
     await waitFor(() => expect(f.revokeCategory).toHaveBeenCalledTimes(2));
     expect(f.revokeCategory.mock.calls[1]).toEqual(f.revokeCategory.mock.calls[0]);
