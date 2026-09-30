@@ -5,6 +5,7 @@ import { keyPage } from '@/repositories/memory/social/cursor';
 import { randomHex, sha256 } from '@/repositories/memory/social/hash';
 import {
   actor,
+  creationQuota,
   fail,
   requireSession,
   type MemoryInvite,
@@ -33,6 +34,7 @@ export async function createInvite(
       effectiveInviteStatus(item.status, item.expiresAt, state.now()) === 'active',
   ).length;
   if (activeCount >= 5) return fail('limit-reached', state.now());
+  const quota = creationQuota(state, self.id, 'invite-create');
   const invite: MemoryInvite = {
     id: tokenHash,
     ownerId: self.id,
@@ -40,6 +42,7 @@ export async function createInvite(
     expiresAt: state.now() + INVITE_MS,
   };
   state.invites.set(tokenHash, invite);
+  quota.record();
   return { token, expiresAt: invite.expiresAt };
 }
 

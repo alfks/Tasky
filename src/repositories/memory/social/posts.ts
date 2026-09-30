@@ -12,6 +12,7 @@ import { categoryReadable, categoryView } from '@/repositories/memory/social/cat
 import { keyPage } from '@/repositories/memory/social/cursor';
 import {
   actor,
+  creationQuota,
   fail,
   nextId,
   type MemoryPost,
@@ -155,9 +156,8 @@ export function createPost(state: MemorySocialState, sub: string, input: PostInp
   if (category !== undefined && category.version !== parsed.value.categoryVersion)
     return fail('conflict', state.now());
   const ownPosts = [...state.posts.values()].filter((post) => post.authorId === self.id);
-  const dayStart = Math.floor(state.now() / 86_400_000) * 86_400_000;
-  if (ownPosts.length >= 1000 || ownPosts.filter((post) => post.createdAt >= dayStart).length >= 20)
-    return fail('limit-reached', state.now());
+  if (ownPosts.length >= 1000) return fail('limit-reached', state.now());
+  const quota = creationQuota(state, self.id, 'post-create');
   const id = nextId(state);
   state.posts.set(id, {
     id,
@@ -167,6 +167,7 @@ export function createPost(state: MemorySocialState, sub: string, input: PostInp
     createdAt: state.now(),
     ...(category === undefined ? {} : { category: categoryView(state, category.id, null) }),
   });
+  quota.record();
   return id;
 }
 
