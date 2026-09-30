@@ -6,7 +6,12 @@ import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
 
-import { chunkGraph, classifyGraph } from './scripts/bundle-graph.mjs';
+import {
+  chunkGraph,
+  classifyGraph,
+  bundleGroup,
+  inspectBundleGroups,
+} from './scripts/bundle-graph.mjs';
 
 const src = fileURLToPath(new URL('./src', import.meta.url));
 
@@ -15,6 +20,8 @@ function preloadAsyncChunks(): Plugin {
   return {
     name: 'tasky:preload-async-chunks',
     generateBundle(_options, bundle) {
+      const errors = inspectBundleGroups(chunkGraph(bundle));
+      if (errors.length > 0) this.error(errors.join('\n'));
       this.emitFile({
         type: 'asset',
         fileName: 'bundle-graph.json',
@@ -79,6 +86,20 @@ const config = defineConfig({
     // dist/client 를 유지한다: serwist.config.js 의 globDirectory, scripts/deploy.sh 의 산출물 검사,
     // wrangler.jsonc 의 assets.directory, 배포 워크플로가 모두 이 경로를 가리킨다.
     outDir: 'dist/client',
+    // 설치된 Vite optional peer(잠금 파일의 terser)를 사용한다. unsafe 변환은 켜지 않는다.
+    minify: 'terser',
+    terserOptions: { module: true, compress: { passes: 2 } },
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          includeDependenciesRecursively: false,
+          groups: ['personal-dialogs', 'shared-primitives', 'react-vendor'].map((name) => ({
+            name,
+            test: (id: string) => bundleGroup(id) === name,
+          })),
+        },
+      },
+    },
     emptyOutDir: true,
     // public/_headers 의 immutable 규칙이 이 디렉토리 이름과 한 쌍이다 — 바꾸면 그 파일도 같이 바꾼다.
     // scripts/check-dist.mjs 가 매 빌드 산출물 경로 하나하나를 _headers 글롭에 대조하므로 한쪽만 바꾸면 빌드가 실패한다.

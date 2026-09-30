@@ -1,3 +1,82 @@
+// 기존 개인 대화상자와 이미 모든 화면이 읽는 순수 공용 모듈만 합친다.
+// 의존성을 재귀 편입하지 않아 providers/IDB/개인 스토어의 초기화를 옮기지 않는다.
+export const PERSONAL_DIALOG_MODULES = [
+  'src/domain/theme/emoji.ts',
+  'src/features/backup/components/BackupDialog.tsx',
+  'src/features/backup/components/BackupExportSection.tsx',
+  'src/features/backup/components/BackupImportSection.tsx',
+  'src/features/category/components/CategoryFormDialog.tsx',
+  'src/features/category/hooks/useCategoryForm.ts',
+  'src/features/date-strip/components/DayPicker.tsx',
+  'src/features/date-strip/components/DayPickerCell.tsx',
+  'src/features/date-strip/components/DayPickerMonthStep.tsx',
+  'src/features/date-strip/components/YearMonthPicker.tsx',
+  'src/features/date-strip/lib/day-move.ts',
+  'src/features/date-strip/lib/fade.ts',
+  'src/features/date-strip/lib/year-month.ts',
+  'src/features/profile/components/ProfileDialog.tsx',
+  'src/features/profile/components/ProfilePhotoField.tsx',
+  'src/features/profile/hooks/useProfileForm.ts',
+  'src/features/profile/lib/avatar-encode.ts',
+  'src/features/profile/lib/avatar-image.ts',
+];
+const SHARED_PRIMITIVE_MODULES = [
+  'src/components/ui/Button.tsx',
+  'src/components/ui/ColorSwatchGroup.tsx',
+  'src/components/ui/Dialog.tsx',
+  'src/components/ui/IconButton.tsx',
+  'src/components/ui/overlay-rules.ts',
+  'src/components/ui/overlay-stack.ts',
+  'src/domain/category/category.rules.ts',
+  'src/domain/date/civil.ts',
+  'src/domain/date/instant.ts',
+  'src/domain/errors.ts',
+  'src/domain/meta.ts',
+  'src/domain/theme/palette.ts',
+  'src/domain/theme/settings.rules.ts',
+  'src/domain/theme/settings.ts',
+  'src/domain/todo/ordering.ts',
+  'src/domain/todo/routine.rules.ts',
+  'src/domain/todo/todo.rules.ts',
+  'src/lib/a11y.ts',
+  'src/lib/cn.ts',
+  'src/lib/date.ts',
+  'src/lib/id.ts',
+  'src/lib/ime.ts',
+  'node_modules/clsx/dist/clsx.mjs',
+  'node_modules/tailwind-merge/dist/bundle-mjs.mjs',
+  'node_modules/zustand/esm/react.mjs',
+  'node_modules/zustand/esm/react/shallow.mjs',
+  'node_modules/zustand/esm/vanilla.mjs',
+  'node_modules/zustand/esm/vanilla/shallow.mjs',
+];
+
+export function bundleGroup(moduleId) {
+  const id = moduleId.replaceAll('\\', '/');
+  const matches = (modules) => modules.some((source) => id.endsWith(`/${source}`));
+  if (matches(PERSONAL_DIALOG_MODULES)) return 'personal-dialogs';
+  if (matches(SHARED_PRIMITIVE_MODULES)) return 'shared-primitives';
+  if (/(?:^|\/)node_modules\/(?:react|react-dom|scheduler)\//u.test(id)) return 'react-vendor';
+  return undefined;
+}
+
+/** 분류되지 않은 모듈을 묶거나 개인 대화상자를 정적 진입으로 옮기면 빌드 실패. */
+export function inspectBundleGroups(graph) {
+  const errors = [];
+  const entry = graphClosure(
+    graph,
+    graph.filter((chunk) => chunk.entry).map((chunk) => chunk.file),
+  );
+  for (const chunk of graph) {
+    const groups = new Set(chunk.modules.map(bundleGroup));
+    if ([...groups].some((group) => group !== undefined) && groups.size !== 1)
+      errors.push(`청크 ${chunk.file} 이 승인되지 않은 모듈을 함께 묶었습니다.`);
+    if (groups.has('personal-dialogs') && entry.has(chunk.file))
+      errors.push(`개인 대화상자 ${chunk.file} 이 정적 진입 의존성이 되었습니다.`);
+  }
+  return errors;
+}
+
 /** ADR-0025: 소스 진입점으로 optional 그래프를 증명한다. 불명확하면 필수로 남긴다. */
 export const OPTIONAL_SOURCE_ROOTS = [
   'src/features/shell/components/SocialWorkspace.tsx',

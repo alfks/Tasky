@@ -113,3 +113,56 @@ test('개인 offline 청크 누락과 optional 첫 SW 설치 fetch는 실패한�
     /온라인 선택/,
   );
 });
+
+test('청크 묶음은 승인한 정확한 소스와 패키지 파일만 잡는다', async () => {
+  const { bundleGroup } = await import('./bundle-graph.mjs');
+  assert.equal(bundleGroup('/project/src/components/ui/Button.tsx'), 'shared-primitives');
+  assert.equal(
+    bundleGroup('C:\\project\\src\\features\\profile\\components\\ProfileDialog.tsx'),
+    'personal-dialogs',
+  );
+  assert.equal(
+    bundleGroup('/project/node_modules/.pnpm/clsx@2.1.1/node_modules/clsx/dist/clsx.mjs'),
+    'shared-primitives',
+  );
+  assert.equal(bundleGroup('/project/node_modules/react/jsx-runtime.js'), 'react-vendor');
+  for (const source of [
+    '/project/src/app/main.tsx',
+    '/project/src/app/providers.tsx',
+    '/project/src/features/category/store/category-store.ts',
+    '/project/src/components/ui/Button.tsx/unknown.ts',
+    '/project/src/components/ui/ButtonLike.tsx',
+    '/project/node_modules/clsx/dist/other.mjs',
+    '/project/node_modules/clsx-lookalike/dist/clsx.mjs',
+    '/project/node_modules/react-lookalike/index.js',
+    '/project/node_modules/dexie/dist/dexie.mjs',
+  ])
+    assert.equal(bundleGroup(source), undefined, source);
+});
+
+test('묶음에 초기화·공유 의존성을 섞거나 개인 모달을 정적 진입으로 당기면 실패한다', async () => {
+  const { inspectBundleGroups } = await import('./bundle-graph.mjs');
+  const personal = '/project/src/features/profile/components/ProfileDialog.tsx';
+  const button = '/project/src/components/ui/Button.tsx';
+  const clean = [
+    chunk('entry.js', [], ['ui.js'], ['dialogs.js'], true),
+    chunk('ui.js', [button]),
+    chunk('dialogs.js', [personal], ['ui.js']),
+  ];
+  assert.deepEqual(inspectBundleGroups(clean), []);
+  for (const hidden of [
+    button,
+    '/project/src/app/providers.tsx',
+    '/project/node_modules/dexie/dist/dexie.mjs',
+  ]) {
+    assert.match(inspectBundleGroups([chunk('mixed.js', [personal, hidden])]).join(), /승인되지/);
+  }
+  const eager = [chunk('entry.js', [], ['dialogs.js'], [], true), chunk('dialogs.js', [personal])];
+  assert.match(inspectBundleGroups(eager).join(), /정적 진입/);
+  const nested = [
+    chunk('entry.js', [], ['ui.js'], [], true),
+    chunk('ui.js', [button], ['dialogs.js']),
+    chunk('dialogs.js', [personal]),
+  ];
+  assert.match(inspectBundleGroups(nested).join(), /정적 진입/);
+});
