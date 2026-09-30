@@ -90,7 +90,10 @@ export function ShellMain({
       tabIndex={-1}
       className="flex min-h-0 min-w-0 flex-1 flex-col outline-none"
     >
-      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain">
+      <div
+        data-shell-scroll-region="main"
+        className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain"
+      >
         <section
           aria-label="프로필과 달력"
           className="mx-auto grid min-h-full w-full max-w-[760px] min-w-0 grid-cols-1 grid-rows-[minmax(min-content,1fr)_minmax(min-content,4fr)]"

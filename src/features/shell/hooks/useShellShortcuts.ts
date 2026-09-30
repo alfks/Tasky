@@ -8,16 +8,17 @@ import { useDateStripStore } from '@/features/date-strip';
 type ShellShortcutTargets = {
   /** `Mod+\` — 사이드바 열기/닫기(드로어). 컬럼으로 고정돼 있으면 고정을 풀고 드로어로 내린다. */
   toggleSidebar: () => void;
+  enabled?: boolean;
 };
 
-export function useShellShortcuts({ toggleSidebar }: ShellShortcutTargets): void {
+export function useShellShortcuts({ toggleSidebar, enabled = true }: ShellShortcutTargets): void {
   const shiftSelected = useDateStripStore((state) => state.shiftSelected);
   const goToToday = useDateStripStore((state) => state.goToToday);
 
-  useShortcut('date.prev', () => shiftSelected(-1));
-  useShortcut('date.next', () => shiftSelected(1));
-  useShortcut('date.prevWeek', () => shiftSelected(-7));
-  useShortcut('date.nextWeek', () => shiftSelected(7));
-  useShortcut('date.today', goToToday);
+  useShortcut('date.prev', () => shiftSelected(-1), { enabled });
+  useShortcut('date.next', () => shiftSelected(1), { enabled });
+  useShortcut('date.prevWeek', () => shiftSelected(-7), { enabled });
+  useShortcut('date.nextWeek', () => shiftSelected(7), { enabled });
+  useShortcut('date.today', goToToday, { enabled });
   useShortcut('shell.sidebar', toggleSidebar);
 }
