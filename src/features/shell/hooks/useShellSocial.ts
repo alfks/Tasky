@@ -40,6 +40,7 @@ export function useShellSocial(closeReports: () => void, onLoadError: () => void
   const [actions] = useState(() => {
     const gate = {
       generation: 0,
+      identityGeneration: 0,
       alive: true,
       sequence: 0,
       navigation: 0,
@@ -78,7 +79,8 @@ export function useShellSocial(closeReports: () => void, onLoadError: () => void
         setRequest(next);
       });
     }
-    function invalidate() {
+    function invalidate(identityChanged = false) {
+      if (identityChanged) gate.identityGeneration += 1;
       gate.generation += 1;
       gate.navigation += 1;
       gate.opening = null;
@@ -91,6 +93,10 @@ export function useShellSocial(closeReports: () => void, onLoadError: () => void
           void enqueue('manage');
         },
         registerPendingCategories,
+        captureRemovalGuard: () => {
+          const identity = gate.identityGeneration;
+          return () => gate.alive && identity === gate.identityGeneration;
+        },
         openVisibility: (category: Category) => {
           void enqueue('scope', category);
         },
@@ -141,7 +147,7 @@ export function useShellSocial(closeReports: () => void, onLoadError: () => void
       invalidate,
       dispose: () => {
         gate.alive = false;
-        invalidate();
+        invalidate(true);
       },
     };
   });
@@ -150,7 +156,7 @@ export function useShellSocial(closeReports: () => void, onLoadError: () => void
     window.addEventListener('tasky-social-invite', actions.openSocial);
     const stop = onSocialInvalidation((reason) => {
       if (['auth', 'account', 'revoked', 'provider', 'cross-tab'].includes(reason)) {
-        actions.invalidate();
+        actions.invalidate(['auth', 'account', 'provider'].includes(reason));
         try {
           if (reason !== 'provider') sessionStorage.removeItem('tasky.social.invite.v1');
         } catch {

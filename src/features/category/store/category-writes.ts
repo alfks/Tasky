@@ -62,7 +62,7 @@ export type CategoryWriter = {
    * 시드(카테고리 + 설정, R18)가 쓰고, **삭제·되돌리기(R13·R15)의 `planCategoryRemoval*` 결과를 그대로
    * 넘기는 경로**이기도 하다 — T-12b 가 이 함수를 쓰면 `category-writes.ts` 를 고칠 일이 없다.
    */
-  applyWrites: (build: DatasetBuild) => Promise<boolean>;
+  applyWrites: (build: DatasetBuild, allowed?: () => boolean) => Promise<boolean>;
 };
 
 /** 앞의 쓰기가 끝난 뒤에 `task` 를 시작한다. 앞이 실패해도 큐는 이어진다. */
@@ -139,18 +139,20 @@ export function createCategoryWriter(ctx: CategoryContext): CategoryWriter {
       });
     },
 
-    applyWrites: (build) =>
+    applyWrites: (build, allowed = () => true) =>
       serialize(async () => {
         try {
+          if (!allowed()) return false;
           const writes = await build();
-          if (writes.length === 0) {
+          if (!allowed() || writes.length === 0) {
             return false;
           }
           await getRepositories().dataset.write(writes);
+          if (!allowed()) return false;
           ctx.set({ byId: withCategories(ctx.get().byId, categoriesIn(writes)), error: null });
           return true;
         } catch (error) {
-          ctx.set({ error: messageOf(error) });
+          if (allowed()) ctx.set({ error: messageOf(error) });
           return false;
         }
       }),

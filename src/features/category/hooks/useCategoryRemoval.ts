@@ -12,10 +12,11 @@
 //
 // 되돌리기 창은 **이 세션 안에서만** 유효하다. 새로고침하면 메모가 사라지고(소프트 삭제된 값은
 // 조회로 다시 읽히지 않는다 — ADR-0007 결정 4) 토스트도 함께 사라진다.
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import type { Category } from '@/domain/category/category';
 import type { CategoryRemovalChoice } from '@/domain/category/removal';
+import { categoryVisibility } from '@/domain/category/visibility';
 
 import { getRepositories } from '@/repositories/container';
 
@@ -70,7 +71,7 @@ function refreshTodos(): void {
 function useRemovalToast(): {
   toast: ToastItem | null;
   show: (item: Omit<ToastItem, 'id'>) => void;
-  showUndo: (name: string) => void;
+  showUndo: (name: string, allowed: () => boolean) => void;
   dismissToast: () => void;
 } {
   const [toast, setToast] = useState<ToastItem | null>(null);
@@ -83,9 +84,12 @@ function useRemovalToast(): {
     setToast({ id: `category-removal-${toastSeq.current}`, ...item });
   };
 
-  const undo = async (): Promise<void> => {
+  const undo = async (allowed: () => boolean): Promise<void> => {
+    if (!allowed()) return;
     setToast(null);
-    if (await undoRemoval()) {
+    const undone = await undoRemoval(allowed);
+    if (!allowed()) return;
+    if (undone) {
       // 저장소만 되돌려 놓으면 화면은 그대로다 — 보고 있는 날짜를 다시 읽어야 투두가 돌아온다.
       refreshTodos();
       return;
@@ -96,10 +100,10 @@ function useRemovalToast(): {
   return {
     toast,
     show,
-    showUndo: (name) =>
+    showUndo: (name, allowed) =>
       show({
         message: removalToastMessage(name),
-        action: { label: '되돌리기', onAction: () => void undo() },
+        action: { label: '되돌리기', onAction: () => void undo(allowed) },
       }),
     dismissToast: () => {
       setToast(null);
@@ -162,6 +166,15 @@ function useRemovalTarget(onCountFailed: () => void): {
 
 export function useCategoryRemoval(): CategoryRemovalController {
   const publication = useCategoryPublication();
+  const operation = useRef(0);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      operation.current += 1;
+    };
+  }, []);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast, show, showUndo, dismissToast } = useRemovalToast();
@@ -171,6 +184,8 @@ export function useCategoryRemoval(): CategoryRemovalController {
   const removeCategory = useCategoryStore((state) => state.removeCategory);
 
   const close = (): void => {
+    operation.current += 1;
+    setRemoving(false);
     setError(null);
     cancel();
   };
@@ -181,13 +196,43 @@ export function useCategoryRemoval(): CategoryRemovalController {
     if (target === null || removing) {
       return false;
     }
+    const allowed = publication.captureRemovalGuard?.() ?? (() => true);
+    const token = ++operation.current;
+    const current = () => allowed() && alive.current && token === operation.current;
+    const stale = () => {
+      if (alive.current && token === operation.current) close();
+      return false;
+    };
     setRemoving(true);
-    if (!(await publication.beforeRemove(target))) {
+    const approved = await publication.beforeRemove(target);
+    if (!current()) return stale();
+    if (!approved) {
       setRemoving(false);
       setError('공유된 카테고리를 철회하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.');
       return false;
     }
-    const removed = await removeCategory({ category: target, choice, hideHistory });
+    const latest = useCategoryStore.getState().byId[target.id];
+    if (
+      latest === undefined ||
+      latest.deletedAt !== undefined ||
+      latest.name !== target.name ||
+      latest.color !== target.color ||
+      latest.emoji !== target.emoji ||
+      categoryVisibility(latest) !== 'private' ||
+      latest.socialCategoryId !== undefined ||
+      latest.socialCategoryVersion !== undefined
+    ) {
+      setRemoving(false);
+      setError('카테고리가 변경됐어요. 현재 상태를 확인하고 다시 삭제해 주세요.');
+      return false;
+    }
+    const removed = await removeCategory({
+      category: latest,
+      choice,
+      hideHistory,
+      allowed: current,
+    });
+    if (!current()) return stale();
     setRemoving(false);
     if (!removed) {
       setError(useCategoryStore.getState().error ?? SAVE_FAILED);
@@ -195,7 +240,7 @@ export function useCategoryRemoval(): CategoryRemovalController {
     }
     close();
     refreshTodos();
-    showUndo(target.name);
+    showUndo(latest.name, allowed);
     return true;
   };
 
@@ -205,6 +250,8 @@ export function useCategoryRemoval(): CategoryRemovalController {
     removing,
     error,
     requestRemove: (category) => {
+      operation.current += 1;
+      setRemoving(false);
       setError(null);
       requestRemove(category);
     },
