@@ -2,7 +2,7 @@ import type { PageInput } from '@/domain/social/social';
 
 import type { SocialRepository } from '@/repositories/social-repository';
 
-import { category } from '@/infra/social/category-decode';
+import { ownerCategory } from '@/infra/social/category-decode';
 import {
   allowed,
   block,
@@ -34,12 +34,12 @@ export function createHttpSocialRepository(transport: typeof fetch = fetch): Soc
   return {
     me: () => send('/me', me),
     categories: (input) =>
-      send('/categories/mine', (value) => page(value, category), { query: pageQuery(input) }),
-    category: ({ id }) => send(`/categories/${id}`, category),
+      send('/categories/mine', (value) => page(value, ownerCategory), { query: pageQuery(input) }),
+    category: ({ id }) => send(`/categories/${id}`, ownerCategory),
     saveCategory: (input, { key }) =>
-      send('/categories', category, { method: 'POST', body: input, key }),
+      send('/categories', ownerCategory, { method: 'POST', body: input, key }),
     revokeCategory: (input, { key }) =>
-      send('/categories/revoke', category, { method: 'POST', body: input, key }),
+      send('/categories/revoke', ownerCategory, { method: 'POST', body: input, key }),
     createProfile: (input) => send('/profile', profile, { method: 'POST', body: input }),
     renameProfile: (input, { key }) =>
       send('/profile/name', profileVersion, {

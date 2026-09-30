@@ -194,6 +194,21 @@ describe('소셜 HTTP 저장소', () => {
     expect(String(path)).not.toContain(TOKEN);
   });
 
+  it('소유자 정리 화면은 최신 사본 수와 철회 상태를 받는다', async () => {
+    const canonical = {
+      id: ID_A,
+      name: '공부',
+      color: '#7CC6FF',
+      visibility: 'private',
+      version: 2,
+      updatedAt: NOW,
+      postCount: 1,
+      revoked: true,
+    };
+    const repo = createHttpSocialRepository(async () => result(canonical));
+    expect((await repo.category({ id: ID_A })).data).toEqual(canonical);
+  });
+
   it('서버 오류 envelope의 코드·시각·재시도 간격을 보존한다', async () => {
     const transport = vi.fn(
       async () =>
