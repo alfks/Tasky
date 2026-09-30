@@ -1,23 +1,40 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import type { Category } from '@/domain/category/category';
 
+import {
+  getPendingCategoryIds,
+  subscribePendingCategoryIds,
+  registerPendingCategories,
+  clearPendingCategories,
+} from '@/features/category';
 import type { CategoryPublicationBridge } from '@/features/category';
 import { onSocialInvalidation } from '@/features/social';
 
-export type CategoryPublicationRequest = {
-  key: string;
+// 계정 폐기는 셸이 닫힌 동안에도 중립 표시를 비운다.
+onSocialInvalidation((reason) => {
+  if (reason === 'account') clearPendingCategories();
+});
+
+type AudienceRequest = {
   kind: 'scope' | 'metadata' | 'remove';
   category: Category;
   metadata?: { name: string; color: string; emoji?: string };
-  resolve: (confirmed?: boolean) => void;
 };
+export type CategoryPublicationRequest = { key: string; resolve: (confirmed?: boolean) => void } & (
+  AudienceRequest | { kind: 'manage' }
+);
 
 /** 확인 큐는 동기로 유지하고 화면 복귀 DOM 처리만 사용할 때 불러온다. */
 export function useShellSocial(closeReports: () => void, onLoadError: () => void) {
   const initialPublic = useRef(new URLSearchParams(location.search).get('social') === 'public');
   const [socialOpen, setSocialOpen] = useState(
     () => initialPublic.current || hasPendingShellInvite(),
+  );
+  const pendingCategoryIds = useSyncExternalStore(
+    subscribePendingCategoryIds,
+    getPendingCategoryIds,
+    getPendingCategoryIds,
   );
   const [request, setRequest] = useState<CategoryPublicationRequest | null>(null);
   const [actions] = useState(() => {
@@ -33,19 +50,23 @@ export function useShellSocial(closeReports: () => void, onLoadError: () => void
     const dismiss = (confirmed = false) => gate.pending?.resolve(confirmed);
     function enqueue(
       kind: CategoryPublicationRequest['kind'],
-      category: Category,
-      metadata?: CategoryPublicationRequest['metadata'],
+      category?: Category,
+      metadata?: AudienceRequest['metadata'],
     ): Promise<boolean> {
-      if (!gate.alive || (kind !== 'scope' && category.socialCategoryId === undefined))
+      if (
+        !gate.alive ||
+        (kind !== 'scope' &&
+          kind !== 'manage' &&
+          category?.socialCategoryId === undefined &&
+          !getPendingCategoryIds().includes(category!.id))
+      )
         return Promise.resolve(gate.alive);
       dismiss();
       const generation = gate.generation;
       return new Promise((finish) => {
         const next: CategoryPublicationRequest = {
           key: `${generation}:${++gate.sequence}`,
-          kind,
-          category,
-          metadata,
+          ...(kind === 'manage' ? { kind } : { kind, category: category!, metadata }),
           resolve: (confirmed = false) => {
             if (gate.pending !== next) return;
             gate.pending = null;
@@ -66,13 +87,15 @@ export function useShellSocial(closeReports: () => void, onLoadError: () => void
     }
     return {
       bridge: {
+        openManager: () => {
+          void enqueue('manage');
+        },
+        registerPendingCategories,
         openVisibility: (category: Category) => {
           void enqueue('scope', category);
         },
-        beforeMetadataChange: (
-          category: Category,
-          metadata: CategoryPublicationRequest['metadata'],
-        ) => enqueue('metadata', category, metadata),
+        beforeMetadataChange: (category: Category, metadata: AudienceRequest['metadata']) =>
+          enqueue('metadata', category, metadata),
         beforeRemove: (category: Category) => enqueue('remove', category),
       } satisfies CategoryPublicationBridge,
       dismiss,
@@ -141,7 +164,13 @@ export function useShellSocial(closeReports: () => void, onLoadError: () => void
       actions.dispose();
     };
   }, [actions]);
-  return { socialOpen, request, ...actions, initialPublic: initialPublic.current };
+  return {
+    socialOpen,
+    request,
+    ...actions,
+    bridge: { ...actions.bridge, pendingCategoryIds },
+    initialPublic: initialPublic.current,
+  };
 }
 
 /** 저장이 차단되거나 오래된 탭 원문이면 개인 화면에서 시작한다. */

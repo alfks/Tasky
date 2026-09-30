@@ -9,7 +9,7 @@ import { SocialOnboarding } from '@/features/social/components/SocialOnboarding'
 import { SocialProfileSettings } from '@/features/social/components/SocialProfileSettings';
 import { SocialShareDialog } from '@/features/social/components/SocialShareDialog';
 import { pendingInviteToken } from '@/features/social/lib/invite-fragment';
-import { onSocialInvalidation } from '@/features/social/session-lifecycle';
+import { captureSocialDispatch, onSocialInvalidation } from '@/features/social/session-lifecycle';
 import { useSocialStore } from '@/features/social/store/social-store';
 
 import { Button } from '@/components/ui/Button';
@@ -29,6 +29,7 @@ export type SocialScreenProps = {
   onDateChange: (date: string) => void;
   onReturn: () => void;
   initialPublic?: boolean;
+  onManageCategories?: () => void;
 };
 
 export function SocialScreen({
@@ -38,16 +39,19 @@ export function SocialScreen({
   onDateChange,
   onReturn,
   initialPublic = false,
+  onManageCategories,
 }: SocialScreenProps) {
   const [tab, setTab] = useState<'feed' | 'friends' | 'mine'>('feed');
   const [invite, setInvite] = useState(() => pendingInviteToken() !== null);
   const [sharing, setSharing] = useState(false);
   const [notice, setNotice] = useState('');
   const titleRef = useRef<HTMLHeadingElement>(null);
+  const aliveRef = useRef(false);
   const phase = useSocialStore((state) => state.phase);
   const mode = useSocialStore((state) => state.mode);
   const profile = useSocialStore((state) => state.profile);
   useEffect(() => {
+    aliveRef.current = true;
     void useSocialStore
       .getState()
       .open()
@@ -67,6 +71,7 @@ export function SocialScreen({
       }
     });
     return () => {
+      aliveRef.current = false;
       window.removeEventListener('tasky-social-invite', receiveInvite);
       stop();
       useSocialStore.getState().close();
@@ -157,7 +162,10 @@ export function SocialScreen({
           />
         ) : null}
         {profile !== null && tab === 'friends' ? (
-          <SocialFriendsPanel enabled={mode === 'enabled'} />
+          <SocialFriendsPanel
+            enabled={mode === 'enabled'}
+            onManageCategories={onManageCategories}
+          />
         ) : null}
         {profile !== null && tab !== 'friends' ? (
           <SocialFeed
@@ -178,6 +186,7 @@ export function SocialScreen({
           onDateChange={onDateChange}
           onClose={() => setSharing(false)}
           onShared={(id, audience) => {
+            const allowed = captureSocialDispatch();
             setSharing(false);
             chooseTab('mine');
             setNotice(
@@ -191,7 +200,11 @@ export function SocialScreen({
               .getState()
               .refresh()
               .then(() => {
-                document.getElementById(`social-post-${id}`)?.focus();
+                requestAnimationFrame(() => {
+                  if (!aliveRef.current || !allowed()) return;
+                  const card = document.getElementById(`social-post-${id}`);
+                  (card ?? titleRef.current)?.focus();
+                });
               });
           }}
         />

@@ -5,10 +5,11 @@
 // 여기서 처음으로 feature 들이 서로를 본다. 그래서 feature 사이의 배선(토스트 뷰포트 하나, 단축키
 // 레이어 하나, 삭제 제어기 한 벌, 타이머 슬롯 둘, 문서 제목)은 전부 이 파일과 형제 파일에 모인다 —
 // feature 안에 흩으면 같은 배선이 두 번 생기고, 그것이 토스트 두 개가 겹친 이유였다.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
 import { useBackupStore } from '@/features/backup';
 import {
+  CategoryPublicationProvider,
   useCategories,
   useCategoryActions,
   useCategoryLoadState,
@@ -36,6 +37,7 @@ import { useRemovalReturnFocus } from '@/features/shell/hooks/useRemovalReturnFo
 import { useShellDocumentTitle } from '@/features/shell/hooks/useShellDocumentTitle';
 import { useShellPanels } from '@/features/shell/hooks/useShellPanels';
 import { useShellShortcuts } from '@/features/shell/hooks/useShellShortcuts';
+import { useShellSocial } from '@/features/shell/hooks/useShellSocial';
 import { useStartTimerForTodo } from '@/features/shell/hooks/useStartTimerForTodo';
 import { useToastStack } from '@/features/shell/hooks/useToastStack';
 import { useTodoDropToDate } from '@/features/shell/hooks/useTodoDropToDate';
@@ -50,7 +52,27 @@ import { useSyncStore } from '@/features/sync';
 import { useThemeSync } from '@/features/theme';
 import { useTodoStore } from '@/features/todo';
 
+const SocialWorkspace = lazy(() =>
+  import('@/features/shell/components/SocialWorkspace').then((module) => ({
+    default: module.SocialWorkspace,
+  })),
+);
+const CategoryPublicationWorkspace = lazy(() =>
+  import('@/features/shell/components/CategoryPublicationWorkspace').then((module) => ({
+    default: module.CategoryPublicationWorkspace,
+  })),
+);
+
 function ShellBody() {
+  const publication = useShellSocial(
+    () => useReportsStore.getState().closeReports(),
+    () =>
+      useShellToastStore
+        .getState()
+        .pushToast({ message: '친구 화면을 불러오지 못했어요. 다시 시도해 주세요.' }),
+  );
+  const { socialOpen, openSocial, returnFromSocial, initialPublic } = publication;
+
   // 두 패널의 "지금 컬럼인가 / 어떻게 열고 접는가" 와 접을 때의 포커스 인계는 한 훅에 모여 있다.
   const panels = useShellPanels();
   const { sidebarIsColumn, insightIsColumn, drawerOpen, insightOverlayOpen } = panels;
@@ -133,7 +155,7 @@ function ShellBody() {
   }, [reportsOpen]);
 
   useShellDocumentTitle(date, summary);
-  useShellShortcuts({ toggleSidebar: panels.toggleSidebar });
+  useShellShortcuts({ toggleSidebar: panels.toggleSidebar, enabled: !socialOpen });
   const handleDropTodo = useTodoDropToDate(date);
   const focusCategory = useCategoryFocus(categories);
   const removalFocus = useRemovalReturnFocus();
@@ -197,16 +219,17 @@ function ShellBody() {
     // 생겼다** — 휴대폰의 CSS 폭은 360(안드로이드 다수)·375(iPhone SE·mini)·390(iPhone 12~16)
     // 이라 셋 다 400 아래다. 값을 낮출 때 실제로 검증해야 하는 것은 이 줄이 아니라 헤더 한 줄이다
     // (ShellHeader 의 `min-w-0` 주석 참고). 360px 실측은 tests/e2e/narrow-viewport.spec.ts 가 지킨다.
-    <div className="flex h-dvh min-w-[360px] flex-col bg-bg text-text">
-      <SkipLink />
-      {storageStatus === 'memory' ? <MemoryModeBanner /> : null}
-      <div
-        aria-hidden="true"
-        data-shell-notice-spacer=""
-        style={{ height: noticeOffset }}
-        className="shrink-0"
-      />
-      {/*
+    <CategoryPublicationProvider bridge={publication.bridge}>
+      <div className="flex h-dvh min-w-[360px] flex-col bg-bg text-text">
+        <SkipLink />
+        {storageStatus === 'memory' ? <MemoryModeBanner /> : null}
+        <div
+          aria-hidden="true"
+          data-shell-notice-spacer=""
+          style={{ height: noticeOffset }}
+          className="shrink-0"
+        />
+        {/*
         문서의 `h1` 은 언제나 하나다. 사이드바가 컬럼이면 `ShellSidebar` 가, 아니면 `ShellHeader`
         가 이미 갖고 있다(calendar-layout.md R6, ☰ 오른쪽) — 단 `ShellHeader` 는 다음 두 갈래에서
         통째로 숨는다: 저장소 열기 실패(`failureCard`, §2-C 에러, `header` 변수 참고)와 통계 화면
@@ -215,106 +238,129 @@ function ShellBody() {
         `reportsOpen` 을 빼고 좁히면(리뷰 Major) 통계를 연 순간 문서에 `h1` 이 0개가 된다 —
         `AppShell.test.tsx` 가 그 상태를 고정한다.
       */}
-      {sidebarIsColumn || (failureCard === null && !reportsOpen) ? null : (
-        <h1 className="sr-only">{APP_NAME}</h1>
-      )}
+        {sidebarIsColumn || (failureCard === null && !reportsOpen && !socialOpen) ? null : (
+          <h1 className="sr-only">{APP_NAME}</h1>
+        )}
 
-      <div className="flex min-h-0 flex-1 gap-[var(--space-6)] px-[var(--space-4)] py-[var(--space-3)]">
-        {sidebarIsColumn ? (
-          <div ref={panels.sidebarRef} className="w-[240px] shrink-0">
-            <ShellSidebar
-              showTitle
-              framed
-              sidebarPinned={panels.sidebarPinned}
-              onTogglePinned={panels.toggleSidebarPinned}
-              categories={categories}
-              onSelectCategory={focusCategory}
-              onRemoveCategory={requestRemove}
-              exportBackup={exportBackup}
-            />
-          </div>
-        ) : null}
-
-        {reportsOpen ? (
-          <ReportsScreen />
-        ) : threeRegion ? (
-          // calendar-layout.md §1-B R1(b)·R2·R4: 달력 컬럼(셸 상단 줄 + 날짜 스트립 + 그 아래
-          // 인사이트, 인사이트만 스크롤) + 선택 날짜 패널(`main`, R1(c)) 둘로 나뉜다. `h1` 은 여기서
-          // 그리지 않는다 — `sidebarIsColumn` 이면 `ShellSidebar` 가, 아니면 `ShellHeader` 가 이미
-          // ☰ 옆에 갖고 있다(calendar-layout.md R6).
-          //
-          // 치수는 calendar-layout.md R2 가 단일 소스다: 두 컬럼 다 `flex-1` 로 남는 폭을 나눠 갖고
-          // 상한(달력 440 · 패널 400)에서 멈추면 이 래퍼의 `justify-center` 가 **쌍을** 가운데로 민다.
-          // 하한(`--shell-calendar-col-min` 404/336 · 패널 280)이 680 에서 꼭 맞는다(검산은 R2).
-          // `min-w-0` 은 래퍼가 줄어들 때도 자식의 `min-w` 가 지켜지게 한다(flex 기본 `min-width:auto`
-          // 가 래퍼 자체를 늘리는 것을 막는다). 잉크 실측은 FEEL_REPORT §14.
-          <div className="flex min-h-0 min-w-0 flex-1 justify-center gap-[var(--space-6)]">
-            <div className="flex min-h-0 max-w-[440px] min-w-[var(--shell-calendar-col-min)] flex-[2] flex-col gap-[var(--space-3)]">
-              <ProfileCard email={profileEmail} />
-              <div className="shrink-0">{failureCard === null ? header : null}</div>
-              {insightIsColumn ? (
-                <aside
-                  ref={panels.asideRef}
-                  id={INSIGHT_PANEL_ID}
-                  tabIndex={-1}
-                  aria-label="오늘 요약"
-                  className="min-h-0 flex-1 outline-none"
-                >
-                  <ShellInsights panelId={INSIGHT_PANEL_ID} onCollapse={panels.collapseInsight} />
-                </aside>
-              ) : null}
+        <div className="flex min-h-0 flex-1 gap-[var(--space-6)] px-[var(--space-4)] py-[var(--space-3)]">
+          {sidebarIsColumn ? (
+            <div ref={panels.sidebarRef} className="w-[240px] shrink-0">
+              <ShellSidebar
+                showTitle
+                framed
+                sidebarPinned={panels.sidebarPinned}
+                onTogglePinned={panels.toggleSidebarPinned}
+                categories={categories}
+                onSelectCategory={focusCategory}
+                onRemoveCategory={requestRemove}
+                exportBackup={exportBackup}
+                onOpenSocial={openSocial}
+              />
             </div>
+          ) : null}
 
-            <ShellDayPanel
+          {socialOpen ? (
+            <Suspense
+              fallback={
+                <main id="shell-main" className="min-w-0 flex-1">
+                  <p role="status">친구 화면을 불러오는 중</p>
+                </main>
+              }
+            >
+              <SocialWorkspace onReturn={returnFromSocial} initialPublic={initialPublic} />
+            </Suspense>
+          ) : reportsOpen ? (
+            <ReportsScreen />
+          ) : threeRegion ? (
+            // calendar-layout.md §1-B R1(b)·R2·R4: 달력 컬럼(셸 상단 줄 + 날짜 스트립 + 그 아래
+            // 인사이트, 인사이트만 스크롤) + 선택 날짜 패널(`main`, R1(c)) 둘로 나뉜다. `h1` 은 여기서
+            // 그리지 않는다 — `sidebarIsColumn` 이면 `ShellSidebar` 가, 아니면 `ShellHeader` 가 이미
+            // ☰ 옆에 갖고 있다(calendar-layout.md R6).
+            //
+            // 치수는 calendar-layout.md R2 가 단일 소스다: 두 컬럼 다 `flex-1` 로 남는 폭을 나눠 갖고
+            // 상한(달력 440 · 패널 400)에서 멈추면 이 래퍼의 `justify-center` 가 **쌍을** 가운데로 민다.
+            // 하한(`--shell-calendar-col-min` 404/336 · 패널 280)이 680 에서 꼭 맞는다(검산은 R2).
+            // `min-w-0` 은 래퍼가 줄어들 때도 자식의 `min-w` 가 지켜지게 한다(flex 기본 `min-width:auto`
+            // 가 래퍼 자체를 늘리는 것을 막는다). 잉크 실측은 FEEL_REPORT §14.
+            <div className="flex min-h-0 min-w-0 flex-1 justify-center gap-[var(--space-6)]">
+              <div className="flex min-h-0 max-w-[440px] min-w-[var(--shell-calendar-col-min)] flex-[2] flex-col gap-[var(--space-3)]">
+                <ProfileCard email={profileEmail} />
+                <div className="shrink-0">{failureCard === null ? header : null}</div>
+                {insightIsColumn ? (
+                  <aside
+                    ref={panels.asideRef}
+                    id={INSIGHT_PANEL_ID}
+                    tabIndex={-1}
+                    aria-label="오늘 요약"
+                    className="min-h-0 flex-1 outline-none"
+                  >
+                    <ShellInsights panelId={INSIGHT_PANEL_ID} onCollapse={panels.collapseInsight} />
+                  </aside>
+                ) : null}
+              </div>
+
+              <ShellDayPanel
+                date={date}
+                summary={summary}
+                categories={categoriesWithHistory}
+                categoriesPending={categoriesPending}
+                todosFirstLoading={todosFirstLoading}
+                todosEmpty={summary.total === 0}
+                failureCard={failureCard}
+                onCreateCategory={handleCreateCategory}
+                onStartTimer={startTimerForTodo}
+              />
+            </div>
+          ) : (
+            // calendar-layout.md R8: <680(compact) 는 1열 — 헤더가 `ShellMain` 안, `main` 하나뿐.
+            <ShellMain
               date={date}
-              summary={summary}
               categories={categoriesWithHistory}
               categoriesPending={categoriesPending}
               todosFirstLoading={todosFirstLoading}
               todosEmpty={summary.total === 0}
+              showBottomAdd={hasBottomAddButton(panels.layout)}
               failureCard={failureCard}
               onCreateCategory={handleCreateCategory}
               onStartTimer={startTimerForTodo}
+              header={header}
+              profile={<ProfileCard email={profileEmail} />}
             />
-          </div>
-        ) : (
-          // calendar-layout.md R8: <680(compact) 는 1열 — 헤더가 `ShellMain` 안, `main` 하나뿐.
-          <ShellMain
-            date={date}
-            categories={categoriesWithHistory}
-            categoriesPending={categoriesPending}
-            todosFirstLoading={todosFirstLoading}
-            todosEmpty={summary.total === 0}
-            showBottomAdd={hasBottomAddButton(panels.layout)}
-            failureCard={failureCard}
-            onCreateCategory={handleCreateCategory}
-            onStartTimer={startTimerForTodo}
-            header={header}
-            profile={<ProfileCard email={profileEmail} />}
-          />
+          )}
+        </div>
+
+        <ShellGlobals onBackup={openBackupDialog} />
+
+        <ShellOverlays
+          categories={categoriesWithHistory}
+          layout={panels.layout}
+          sidebarPinned={panels.sidebarPinned}
+          onToggleSidebarPinned={panels.toggleSidebarPinned}
+          drawerOpen={drawerOpen}
+          onDrawerClose={panels.closeDrawer}
+          insightOverlayOpen={insightOverlayOpen}
+          onInsightOverlayClose={panels.closeInsightOverlay}
+          categoryFormOpen={categoryFormOpen}
+          onCategoryFormClose={() => setCategoryFormOpen(false)}
+          removal={removal}
+          onRemoveCategory={requestRemove}
+          removalReturnFocus={removalFocus.returnFocus}
+          onSelectCategory={focusCategory}
+          exportBackup={exportBackup}
+          onOpenSocial={openSocial}
+        />
+        {publication.request === null ? null : (
+          <Suspense fallback={null}>
+            <CategoryPublicationWorkspace
+              key={publication.request.key}
+              request={publication.request}
+              onDone={publication.request.resolve}
+              onStartSocial={openSocial}
+            />
+          </Suspense>
         )}
       </div>
-
-      <ShellGlobals onBackup={openBackupDialog} />
-
-      <ShellOverlays
-        categories={categoriesWithHistory}
-        layout={panels.layout}
-        sidebarPinned={panels.sidebarPinned}
-        onToggleSidebarPinned={panels.toggleSidebarPinned}
-        drawerOpen={drawerOpen}
-        onDrawerClose={panels.closeDrawer}
-        insightOverlayOpen={insightOverlayOpen}
-        onInsightOverlayClose={panels.closeInsightOverlay}
-        categoryFormOpen={categoryFormOpen}
-        onCategoryFormClose={() => setCategoryFormOpen(false)}
-        removal={removal}
-        onRemoveCategory={requestRemove}
-        removalReturnFocus={removalFocus.returnFocus}
-        onSelectCategory={focusCategory}
-        exportBackup={exportBackup}
-      />
-    </div>
+    </CategoryPublicationProvider>
   );
 }
 
