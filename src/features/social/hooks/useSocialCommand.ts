@@ -9,6 +9,12 @@ import {
   commandIntentStore,
   type CommandIntent,
 } from '@/features/social/hooks/social-command-intents';
+import {
+  createSocialCommandObserver,
+  pendingOwnerMatches,
+  verifyPendingOwner,
+  type PendingOwnerProof,
+} from '@/features/social/hooks/social-command-observer';
 import { socialErrorCode } from '@/features/social/lib/feed-validation';
 import {
   captureSocialDispatch,
@@ -33,13 +39,16 @@ export function socialFailureMessage(code: SocialErrorCode | null): string {
 }
 
 type Failure = (code: SocialErrorCode, uncertain: boolean) => void | Promise<void>;
-export function useSocialCommand(namespace?: string) {
+export function useSocialCommand(namespace?: string, displayProof?: PendingOwnerProof | null) {
   const id = useId();
   const owner = namespace ?? id;
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(() => commandIntentStore.get(owner)?.inFlight ?? false);
   const [error, setError] = useState<SocialErrorCode | null>(null);
   const [, redraw] = useState(0);
   const alive = useRef(false);
+  const [proof, setProof] = useState<PendingOwnerProof | null>(null);
+  const [proofRevision, setProofRevision] = useState(0);
+  const [proofChecking, setProofChecking] = useState(false);
   useEffect(() => {
     alive.current = true;
     const stop = commandIntentStore.subscribe(() => {
@@ -51,6 +60,23 @@ export function useSocialCommand(namespace?: string) {
       stop();
     };
   }, [owner]);
+  const pending = commandIntentStore.get(owner);
+  const epochNow = commandIntentStore.epoch();
+  const eligible = captureSocialDispatch()() && navigator.onLine && !document.hidden;
+  useEffect(() => {
+    if (owner !== 'share' || displayProof !== undefined || !pending || !eligible) return;
+    let current = true;
+    setProofChecking(true);
+    void verifyPendingOwner().then((verified) => {
+      if (current) {
+        setProof(verified);
+        setProofChecking(false);
+      }
+    });
+    return () => {
+      current = false;
+    };
+  }, [owner, pending, epochNow, eligible, displayProof, proofRevision]);
 
   async function run<T>(
     operation: string,
@@ -73,13 +99,15 @@ export function useSocialCommand(namespace?: string) {
       return null;
     }
     const epoch = commandIntentStore.epoch();
-    const current = () => allowed() && commandIntentStore.epoch() === epoch;
+    const observer = createSocialCommandObserver();
+    const identityCurrent = () => allowed() && commandIntentStore.epoch() === epoch;
+    const current = () => identityCurrent() && observer.active();
     let intent: CommandIntent | undefined = existing;
     setBusy(true);
     setError(null);
     try {
       const repository = getSocialRepository();
-      const me = await repository.me();
+      const me = await observer.observe(repository.me());
       if (!current()) return null;
       const actor = me.data.profile?.id ?? null;
       const witness = commandIntentStore.verifyActor(actor);
@@ -116,12 +144,12 @@ export function useSocialCommand(namespace?: string) {
       intent.inFlight = true;
       intent.error = null;
       commandIntentStore.set(owner, intent);
-      const response = await intent.command(repository, { key: intent.key });
+      const response = await observer.observe(intent.command(repository, { key: intent.key }));
       if (!current() || commandIntentStore.get(owner) !== intent) return null;
       commandIntentStore.remove(owner, intent);
       return alive.current ? (response.data as T) : null;
     } catch (thrown) {
-      if (!current()) return null;
+      if (!identityCurrent()) return null;
       const code = socialErrorCode(thrown);
       const uncertain =
         intent !== undefined &&
@@ -150,6 +178,7 @@ export function useSocialCommand(namespace?: string) {
       }
       return null;
     } finally {
+      observer.finish();
       // 늦은 promise가 새 관측의 잠금을 풀지 않도록 세대를 확인한다.
       if (commandIntentStore.epoch() === epoch) {
         commandIntentStore.release(owner);
@@ -159,7 +188,6 @@ export function useSocialCommand(namespace?: string) {
       }
     }
   }
-  const pending = commandIntentStore.get(owner);
   const retry = async <T = unknown>(onFailure?: Failure): Promise<T | null> => {
     const original = commandIntentStore.get(owner);
     if (!original) return null;
@@ -176,6 +204,13 @@ export function useSocialCommand(namespace?: string) {
     run,
     retry,
     uncertain: pending?.uncertain ?? false,
+    ownerVerified: pendingOwnerMatches(displayProof === undefined ? proof : displayProof, pending),
+    proofChecking: eligible && proofChecking,
+    proofAllowed: eligible,
+    verifyOwner: () => {
+      setProof(null);
+      setProofRevision((value) => value + 1);
+    },
     retryAllowed:
       pending?.blocked !== true &&
       captureSocialDispatch()() &&
@@ -184,9 +219,5 @@ export function useSocialCommand(namespace?: string) {
     hasIntent: () => commandIntentStore.get(owner) !== undefined,
     pending: pending ? { operation: pending.operation, signature: pending.signature } : null,
     clearError: () => setError(null),
-    abandon: () => {
-      commandIntentStore.remove(owner);
-      setError(null);
-    },
   };
 }

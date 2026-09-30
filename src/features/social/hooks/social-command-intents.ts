@@ -21,6 +21,14 @@ export type CommandIntent = {
 const intents = new Map<string, CommandIntent>();
 const reservations = new Set<string>();
 const listeners = new Set<() => void>();
+export type PendingCommandDescriptor = {
+  namespace: string;
+  operation: string;
+  inFlight: boolean;
+  uncertain: boolean;
+  blocked: boolean;
+};
+let descriptors: readonly PendingCommandDescriptor[] = [];
 let generation = 0;
 let account = 0;
 let verifiedActor: string | null = null;
@@ -28,6 +36,7 @@ export const commandIntentStore = {
   get: (namespace: string) => intents.get(namespace),
   epoch: () => generation,
   account: () => account,
+  descriptors: () => descriptors,
   verifyActor(actor: string | null): 'match' | 'changed' | 'unverified' {
     if (verifiedActor !== null && actor === null) return 'unverified';
     if (verifiedActor !== null && actor !== verifiedActor) return 'changed';
@@ -41,6 +50,13 @@ export const commandIntentStore = {
     };
   },
   publish() {
+    descriptors = [...intents].map(([namespace, intent]) => ({
+      namespace,
+      operation: intent.operation,
+      inFlight: intent.inFlight,
+      uncertain: intent.uncertain,
+      blocked: intent.blocked,
+    }));
     listeners.forEach((listener) => listener());
   },
   reserve(namespace: string) {
