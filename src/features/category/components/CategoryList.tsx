@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
 
 import type { Category } from '@/domain/category/category';
@@ -8,7 +8,6 @@ import type { CategoryId } from '@/domain/ids';
 
 import { movedAnnouncement } from '@/features/category/components/category-drag';
 import { CategoryClosedSection } from '@/features/category/components/CategoryClosedSection';
-import { CategoryFormDialog } from '@/features/category/components/CategoryFormDialog';
 import { CategoryListItem } from '@/features/category/components/CategoryListItem';
 import {
   useActiveCategories,
@@ -23,6 +22,12 @@ import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
 
 import { isAfterMidpoint, moveTargetIndex } from '@/lib/drag-order';
+
+const CategoryFormDialog = lazy(() =>
+  import('@/features/category/components/CategoryFormDialog').then((module) => ({
+    default: module.CategoryFormDialog,
+  })),
+);
 
 type CategoryListProps = {
   /** 행을 눌렀을 때. 본문 그룹으로 스크롤·하이라이트(§2-A)는 셸(T-20)이 넘긴다. */
@@ -178,13 +183,15 @@ export function CategoryList({ onSelect, onRemove }: CategoryListProps) {
       </p>
 
       {form === null ? null : (
-        <CategoryFormDialog
-          key={form.key}
-          open
-          mode={form.mode}
-          onClose={() => setForm(null)}
-          returnFocus={() => addRef.current}
-        />
+        <Suspense fallback={null}>
+          <CategoryFormDialog
+            key={form.key}
+            open
+            mode={form.mode}
+            onClose={() => setForm(null)}
+            returnFocus={() => addRef.current}
+          />
+        </Suspense>
       )}
     </section>
   );

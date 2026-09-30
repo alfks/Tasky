@@ -68,7 +68,7 @@ function 이름들(): string[] {
     const body = within(item)
       .getAllByRole('button')
       .filter((button) => !/순서 변경|메뉴$/u.test(button.getAttribute('aria-label') ?? ''));
-    return body[0].textContent ?? '';
+    return (body[0].textContent ?? '').replace('공유 연결 없음', '');
   });
 }
 

@@ -68,7 +68,9 @@ function rowBody(item: HTMLElement): HTMLElement {
 
 /** 행 본체 버튼의 이름들 — 접힌 종료 섹션은 여기 나오지 않는다. */
 function rowNames(): string[] {
-  return screen.getAllByRole('listitem').map((item) => rowBody(item).textContent ?? '');
+  return screen
+    .getAllByRole('listitem')
+    .map((item) => (rowBody(item).textContent ?? '').replace('공유 연결 없음', ''));
 }
 
 describe('목록 (R5·R8·R19)', () => {
@@ -89,7 +91,8 @@ describe('목록 (R5·R8·R19)', () => {
     render(<CategoryList />);
     const [운동행, 독서행, 공부행] = screen.getAllByRole('listitem');
 
-    expect(rowBody(운동행)).toHaveTextContent(/^운동$/u);
+    expect(rowBody(운동행)).toHaveAccessibleName('운동');
+    expect(rowBody(운동행)).toHaveAccessibleDescription('공유 연결 없음');
     expect(rowBody(독서행)).toHaveTextContent('0/1');
     expect(rowBody(공부행)).toHaveTextContent('1/2');
   });

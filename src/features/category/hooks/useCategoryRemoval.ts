@@ -20,6 +20,7 @@ import type { CategoryRemovalChoice } from '@/domain/category/removal';
 import { getRepositories } from '@/repositories/container';
 
 import { removalToastMessage } from '@/features/category/components/CategoryRemoveDialogText';
+import { useCategoryPublication } from '@/features/category/hooks/useCategoryPublication';
 import { SAVE_FAILED } from '@/features/category/store/category-state';
 import { useCategoryStore } from '@/features/category/store/category-store';
 import { useTodoStore } from '@/features/todo';
@@ -160,6 +161,7 @@ function useRemovalTarget(onCountFailed: () => void): {
 }
 
 export function useCategoryRemoval(): CategoryRemovalController {
+  const publication = useCategoryPublication();
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast, show, showUndo, dismissToast } = useRemovalToast();
@@ -180,6 +182,11 @@ export function useCategoryRemoval(): CategoryRemovalController {
       return false;
     }
     setRemoving(true);
+    if (!(await publication.beforeRemove(target))) {
+      setRemoving(false);
+      setError('공유된 카테고리를 철회하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.');
+      return false;
+    }
     const removed = await removeCategory({ category: target, choice, hideHistory });
     setRemoving(false);
     if (!removed) {

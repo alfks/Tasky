@@ -16,6 +16,7 @@ import {
 } from '@/domain/category/category.rules';
 
 import { useCategoryActions } from '@/features/category/hooks/useCategoryActions';
+import { useCategoryPublication } from '@/features/category/hooks/useCategoryPublication';
 import { messageOf, SAVE_FAILED } from '@/features/category/store/category-state';
 import { useCategoryStore } from '@/features/category/store/category-store';
 
@@ -69,6 +70,7 @@ export function useCategoryForm(mode: CategoryFormMode, defaultColor: string): C
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const { createCategory, updateCategory } = useCategoryActions();
+  const publication = useCategoryPublication();
 
   const submit = async (): Promise<boolean> => {
     let checked: { name: string; color: string; emoji: string | undefined };
@@ -83,6 +85,11 @@ export function useCategoryForm(mode: CategoryFormMode, defaultColor: string): C
       return false;
     }
     setSaving(true);
+    if (mode.kind === 'edit' && !(await publication.beforeMetadataChange(mode.category, checked))) {
+      setSaving(false);
+      setError('변경 내용을 저장하지 않았어요. 공개 범위를 확인하고 다시 시도해 주세요.');
+      return false;
+    }
     const saved =
       mode.kind === 'create'
         ? await createCategory({ name: checked.name, color: checked.color, emoji: checked.emoji })

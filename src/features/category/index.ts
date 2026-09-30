@@ -41,7 +41,9 @@ export type {
   CategoryRemovalCounts,
 } from '@/features/category/hooks/useCategoryRemoval';
 
-export { CategoryFormDialog } from '@/features/category/components/CategoryFormDialog';
+export function loadCategoryFormDialog() {
+  return import('@/features/category/components/CategoryFormDialog');
+}
 export { CategoryList } from '@/features/category/components/CategoryList';
 export { CategoryListItem } from '@/features/category/components/CategoryListItem';
 export { CategoryRemoveDialog } from '@/features/category/components/CategoryRemoveDialog';
@@ -50,3 +52,24 @@ export { CategoryRemoveDialog } from '@/features/category/components/CategoryRem
 // 규칙을 쓰게 연다(D-day 삭제, calendar T-79 리뷰 라운드 1 Minor-8 — 직접 이어붙이면 "'운동'를
 // 삭제했어요" 처럼 받침 없이 갈린다).
 export { removalToastMessage } from '@/features/category/components/CategoryRemoveDialogText';
+
+export {
+  CategoryPublicationProvider,
+  useCategoryPublication,
+} from '@/features/category/hooks/useCategoryPublication';
+export type { CategoryPublicationBridge } from '@/features/category/hooks/useCategoryPublication';
+export {
+  getPendingCategoryIds,
+  subscribePendingCategoryIds,
+  registerPendingCategories,
+  clearPendingCategories,
+} from '@/features/category/store/category-publication-pending';
+
+/** 공개 변경을 확인할 때만 온라인 제어기를 불러온다. */
+export function loadCategoryAudienceController() {
+  return import('@/features/category/components/CategoryAudienceController');
+}
+export function loadCategoryPublicationManager() {
+  return import('@/features/category/components/CategoryPublicationManager');
+}
+export type { PublicationRecovery } from '@/features/category/store/category-publication-recovery';

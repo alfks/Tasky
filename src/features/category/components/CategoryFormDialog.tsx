@@ -9,6 +9,7 @@ import { DEFAULT_ACCENT_COLOR, PALETTE } from '@/domain/theme/palette';
 
 import { useCategoryActions } from '@/features/category/hooks/useCategoryActions';
 import { useCategoryForm, type CategoryFormMode } from '@/features/category/hooks/useCategoryForm';
+import { useCategoryPublication } from '@/features/category/hooks/useCategoryPublication';
 
 import { Button } from '@/components/ui/Button';
 import { ColorSwatchGroup } from '@/components/ui/ColorSwatchGroup';
@@ -41,6 +42,7 @@ type CategoryFormDialogProps = {
  * Enter 한 번이 "만들기"를 누르는 사고가 구조적으로 막힌다. 같은 판정을 여기서 다시 구현하지 않는다.
  */
 export function CategoryFormDialog({ open, mode, onClose, returnFocus }: CategoryFormDialogProps) {
+  const publication = useCategoryPublication();
   const nameRef = useRef<HTMLInputElement>(null);
   const form = useCategoryForm(mode, DEFAULT_ACCENT_COLOR);
   const editing = mode.kind === 'edit' ? mode.category : undefined;
@@ -133,6 +135,31 @@ export function CategoryFormDialog({ open, mode, onClose, returnFocus }: Categor
           <span>{form.emoji}</span>
           <span className="font-semibold">{form.name}</span>
         </p>
+
+        <div className="text-sm text-muted">
+          <p>카테고리 이름과 직접 공유한 기록만 보여요. 원래 할 일과 메모는 공개되지 않아요.</p>
+          {editing === undefined ? (
+            <p>새 카테고리는 나만 보기로 시작해요.</p>
+          ) : (
+            <>
+              {publication.pendingCategoryIds?.includes(editing.id) ? (
+                <p>확인 필요: 서버에서 공개 범위 변경이 적용됐을 수 있어요.</p>
+              ) : editing.socialCategoryId === undefined ? (
+                <p>
+                  공유 연결 없음. 이 기기의 연결 정보가 없습니다. 이전 공유 상태는 공유 카테고리
+                  관리에서 확인하세요.
+                </p>
+              ) : null}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => publication.openVisibility(editing)}
+              >
+                공개 범위 설정
+              </Button>
+            </>
+          )}
+        </div>
 
         {form.error === null ? null : (
           <p

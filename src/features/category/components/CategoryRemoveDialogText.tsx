@@ -6,7 +6,29 @@
 // `@/lib/korean` 이다 — todo 의 삭제 확인 문구도 같은 규칙을 쓴다(T-87, `features/AGENTS.md` 규칙 5).
 import type { ReactNode } from 'react';
 
+import type { Category } from '@/domain/category/category';
+
 import { objectParticle } from '@/lib/korean';
+
+export function publicationRemovalNote(
+  category: Category,
+  pendingIds: readonly string[] = [],
+): ReactNode {
+  if (pendingIds.includes(category.id))
+    return (
+      <p className="mt-[var(--space-3)] text-sm text-muted">
+        확인 필요: 서버에서 공개 범위 변경이 적용됐을 수 있어요. 삭제 전에 같은 요청으로 확인해
+        주세요.
+      </p>
+    );
+  if (category.socialCategoryId !== undefined) return null;
+  return (
+    <p className="mt-[var(--space-3)] text-sm text-muted">
+      공유 연결 없음. 이 기기의 연결 정보가 없습니다. 이전 공유 상태는 공유 카테고리 관리에서
+      확인하세요. 개인 카테고리를 지워도 연결되지 않은 서버 공유는 철회되지 않아요.
+    </p>
+  );
+}
 
 /** 대화상자 제목 (§2-C). */
 export function removalTitle(name: string): string {

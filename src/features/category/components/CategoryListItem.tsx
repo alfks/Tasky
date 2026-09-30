@@ -5,6 +5,7 @@ import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent }
 
 import type { Category, CategoryStatus } from '@/domain/category/category';
 import { activeCategories } from '@/domain/category/category.rules';
+import { categoryVisibility } from '@/domain/category/visibility';
 import type { CategoryId } from '@/domain/ids';
 
 import {
@@ -12,6 +13,7 @@ import {
   movedAnnouncement,
 } from '@/features/category/components/category-drag';
 import { useCategoryActions } from '@/features/category/hooks/useCategoryActions';
+import { useCategoryPublication } from '@/features/category/hooks/useCategoryPublication';
 import { useCategoryStore } from '@/features/category/store/category-store';
 import { useTodoGroup } from '@/features/todo';
 
@@ -75,6 +77,7 @@ export function CategoryListItem({
   onAnnounce,
   drag,
 }: CategoryListItemProps) {
+  const publication = useCategoryPublication();
   const rowRef = useRef<HTMLLIElement>(null);
   const menuAnchor = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -153,6 +156,8 @@ export function CategoryListItem({
 
       <button
         type="button"
+        aria-label={`${category.name}${badge === null ? '' : ` ${badge}`}${counts.total > 0 ? ` ${counts.done}/${counts.total}` : ''}`}
+        aria-describedby={`category-audience-${category.id}`}
         onClick={() => onSelect?.(category.id)}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -173,7 +178,19 @@ export function CategoryListItem({
           className={cn('inline-block size-[12px] shrink-0 rounded-full', closed && 'opacity-60')}
         />
         {category.emoji === undefined ? null : <span aria-hidden="true">{category.emoji}</span>}
-        <span className="min-w-0 flex-1 truncate">{category.name}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate">{category.name}</span>
+          <span
+            id={`category-audience-${category.id}`}
+            className="block truncate text-[length:var(--text-xs)] text-muted"
+          >
+            {publication.pendingCategoryIds?.includes(category.id)
+              ? '확인 필요'
+              : category.socialCategoryId === undefined
+                ? '공유 연결 없음'
+                : `마지막 확인 · ${categoryVisibility(category) === 'public' ? '모두 공개' : categoryVisibility(category) === 'friends' ? '친구만' : '나만 보기'}`}
+          </span>
+        </span>
         {badge === null ? null : <span className="shrink-0 text-sm">{badge}</span>}
         {counts.total > 0 ? (
           <span className="shrink-0 text-sm text-muted group-hover:text-text">
@@ -201,6 +218,11 @@ export function CategoryListItem({
           label={`${category.name} 메뉴`}
           onClose={() => setMenuOpen(false)}
           items={[
+            {
+              id: 'audience',
+              label: '공개 범위',
+              onSelect: () => publication.openVisibility(category),
+            },
             ...(closed
               ? [
                   {
