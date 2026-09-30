@@ -8,12 +8,14 @@ import {
   setRepositories,
   setSocialRepository,
   setSyncTransport,
+  setPublicSocialRepository,
 } from '@/repositories/container';
+import { createLazyPublicSocialRepository } from '@/repositories/lazy-public-social-repository';
 import { createLazySocialRepository } from '@/repositories/lazy-social-repository';
 import { isRepositoryError } from '@/repositories/repository-error';
 
 import {
-  activateSocialSession,
+  recheckSocialSession,
   captureSocialDispatch,
   configureSocialVerifier,
   invalidateSocialSession,
@@ -29,7 +31,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
  * 막았다. 동적 import 로 바꾸면 rolldown 이 infra + dexie 를 별도 청크로 떼고, 그 청크는 진입 청크 평가와
  * **동시에** 받아지므로 첫 페인트는 기다리지 않는다.
  *
- * 모듈 스코프에서 한 번만 시작한다(컴포넌트가 여러 번 마운트돼도 요청은 1회).
+ * 개인 Provider 마운트 시 한 번만 시작한다(익명 공개 화면은 개인 DB를 열지 않는다).
  *
  * **주입 직후 `openIndexedDb()` 로 스키마를 명시적으로 연다** (TECH_PLAN §5 규칙 4). 이 한 줄이 없으면
  * Dexie 의 지연 오픈 때문에 업그레이드 실패가 **아무 조회에서나** raw Dexie 에러로 터지고, 화면은
@@ -37,20 +39,45 @@ import { Skeleton } from '@/components/ui/Skeleton';
  * 여기서 한 번 열어 두면 그 실패가 `RepositoryError('SCHEMA_UPGRADE_FAILED')` 로 **여기서** 잡힌다.
  * 첫 페인트 비용은 늘지 않는다 — 어차피 첫 조회가 같은 열기를 유발하고 Dexie 의 `open()` 은 멱등이다.
  */
-const injection: Promise<void> = Promise.all([
-  import('@/infra/indexeddb/repositories'),
-  import('@/infra/sync/http-transport'),
-]).then(async ([{ createIndexedDbRepositories, openIndexedDb }, { createHttpSyncTransport }]) => {
-  setRepositories(createIndexedDbRepositories());
-  setSyncTransport(createHttpSyncTransport());
-  setSocialRepository(
-    createLazySocialRepository(async () => {
-      const { createHttpSocialRepository } = await import('@/infra/social/http-repository');
-      return createHttpSocialRepository();
-    }, captureSocialDispatch),
+let injection: Promise<void> | undefined;
+
+function injectPublicRepository(): void {
+  setPublicSocialRepository(
+    createLazyPublicSocialRepository(async () => {
+      const { createHttpPublicSocialRepository } = await import('@/infra/social/public-repository');
+      return createHttpPublicSocialRepository();
+    }),
   );
-  await openIndexedDb();
-});
+}
+
+/** 개인 provider가 실제로 마운트될 때만 개인 DB/동기화 모듈을 연다. */
+function beginInjection(): Promise<void> {
+  injection ??= Promise.all([
+    import('@/infra/indexeddb/repositories'),
+    import('@/infra/sync/http-transport'),
+  ]).then(async ([{ createIndexedDbRepositories, openIndexedDb }, { createHttpSyncTransport }]) => {
+    setRepositories(createIndexedDbRepositories());
+    injectPublicRepository();
+    setSyncTransport(createHttpSyncTransport());
+    setSocialRepository(
+      createLazySocialRepository(async () => {
+        const { createHttpSocialRepository } = await import('@/infra/social/http-repository');
+        return createHttpSocialRepository();
+      }, captureSocialDispatch),
+    );
+    await openIndexedDb();
+  });
+  return injection;
+}
+
+/** 익명 공개 진입에서는 개인 DB·개인 인증 bridge를 시작하지 않는다. */
+export function PublicProviders({ children }: { children: ReactNode }) {
+  useState(() => {
+    injectPublicRepository();
+    return true;
+  });
+  return children;
+}
 
 let socialNonce = 0;
 
@@ -94,7 +121,7 @@ function SocialSessionBridge() {
       }
     });
     const resume = () => {
-      if (isSocialSessionActive()) void activateSocialSession();
+      if (isSocialSessionActive()) void recheckSocialSession();
     };
     const stopSync = useSyncStore.subscribe((next, previous) => {
       const wasBlocked =
@@ -193,7 +220,7 @@ export function Providers({ children }: ProvidersProps) {
 
   useEffect(() => {
     let alive = true;
-    injection.then(
+    beginInjection().then(
       () => {
         if (alive) setInjected({ phase: 'ready' });
       },
