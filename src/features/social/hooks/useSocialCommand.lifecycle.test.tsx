@@ -163,7 +163,7 @@ it('동일 operation의 두 observer는 동시에 두 번 전송하지 않는다
   });
 });
 
-it('64개의 unresolved를 버리지 않고 65번째는 me/network 전에 막으며 explicit abandon 뒤 허용한다', async () => {
+it('64개의 unresolved를 버리지 않고 65번째는 me/network 전에 막으며 verified completion 뒤 허용한다', async () => {
   const send = vi.fn().mockRejectedValue({ code: 'temporary' });
   for (let index = 0; index < 64; index += 1) {
     const view = renderHook(() => useSocialCommand(`capacity-${index}`));
@@ -184,11 +184,14 @@ it('64개의 unresolved를 버리지 않고 65번째는 me/network 전에 막으
     await old.result.current.retry();
   });
   expect(f.repository.me).toHaveBeenCalledTimes(65);
-  act(() => old.result.current.abandon());
+  send.mockResolvedValueOnce(answer(true));
+  await act(async () => {
+    await old.result.current.retry();
+  });
   await act(async () => {
     await extra.result.current.run('post', 'FIRST', send);
   });
-  expect(f.repository.me).toHaveBeenCalledTimes(66);
+  expect(f.repository.me).toHaveBeenCalledTimes(67);
 });
 
 it('receipt 없는 profile 생성의 응답손실은 fresh me canonical로 확인하고 다시 create/rename하지 않는다', async () => {
