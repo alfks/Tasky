@@ -1,6 +1,7 @@
 import { parseNickname } from '@/domain/social/input';
 import type { ProfileView, SocialErrorCode } from '@/domain/social/social';
 
+import { queryVisiblePost } from './visibility-sql';
 import { sql } from '../db/sql';
 
 import type { SessionOk } from '../auth/session';
@@ -12,6 +13,8 @@ export type SocialActor = {
   readonly profileId: string | null;
   readonly nowMs: number;
   readonly nowIso: string;
+  /** Trusted HTTP policy, absent only in direct primitive fixtures. */
+  readonly policySubs?: readonly string[];
 };
 
 export type SocialOutcome<T> = { ok: true; value: T } | { ok: false; code: SocialErrorCode };
@@ -21,6 +24,7 @@ export async function createSocialActor(
   db: D1Database,
   session: SessionOk,
   nowMs: number,
+  policySubs?: readonly string[],
 ): Promise<SocialActor> {
   if (!Number.isSafeInteger(nowMs)) throw new Error('Invalid server time');
   const nowIso = new Date(nowMs).toISOString();
@@ -41,6 +45,7 @@ export async function createSocialActor(
     profileId: profile?.id ?? null,
     nowMs,
     nowIso,
+    ...(policySubs === undefined ? {} : { policySubs }),
   });
 }
 
@@ -135,24 +140,8 @@ export async function visiblePost(
   postId: string,
 ): Promise<{ id: string; author: string; text: string } | null> {
   if (actor.profileId === null) return null;
-  const row = await actor.db
-    .prepare(
-      sql`SELECT post.id,post.author,post.text FROM social_posts post
-       JOIN social_profiles me ON me.id = ? AND me.sub = ?
-       JOIN users u ON u.sub = me.sub JOIN sessions s ON s.sub = u.sub
-       JOIN social_profiles author ON author.id = post.author JOIN users au ON au.sub = author.sub
-       WHERE post.id = ? AND s.sid = ? AND s.expires_at > ?
-         AND NOT EXISTS (SELECT 1 FROM deleted_users d WHERE d.sub IN (u.sub,au.sub))
-         AND (post.author = me.id OR (
-           EXISTS (SELECT 1 FROM social_pairs pair WHERE pair.lo = MIN(me.id,author.id)
-             AND pair.hi = MAX(me.id,author.id) AND pair.state = 'accepted')
-           AND NOT EXISTS (SELECT 1 FROM social_blocks b WHERE
-             (b.blocker = me.id AND b.blocked = author.id)
-             OR (b.blocker = author.id AND b.blocked = me.id))))`,
-    )
-    .bind(actor.profileId, actor.sub, postId, actor.sid, actor.nowIso)
-    .first<{ id: string; author: string; text: string }>();
-  return row ?? null;
+  const row = await queryVisiblePost(actor, postId);
+  return row ? { id: row.id, author: row.author, text: row.text } : null;
 }
 
 export async function readVisiblePost(
