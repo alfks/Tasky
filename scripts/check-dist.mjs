@@ -18,6 +18,7 @@ import {
   readBaseline,
   writeBaseline,
 } from './bundle-baseline.mjs';
+import { artifactSizes, inspectArtifactGraph, inspectPrecacheGraph } from './bundle-graph.mjs';
 
 const DIST = 'dist/client';
 const errors = [];
@@ -211,16 +212,18 @@ if (doc !== '') {
   // 동기 인라인 테마 스크립트가 빌드를 거쳐서도 살아 있는지(theme R6·R11). 본문 일치는 theme-head.test.ts.
   if (!/<script>\(function\(\)\{/.test(doc))
     note('index.html 에 동기 인라인 테마 스크립트가 없습니다 (theme.md R6·R11).');
-  // ADR-0013 규칙 8: 동적 청크를 <head> 에서 미리 알린다. 없으면 왕복이 직렬로 쌓인다(+153 ms 실측).
-  const preloaded = [...doc.matchAll(/rel="modulepreload"[^>]*href="([^"]+)"/g)].map((m) => m[1]);
-  const dynamicChunks = distFiles
-    .map((f) => f.url)
-    .filter(
-      (u) => /^\/assets\/.*\.js$/.test(u) && !preloaded.includes(u) && !doc.includes(`src="${u}"`),
-    );
-  if (preloaded.length === 0)
-    note('index.html 에 동적 청크의 modulepreload 가 없습니다 (ADR-0013 규칙 8).');
-  for (const url of dynamicChunks) note(`${url} 이 index.html 의 어디에서도 참조되지 않습니다.`);
+  // ADR-0025: 실제 산출물/문서와 소스 그래프를 함께 확인한다.
+  try {
+    const graph = JSON.parse(readFileSync(`${DIST}/bundle-graph.json`, 'utf-8'));
+    inspectPrecacheGraph(graph, urls).forEach(note);
+    inspectArtifactGraph(
+      graph,
+      distFiles.filter((f) => /^\/assets\/.*\.js$/.test(f.url)).map((f) => f.url),
+      doc,
+    ).errors.forEach(note);
+  } catch (error) {
+    note(`출력 그래프 검사 실패: ${String(error)}`);
+  }
 
   // Cloudflare Web Analytics 비콘(ADR-0021): 정확히 한 번, 지정된 src·token 그대로 나가야 하고,
   // defer 스크립트와 모듈 스크립트는 실행 큐를 공유하므로 진입 모듈 스크립트보다 뒤에 있어야
@@ -360,9 +363,9 @@ if (doc !== '' && entryFile === undefined) {
         `예산 ${ENTRY_BUDGET} B 를 넘었습니다 — 청크 분해를 다시 재고 무엇이 늘었는지부터 보세요` +
         '(ADR-0013 재검토 트리거).',
     );
-  const networkGzip = distFiles
-    .filter((f) => /^\/assets\/.*\.js$/.test(f.url))
-    .reduce((sum, f) => sum + gz(f), 0);
+  const graph = JSON.parse(readFileSync(`${DIST}/bundle-graph.json`, 'utf-8'));
+  const allJs = distFiles.filter((f) => /^\/assets\/.*\.js$/.test(f.url));
+  const { networkGzip, totalGzip, optionalGzip } = artifactSizes(graph, allJs, doc, gz);
   if (networkGzip > NETWORK_BUDGET)
     note(
       `첫 로드 네트워크 JS gzip 합 ${networkGzip} B 가 예산 ${NETWORK_BUDGET} B 를 넘었습니다 ` +
@@ -428,7 +431,8 @@ if (doc !== '' && entryFile === undefined) {
 
   summary =
     `진입 폐포 gzip ${closureGzip} B / 예산 ${ENTRY_BUDGET} B · ` +
-    `index.js 단독 ${entryGzip} B · 네트워크 합 ${networkGzip} B / 예산 ${NETWORK_BUDGET} B` +
+    `index.js 단독 ${entryGzip} B · 첫 로드 ${networkGzip} B / 예산 ${NETWORK_BUDGET} B · ` +
+    `선택 online ${optionalGzip} B · 전체 JS ${totalGzip} B` +
     deltaNote;
 }
 
