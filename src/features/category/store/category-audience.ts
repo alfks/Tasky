@@ -8,7 +8,19 @@ import type {
   SocialMode,
 } from '@/domain/social/social';
 
-import type { SocialRepository } from '@/repositories/social-repository';
+import {
+  readOwnedCategory,
+  samePublicationIntent,
+  publicationErrorCode,
+  reportPublicationError,
+  type PublicationDependencies,
+} from '@/features/category/store/category-publication-contract';
+import {
+  publicationRecovery,
+  startPublicationCommand,
+  type PublicationEntry,
+  type PublicationIntent,
+} from '@/features/category/store/category-publication-recovery';
 
 export type CategoryAudienceSnapshot = {
   phase: 'checking' | 'ready' | 'saving' | 'error';
@@ -16,60 +28,20 @@ export type CategoryAudienceSnapshot = {
   mode: SocialMode | null;
   profile: ProfileView | null;
   error: SocialErrorCode | null;
+  uncertain: boolean;
+  pending: PublicationIntent | null;
 };
 export type CategoryAudienceMetadata = { name: string; color: string; emoji?: string };
-export type CategoryAudienceDependencies = {
-  repository: () => SocialRepository;
-  capture: () => () => boolean;
-  online: () => boolean;
-  persist: (canonical: SocialCategoryView | null) => Promise<boolean>;
-  key?: () => string;
-  subscribeReady?: (listener: () => void) => () => void;
-  subscribeInvalidation?: (listener: (reason: string) => void) => () => void;
-};
-type Pending =
-  | { kind: 'save'; key: string; input: SocialCategoryInput }
-  | { kind: 'revoke'; key: string; input: { id: string; expectedVersion: number } };
+export type CategoryAudienceDependencies = PublicationDependencies;
 const INITIAL: CategoryAudienceSnapshot = {
   phase: 'checking',
   confirmed: null,
   mode: null,
   profile: null,
   error: null,
+  uncertain: false,
+  pending: null,
 };
-
-function codeOf(error: unknown): SocialErrorCode {
-  const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : null;
-  switch (code) {
-    case 'unauthorized':
-    case 'account-deleted':
-    case 'conflict':
-    case 'request-pending':
-    case 'request-expired':
-    case 'idempotency-conflict':
-    case 'social-disabled':
-    case 'validation':
-    case 'unavailable':
-    case 'limit-reached':
-    case 'rate-limited':
-    case 'csrf':
-      return code;
-    default:
-      return 'temporary';
-  }
-}
-function sameIntent(
-  left: Pick<SocialCategoryInput, 'visibility' | 'name' | 'color' | 'emoji'>,
-  right: Pick<SocialCategoryInput, 'visibility' | 'name' | 'color' | 'emoji'>,
-): boolean {
-  return (
-    left.visibility === right.visibility &&
-    left.name === right.name &&
-    left.color === right.color &&
-    left.emoji === right.emoji
-  );
-}
-
 /** 별도 공개 조회가 아닌 소유자 관리 목록으로 복원된 연결의 소유권을 확인한다. */
 export function createCategoryAudienceController(
   category: Category,
@@ -78,12 +50,15 @@ export function createCategoryAudienceController(
   let state = INITIAL;
   let generation = 0;
   let disposed = false;
-  let pending: Pending | null = null;
+  const recovery = deps.recovery ?? publicationRecovery;
+  const namespace = `local:${category.id}`;
+  let pending: PublicationEntry | null = null;
+  let cancelObservation: (() => void) | null = null;
+  let lastMode: SocialMode | null = null;
   let checked = false;
   let boundId = category.socialCategoryId;
   const listeners = new Set<() => void>();
   const key = deps.key ?? (() => `v1.${Date.now()}.${crypto.randomUUID().replaceAll('-', '')}`);
-  const getSnapshot = () => state;
   function update(patch: Partial<CategoryAudienceSnapshot>): void {
     state = { ...state, ...patch };
     for (const listener of listeners) listener();
@@ -94,32 +69,17 @@ export function createCategoryAudienceController(
   function invalidate(reason: string): void {
     generation += 1;
     checked = false;
-    const temporary = ['offline', 'hidden', 'recheck', 'activation'].includes(reason);
-    if (!temporary) pending = null;
-    update({ ...INITIAL, error: temporary ? 'temporary' : 'unauthorized' });
+    recovery.lock(reason);
+    cancelObservation?.();
+    cancelObservation = null;
+    pending = null;
+    update({ ...INITIAL, error: reason === 'account' ? 'unauthorized' : 'temporary' });
   }
-  async function ownerProjection(allowed: () => boolean, captured: number) {
-    if (boundId === undefined) return null;
-    let cursor: string | undefined;
-    const seen = new Set<string>();
-    for (let page = 0; page < 20; page += 1) {
-      const response = await deps
-        .repository()
-        .categories({ limit: 50, ...(cursor ? { cursor } : {}) });
-      if (!current(captured, allowed)) return undefined;
-      const owned = response.data.items.find((item) => item.id === boundId);
-      if (owned !== undefined) return owned.revoked === true ? null : owned;
-      if (response.data.nextCursor === null) return null;
-      if (seen.has(response.data.nextCursor)) throw new Error('목록을 다시 확인해 주세요.');
-      seen.add(response.data.nextCursor);
-      cursor = response.data.nextCursor;
-    }
-    throw new Error('목록을 다시 확인해 주세요.');
-  }
-  async function refresh(): Promise<void> {
-    if (disposed || state.phase === 'saving') return;
+  async function refresh(automatic = false): Promise<void> {
+    if (disposed || state.phase === 'saving' || (automatic && lastMode === 'off')) return;
     const captured = ++generation;
     const allowed = deps.capture();
+    const proof = recovery.proof();
     update({ phase: 'checking', error: null });
     if (!current(captured, allowed)) {
       update({ phase: 'error', error: 'temporary' });
@@ -128,10 +88,29 @@ export function createCategoryAudienceController(
     try {
       const identity = await deps.repository().me();
       if (!current(captured, allowed)) return;
-      const confirmed =
-        identity.data.profile === null ? null : await ownerProjection(allowed, captured);
+      lastMode = identity.data.mode;
+      if (identity.data.profile === null) recovery.lock('auth');
+      if (
+        identity.data.profile === null ||
+        !recovery.verifyActor(identity.data.profile.id, proof, allowed)
+      ) {
+        update({
+          ...INITIAL,
+          phase: 'ready',
+          profile: identity.data.profile,
+          mode: identity.data.mode,
+        });
+        return;
+      }
+      pending = recovery.get(namespace);
+      const owned =
+        boundId === undefined
+          ? null
+          : await readOwnedCategory(deps.repository(), boundId, () => current(captured, allowed));
+      const confirmed = owned?.revoked === true ? null : owned;
       if (!current(captured, allowed) || confirmed === undefined) return;
-      if (!(await deps.persist(confirmed))) throw new Error('확인 결과를 저장하지 못했어요.');
+      if (pending === null && !(await deps.persist(confirmed)))
+        throw new Error('확인 결과를 저장하지 못했어요.');
       if (!current(captured, allowed)) return;
       checked = true;
       boundId = confirmed?.id;
@@ -140,69 +119,100 @@ export function createCategoryAudienceController(
         confirmed,
         profile: identity.data.profile,
         mode: identity.data.mode,
-        error: null,
+        error: pending === null ? null : (pending.blocked ?? 'request-pending'),
+        uncertain: pending !== null,
+        pending: pending?.intent ?? null,
       });
     } catch (error) {
-      if (current(captured, allowed)) update({ phase: 'error', error: codeOf(error) });
+      if (current(captured, allowed)) {
+        const code = reportPublicationError(error, allowed, deps.onSessionFailure);
+        if (code === 'unauthorized' || code === 'account-deleted') recovery.lock(code);
+        if (current(captured, allowed)) update({ phase: 'error', error: code });
+      }
     }
   }
-  async function complete(command: Pending): Promise<boolean> {
+  async function complete(entry: PublicationEntry): Promise<boolean> {
     const captured = ++generation;
     const allowed = deps.capture();
-    if (!current(captured, allowed)) {
-      update({ phase: 'error', error: 'temporary' });
+    if (!current(captured, allowed)) return false;
+    const command = entry.intent;
+    let observation: ReturnType<typeof startPublicationCommand>;
+    try {
+      observation = startPublicationCommand(entry, recovery, deps.repository(), () =>
+        current(captured, allowed),
+      );
+    } catch (error) {
+      update({ phase: 'error', error: publicationErrorCode(error) });
       return false;
     }
-    pending = command;
-    update({ phase: 'saving', error: null });
-    try {
-      const repository = deps.repository();
-      const response =
-        command.kind === 'save'
-          ? await repository.saveCategory(command.input, { key: command.key })
-          : await repository.revokeCategory(command.input, { key: command.key });
+    pending = entry;
+    update({ phase: 'saving', error: null, uncertain: false, pending: command });
+    cancelObservation = observation.cancel;
+    const result = await observation.promise;
+    cancelObservation = null;
+    if (!current(captured, allowed) || result.type === 'stale') return false;
+    if (result.type === 'error') {
+      const { code, uncertain } = result;
+      reportPublicationError({ code }, allowed, deps.onSessionFailure);
       if (!current(captured, allowed)) return false;
-      const canonical =
-        command.kind === 'revoke' || response.data.revoked === true ? null : response.data;
-      if (!(await deps.persist(canonical))) throw new Error('확인 결과를 저장하지 못했어요.');
-      if (!current(captured, allowed)) return false;
-      pending = null;
-      boundId = canonical?.id;
-      checked = true;
-      const matches =
-        command.kind === 'revoke' || (canonical !== null && sameIntent(command.input, canonical));
-      update({ phase: 'ready', confirmed: canonical, error: matches ? null : 'conflict' });
-      return matches;
-    } catch (error) {
-      if (!current(captured, allowed)) return false;
-      const code = codeOf(error);
-      update({ phase: 'error', error: code });
+      if (!uncertain) pending = null;
+      update({ phase: 'error', error: code, uncertain, pending: uncertain ? command : null });
       if (
-        code === 'conflict' ||
-        code === 'idempotency-conflict' ||
-        code === 'request-expired' ||
-        code === 'unavailable'
+        !uncertain &&
+        ['conflict', 'idempotency-conflict', 'request-expired', 'unavailable'].includes(code)
       ) {
-        pending = null;
         await refresh();
         if (current(generation, allowed)) update({ error: code });
-      } else if (code === 'unauthorized' || code === 'account-deleted') invalidate(code);
-      else if (code !== 'temporary' && code !== 'request-pending') pending = null;
+      }
       return false;
     }
+    const canonical = result.canonical;
+    let saved = false;
+    try {
+      saved = await deps.persist(
+        canonical,
+        command.original,
+        () => current(captured, allowed) && result.allowed(),
+      );
+    } catch {
+      /* 서버 결과는 확인했지만 개인 연결을 쓰지 못한 상태다. */
+    }
+    if (!current(captured, allowed) || !result.allowed()) return false;
+    result.resolve();
+    pending = null;
+    boundId = saved ? canonical?.id : boundId;
+    const matches =
+      saved &&
+      (command.kind === 'revoke' ||
+        (canonical !== null && samePublicationIntent(command.input, canonical)));
+    update({
+      phase: 'ready',
+      confirmed: canonical,
+      error: matches ? null : 'conflict',
+      uncertain: false,
+      pending: null,
+    });
+    return matches;
   }
+  function submit(intent: PublicationIntent): Promise<boolean> {
+    try {
+      return complete(recovery.reserve(namespace, intent, key));
+    } catch (error) {
+      update({ phase: 'error', error: publicationErrorCode(error) });
+      return Promise.resolve(false);
+    }
+  }
+  const canChange = () =>
+    !disposed &&
+    checked &&
+    deps.capture()() &&
+    state.phase !== 'saving' &&
+    state.phase !== 'checking';
   async function change(
     visibility: CategoryVisibility,
     metadata?: CategoryAudienceMetadata,
   ): Promise<boolean> {
-    if (
-      disposed ||
-      !checked ||
-      !deps.capture()() ||
-      state.phase === 'saving' ||
-      state.phase === 'checking'
-    )
-      return false;
+    if (!canChange()) return false;
     const confirmed = state.confirmed;
     const values = metadata ?? confirmed ?? category;
     const input: SocialCategoryInput = {
@@ -214,7 +224,11 @@ export function createCategoryAudienceController(
       visibility,
     };
     if (pending !== null) {
-      if (pending.kind !== 'save' || !sameIntent(pending.input, input)) {
+      if (state.mode !== 'enabled') {
+        update({ error: 'social-disabled' });
+        return false;
+      }
+      if (pending.intent.kind !== 'save' || !samePublicationIntent(pending.intent.input, input)) {
         update({ error: 'request-pending' });
         return false;
       }
@@ -231,33 +245,32 @@ export function createCategoryAudienceController(
       update({ error: 'social-disabled' });
       return false;
     }
-    return complete({ kind: 'save', input, key: key() });
+    return submit({ kind: 'save', input, original: category });
   }
   async function revoke(): Promise<boolean> {
-    if (
-      disposed ||
-      !checked ||
-      !deps.capture()() ||
-      state.phase === 'saving' ||
-      state.phase === 'checking'
-    )
-      return false;
+    if (!canChange()) return false;
     if (pending !== null) {
-      if (pending.kind !== 'revoke') {
+      if (pending.intent.kind !== 'revoke') {
         update({ error: 'request-pending' });
         return false;
       }
       return complete(pending);
     }
     if (state.confirmed === null) return deps.persist(null);
-    return complete({
+    return submit({
       kind: 'revoke',
       input: { id: state.confirmed.id, expectedVersion: state.confirmed.version },
-      key: key(),
+      original: category,
     });
   }
   return {
-    getSnapshot,
+    getSnapshot: () => state,
+    retry: () =>
+      pending === null ||
+      state.phase === 'saving' ||
+      (pending.intent.kind === 'save' && state.mode !== 'enabled')
+        ? Promise.resolve(false)
+        : complete(pending),
     resume: () => {
       disposed = false;
     },
@@ -272,6 +285,8 @@ export function createCategoryAudienceController(
     dispose: () => {
       disposed = true;
       generation += 1;
+      cancelObservation?.();
+      cancelObservation = null;
       pending = null;
       state = INITIAL;
       listeners.clear();
