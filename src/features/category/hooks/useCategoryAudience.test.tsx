@@ -106,7 +106,7 @@ describe('카테고리 서버 범위와 명시적 변경', () => {
     expect(f.categories).toHaveBeenLastCalledWith({ limit: 50, cursor: 'owner-next' });
     expect(f.categoryRead).not.toHaveBeenCalled();
     expect(f.controller.getSnapshot().confirmed).toEqual(canonical);
-    expect(f.persist).toHaveBeenCalledWith(canonical);
+    expect(f.persist).toHaveBeenCalledWith(canonical, f.category, expect.any(Function));
     await f.controller.change('public');
     expect(f.saveCategory).toHaveBeenCalledWith(
       {
@@ -125,7 +125,7 @@ describe('카테고리 서버 범위와 명시적 변경', () => {
     f.categories.mockResolvedValueOnce(answer({ items: [], nextCursor: null }));
     await f.controller.refresh();
     expect(f.controller.getSnapshot().confirmed).toBeNull();
-    expect(f.persist).toHaveBeenCalledWith(null);
+    expect(f.persist).toHaveBeenCalledWith(null, f.category, expect.any(Function));
     expect(f.categoryRead).not.toHaveBeenCalled();
     expect(f.saveCategory).not.toHaveBeenCalled();
   });
@@ -137,7 +137,7 @@ describe('카테고리 서버 범위와 명시적 변경', () => {
     );
     await f.controller.refresh();
     expect(f.controller.getSnapshot().confirmed).toBeNull();
-    expect(f.persist).toHaveBeenCalledWith(null);
+    expect(f.persist).toHaveBeenCalledWith(null, f.category, expect.any(Function));
     await f.controller.change('public');
     expect(f.saveCategory.mock.calls[0][0]).not.toHaveProperty('id');
     expect(f.saveCategory.mock.calls[0][0].expectedVersion).toBe(0);
@@ -166,7 +166,11 @@ describe('카테고리 서버 범위와 명시적 변경', () => {
       answer({ ...canonical, visibility: 'private', version: 5, revoked: true }),
     );
     expect(await f.controller.change('public')).toBe(false);
-    expect(f.persist).toHaveBeenLastCalledWith(null, f.category, expect.any(Function));
+    expect(f.persist).toHaveBeenLastCalledWith(
+      null,
+      { ...f.category, socialCategoryVersion: 3 },
+      expect.any(Function),
+    );
     expect(f.controller.getSnapshot().confirmed).toBeNull();
     expect(f.controller.getSnapshot().error).toBe('conflict');
     expect(f.saveCategory.mock.calls[1]).toEqual(f.saveCategory.mock.calls[0]);
@@ -207,7 +211,7 @@ describe('카테고리 서버 범위와 명시적 변경', () => {
     expect(await change).toBe(true);
     expect(f.persist).toHaveBeenCalledWith(
       expect.objectContaining({ visibility: 'public', version: 4 }),
-      f.category,
+      { ...f.category, socialCategoryVersion: 3 },
       expect.any(Function),
     );
   });

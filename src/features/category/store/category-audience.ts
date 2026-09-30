@@ -12,6 +12,7 @@ import {
   readOwnedCategory,
   samePublicationIntent,
   publicationErrorCode,
+  publicationOriginAfterConfirmation,
   reportPublicationError,
   type PublicationDependencies,
 } from '@/features/category/store/category-publication-contract';
@@ -21,7 +22,6 @@ import {
   type PublicationEntry,
   type PublicationIntent,
 } from '@/features/category/store/category-publication-recovery';
-
 export type CategoryAudienceSnapshot = {
   phase: 'checking' | 'ready' | 'saving' | 'error';
   confirmed: SocialCategoryView | null;
@@ -42,7 +42,6 @@ const INITIAL: CategoryAudienceSnapshot = {
   uncertain: false,
   pending: null,
 };
-/** 별도 공개 조회가 아닌 소유자 관리 목록으로 복원된 연결의 소유권을 확인한다. */
 export function createCategoryAudienceController(
   category: Category,
   deps: CategoryAudienceDependencies,
@@ -56,7 +55,7 @@ export function createCategoryAudienceController(
   let cancelObservation: (() => void) | null = null;
   let lastMode: SocialMode | null = null;
   let checked = false;
-  let boundId = category.socialCategoryId;
+  let reconciledOrigin = { ...category };
   const listeners = new Set<() => void>();
   const key = deps.key ?? (() => `v1.${Date.now()}.${crypto.randomUUID().replaceAll('-', '')}`);
   function update(patch: Partial<CategoryAudienceSnapshot>): void {
@@ -104,16 +103,22 @@ export function createCategoryAudienceController(
       }
       pending = recovery.get(namespace);
       const owned =
-        boundId === undefined
+        reconciledOrigin.socialCategoryId === undefined
           ? null
-          : await readOwnedCategory(deps.repository(), boundId, () => current(captured, allowed));
+          : await readOwnedCategory(deps.repository(), reconciledOrigin.socialCategoryId, () =>
+              current(captured, allowed),
+            );
       const confirmed = owned?.revoked === true ? null : owned;
       if (!current(captured, allowed) || confirmed === undefined) return;
-      if (pending === null && !(await deps.persist(confirmed)))
-        throw new Error('확인 결과를 저장하지 못했어요.');
+      if (pending === null) {
+        const original = reconciledOrigin;
+        if (!(await deps.persist(confirmed, original, () => current(captured, allowed))))
+          throw new Error('확인 결과를 저장하지 못했어요.');
+        if (!current(captured, allowed)) return;
+        reconciledOrigin = publicationOriginAfterConfirmation(original, confirmed);
+      }
       if (!current(captured, allowed)) return;
       checked = true;
-      boundId = confirmed?.id;
       update({
         phase: 'ready',
         confirmed,
@@ -180,7 +185,8 @@ export function createCategoryAudienceController(
     if (!current(captured, allowed) || !result.allowed()) return false;
     result.resolve();
     pending = null;
-    boundId = saved ? canonical?.id : boundId;
+    if (saved && command.original)
+      reconciledOrigin = publicationOriginAfterConfirmation(command.original, canonical);
     const matches =
       saved &&
       (command.kind === 'revoke' ||
@@ -203,11 +209,7 @@ export function createCategoryAudienceController(
     }
   }
   const canChange = () =>
-    !disposed &&
-    checked &&
-    deps.capture()() &&
-    state.phase !== 'saving' &&
-    state.phase !== 'checking';
+    !disposed && checked && deps.capture()() && !['saving', 'checking'].includes(state.phase);
   async function change(
     visibility: CategoryVisibility,
     metadata?: CategoryAudienceMetadata,
@@ -234,7 +236,8 @@ export function createCategoryAudienceController(
       }
       return complete(pending);
     }
-    if (confirmed === null && visibility === 'private') return deps.persist(null);
+    if (confirmed === null && visibility === 'private')
+      return deps.persist(null, reconciledOrigin, deps.capture());
     if (state.profile === null || state.mode === null) return false;
     const metadataChanged =
       confirmed === null ||
@@ -245,7 +248,7 @@ export function createCategoryAudienceController(
       update({ error: 'social-disabled' });
       return false;
     }
-    return submit({ kind: 'save', input, original: category });
+    return submit({ kind: 'save', input, original: { ...reconciledOrigin } });
   }
   async function revoke(): Promise<boolean> {
     if (!canChange()) return false;
@@ -256,11 +259,11 @@ export function createCategoryAudienceController(
       }
       return complete(pending);
     }
-    if (state.confirmed === null) return deps.persist(null);
+    if (state.confirmed === null) return deps.persist(null, reconciledOrigin, deps.capture());
     return submit({
       kind: 'revoke',
       input: { id: state.confirmed.id, expectedVersion: state.confirmed.version },
-      original: category,
+      original: { ...reconciledOrigin },
     });
   }
   return {
