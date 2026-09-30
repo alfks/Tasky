@@ -91,17 +91,17 @@ Tasky/
 │   ├── specs/          → docs/specs/AGENTS.md
 │   └── decisions/      → docs/decisions/AGENTS.md
 ├── public/             → public/AGENTS.md              아이콘·manifest.webmanifest·fonts/·_headers
-├── tests/e2e/          → tests/AGENTS.md              Playwright 스모크(11 스펙 35건)
+├── tests/e2e/          → tests/AGENTS.md              Playwright 개인 회귀·소셜/공개범위 흐름
 ├── tests/feel/         → tests/feel/AGENTS.md         사용감 계측 도구(러너 없음 — docs/FEEL_REPORT.md)
 ├── worker/             → worker/AGENTS.md            auth/sync/account/db + social/ D1 투영·scheduled GC 진입
-│   ├── db/migrations/  → worker/db/migrations/AGENTS.md  0001 개인·0002 소셜
-│   └── social/         → worker/social/AGENTS.md     actor·receipt/CAS·한도/GC·삭제·피드/공유/응원 포함 22 HTTP 경로
+│   ├── db/migrations/  → worker/db/migrations/AGENTS.md  0001 개인·0002 소셜·0003 공개범위
+│   └── social/         → worker/social/AGENTS.md     actor·receipt/CAS·한도/GC·공유/공개 읽기·현재 ACL
 └── src/                → src/AGENTS.md
-    ├── app/            → src/app/AGENTS.md            SPA 진입점(main.tsx)·providers·단일 라우트 화면
+    ├── app/            → src/app/AGENTS.md            SPA 진입점(main.tsx)·개인 providers·별도 /public 진입
     ├── components/     → src/components/AGENTS.md     ui/ 프리미티브(Button, Checkbox, Popover…)
     ├── features/       → src/features/AGENTS.md       (각 feature 에 index.ts — src/ 에서 유일한 배럴)
     │   ├── todo/         투두 목록·아이템·입력·루틴(반복), todo-store
-    │   ├── category/     카테고리 관리·색상 선택·순서 드래그, category-store
+    │   ├── category/     카테고리 관리·공개범위 확인·순서 드래그, category-store
     │   ├── date-strip/   날짜 스트립·선택 날짜, date-store
     │   ├── stats/        달성률 표시(도메인 계산 결과 렌더)
     │   ├── theme/        테마 토글·강조색, theme-store
@@ -112,7 +112,7 @@ Tasky/
     │   ├── calendar/     D-day 카드
     │   ├── diary/        하루 기록 카드·모달
     │   ├── reports/      기간 통계(달성률·스트릭·히트맵)
-    │   ├── social/       세션 검증·피드 lease·메모리 상태 기반(화면은 후속)
+    │   ├── social/       친구/공유/공개 화면·세션 검증·피드 lease·탭 메모리
     │   └── shell/        앱 셸·레이아웃·토스트 스택 — **조립 지점이지 feature 가 아니다**
     ├── domain/         → src/domain/AGENTS.md         (배럴 없음)
     │   ├── todo/  category/  date/  theme/  focus/  backup/  dday/  diary/  routine/  sync/(서버 LWW·클라이언트 병합·아웃박스·와이어)
@@ -122,13 +122,13 @@ Tasky/
     │   ├── todo-repository.ts  category-repository.ts  settings-repository.ts  focus-session-repository.ts  dataset-repository.ts  dday-repository.ts  diary-repository.ts  routine-repository.ts  sync-repository.ts  sync-transport.ts
     │   ├── social-repository.ts  social-repository.contract.ts(온라인 포트·구현별 테스트 계약)
     │   ├── memory/           in-memory 구현(테스트) + social/ 공통 벡터 fake + live.ts(툼스톤 필터 헬퍼)
-    │   ├── lazy-social-repository.ts  최초 호출에만 HTTP 어댑터를 불러오는 포워더
-    │   ├── container.ts      개인 컨테이너와 별도 social 주입 슬롯
+    │   ├── lazy-social-repository.ts·lazy-public-social-repository.ts  보호된 온라인 호출 때만 HTTP 로드
+    │   ├── container.ts      개인 컨테이너와 별도 social/public 읽기 주입 슬롯
     │   └── write-plan.ts     데이터셋 쓰기 1단계(해석·검증) — memory·indexeddb 두 구현이 공용
     ├── infra/          → src/infra/AGENTS.md
     │   ├── indexeddb/        db.ts(Dexie 스키마·버전) · query.ts(조회 liveAll/liveOne/liveBy/liveBetween/liveOrderBy · 툼스톤만 deletedByIds · 쓰기 put · DatasetRepository 전용 allRows/clear/bulkPut/store.transaction · 스키마 열기 store.open · 묶음 Store/tables/createStore/storeOn) · *-indexeddb-repository.ts · repositories.ts(조립)
     │   ├── sync/             http-transport.ts(Worker 왕복). 순수 규칙은 domain/sync/, 계약은 repositories/sync-*
-    │   └── social/           22메서드 typed HTTP 어댑터·응답 디코더(동적 import, 기본 off)
+    │   └── social/           인증/공개 읽기 typed HTTP 어댑터·DTO 디코더(동적 import, 기본 off)
     ├── lib/            → src/lib/AGENTS.md            cn.ts, date.ts(nowIso), id.ts(newId), a11y.ts, ime.ts, korean.ts, focus-fallback.ts, drag-order.ts, write-signal.ts
     ├── styles/         → src/styles/AGENTS.md         tokens.css, globals.css (.css 만)
     └── test/           → src/test/AGENTS.md           setup.ts, fixtures/
@@ -207,7 +207,7 @@ type FocusSession = Meta & {
 | 확장                | 예약 위치                                                                                                                                                                                                                                                             | MVP에서 지킬 것                                                                                                                                                               |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 클라우드 동기화     | **로컬 스키마(v4: `syncOutbox`·`syncState`)·순수 판정(`src/domain/sync/**`)·루틴 슬롯 id·`fillFloor`는 T-92 에서 이미 착수됨(ADR-0018).** 남은 것: `src/infra/sync/`(어댑터 + 충돌 정책), `repositories/sync-repository.ts`·`sync-transport.ts`(포트·구현, T-92 후속) | `Meta` 유지·`touch` 경유·소프트 삭제(ADR-0005·0007), 레포지토리 외부에서 Dexie 참조 금지, ID 클라이언트 생성. 서버 순번(`seq`)은 `Meta`에 필드로 추가하지 않는다(ADR-0015 §2) |
-| SNS(친구·피드·반응) | T-1 순수 계약/포트, T-2 D1 primitive, T-3 관계 HTTP 16경로·삭제 배선, T-4 클라이언트 fake·22메서드 HTTP 어댑터·세션/피드 기반. 게시글·응원·피드 서버 6경로, 실서버 통합, 화면·운영은 후속 티켓                                                                        | `Todo`·개인 sync/backup을 유지하고 별도 서버 공유 사본·actor 권한 포트로 구현([ADR-0022](decisions/ADR-0022-social-projection-and-authorization.md))                          |
+| SNS(친구·피드·반응) | 순수 계약·D1 조건부 명령·관계/공유/응원·카테고리 projection·익명 공개 읽기·HTTP/memory·친구/공유 화면 구현. 운영 활성화는 [릴리스 판정](phase3-release.md)의 실제 게이트 확인 전 off 유지                                                                             | `Todo`·개인 sync/backup을 유지하고 별도 서버 공유 사본·actor 권한 포트로 구현([ADR-0022](decisions/ADR-0022-social-projection-and-authorization.md))                          |
 | 루틴/반복 투두      | `src/domain/todo/recurrence.ts`                                                                                                                                                                                                                                       | `Todo.date`는 인스턴스 날짜로 유지(템플릿과 분리)                                                                                                                             |
 | 다중 프로필/계정    | `Settings.id`를 프로필 id로(지금은 `'default'`) + `todos`/`categories`에 프로필 키                                                                                                                                                                                    | 단일 프로필 가정, DB 이름 `tasky` 고정. 인덱스가 전부 `[date+…]` 접두이므로 도입 시 전 인덱스 재작성 — 착수 전 ADR 필수                                                       |
 | 서버 컴포넌트 활용  | `src/app`                                                                                                                                                                                                                                                             | 로컬 우선이므로 데이터는 전부 클라이언트. 서버 컴포넌트는 셸/메타데이터만                                                                                                     |
@@ -215,7 +215,9 @@ type FocusSession = Meta & {
 
 ## 6. 조립 지점
 
-`src/app/providers.tsx`(client): 앱 시작 시 `setRepositories(createIndexedDbRepositories())` → 각 개인 feature store가 `getRepositories()`로 사용. 소셜 포트는 별도 `setSocialRepository(createLazySocialRepository(...))` 슬롯에 주입하고, 최초 소셜 호출 때만 `infra/social` HTTP 청크를 불러온다. provider의 private bridge가 sync 상태와 로컬/원격 신원을 대조해 소셜 세션을 연다. 테스트는 `src/test/setup.ts`에서 개인 memory 저장소와 별도 social fake를 주입한다. 이 두 파일과 테스트 계층(`src/test/**`, `*.test.*`), `infra` 자신 외에 `infra`를 import하면 `pnpm lint`가 실패한다(§1 허용 목록 — 어느 경유지를 거쳐도, 어떤 경로 표기·import 구문으로 써도, `eslint-disable` 을 어떤 문법으로 붙여도 마찬가지다. 한계는 §1 의 "보장 안 됨" 과 "남는 한계").
+`src/app/main.tsx`는 `/public`을 별도 지연 workspace와 `PublicProviders`로 조립한다. 이 경로는 개인 IndexedDB·sync store를 시작하지 않고 public 읽기 포트만 주입한다. 개인 앱의 `Providers`가 마운트되면 IndexedDB 저장소와 보호된 social/public 지연 포워더를 주입한다. private bridge가 sync 상태와 로컬/원격 신원을 대조하고, 소셜 화면 소유자가 있을 때만 세션을 재확인한다. 계정/권한 무효화는 동기로 전달하고 늦은 HTTP/import 결과는 세대 검사로 버린다.
+
+`shell`이 category 공개 확인과 완료 항목 선택을 조립한다. category/social feature 간 직접 import 없이 값과 handler를 주입하며, 원본 id·메모는 social DTO에 넣지 않는다. 공개 변경 확인 뒤 개인 binding을 기록할 때에도 현재 계정·원래 binding/metadata를 다시 검사한다. 소셜 API·화면은 ADR-0025의 온라인 선택 그래프로 분리하고 기존 개인 preload/offline 자산을 유지한다. 테스트는 개인 memory와 별도 social fake를 주입한다. infra import 허용 지점은 §1의 기존 제한을 유지한다.
 
 ## 7. 관련 ADR
 
@@ -229,4 +231,7 @@ type FocusSession = Meta & {
 - [ADR-0010](./decisions/ADR-0010-vinext-build-and-cloudflare-workers.md) 빌드 스택 Vinext + 배포 Cloudflare Workers (**superseded by ADR-0013**)
 - [ADR-0013](./decisions/ADR-0013-plain-vite-react-and-lazy-dexie.md) 순수 Vite + React SPA · Dexie 지연 로드 · 정적 자산 전용 Workers 배포
 
-Phase 3의 서버/클라이언트 경계와 SQL 계약: [social-design.md](social-design.md). 파일별 구현·배선 순서: [phase3-implementation-plan.md](phase3-implementation-plan.md). 현재 social은 순수 계약·포트·D1 primitive·22 HTTP 경로와 계정 삭제 연결, 클라이언트 fake·HTTP/세션·피드 기반까지다. 서버는 `worker/social/feed-read.ts`의 작성자별 인덱스 피드, `validate-posts.ts`의 본문 없는 재검증, 공유/응원 명령과 `worker/index.ts`의 scheduled GC 진입을 포함한다. 실제 어댑터→서버 통합, 화면·운영은 후속 티켓이다.
+- [ADR-0024](./decisions/ADR-0024-category-visibility.md) 세 공개범위·선택한 사본·익명 읽기
+- [ADR-0025](./decisions/ADR-0025-optional-online-chunks.md) 개인 preload 보존과 온라인 선택 청크
+
+Phase 3의 서버/클라이언트 경계와 SQL 계약: [social-design.md](social-design.md). 파일별 구현·배선 순서: [phase3-implementation-plan.md](phase3-implementation-plan.md). 현재 social은 친구·공유·응원 화면과 category private/friends/public projection, 익명 public 읽기까지 포함한다. 서버의 public/friend membership hint는 인덱스 비용을 줄이는 후보 목록이며 최종 ACL은 현재 category·관계·양방향 block·활성 actor로 검사한다. 사본이 남은 category tombstone은 유지하고, 빈 tombstone은 receipt 보존 48시간 후 GC 예산 안에서 정리한다. 전체 구현/검증과 아직 확인하지 않은 운영 게이트는 [phase3-release.md](phase3-release.md)에 기록한다.
