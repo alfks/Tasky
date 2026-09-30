@@ -2,10 +2,12 @@ import { isCategoryVisibility } from '@/domain/category/visibility';
 import { isSocialId } from '@/domain/social/input';
 import type { SocialCategoryView } from '@/domain/social/social';
 
+import { SocialProtocolError } from '@/infra/social/protocol-error';
+
 /** 신뢰하지 않는 응답은 원본/owner/계정 필드를 포함해 모두 거절한다. */
 export function category(value: unknown): SocialCategoryView {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
-    throw new Error('공개범위 응답 형식이 올바르지 않습니다.');
+    throw new SocialProtocolError();
   const data = value as Record<string, unknown>;
   const keys = [
     'id',
@@ -26,16 +28,13 @@ export function category(value: unknown): SocialCategoryView {
     !/^#[0-9A-F]{6}$/u.test(data.color) ||
     !isCategoryVisibility(data.visibility)
   )
-    throw new Error('공개범위 응답 형식이 올바르지 않습니다.');
+    throw new SocialProtocolError();
   for (const key of ['version', 'updatedAt', 'postCount']) {
     if (key === 'postCount' && data[key] === undefined) continue;
-    if (!Number.isSafeInteger(data[key]) || Number(data[key]) < 0)
-      throw new Error('공개범위 버전 형식이 올바르지 않습니다.');
+    if (!Number.isSafeInteger(data[key]) || Number(data[key]) < 0) throw new SocialProtocolError();
   }
-  if (data.revoked !== undefined && data.revoked !== true)
-    throw new Error('공개범위 철회 형식이 올바르지 않습니다.');
-  if (data.emoji !== undefined && typeof data.emoji !== 'string')
-    throw new Error('공개범위 이모지 형식이 올바르지 않습니다.');
+  if (data.revoked !== undefined && data.revoked !== true) throw new SocialProtocolError();
+  if (data.emoji !== undefined && typeof data.emoji !== 'string') throw new SocialProtocolError();
   return {
     id: data.id,
     name: data.name,
