@@ -9,8 +9,8 @@ import { OVERLAY_ALWAYS_LIVE_ATTR } from '@/components/ui/overlay-rules';
 
 import { cn } from '@/lib/cn';
 
-/** 액션이 있는 토스트는 6초, 없는 토스트는 3초 뒤 자동으로 닫힌다(app-shell R8). */
-const DURATION_WITH_ACTION_MS = 6000;
+/** 되돌리기 등 액션이 있는 토스트도 3초 뒤 자동으로 닫힌다. */
+const DURATION_WITH_ACTION_MS = 3000;
 const DURATION_MS = 3000;
 
 /**
@@ -34,7 +34,7 @@ export const TOAST_DISMISS_LABEL = '알림 닫기';
 /**
  * 렌더할 유지 시간. `null` 이면 **자동으로 닫지 않는다**(타이머를 걸지 않는다).
  *
- * - `undefined`(기본): 액션 유무로 6초/3초.
+ * - `undefined`(기본): 액션 유무와 관계없이 3초.
  * - `null`: 유지. 사용자가 ✕ 를 누르거나 호출부가 `dismissToast` 할 때까지 남는다.
  * - 유한하지 않은 수(`Infinity`·`NaN`)와 `TIMER_MAX_MS` 이상: **유지로 접는다**. 타이머에 그대로
  *   넘기면 위 주석대로 즉시 닫히거나 24.8일 뒤 닫히는데, 둘 다 호출부의 의도("안 닫힘")가 아니다.
@@ -63,11 +63,11 @@ export type ToastItem = {
   id: string;
   /** 한 줄 문구. 예: "'장보기'를 삭제했어요" */
   message: string;
-  /** 되돌리기 같은 액션. 있으면 기본 유지 시간이 6초가 된다. */
+  /** 되돌리기 같은 액션. 기본 유지 시간은 3초다. */
   action?: ToastAction;
   variant?: ToastVariant;
   /**
-   * 유지 시간(ms). 기본값은 액션 유무로 정해진다(6초/3초).
+   * 유지 시간(ms). 기본값은 3초다.
    * **`null` 은 "자동으로 닫지 않는다"** — 업데이트 알림처럼 사용자가 직접 닫아야 하는 토스트가 쓴다
    * (pwa R4 §2). 큰 수로 흉내내지 말 것: `resolveToastDuration` 주석 참고.
    */
