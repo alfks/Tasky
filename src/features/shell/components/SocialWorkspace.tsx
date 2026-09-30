@@ -19,9 +19,17 @@ const SocialScreen = lazy(() =>
   loadSocialScreen().then((module) => ({ default: module.SocialScreen })),
 );
 
-type SocialWorkspaceProps = { onReturn: () => void; initialPublic?: boolean };
+type SocialWorkspaceProps = {
+  onReturn: () => void;
+  initialPublic?: boolean;
+  onManageCategories?: () => void;
+};
 
-export function SocialWorkspace({ onReturn, initialPublic }: SocialWorkspaceProps) {
+export function SocialWorkspace({
+  onReturn,
+  initialPublic,
+  onManageCategories,
+}: SocialWorkspaceProps) {
   const selectedDate = useDateStripStore((state) => state.selectedDate);
   const [date, setDate] = useState(selectedDate);
   const publication = useCategoryPublication();
@@ -63,6 +71,7 @@ export function SocialWorkspace({ onReturn, initialPublic }: SocialWorkspaceProp
         }}
         onReturn={onReturn}
         initialPublic={initialPublic}
+        onManageCategories={onManageCategories}
       />
     </Suspense>
   );

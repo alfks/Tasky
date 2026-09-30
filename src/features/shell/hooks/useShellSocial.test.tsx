@@ -93,11 +93,11 @@ describe('셸 소셜의 동기 확인 큐와 지연 화면 경계', () => {
       });
     });
     await expect(first).resolves.toBe(false);
-    expect(f.result.current.request?.metadata?.name).toBe('새 이름');
+    const displayed = f.result.current.request;
+    expect(displayed?.kind === 'metadata' ? displayed.metadata?.name : null).toBe('새 이름');
     act(() => f.result.current.request?.resolve(true));
     await expect(second).resolves.toBe(true);
     expect(f.capture).not.toHaveBeenCalled();
-    await f.release();
   });
 
   it('같은 호출 스택에서 확인 후 자체 권한 무효화가 성공을 취소하지 않는다', async () => {
@@ -112,7 +112,6 @@ describe('셸 소셜의 동기 확인 큐와 지연 화면 경계', () => {
     });
     await expect(pending).resolves.toBe(true);
     expect(f.result.current.request).toBeNull();
-    await f.release();
   });
 
   it('로그아웃이 먼저면 과거 확인은 새 계정 요청을 승인하지 않는다', async () => {
@@ -134,7 +133,6 @@ describe('셸 소셜의 동기 확인 큐와 지연 화면 경계', () => {
     expect(f.result.current.request).toBe(latest);
     act(() => latest?.resolve(true));
     await expect(next).resolves.toBe(true);
-    await f.release();
   });
 
   it('같은 카테고리의 이전 창이 새 확인을 닫거나 승인하지 않는다', async () => {
@@ -155,7 +153,6 @@ describe('셸 소셜의 동기 확인 큐와 지연 화면 경계', () => {
     expect(f.result.current.request).toBe(latest);
     act(() => latest?.resolve());
     await expect(next).resolves.toBe(false);
-    await f.release();
   });
 
   it('화면 로드 실패 뒤 새 클릭으로 다시 시도하고 중복 클릭은 한 번만 열린다', async () => {
@@ -181,7 +178,6 @@ describe('셸 소셜의 동기 확인 큐와 지연 화면 경계', () => {
     act(() => f.result.current.returnFromSocial());
     expect(f.result.current.socialOpen).toBe(false);
     expect(f.capture).not.toHaveBeenCalled();
-    await f.release();
   });
 
   it('공개 초기 진입과 확인 요청이 서로의 화면 상태를 덮어쓰지 않는다', async () => {
@@ -196,7 +192,6 @@ describe('셸 소셜의 동기 확인 큐와 지연 화면 경계', () => {
     act(() => f.result.current.request?.resolve());
     await expect(pending).resolves.toBe(false);
     expect(f.result.current.socialOpen).toBe(true);
-    await f.release();
   });
 
   it('만료 초대와 저장 차단은 개인 화면에서 시작한다', async () => {
@@ -212,8 +207,6 @@ describe('셸 소셜의 동기 확인 큐와 지연 화면 경계', () => {
     });
     const second = await setup();
     expect(second.result.current.socialOpen).toBe(false);
-    await f.release();
-    await second.release();
   });
 
   it('과거 복귀 RAF는 계정 변경 뒤 개인 화면을 포커스하지 않는다', async () => {
@@ -235,7 +228,52 @@ describe('셸 소셜의 동기 확인 큐와 지연 화면 경계', () => {
     frames[0]?.(0);
     expect(focus).not.toHaveBeenCalled();
     main.remove();
-    await f.release();
+  });
+
+  it('잠긴 pending 확인 표시는 유지하며 검증한 빈 목록과 계정 폐기만 지운다', async () => {
+    const f = await setup();
+    let ids: readonly string[] | null = [category.id];
+    let notify = () => {};
+    const stop = vi.fn();
+    act(() =>
+      f.result.current.bridge.registerPendingCategories(
+        () => ids,
+        (listener) => {
+          notify = listener;
+          return stop;
+        },
+      ),
+    );
+    expect(f.result.current.bridge.pendingCategoryIds).toEqual([category.id]);
+    act(() => {
+      ids = null;
+      f.invalidateSocialSession('revoked');
+      notify();
+    });
+    expect(f.result.current.bridge.pendingCategoryIds).toEqual([category.id]);
+    act(() => {
+      ids = [];
+      notify();
+    });
+    expect(f.result.current.bridge.pendingCategoryIds).toEqual([]);
+    act(() => {
+      ids = [category.id];
+      notify();
+      f.invalidateSocialSession('account');
+    });
+    expect(f.result.current.bridge.pendingCategoryIds).toEqual([]);
+    f.unmount();
+    expect(stop).toHaveBeenCalledOnce();
+  });
+
+  it('관리 진입은 category 없이 동기 요청만 열며 지연 친구 화면을 활성화하지 않는다', async () => {
+    const f = await setup();
+    act(() => f.result.current.bridge.openManager());
+    expect(f.result.current.request?.kind).toBe('manage');
+    expect(f.result.current.request).not.toHaveProperty('category');
+    expect(f.capture).not.toHaveBeenCalled();
+    expect(f.closeReports).not.toHaveBeenCalled();
+    act(() => f.result.current.request?.resolve());
   });
 });
 
