@@ -2,6 +2,8 @@
 
 # Phase 3 상세 설계: 친구와 공유 사본
 
+> 카테고리/전체 공개 계약은 [카테고리 공개범위 설계](category-visibility-design.md)가 이 문서의 친구 전용·카테고리 제외 부분만 대체한다. 개인 원본 분리와 나머지 인증/멱등/삭제/lease 계약은 유지한다.
+
 - 설계 기준: main `8e48a1bf`, 2026-09-28. T-1 순수 계약과 T-2 D1 primitive를 구현 중이며 HTTP/화면 배선은 후속이다. 제품 규칙: [social.md](specs/social.md). 결정: [ADR-0022](decisions/ADR-0022-social-projection-and-authorization.md).
 - 첫 출시: 제한된 초대 시범 운영. 현재/미래 친구에게 명시적으로 공유한 문장만 공개한다. 공개 모집의 선행 조건은 [구현 계획](phase3-implementation-plan.md).
 
@@ -183,7 +185,7 @@ PostView는 `{id,author:{id,nickname},text,happenedOn,createdAt,reactionCount,my
 
 ## 7. 페이지·철회 경합·캐시
 
-피드는 F 조건으로 author id를 좁힌 뒤 posts의 `(author,created_at,id)` 인덱스로 조회한다. 반응 수는 reactor가 작성자의 현재 친구이며 양방향 block이 없는 경우만 집계한다(조회자의 친구인지와 무관). 집계는 페이지의 post id에만 묶어 읽는다.
+피드는 F 조건으로 author id를 좁힌 뒤 posts의 `(author,created_at,id)` 인덱스로 조회한다. 반응 수는 연결 category의 현재 public 범위이면 active·양방향 block 없는 인증 reactor를 집계한다. friends/legacy는 작성자의 현재 친구인 reactor만, private/tombstone은 타인 반응을 집계하지 않는다(조회자의 친구인지와 무관). myReaction도 같은 현재 권한으로 계산한다. 범위 축소는 불허 반응을 숨기며 차단/친구 삭제의 기존 정리 계약은 유지한다. 집계는 페이지의 post id에만 묶어 읽는다.
 친구 최대 50명+자신으로 조회 fan-in을 제한한다. author별 인덱스 cursor seek 후 최대 pageSize+1 후보를 읽고 SQL CTE의 global top-k로 병합한다(최대 51×51=2,601 후보). 마지막 A/F 필터와 본문 SELECT는 한 SQL 스냅샷이며 actor·cursor bind는 재사용해 D1 100개 바인딩 상한 내로 만든다. EXPLAIN QUERY PLAN과 실제 rows_read로 인덱스 적용을 확인한다. `OFFSET`은 쓰지 않는다. 첫 페이지 서버 high-water `(createdAt,id)`와 마지막 항목 tuple을 cursor에 넣어 이후 `(createdAt,id)<last`만 읽는다.
 cursor는 HMAC 서명된 `{v,actorId,scope,upper,last,expiresAt}`이며 15분 유효. 다른 actor/scope에 재사용 불가. 같은 ms의 새 UUID가 upper 이하일 수 있으므로 완전한 스냅샷은 보장하지 않는다.
 클라이언트는 한 페이지(기본 20, 최대 50개)만 메모리/DOM에 유지하고 `[다음 기록]`은 누적하지 않고 페이지 전체를 교체한다. 이전 페이지는 cursor 스택만 기억해 `[이전 기록]` 때 서버에서 다시 읽는다. 페이지 이탈 시 본문/반응/선택 카드를 폐기하며 응답에 id 중복이 있으면 제거한다. 최신 갱신은 첫 페이지로 돌아가 cursor 스택도 비운다. 삭제로 빈 페이지여도 nextCursor가 있으면 다음 기록을 허용한다. cursor 만료 시 첫 페이지부터 새로 읽고 안내한다.

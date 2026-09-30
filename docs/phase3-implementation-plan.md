@@ -2,7 +2,8 @@
 
 # Phase 3 구현 계획
 
-- 상태: 설계 승인, 구현 예정. 기준 main `8e48a1bf`, 2026-09-28.
+- 상태: 전체 구현 착수 승인, 기존 기반 위 화면/검증과 카테고리 공개범위 확장. 기준 main `4cb1550`, 2026-09-30.
+- 추가 범위: [세 단계 공개범위 스펙](specs/category-visibility.md)·[기술 설계](category-visibility-design.md)·[ADR-0024](decisions/ADR-0024-category-visibility.md). 기존 원본은 개인 전용이며 모두 공개는 익명 읽기를 포함한다.
 - 요구사항: [social.md](specs/social.md). 데이터/API/상한의 단일 소스: [social-design.md](social-design.md). 아키텍처 결정: [ADR-0022](decisions/ADR-0022-social-projection-and-authorization.md).
 - 아래 P3 번호는 **계획용 식별자**다. 실행 시 BOARD를 확인해 새 T 번호와 정확한 파일 owns를 발행한다. 실제 티켓 발행/구현 완료를 뜻하지 않는다.
 
@@ -124,3 +125,21 @@ T-4의 피드 검증은 요청 시작 시각을 기준으로 30초 뒤 재검증
 기본 범위/사본 공개/관계/차단/오프라인 정책은 이 문서 묶음에서 결정했다. 구현 중 SQL이나 UX가 이를 만족하지 못하면 스펙 변경 PR을 먼저 내고 임의로 축소하지 않는다.
 공개 모집은 신고/중재·개인정보 안내·운영 담당·규모별 비용 검증이 완료될 때까지 차단한다. 시범 운영 성공만으로 전체 공개 SNS를 제공했다고 쓰지 않는다.
 최종 핸드오프에는 테스트 수보다 **무엇을 어디서 검증했는지**, 실패/미검증, 배포 commit, 실제 flag 상태를 남긴다.
+
+## 9. 전체 구현과 공개범위 확장 추적
+
+P3-01~05의 현재 순수 계약·Worker·HTTP/memory·세션/lease 기반을 재사용한다. 기존 파일의 존재만으로 완료를 판정하지 않고 아래 추가 계약과 최종 로컬 검증을 연결한다.
+
+| 단계  | 추가 구현/확인                                                                  | 완료 증거                                         |
+| ----- | ------------------------------------------------------------------------------- | ------------------------------------------------- |
+| P3-01 | CategoryVisibility·공개 category/post DTO·소유권/CAS/범위 벡터·public read port | domain+memory+Worker 공통 벡터                    |
+| P3-02 | additive category migration·인덱스·public membership/actor batch                | 실제 D1 migration/실패 주입/쿼리 plan             |
+| P3-03 | category command·범위 철회·계정 삭제·allowlist                                  | 3계정 권한/변조/삭제/재가입 HTTP                  |
+| P3-04 | 친구/공개/단일 조회/validate/응원 현재 ACL·GC                                   | 익명/친구/차단·동시 축소/게시·pagination          |
+| P3-05 | HTTP/memory·public read adapter·개인 whitelist·복원 reconciliation              | 계약/복원/늦은 응답/account switch                |
+| P3-06 | social 전체 UI·공개 진입·category 범위 확인·초대 bootstrap·셸 배선              | 사용자 흐름/키보드/IME/실패·좁은 화면             |
+| P3-07 | E2E/PWA/보안/비용 harness·운영 안내·개인 회귀                                   | pnpm check/build·관련 E2E·실측 로그               |
+| P3-08 | default off·단계 배포/활성화/rollback 판정                                      | 실제 배포/인증/두 사람/원격 비용 미검증 항목 명시 |
+
+설계/ADR PR을 먼저 머지한 뒤 구현 티켓을 발행한다. 계약/개인 저장 → 서버 → UI 순서를 기본으로 하고 서로소 owns만 병렬화한다.
+구현/머지와 실제 운영 활성화는 구분한다. 자격증명/실기기 접근 없이 외부 게이트를 통과로 쓰지 않으며 실패/미검증을 최종 릴리스 기록에 남긴다.
