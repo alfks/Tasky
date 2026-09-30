@@ -146,6 +146,28 @@ describe('Providers 의 저장소 배선', () => {
     }
   });
 
+  it('일시적 인증 중단과 확인된 로그아웃/계정 삭제를 구별한다', async () => {
+    await mountProviders();
+    const { useSyncStore } = await import('@/features/sync');
+    const { onSocialInvalidation } = await import('@/features/social');
+    const reasons: string[] = [];
+    const stop = onSocialInvalidation((reason) => reasons.push(reason));
+    try {
+      act(() =>
+        useSyncStore.setState({ phase: 'ready', online: true, accountDeletedNotice: false }),
+      );
+      reasons.length = 0;
+      act(() => useSyncStore.setState({ phase: 'checking' }));
+      expect(reasons).toEqual(['auth']);
+      act(() => window.dispatchEvent(new Event('tasky-social-logout')));
+      expect(reasons).toEqual(['auth', 'account']);
+      act(() => useSyncStore.setState({ accountDeletedNotice: true }));
+      expect(reasons).toEqual(['auth', 'account', 'account']);
+    } finally {
+      stop();
+    }
+  });
+
   it('스키마 업그레이드 실패는 본문 대신 "새로 저장할 수 없다" 안내를 띄운다', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
