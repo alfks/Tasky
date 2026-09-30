@@ -3,11 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useSocialCommand } from '@/features/social/hooks/useSocialCommand';
 
-const { repository, invalidate } = vi.hoisted(() => ({ repository: {}, invalidate: vi.fn() }));
+const { repository, invalidate } = vi.hoisted(() => ({
+  repository: { me: vi.fn(async () => ({ data: { profile: { id: 'actor' } }, serverTime: 1 })) },
+  invalidate: vi.fn(),
+}));
 vi.mock('@/repositories/container', () => ({ getSocialRepository: () => repository }));
 vi.mock('@/features/social/session-lifecycle', () => ({
   captureSocialDispatch: () => () => true,
   invalidateSocialSession: invalidate,
+  onSocialReady: () => () => undefined,
   onSocialInvalidation: () => () => undefined,
 }));
 
@@ -28,7 +32,7 @@ describe('명령 결과와 재시도', () => {
         refresh,
       );
     });
-    expect(refresh).toHaveBeenCalledWith('conflict');
+    expect(refresh).toHaveBeenCalledWith('conflict', false);
     await act(async () => {
       await result.current.run('accept', 'version2', async (_repo, options) => {
         keys.push(options.key);
