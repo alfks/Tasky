@@ -241,7 +241,8 @@ async function pushAndPull(repo: SyncRepository, state: SyncState): Promise<bool
   }
   await ackApplied(repo, entries, response.applied);
   await applyResponse(repo, state, response);
-  if (includeOwnSettings && !response.more) {
+  // 대기 중인 설정 편집이 있으면 applyRemote가 서버 프로필을 보류한다. ack 뒤 다시 받아야 한다.
+  if (includeOwnSettings && !response.more && (await repo.countOutbox()) === 0) {
     const latest = (await repo.getState()) ?? state;
     await repo.setState({ ...latest, settingsProfileVersion: 1 });
   }
