@@ -161,3 +161,59 @@ it('held canonical read와 초안은 account 종료에서 폐기하며 late read
   expect(view.result.current.category).toBeNull();
   expect(view.result.current.checking).toBe(false);
 });
+
+it('unknown share remount는 source 선택 없이 fresh actor proof 뒤 FIRST 문장/date와 같은 DTO/key를 회복한다', async () => {
+  const choice = fixture();
+  choice.resolveCategory.mockResolvedValue({ ...canonical, visibility: 'public' });
+  const first = renderHook(() => useShareComposer(vi.fn()));
+  await act(async () => first.result.current.select(choice));
+  act(() => first.result.current.setText('승인된 첫 문장'));
+  f.repository.createPost.mockRejectedValueOnce({ code: 'temporary' });
+  await act(async () => {
+    await first.result.current.share();
+  });
+  const sent = f.repository.createPost.mock.calls[0];
+  first.unmount();
+  let verify!: () => void;
+  f.repository.me.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        verify = () => resolve({ data: { profile: { id: 'A' } }, serverTime: 1 });
+      }),
+  );
+  const shared = vi.fn();
+  const second = renderHook(() => useShareComposer(shared));
+  expect(second.result.current.selected).toBeNull();
+  expect(second.result.current.recoveryInput ?? null).toBeNull();
+  expect(f.repository.createPost).toHaveBeenCalledOnce();
+  await act(async () => verify());
+  expect(second.result.current.recoveryInput).toMatchObject({
+    text: '승인된 첫 문장',
+    happenedOn: '2026-09-30',
+  });
+  f.repository.createPost.mockResolvedValueOnce({ data: { id: 'recovered' }, serverTime: 1 });
+  await act(async () => {
+    await second.result.current.share();
+  });
+  expect(f.repository.createPost.mock.calls[1]).toEqual(sent);
+  expect(shared).toHaveBeenCalledWith('recovered', 'recovered');
+});
+
+it('remount displayproof 실패 뒤 계정 다시 확인은 FIRST 내용만 보여주고 새 POST를 시작하지 않는다', async () => {
+  const choice = fixture();
+  choice.resolveCategory.mockResolvedValue({ ...canonical, visibility: 'public' });
+  f.repository.createPost.mockRejectedValueOnce({ code: 'temporary' });
+  const first = renderHook(() => useShareComposer(vi.fn()));
+  await act(async () => first.result.current.select(choice));
+  await act(async () => {
+    await first.result.current.share();
+  });
+  first.unmount();
+  f.repository.me.mockRejectedValueOnce({ code: 'temporary' });
+  const second = renderHook(() => useShareComposer(vi.fn()));
+  await waitFor(() => expect(second.result.current.command.proofChecking).toBe(false));
+  expect(second.result.current.recoveryInput).toBeNull();
+  await act(async () => second.result.current.command.verifyOwner());
+  expect(second.result.current.recoveryInput?.text).toBe('원래 문장');
+  expect(f.repository.createPost).toHaveBeenCalledOnce();
+});
