@@ -29,7 +29,9 @@ export function blockKey(actorId: SocialId, peerId: SocialId): string {
 }
 
 export function profileById(state: MemorySocialState, id: SocialId): ProfileView | undefined {
-  return [...state.profiles.values()].find((value) => value.id === id);
+  return [...state.profiles.entries()].find(
+    ([sub, value]) => value.id === id && !state.deleted.has(sub),
+  )?.[1];
 }
 
 export function isFriend(state: MemorySocialState, a: SocialId, b: SocialId): boolean {

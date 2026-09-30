@@ -1,6 +1,4 @@
-import { postReadAccess } from '@/domain/social/access';
 import { parsePostInput } from '@/domain/social/input';
-import { planReactionSet } from '@/domain/social/reaction';
 import type {
   FriendshipFacts,
   Page,
@@ -10,6 +8,7 @@ import type {
   SocialId,
 } from '@/domain/social/social';
 
+import { categoryReadable, categoryView } from '@/repositories/memory/social/categories';
 import { keyPage } from '@/repositories/memory/social/cursor';
 import {
   actor,
@@ -33,36 +32,54 @@ function friendship(
   };
 }
 
-function canRead(state: MemorySocialState, sub: string, post: MemoryPost): boolean {
-  const self = actor(state, sub);
-  const access = postReadAccess(
-    {
-      actorId: self.id,
-      isSessionActive: true,
-      isAccountActive: true,
-      isProfileActive: true,
-    },
-    post.authorId,
-    profileById(state, post.authorId) !== undefined,
-    friendship(state, self.id, post.authorId),
+export function postReadable(
+  state: MemorySocialState,
+  viewerId: string | null,
+  post: MemoryPost,
+): boolean {
+  if (post.category !== undefined) return categoryReadable(state, post.category.id, viewerId);
+  if (viewerId === null) return false;
+  const friend = friendship(state, viewerId, post.authorId);
+  return (
+    profileById(state, post.authorId) !== undefined &&
+    (viewerId === post.authorId ||
+      (friend.isAccepted && !friend.isBlockedByActor && !friend.isBlockedByPeer))
   );
-  return access.allowed;
 }
 
-function view(state: MemorySocialState, sub: string, post: MemoryPost): PostView {
+function canRead(state: MemorySocialState, sub: string, post: MemoryPost): boolean {
+  const self = actor(state, sub);
+  return postReadable(state, self.id, post);
+}
+
+export function postView(
+  state: MemorySocialState,
+  viewerId: string | null,
+  post: MemoryPost,
+): PostView {
   const { authorId, ...sharedFields } = post;
   const author = profileById(state, authorId);
   if (author === undefined) return fail('unavailable', state.now());
-  const self = actor(state, sub);
   const reactionCount = [...state.reactions].filter((key) => {
     const [reactorId, postId] = key.split(':');
-    return postId === post.id && isFriend(state, reactorId, post.authorId);
+    return (
+      postId === post.id &&
+      reactorId !== post.authorId &&
+      profileById(state, reactorId) !== undefined &&
+      postReadable(state, reactorId, post)
+    );
   }).length;
   return {
     ...sharedFields,
     author: { id: author.id, nickname: author.nickname },
     reactionCount,
-    myReaction: state.reactions.has(`${self.id}:${post.id}`),
+    myReaction:
+      viewerId !== null &&
+      postReadable(state, viewerId, post) &&
+      state.reactions.has(`${viewerId}:${post.id}`),
+    ...(post.category === undefined
+      ? {}
+      : { category: categoryView(state, post.category.id, viewerId) }),
   };
 }
 
@@ -77,12 +94,16 @@ function postKey(post: PostView): string {
 export function feed(state: MemorySocialState, sub: string, input?: PageInput): Page<PostView> {
   const self = actor(state, sub);
   if (state.mode === 'off') return fail('social-disabled', state.now());
-  const visible = ordered(state.posts.values()).filter((post) => canRead(state, sub, post));
+  const visible = ordered(state.posts.values()).filter(
+    (post) =>
+      (post.authorId === self.id || isFriend(state, self.id, post.authorId)) &&
+      canRead(state, sub, post),
+  );
   return keyPage(
     state,
     self.id,
     'feed',
-    visible.map((post) => view(state, sub, post)),
+    visible.map((post) => postView(state, self.id, post)),
     input,
     postKey,
     'desc',
@@ -97,7 +118,7 @@ export function mine(state: MemorySocialState, sub: string, input?: PageInput): 
     'mine',
     ordered(state.posts.values())
       .filter((post) => post.authorId === self.id)
-      .map((post) => view(state, sub, post)),
+      .map((post) => postView(state, self.id, post)),
     input,
     postKey,
     'desc',
@@ -122,6 +143,17 @@ export function createPost(state: MemorySocialState, sub: string, input: PostInp
   if (state.mode !== 'enabled') return fail('social-disabled', state.now());
   const parsed = parsePostInput(input);
   if (!parsed.ok) return fail('validation', state.now());
+  const category =
+    parsed.value.categoryId === undefined
+      ? undefined
+      : state.categories.get(parsed.value.categoryId);
+  if (
+    parsed.value.categoryId !== undefined &&
+    (category === undefined || category.ownerId !== self.id || category.deleted)
+  )
+    return fail('unavailable', state.now());
+  if (category !== undefined && category.version !== parsed.value.categoryVersion)
+    return fail('conflict', state.now());
   const id = nextId(state);
   state.posts.set(id, {
     id,
@@ -129,6 +161,7 @@ export function createPost(state: MemorySocialState, sub: string, input: PostInp
     text: parsed.value.text,
     happenedOn: parsed.value.happenedOn,
     createdAt: state.now(),
+    ...(category === undefined ? {} : { category: categoryView(state, category.id, null) }),
   });
   return id;
 }
@@ -154,15 +187,8 @@ export function setReaction(
   if (post === undefined) return fail('unavailable', state.now());
   if (active && state.mode !== 'enabled') return fail('social-disabled', state.now());
   const key = `${self.id}:${postId}`;
-  const result = planReactionSet(
-    { actorId: self.id, isSessionActive: true, isAccountActive: true, isProfileActive: true },
-    post.authorId,
-    profileById(state, post.authorId) !== undefined,
-    friendship(state, self.id, post.authorId),
-    state.reactions.has(key),
-    active,
-  );
-  if (!result.ok) return fail(result.code, state.now());
-  if (result.nextActive) state.reactions.add(key);
+  if (post.authorId === self.id || (active && !postReadable(state, self.id, post)))
+    return fail('unavailable', state.now());
+  if (active) state.reactions.add(key);
   else state.reactions.delete(key);
 }

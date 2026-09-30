@@ -13,6 +13,7 @@ import type {
   SocialId,
   SocialMode,
   SocialResponse,
+  SocialCategoryView,
 } from '@/domain/social/social';
 
 import type { SocialRepositoryFailure } from '@/repositories/social-repository';
@@ -56,6 +57,7 @@ export type MemorySocialState = {
   blocks: Set<string>;
   invites: Map<string, MemoryInvite>;
   posts: Map<SocialId, MemoryPost>;
+  categories: Map<SocialId, SocialCategoryView & { ownerId: SocialId; deleted: boolean }>;
   reactions: Set<string>;
   receipts: Map<string, Receipt>;
   pendingCommands: Map<string, Promise<unknown>>;
@@ -74,6 +76,7 @@ export function createSocialState(now: () => number, mode: SocialMode): MemorySo
     blocks: new Set(),
     invites: new Map(),
     posts: new Map(),
+    categories: new Map(),
     reactions: new Set(),
     receipts: new Map(),
     pendingCommands: new Map(),
