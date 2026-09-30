@@ -59,6 +59,7 @@ export function ShellInsights({ onCollapse, panelId, className }: ShellInsightsP
 
   return (
     <div
+      data-shell-scroll-region="insights"
       className={cn('flex h-full min-h-0 flex-col gap-[var(--space-4)] overflow-y-auto', className)}
     >
       {timerPanelVisible ? <TimerPanelSection className="shadow-sm" /> : null}

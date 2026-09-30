@@ -16,13 +16,13 @@
 // 값을 prop 으로 내린다** — 이 컴포넌트가 직접 `useShellLayout()`/`useShellUiStore` 를 구독하지
 // 않는다(리뷰 Minor). `useShellLayout` 머리주석이 "화면에 한 번만 마운트하고 prop 으로 내린다" 고
 // 못 박아 둔 것을 그대로 지킨다 — 두 번째 구독은 리사이즈 한 번에 리스너를 두 배로 돌린다.
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 
 import type { Category } from '@/domain/category/category';
 import type { CategoryId } from '@/domain/ids';
 
 import {
-  CategoryFormDialog,
+  loadCategoryFormDialog,
   CategoryRemoveDialog,
   type CategoryRemovalController,
 } from '@/features/category';
@@ -34,6 +34,12 @@ import { APP_NAME } from '@/features/shell/lib/title';
 import { AccountSyncOverlays } from '@/features/sync';
 
 import { Dialog } from '@/components/ui/Dialog';
+
+const CategoryFormDialog = lazy(() =>
+  loadCategoryFormDialog().then((module) => ({
+    default: module.CategoryFormDialog,
+  })),
+);
 
 type ShellOverlaysProps = {
   categories: readonly Category[];
@@ -57,6 +63,7 @@ type ShellOverlaysProps = {
   /** 계정 블록(로그아웃·계정 삭제·계정 전환)이 쓰는 내보내기 — `AppShell` 이 만들어 이 컴포넌트와
    * `ShellSidebar` 양쪽에 같은 함수를 내린다. */
   exportBackup: () => Promise<boolean>;
+  onOpenSocial?: () => void;
 };
 
 export function ShellOverlays({
@@ -75,6 +82,7 @@ export function ShellOverlays({
   removalReturnFocus,
   onSelectCategory,
   exportBackup,
+  onOpenSocial,
 }: ShellOverlaysProps) {
   // 방금 선택한 카테고리로의 포커스 인계를 다음 프레임으로 미루는 예약 — 언마운트되면 취소한다
   // (아래 onSelectCategory 콜백, 리뷰 Minor: 취소하지 않으면 이미 사라진 트리에 대고 실행된다).
@@ -140,6 +148,10 @@ export function ShellOverlays({
           }}
           onRemoveCategory={onRemoveCategory}
           exportBackup={exportBackup}
+          onOpenSocial={() => {
+            onDrawerClose();
+            onOpenSocial?.();
+          }}
         />
       </Dialog>
 
@@ -168,7 +180,9 @@ export function ShellOverlays({
       </Dialog>
 
       {categoryFormOpen ? (
-        <CategoryFormDialog open mode={{ kind: 'create' }} onClose={onCategoryFormClose} />
+        <Suspense fallback={null}>
+          <CategoryFormDialog open mode={{ kind: 'create' }} onClose={onCategoryFormClose} />
+        </Suspense>
       ) : null}
 
       <CategoryRemoveDialog controller={removal} returnFocus={removalReturnFocus} />

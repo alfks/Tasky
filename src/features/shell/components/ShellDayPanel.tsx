@@ -169,7 +169,10 @@ export function ShellDayPanel({ date, summary, ...body }: ShellDayPanelProps) {
         </span>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-[var(--space-4)] py-[var(--space-3)]">
+      <div
+        data-shell-scroll-region="day"
+        className="min-h-0 flex-1 overflow-y-auto px-[var(--space-4)] py-[var(--space-3)]"
+      >
         <DayPanelBody date={date} {...body} />
       </div>
     </main>
