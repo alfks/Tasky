@@ -75,6 +75,7 @@ export const TODO_MESSAGES = {
    *  상시 "집중" 섹션 대신 항목 메뉴로 진입). */
   menuTimer: '타이머 시작',
   menuTomorrow: '내일로',
+  menuToday: '오늘하기',
   menuPickDate: '날짜 바꾸기…',
   /**
    * "날짜 바꾸기…" 가 여는 일 피커 위 한 줄 안내(R10-b) — 피커가 행을 가려도 무엇을 옮기는지 남긴다.

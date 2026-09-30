@@ -8,7 +8,6 @@ import type { Todo } from '@/domain/todo/todo';
 
 import { TODO_MESSAGES as M } from '@/features/todo/messages';
 
-import { IconButton } from '@/components/ui/IconButton';
 import { Menu } from '@/components/ui/Menu';
 import { Popover } from '@/components/ui/Popover';
 
@@ -40,31 +39,22 @@ type TodoItemMenuProps = {
    */
   onStartTimer?: () => void;
   onTomorrow: () => void;
+  onToday: () => void;
+  today: string;
   onPickDate: () => void;
   onChangeCategory: (categoryId: CategoryId) => void;
   onRegisterRoutine: () => void;
   onDelete: () => void;
   /** 메뉴를 닫을 때 앵커가 이미 사라졌으면(삭제 직후) 대신 포커스할 곳 (app-shell R14). */
   returnFocus?: () => HTMLElement | null;
-  /** 메뉴가 열릴 때. 호출부가 "이 행이 사라지면 어디로 갈지" 를 **미리** 찍어 두는 자리다. */
-  onOpen?: () => void;
-  /**
-   * `⋯` 트리거의 크기 override(theme.md §3-D R32) — `TodoItem` 만 좁은 화면 행 밀도 토큰
-   * (`--todo-row-hit-min`)을 넘긴다. `RoutineManagerRow` 는 넘기지 않아 기본 32px 그대로다 —
-   * 이 메뉴가 두 자리에서 쓰이지만 행 밀도는 `todo` 목록에만 적용되는 결정이라서다.
-   */
-  triggerClassName?: string;
-  /**
-   * `⋯` 트리거의 ref 를 바깥에서 쥐게 한다 — `TodoItem` 이 "날짜 바꾸기…" 피커를 **이 버튼**에 앵커한다
-   * (행 `<li>` 에 앵커하면 `listitem` 에 허용되지 않는 `aria-haspopup` 이 붙는다, 리뷰 Minor). 두 Popover
-   * 가 같은 앵커를 쓰지만 피커는 열려 있는 동안만 마운트되고 메뉴가 열리면 피커가 먼저 닫히므로 aria
-   * 속성 기록이 겹치지 않는다.
-   */
-  triggerRef?: RefObject<HTMLButtonElement | null>;
+  /** 항목의 제목 버튼이 메뉴와 날짜 피커의 공통 앵커다. */
+  triggerRef: RefObject<HTMLButtonElement | null>;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 };
 
 /**
- * 항목의 `⋯` 메뉴 (todo.md §2-A·R10·R13·R16).
+ * 항목을 누르면 열리는 메뉴 (todo.md §2-A·R10·R13·R16).
  *
  * "위로"·"아래로"는 여기 두지 않는다(사용자 결정) — 순서 변경의 키보드 대안은 드래그 손잡이·행
  * 포커스의 `Alt+↑/↓`(WCAG 2.5.7)로 이미 있어, 메뉴 항목은 세 번째 중복 경로였다.
@@ -79,18 +69,19 @@ export function TodoItemMenu({
   onAddMemo,
   onStartTimer,
   onTomorrow,
+  onToday,
+  today,
   onPickDate,
   onChangeCategory,
   onRegisterRoutine,
   onDelete,
   returnFocus,
-  onOpen,
-  triggerClassName,
   triggerRef,
+  open,
+  onOpenChange,
 }: TodoItemMenuProps) {
-  const ownRef = useRef<HTMLButtonElement>(null);
-  const anchor = triggerRef ?? ownRef;
-  const [open, setOpen] = useState(false);
+  const anchor = triggerRef;
+  const setOpen = onOpenChange;
   const [view, setView] = useState<'root' | 'category'>('root');
   // `Menu` 는 항목을 고르면 언제나 `onClose` 를 부른다 — 2단계로 펼치는 항목만 그 닫힘을 한 번 삼킨다.
   const keepOpen = useRef(false);
@@ -135,6 +126,9 @@ export function TodoItemMenu({
               { id: 'timer', label: M.menuTimer, disabled: todo.done, onSelect: run(onStartTimer) },
             ]),
         { id: 'tomorrow', label: M.menuTomorrow, onSelect: run(onTomorrow) },
+        ...(todo.date === today
+          ? []
+          : [{ id: 'today', label: M.menuToday, onSelect: run(onToday) }]),
         { id: 'pick-date', label: M.menuPickDate, onSelect: run(onPickDate) },
         { id: 'routine', label: M.menuRoutine, onSelect: run(onRegisterRoutine) },
         { id: 'delete', label: M.menuDelete, destructive: true, onSelect: run(onDelete) },
@@ -148,20 +142,6 @@ export function TodoItemMenu({
 
   return (
     <>
-      <IconButton
-        ref={anchor}
-        label={M.menuLabel(todo.title)}
-        className={triggerClassName}
-        onClick={() => {
-          setView('root');
-          // 업데이터 안에서 부르지 않는다 — `onOpen` 이 호출부의 상태를 바꾸면(열린 피커 닫기) 렌더 중
-          // setState 가 된다.
-          if (!open) onOpen?.();
-          setOpen((value) => !value);
-        }}
-      >
-        ⋯
-      </IconButton>
       <Popover
         open={open}
         onClose={close}

@@ -58,7 +58,7 @@ async function commitComposition(cdp: CDPSession, text: string): Promise<void> {
 
 /** 그룹 안에서 항목 메뉴를 열고 항목 하나를 고른다. */
 async function runItemMenu(page: Page, group: Locator, title: string, item: string): Promise<void> {
-  await group.getByRole('button', { name: `${title} 메뉴` }).click();
+  await group.getByRole('button', { name: title, exact: true }).click();
   await page.getByRole('menuitem', { name: item, exact: true }).click();
 }
 
