@@ -80,6 +80,9 @@ const CATEGORY_KEYS = whitelist<Category>()([
   'status',
   'closedAt',
   'historyHidden',
+  'visibility',
+  'socialCategoryId',
+  'socialCategoryVersion',
 ]);
 const TODO_KEYS = whitelist<Todo>()([
   ...META_KEYS,
@@ -239,6 +242,18 @@ export function readCategory(value: unknown, path: string): Category {
   requireEnum(row, 'status', path, ['active', 'completed', 'paused'] as const);
   optionalInstant(row, 'closedAt', path);
   optionalBoolean(row, 'historyHidden', path);
+  if (row.visibility !== undefined)
+    requireEnum(row, 'visibility', path, ['private', 'friends', 'public'] as const);
+  const projectionId = optionalString(row, 'socialCategoryId', path);
+  if (projectionId !== undefined && !/^[0-9a-f]{32}$/u.test(projectionId))
+    failAt(`${path}.socialCategoryId`);
+  if (
+    row.socialCategoryVersion !== undefined &&
+    (!Number.isSafeInteger(row.socialCategoryVersion) || Number(row.socialCategoryVersion) < 0)
+  )
+    failAt(`${path}.socialCategoryVersion`);
+  if ((projectionId === undefined) !== (row.socialCategoryVersion === undefined))
+    failAt(`${path}.socialCategoryId`);
   return entity;
 }
 

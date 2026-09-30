@@ -292,3 +292,37 @@ describe('readSettings — 프로필 세 필드 (profile.md R8 · ADR-0023 규�
     }
   });
 });
+
+describe('readCategory — 공개 projection 연결은 캐시만 왕복한다', () => {
+  it.each(['private', 'friends', 'public'] as const)(
+    '범위 %s와 버전은 유지하고 원본 공개 payload는 버린다',
+    (visibility) => {
+      const row = makeCategory({
+        visibility,
+        socialCategoryId: 'a'.repeat(32),
+        socialCategoryVersion: 3,
+      });
+      const restored = readCategory({ ...row, approvedPosts: ['원본 메모'] }, 'categories[0]');
+      expect(restored).toMatchObject({
+        visibility,
+        socialCategoryId: 'a'.repeat(32),
+        socialCategoryVersion: 3,
+      });
+      expect('approvedPosts' in restored).toBe(false);
+    },
+  );
+  it('기존 백업에는 원격 projection을 만들지 않는다', () => {
+    const restored = readCategory(makeCategory(), 'categories[0]');
+    expect(restored.visibility).toBeUndefined();
+    expect(restored.socialCategoryId).toBeUndefined();
+  });
+  it.each([
+    { visibility: 'everyone' },
+    { socialCategoryId: 'source-id' },
+    { socialCategoryId: 'a'.repeat(32) },
+    { socialCategoryVersion: 1 },
+    { socialCategoryId: 'a'.repeat(32), socialCategoryVersion: -1 },
+  ])('손상된 공개 캐시는 거절한다: %j', (fields) => {
+    expect(() => readCategory({ ...makeCategory(), ...fields }, 'categories[0]')).toThrow();
+  });
+});

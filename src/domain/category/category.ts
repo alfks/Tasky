@@ -1,5 +1,6 @@
 // 카테고리 엔티티 타입 (docs/ARCHITECTURE.md §4, TECH_PLAN §5). 규칙 함수는 category.rules.ts, 삭제 계획은 removal.ts.
 import type { Meta } from '@/domain/meta';
+import type { CategoryVisibility } from '@/domain/category/visibility';
 
 /**
  * 카테고리 상태 (category R7). 전이는 `active ⇄ completed`·`active ⇄ paused`·`completed ⇄ paused` 이고
@@ -28,4 +29,10 @@ export type Category = Meta & {
    * 없음, ADR-0002·ADR-0005). 없으면(대부분의 삭제) 기본값처럼 이름·색이 그대로 남는다.
    */
   historyHidden?: boolean;
+  /** 서버에서 마지막으로 확인한 공개범위. 누락은 private. */
+  visibility?: CategoryVisibility;
+  /** 개인 id와 다른 공개 projection id. 서버 소유권 확인은 생략하지 않는다. */
+  socialCategoryId?: string;
+  /** 마지막으로 확인한 공개 projection의 CAS version. */
+  socialCategoryVersion?: number;
 };
