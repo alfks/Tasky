@@ -265,4 +265,13 @@ describe('공통 공개범위 벡터(memory 포트)', () => {
       peer.setReaction({ postId: post.id, active: false }, commandKey(4)),
     ).resolves.toMatchObject({ data: { active: false } });
   });
+  it('R8 category cleanup replay 예외는 enabled-only 게시 command에 번지지 않는다', async () => {
+    const { server, owner } = await setup();
+    const input = { text: '완료', happenedOn: '2026-09-30' };
+    await owner.createPost(input, commandKey(1));
+    server.state.mode = 'off';
+    await expect(owner.createPost(input, commandKey(1))).rejects.toMatchObject({
+      code: 'social-disabled',
+    });
+  });
 });
