@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { parseCategoryInput, parseCategoryRevokeInput } from '@/domain/social/category-input';
 import { parsePostInput } from '@/domain/social/input';
 import { DEFAULT_ACCENT_COLOR } from '@/domain/theme/palette';

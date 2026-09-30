@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
+
 import {
   categoryVisibility,
   clearCategoryVisibility,
   confirmCategoryVisibility,
   isCategoryVisibility,
 } from '@/domain/category/visibility';
+
 import { makeCategory } from '@/test/fixtures/category';
 const deps = { now: () => '2026-09-30T12:00:00.000Z', id: () => 'unused' };
 describe('개인 category 공개 표식', () => {

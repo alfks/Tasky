@@ -2,6 +2,7 @@ import type { PageInput } from '@/domain/social/social';
 
 import type { SocialRepository } from '@/repositories/social-repository';
 
+import { category } from '@/infra/social/category-decode';
 import {
   allowed,
   block,
@@ -22,7 +23,6 @@ import {
   sentRequest,
 } from '@/infra/social/decode';
 import { createSocialRequest } from '@/infra/social/request';
-import { category } from '@/infra/social/category-decode';
 
 function pageQuery(input?: PageInput): Readonly<Record<string, string | number | undefined>> {
   return { cursor: input?.cursor, limit: input?.limit };

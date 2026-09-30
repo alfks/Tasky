@@ -1,6 +1,6 @@
 // 카테고리 엔티티 타입 (docs/ARCHITECTURE.md §4, TECH_PLAN §5). 규칙 함수는 category.rules.ts, 삭제 계획은 removal.ts.
-import type { Meta } from '@/domain/meta';
 import type { CategoryVisibility } from '@/domain/category/visibility';
+import type { Meta } from '@/domain/meta';
 
 /**
  * 카테고리 상태 (category R7). 전이는 `active ⇄ completed`·`active ⇄ paused`·`completed ⇄ paused` 이고
