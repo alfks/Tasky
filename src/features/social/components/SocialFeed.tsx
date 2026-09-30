@@ -1,8 +1,9 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { SocialPagination } from '@/features/social/components/SocialPagination';
 import { SocialPostCard } from '@/features/social/components/SocialPostCard';
 import { socialFailureMessage } from '@/features/social/hooks/useSocialCommand';
+import { captureSocialDispatch } from '@/features/social/session-lifecycle';
 import { useSocialStore, useVisibleSocialPosts } from '@/features/social/store/social-store';
 
 import { Button } from '@/components/ui/Button';
@@ -19,7 +20,67 @@ export function SocialFeed({ mine, onShare, onFriends }: SocialFeedProps) {
   const pageIndex = useSocialStore((state) => state.pageIndex);
   const nextCursor = useSocialStore((state) => state.nextCursor);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const navigation = useRef(0);
+  const alive = useRef(false);
+  const reactionCleanups = useRef(new Set<() => void>());
+  useEffect(() => {
+    alive.current = true;
+    const cleanups = reactionCleanups.current;
+    return () => {
+      alive.current = false;
+      navigation.current += 1;
+      cleanups.forEach((cancel) => cancel());
+    };
+  }, []);
+  const startReaction = (postId: string) => {
+    const generation = navigation.current;
+    const allowed = captureSocialDispatch();
+    const opener = document.activeElement;
+    const regions: { element: HTMLElement; top: number; left: number }[] = [];
+    let element = document.getElementById(`social-post-${postId}`)?.parentElement;
+    while (element) {
+      if (element.scrollHeight > element.clientHeight) {
+        regions.push({ element, top: element.scrollTop, left: element.scrollLeft });
+      }
+      element = element.parentElement;
+    }
+    let moved = false;
+    const mark = () => {
+      moved = true;
+    };
+    const events = ['pointerdown', 'keydown', 'wheel', 'touchmove'] as const;
+    events.forEach((name) => window.addEventListener(name, mark, { passive: true }));
+    const cancel = () => {
+      events.forEach((name) => window.removeEventListener(name, mark));
+      reactionCleanups.current.delete(cancel);
+    };
+    reactionCleanups.current.add(cancel);
+    const complete = async () => {
+      if (!alive.current || !allowed() || generation !== navigation.current || moved) {
+        cancel();
+        return;
+      }
+      await useSocialStore.getState().refreshCurrent();
+      requestAnimationFrame(() => {
+        cancel();
+        if (!alive.current || !allowed() || generation !== navigation.current || moved) return;
+        if (document.activeElement !== document.body && document.activeElement !== opener) return;
+        regions.forEach((region) => {
+          if (region.element.isConnected) {
+            region.element.scrollTop = region.top;
+            region.element.scrollLeft = region.left;
+          }
+        });
+        const card = document.getElementById(`social-post-${postId}`);
+        (
+          card?.querySelector<HTMLButtonElement>('button[aria-pressed]') ?? headingRef.current
+        )?.focus({ preventScroll: true });
+      });
+    };
+    return { complete, cancel };
+  };
   const move = async (operation: 'next' | 'previous' | 'refresh') => {
+    navigation.current += 1;
     await useSocialStore.getState()[operation]();
     headingRef.current?.focus();
     headingRef.current?.scrollIntoView({ block: 'start' });
@@ -44,14 +105,20 @@ export function SocialFeed({ mine, onShare, onFriends }: SocialFeedProps) {
           <Button
             variant="outline"
             aria-pressed={view === 'friends'}
-            onClick={() => void useSocialStore.getState().setView('friends')}
+            onClick={() => {
+              navigation.current += 1;
+              void useSocialStore.getState().setView('friends');
+            }}
           >
             친구
           </Button>
           <Button
             variant="outline"
             aria-pressed={view === 'public'}
-            onClick={() => void useSocialStore.getState().setView('public')}
+            onClick={() => {
+              navigation.current += 1;
+              void useSocialStore.getState().setView('public');
+            }}
           >
             모두 공개
           </Button>
@@ -103,6 +170,8 @@ export function SocialFeed({ mine, onShare, onFriends }: SocialFeedProps) {
             post={post}
             own={post.author.id === profile?.id}
             canWrite={mode === 'enabled'}
+            canCancelReaction={mode === 'read-only' || mode === 'enabled'}
+            onReactionStart={() => startReaction(post.id)}
             onChanged={() => void move('refresh')}
             returnFocus={() => headingRef.current}
           />
