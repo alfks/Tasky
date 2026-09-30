@@ -60,6 +60,11 @@ export function BackupImportSection({
       <h3 id="backup-import-heading" className="text-base font-semibold">
         가져오기
       </h3>
+      <p className="text-sm text-muted">
+        가져오기는 서버 공개 상태를 바꾸지 않아요. 공유 연결 없음으로 표시되어도 이전 서버 공유가
+        비공개가 된 것은 아니에요. 친구 화면의 공유 카테고리 관리에서 이전 공유 상태를 직접 확인해
+        주세요.
+      </p>
 
       <div className="flex flex-wrap items-center gap-[var(--space-3)]">
         <label htmlFor={inputId} className="text-sm font-medium">
