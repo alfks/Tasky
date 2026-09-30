@@ -1,7 +1,6 @@
 'use client';
 
-// 사이드바 맨 위 프로필 카드 (profile.md §2·R9~R11·R14, app-shell.md §2-A). 컬럼(`framed`)에서는 상시
-// 카드, 드로어에서는 껍질 없이(app-shell R18). 진입 청크에 남는 것은 이 파일·스토어·`profile.rules`
+// 달력 위 프로필 카드 (profile.md §2·R9~R11·R14, app-shell.md §2-A). 진입 청크에 남는 것은 이 파일·스토어·`profile.rules`
 // 뿐이고, 편집 대화상자(검증·사진 파이프라인)는 ✎ 를 처음 누를 때 받는 지연 청크다(BackupLauncher
 // 와 같은 lazy() 패턴). `email` 은 셸이 동기화 스토어에서 읽어 내려준다 — 이 feature 는 `sync` 를
 // import 하지 않는다(lazy-boundary §D-10: `sync-store` 가 이 feature 의 스토어를 `SyncRuntime` 에 담는다).
@@ -79,7 +78,7 @@ export function ProfileCard({ framed = true, email }: ProfileCardProps) {
       // 간격 `--space-2`: 고정 컬럼(240)에서 텍스트 폭이 120px 뿐이라 `--space-3` 이면 자리표시 문구
       // "한 줄 소개를 적어 보세요"(122px) 가 잘린다(리뷰 B-M1 실측). e2e 가 scrollWidth 로 지킨다.
       className={cn(
-        'flex shrink-0 items-center gap-[var(--space-2)]',
+        'flex w-full max-w-full min-w-0 shrink-0 items-center gap-[var(--space-2)]',
         framed ? CARD_CLASS : 'px-[var(--space-2)]',
       )}
     >

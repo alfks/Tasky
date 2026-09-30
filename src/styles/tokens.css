@@ -217,6 +217,14 @@
   }
 }
 
+/* 1열 화면에서는 월 격자가 프로필 아래 첫 화면의 대부분을 쓴다(calendar-layout.md R9).
+   680px 이상 2영역의 달력 치수는 그대로 두고, 낮은 휴대폰에서도 손가락 표적을 44px 이상 둔다. */
+@media (max-width: 679.98px) {
+  :root {
+    --cal-cell-h-month: clamp(44px, 7dvh, 64px);
+  }
+}
+
 /* 할 일 행 밀도(theme.md §3-D R32) — 사용자 결정("행높이도 조절해서 한번에 보이는 할일 task가
    더 많이 보였으면 좋겠어"). `@theme` 밖에 두는 이유는 위 --cal-* 와 같다: `todo` 목록 전용
    밀도라 `@theme` 에 넣으면 `h-todo-row-hit-min` 같은 유틸이 생겨 이 값이 todo 담장 밖으로 새

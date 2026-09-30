@@ -81,8 +81,8 @@ beforeEach(() => {
   useSyncStore.setState({ email: 'millie@example.com' });
 });
 
-describe('프로필 카드 (profile.md §2, app-shell §2-A 순서)', () => {
-  it('nav "사이드바" 의 첫 카드가 region "프로필" 이고 이름 폴백은 동기화 스토어의 이메일 앞부분이다', async () => {
+describe('프로필 이동', () => {
+  it('사이드바에는 프로필을 중복해서 그리지 않는다', () => {
     render(
       <ShellSidebar
         showTitle
@@ -95,11 +95,8 @@ describe('프로필 카드 (profile.md §2, app-shell §2-A 순서)', () => {
       />,
     );
     const nav = screen.getByRole('navigation', { name: '사이드바' });
-    const regions = within(nav).getAllByRole('region');
-    expect(regions[0]).toHaveAccessibleName('프로필');
-    expect(regions[1]).toHaveAccessibleName('카테고리');
-    expect(await within(regions[0]!).findByText('millie')).toBeInTheDocument();
-    expect(within(regions[0]!).getByRole('button', { name: '프로필 편집' })).toBeInTheDocument();
+    expect(within(nav).queryByRole('region', { name: '프로필' })).toBeNull();
+    expect(within(nav).getByRole('region', { name: '카테고리' })).toBeInTheDocument();
   });
 });
 
@@ -184,8 +181,8 @@ describe('"루틴" 진입점', () => {
   );
 });
 
-describe('D-day (사용자 결정 — 카테고리쪽 사이드바로 옮겨옴)', () => {
-  it('카테고리 목록 아래, 도구 줄 위에 D-day 섹션이 있다', () => {
+describe('D-day 제거', () => {
+  it('사이드바에 D-day 진입점이 없다', () => {
     render(
       <ShellSidebar
         showTitle
@@ -198,8 +195,8 @@ describe('D-day (사용자 결정 — 카테고리쪽 사이드바로 옮겨옴)
       />,
     );
 
-    expect(screen.getByRole('heading', { level: 2, name: 'D-day' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '+ D-day 추가' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 2, name: 'D-day' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '+ D-day 추가' })).toBeNull();
   });
 });
 
@@ -208,7 +205,7 @@ describe('오늘의 기록 (diary.md §2 · app-shell R6-b — 사용자 결정�
   const precedes = (a: Element, b: Element): boolean =>
     Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 
-  it('D-day 아래, 도구 줄 위에 있다 — nav 안 순서: 카테고리 → D-day → 오늘의 기록 → 도구 → 계정', async () => {
+  it('카테고리 아래, 도구 줄 위에 있다', async () => {
     render(
       <ShellSidebar
         showTitle
@@ -225,10 +222,8 @@ describe('오늘의 기록 (diary.md §2 · app-shell R6-b — 사용자 결정�
     expect(await within(diary).findByRole('button', { name: '+ 기록하기' })).toBeInTheDocument();
 
     const categories = screen.getByRole('heading', { level: 2, name: '카테고리' });
-    const dday = screen.getByRole('heading', { level: 2, name: 'D-day' });
     const tools = screen.getByRole('button', { name: '루틴' });
-    expect(precedes(categories, dday)).toBe(true);
-    expect(precedes(dday, diary)).toBe(true);
+    expect(precedes(categories, diary)).toBe(true);
     expect(precedes(diary, tools)).toBe(true);
   });
 

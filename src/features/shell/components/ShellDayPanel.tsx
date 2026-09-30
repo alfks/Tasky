@@ -155,7 +155,7 @@ export function ShellDayPanel({ date, summary, ...body }: ShellDayPanelProps) {
     <main
       id={SHELL_MAIN_ID}
       tabIndex={-1}
-      className="flex min-h-0 max-w-[400px] min-w-[280px] flex-1 flex-col outline-none"
+      className="flex min-h-0 max-w-[660px] min-w-[280px] flex-[3] flex-col outline-none"
     >
       {/* R5: `M월 D일 (요일)` + 달성률 `◯ n%`(링 20px) 한 줄, 고정. */}
       <div className="flex shrink-0 items-center gap-[var(--space-2)] px-[var(--space-4)] pb-[var(--space-2)]">
