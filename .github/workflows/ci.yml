@@ -110,6 +110,8 @@ jobs:
 
       - name: build 검사 (lint · 레이어 경계 린트 + 아키텍처 2차 패스 · typecheck · format:check · test)
         if: steps.pkg.outputs.present == 'true'
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: bash scripts/check.sh --build
 
       - name: build
