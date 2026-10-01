@@ -223,10 +223,14 @@ test('월 보기는 새로고침 뒤에도 월 보기다 — 선택 날짜는 �
   await expect(page.getByRole('grid', { name: '날짜 선택' })).toBeVisible();
   const monthLabel = page.getByRole('button', { name: /년 \d+월/ });
   const thisMonth = (await monthLabel.textContent()) ?? '';
+  const todayLabel = await todayCell(page, 'gridcell').getAttribute('aria-label');
   // 다른 달의 날을 골라 두어도(R2 — 월 보기의 › 는 선택 날짜를 한 달 옮긴다) …
   await page.getByRole('button', { name: '다음 달' }).click();
   await expect(monthLabel).not.toHaveText(thisMonth);
-  await expect(todayCell(page, 'gridcell')).not.toHaveAttribute('aria-selected', 'true');
+  // 월초의 오늘은 다음 달 격자 밖일 수 있으므로 실제 선택 칸과 비교한다.
+  const selectedCell = page.getByRole('gridcell', { selected: true });
+  await expect(selectedCell).toHaveCount(1);
+  await expect(selectedCell).not.toHaveAttribute('aria-label', todayLabel!);
 
   await page.reload();
   await waitForShell(page);
