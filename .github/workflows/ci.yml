@@ -96,8 +96,6 @@ jobs:
       - name: pnpm 설치
         if: steps.pkg.outputs.present == 'true'
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: Node 설치
         if: steps.pkg.outputs.present == 'true'
@@ -141,8 +139,6 @@ jobs:
 
       - name: pnpm 설치
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: Node 설치
         uses: actions/setup-node@v6
