@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { parsePostInput } from '@/domain/social/input';
-import type { PostInput, SocialCategoryView } from '@/domain/social/social';
+import type { PostInput, SocialCategoryView, SocialErrorCode } from '@/domain/social/social';
 
 import type { CompletedSocialChoice } from '@/features/social/components/SocialScreen';
 import { useSocialCommand } from '@/features/social/hooks/useSocialCommand';
@@ -56,9 +56,9 @@ export function useShareComposer(
       const confirmed = await choice.resolveCategory();
       if (current === sequence.current && allowed()) setCategory(confirmed);
     } catch {
-      if (current === sequence.current) setCategory(null);
+      if (current === sequence.current && allowed()) setCategory(null);
     } finally {
-      if (current === sequence.current) setChecking(false);
+      if (current === sequence.current && allowed()) setChecking(false);
     }
   };
   const select = (choice: CompletedSocialChoice) => {
@@ -71,17 +71,44 @@ export function useShareComposer(
   const share = async () => {
     const current = sequence.current;
     const allowed = captureSocialDispatch();
+    let submitted = pendingInput.current;
+    const isCurrent = () =>
+      current === sequence.current && allowed() && pendingInput.current === submitted;
+    const clearPending = () => {
+      pendingInput.current = null;
+      pendingCategory.current = null;
+    };
+    const onFailure = (code: SocialErrorCode, uncertain: boolean) => {
+      if (!isCurrent() || uncertain) return;
+      clearPending();
+      if (selected === null) {
+        setCategory(null);
+        setChecking(false);
+      } else if (code === 'conflict' || code === 'limit-reached' || code === 'unavailable') {
+        // 계정 확인·명령 관측은 끝났으므로 후속 읽기가 busy 수명을 늘리지 않는다.
+        void reconcile(selected);
+      }
+    };
+    const finish = (
+      result: { id: string } | null,
+      audience: 'friends' | 'public' | 'recovered',
+    ) => {
+      if (!isCurrent()) return;
+      if (result !== null) {
+        clearPending();
+        onShared(result.id, audience);
+      } else if (!command.hasIntent()) clearPending();
+    };
     if (command.hasIntent()) {
       if (!command.ownerVerified || !command.retryAllowed) return;
-      const result = await command.retry<{ id: string }>();
-      if (result !== null && current === sequence.current && allowed())
-        onShared(result.id, 'recovered');
+      const result = await command.retry<{ id: string }>(onFailure);
+      finish(result, 'recovered');
       return;
     }
     if (selected === null) return;
     if (
       pendingInput.current === null &&
-      (category === null || category.visibility === 'private' || checking)
+      (category === null || category.visibility === 'private' || category.revoked || checking)
     )
       return;
     const input = pendingInput.current ?? {
@@ -96,33 +123,20 @@ export function useShareComposer(
       return;
     }
     const recovering = pendingInput.current !== null;
-    const submitted = pendingInput.current ?? parsed.value;
+    const commandInput = pendingInput.current ?? parsed.value;
+    submitted = commandInput;
     if (pendingInput.current === null) pendingCategory.current = category;
     pendingInput.current = submitted;
     const result = await command.run(
       'share',
-      JSON.stringify(submitted),
-      (repo, options) => repo.createPost(submitted, options),
-      async (code, uncertain) => {
-        if (!uncertain) {
-          pendingInput.current = null;
-          pendingCategory.current = null;
-        }
-        if (code === 'conflict' || code === 'unavailable') await reconcile(selected);
-      },
+      JSON.stringify(commandInput),
+      (repo, options) => repo.createPost(commandInput, options),
+      onFailure,
     );
-    if (result === null && !command.hasIntent()) {
-      pendingInput.current = null;
-      pendingCategory.current = null;
-    }
-    if (result !== null && current === sequence.current && allowed()) {
-      pendingInput.current = null;
-      pendingCategory.current = null;
-      onShared(
-        result.id,
-        recovering ? 'recovered' : category?.visibility === 'public' ? 'public' : 'friends',
-      );
-    }
+    finish(
+      result,
+      recovering ? 'recovered' : category?.visibility === 'public' ? 'public' : 'friends',
+    );
   };
   const resume = useRef<() => void>(() => undefined);
   resume.current = () => {
