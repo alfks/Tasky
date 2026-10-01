@@ -1,0 +1,65 @@
+{
+  "source_commit": "f10806d8da6133cddd83d7c48cb9c720eb3bc98a",
+  "capture_test_commit": "f10806d8da6133cddd83d7c48cb9c720eb3bc98a",
+  "verification_test_commit": "896b260867eb223838f59b276486347338e52261",
+  "index_sha256": "e42babac7b69873fdd66d192a16fa522349d755481ae6fca7fc743ad853751af",
+  "browser": "Chromium 151.0.7922.173 / Debian GNU/Linux 13",
+  "images": [
+    {
+      "file": "category-visibility-light.png",
+      "width": 1280,
+      "height": 720,
+      "sha256": "921680355e754dd4e50b2918ce0b600e3b3cd56cff8162ac89a4d417626e0576",
+      "css_zoom_method": "none"
+    },
+    {
+      "file": "sharing-recovery-dark.png",
+      "width": 1280,
+      "height": 1800,
+      "sha256": "2a9639323ce473105cb295de4f99ed63de7169d5fe302c10ed03aa22b220d909",
+      "css_zoom_method": "document.documentElement.style.zoom = 2; layout simulation, not native browser zoom"
+    }
+  ],
+  "verification": {
+    "enabled": {
+      "passed": 4,
+      "workers": 1,
+      "capture_test_commit": "f10806d8da6133cddd83d7c48cb9c720eb3bc98a"
+    },
+    "personal": {
+      "passed": 75,
+      "skipped": 4,
+      "workers": 1,
+      "test_commit": "896b260867eb223838f59b276486347338e52261"
+    },
+    "manager390": {
+      "passed": 1,
+      "width": 390,
+      "height": 844
+    },
+    "entry_gzip": 166949,
+    "initial_gzip": 217943,
+    "required_js": 16,
+    "optional_js": 14,
+    "optional_requested": 0,
+    "optional_cached": 0,
+    "precache_urls": 26
+  },
+  "verification_history": [
+    {
+      "case": "month-boundary",
+      "result": "74 passed / 4 skipped / 1 failed",
+      "cause": "UTC 2026-10-01 current day is outside the next-month grid",
+      "test_only_fix_commit": "896b260867eb223838f59b276486347338e52261",
+      "affected_passed": 1
+    },
+    {
+      "case": "routine-menu-hit",
+      "result": "74 passed / 4 skipped / 1 failed",
+      "cause": "single-shot geometry hit mismatch; cause not established",
+      "unchanged_affected_passed": 1,
+      "final_personal_passed": 75,
+      "final_workers": 1
+    }
+  ]
+}
