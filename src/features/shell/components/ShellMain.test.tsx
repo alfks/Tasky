@@ -86,3 +86,12 @@ describe('하단 고정 [+ 할 일] 표식 (§2-B)', () => {
     expect(document.querySelector(`[${BOTTOM_BAR_ATTR}]`)).toBeNull();
   });
 });
+
+describe('프로필은 header 안에 있다 (profile.md §2 — 별도 슬롯 없음)', () => {
+  it('ShellMain 은 프로필을 따로 그리지 않는다 — header 하나가 상단 줄·프로필·달력을 통째로 갖는다', async () => {
+    await mount({ header: <p>머리글</p> });
+    expect(screen.queryByRole('region', { name: '프로필과 달력' })).toBeNull();
+    expect(screen.queryByRole('region', { name: '프로필' })).toBeNull();
+    expect(screen.getByRole('main')).toContainElement(screen.getByText('머리글'));
+  });
+});

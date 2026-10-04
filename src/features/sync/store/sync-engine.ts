@@ -2,17 +2,23 @@
 // 전부 여기서 다룬다. `sync-store.ts`(진입)가 `await import(...)` 로 딱 한 번 가져와 `startEngine()`
 // 을 부른다.
 import type { OutboxEntry } from '@/domain/sync/outbox';
-import { planOutboxAfterReject, shouldQuarantine, toSyncChange } from '@/domain/sync/outbox';
-import { readRemoteRow } from '@/domain/sync/remote-rows';
+import { toSyncChange } from '@/domain/sync/outbox';
 import { isResyncResponse } from '@/domain/sync/wire';
 import type { SyncChange, SyncOkResponse, SyncState, SyncTable } from '@/domain/sync/wire';
 
 import { getRepositories, getSyncTransport } from '@/repositories/container';
-import type { RemoteWrite, SyncRepository } from '@/repositories/sync-repository';
+import type { SyncRepository } from '@/repositories/sync-repository';
 import { isTransportError } from '@/repositories/sync-transport';
 
 import { verifySession } from '@/features/sync/store/auth-actions';
-import { reloadAdoptedViews } from '@/features/sync/store/reload-views';
+import { reloadAdoptedViews, reloadAfterFirstSync } from '@/features/sync/store/reload-views';
+import {
+  forgetInvalid,
+  handleRejections,
+  keyOf,
+  resetRejectStateForTest,
+  toRemoteWrites,
+} from '@/features/sync/store/sync-rejections';
 import type { SyncRuntime } from '@/features/sync/store/sync-store';
 
 import { nowIso } from '@/lib/date';
@@ -31,14 +37,6 @@ let rerunRequested = false;
 let rt: SyncRuntime;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-/** (tbl,id) → 연속 `invalid` 거절 횟수(③-4). 탭이 살아 있는 동안만 유지한다 — 새로고침하면
- * 다시 0부터 세지만, 그사이 격리된 것은 `SyncState.quarantined` 에 남아 재시도되지 않는다. */
-const consecutiveInvalid = new Map<string, number>();
-
-function keyOf(tbl: SyncTable, id: string): string {
-  return `${tbl}|${id}`;
-}
-
 function schedule(delayMs: number): void {
   if (debounceTimer !== null) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
@@ -92,38 +90,33 @@ async function applyResponse(
   // 거절 판정 + 풀 적용 + 커서 갱신만 한다. `pullAll`(changes=[])은 애초에 `applied` 가 없다.
   await handleRejections(repo, response);
 
-  const remoteWrites: RemoteWrite[] = [];
-  const invalidPulled: { tbl: SyncTable; id: string }[] = [];
-  for (const pulled of response.pulled) {
-    const result = readRemoteRow(pulled.tbl, pulled.id, pulled.row);
-    if (result.ok) {
-      remoteWrites.push({ tbl: pulled.tbl, seq: pulled.seq, entity: result.entity } as RemoteWrite);
-    } else {
-      invalidPulled.push({ tbl: pulled.tbl, id: pulled.id });
-    }
-  }
-  if (invalidPulled.length > 0) {
-    console.error('동기화 풀 결과에 형식이 어긋난 로우가 있어 건너뜁니다.', invalidPulled);
-  }
+  const remoteWrites = toRemoteWrites(response.pulled);
 
   const result = remoteWrites.length > 0 ? await repo.applyRemote(remoteWrites) : null;
 
-  const pendingCount = await repo.countOutbox();
   // `handleRejections` 가 격리를 확정하며 `quarantined` 를 이미 저장소에 썼을 수 있다 — 여기서
   // 인자로 받은(함수 진입 시점의) `state` 를 그대로 스프레드하면 그 최신 `quarantined` 를 덮어써
   // `undefined` 로 되돌린다(실측: "3회 격리" 테스트가 이 순서 문제로 깨졌다). 커서만 갱신하려면
   // 저장소의 **지금** 값을 다시 읽어 그 위에 얹어야 한다.
   const latest = (await repo.getState()) ?? state;
+  const firstRoundTrip = latest.lastSyncedAt === undefined;
   await repo.setState({ ...latest, cursor: response.cursor, lastSyncedAt: nowIso() });
 
   const adoptedAny = result !== null && Object.values(result.adopted).some((n) => n > 0);
   if (adoptedAny && result !== null) {
     await reloadAdoptedViews(result.adopted, rt);
   }
+  // 첫 왕복이면(채택 0건이어도) 미뤄 둔 첫 실행 시드를 판정할 차례다.
+  if (firstRoundTrip) {
+    await reloadAfterFirstSync();
+  }
   // 프로필 재조회가 한번 실패해도 다음 정상 왕복에서 회복한다. 채택된 설정이 있으면 위에서 읽었다.
   if (result?.adopted.settings === undefined || result.adopted.settings === 0) {
     await rt.reloadProfile();
   }
+  // 대기 건수는 재조회·시드가 끝난 **뒤에** 센다 — 첫 왕복 직후 시드가 아웃박스에 새 로우를 적재하므로
+  // 그 전에 세면 "동기화됨" 이 사실보다 먼저 뜬다(e2e "오프라인 큐" 가 대기 3건으로 드러냈다).
+  const pendingCount = await repo.countOutbox();
   rt.setState((prev) => ({
     pendingCount,
     dataRevision: adoptedAny ? prev.dataRevision + 1 : prev.dataRevision,
@@ -151,38 +144,9 @@ async function ackApplied(
 ): Promise<void> {
   if (applied.length === 0) return;
   const keys = new Set(applied.map((a) => keyOf(a.tbl, a.id)));
-  for (const key of keys) consecutiveInvalid.delete(key);
+  forgetInvalid(keys);
   const pushed = pushedEntries.filter((entry) => keys.has(keyOf(entry.tbl, entry.id)));
   await repo.ackOutbox(pushed);
-}
-
-async function handleRejections(repo: SyncRepository, response: SyncOkResponse): Promise<void> {
-  const toDrop: { tbl: SyncTable; id: string }[] = [];
-  const quarantineNow: { tbl: SyncTable; id: string }[] = [];
-  for (const rejected of response.rejected) {
-    const plan = planOutboxAfterReject(rejected.reason);
-    const key = keyOf(rejected.tbl, rejected.id);
-    if (plan === 'remove') {
-      toDrop.push({ tbl: rejected.tbl, id: rejected.id });
-      consecutiveInvalid.delete(key);
-      continue;
-    }
-    const count = (consecutiveInvalid.get(key) ?? 0) + 1;
-    consecutiveInvalid.set(key, count);
-    if (shouldQuarantine(count)) {
-      quarantineNow.push({ tbl: rejected.tbl, id: rejected.id });
-      consecutiveInvalid.delete(key);
-    }
-  }
-  if (quarantineNow.length > 0) {
-    toDrop.push(...quarantineNow);
-    const state = await repo.getState();
-    if (state !== undefined) {
-      const quarantined = [...(state.quarantined ?? []), ...quarantineNow];
-      await repo.setState({ ...state, quarantined });
-    }
-  }
-  if (toDrop.length > 0) await repo.dropOutbox(toDrop);
 }
 
 /** cursor 0 부터 전량 풀(재수신·계정 전환 공용). 서버가 `more` 를 주는 동안 계속 당긴다. */
@@ -332,5 +296,5 @@ export function resetEngineForTest(): void {
     clearTimeout(debounceTimer);
     debounceTimer = null;
   }
-  consecutiveInvalid.clear();
+  resetRejectStateForTest();
 }

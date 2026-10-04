@@ -293,3 +293,39 @@ it('DOM 재배치 뒤 같은 스크롤 영역과 살아 있는 진입 버튼으�
   opener.remove();
   replacement.remove();
 });
+
+it('연 버튼이 끊겼으면 같은 접근 이름의 후임이 다음 프레임에 서도 거기로 복귀한다', async () => {
+  const opener = document.createElement('button');
+  opener.setAttribute('aria-label', '친구 화면 열기');
+  document.body.append(opener);
+  const restore = captureSocialReturn(opener);
+  opener.remove();
+  restore();
+  expect(document.activeElement).toBe(document.body);
+  const successor = document.createElement('button');
+  successor.setAttribute('aria-label', '친구 화면 열기');
+  document.body.append(successor);
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  expect(document.activeElement).toBe(successor);
+  successor.remove();
+});
+
+it('후임을 기다리는 동안 사용자가 포커스를 옮겼으면 빼앗지 않는다', async () => {
+  const opener = document.createElement('button');
+  opener.setAttribute('aria-label', '친구 화면 열기');
+  const other = document.createElement('button');
+  document.body.append(opener, other);
+  const restore = captureSocialReturn(opener);
+  opener.remove();
+  restore();
+  other.focus();
+  const successor = document.createElement('button');
+  successor.setAttribute('aria-label', '친구 화면 열기');
+  document.body.append(successor);
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  expect(document.activeElement).toBe(other);
+  other.remove();
+  successor.remove();
+});

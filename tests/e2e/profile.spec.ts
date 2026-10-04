@@ -87,7 +87,47 @@ test('이름·소개를 저장하면 카드에 보이고 새로고침 뒤에도 
   await expect(profileCard(page)).toContainText(BIO);
 });
 
-test('달력 컬럼에서 빈 상태 자리표시 문구가 잘리지 않고, 60자 소개가 한 줄이다', async ({
+/** 날짜 스트립 — 주 보기(`radiogroup`)·월 보기(`grid`) 어느 쪽이든 접근 이름은 하나다. */
+function dateStrip(page: Page): Locator {
+  return page.getByLabel('날짜 선택', { exact: true });
+}
+
+for (const [width, height] of [
+  [1280, 800],
+  [430, 932],
+  [390, 844],
+  [360, 740],
+] as const) {
+  test(`${width}px: 프로필 카드가 검색 입구 아래·달력 위에 온다(profile.md §2, 두 레이아웃 공통)`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height });
+    await page.waitForSelector('main#shell-main');
+    // 할 일 추가 버튼이 선 뒤의 레이아웃을 잰다 — 1열에서는 하단 [+ 할 일] 막대가 서면 스크롤
+    // 영역이 줄어 첫 화면을 채우던 프로필 슬롯이 다시 배치되므로, 그 전후로 박스를 따로 재면 겹친
+    // 것처럼 보인다(narrow-viewport.spec 과 같은 이유). 2영역에서는 패널의 [+ 할 일 추가] 가 같은
+    // "다 그려졌다" 신호다. 슬롯이 카드 높이를 흐름 안에 예약하는 것(`ShellHeader`)은 아래
+    // "카드 아래 ≤ 달력 위" 단언이 세 휴대폰 폭에서 같이 지킨다.
+    await expect(
+      page.getByRole('button', { name: width < 680 ? '+ 할 일' : '+ 할 일 추가', exact: true }),
+    ).toBeVisible();
+    const entry = await page.getByRole('button', { name: /할 일 검색 또는 명령/ }).boundingBox();
+    const card = await profileCard(page).boundingBox();
+    const strip = await dateStrip(page).boundingBox();
+    expect(entry).not.toBeNull();
+    expect(card).not.toBeNull();
+    expect(strip).not.toBeNull();
+    expect(entry!.y + entry!.height, '검색 입구가 프로필 위에 있지 않다').toBeLessThanOrEqual(
+      card!.y,
+    );
+    expect(card!.y + card!.height, '프로필이 달력 위에 있지 않다').toBeLessThanOrEqual(strip!.y);
+    // 본문이 친구 화면 진입점이고 ✎ 는 그 형제다(R11-a·§5) — 하나의 카드 안에 버튼이 둘.
+    await expect(profileCard(page).getByRole('button', { name: '친구 화면 열기' })).toBeVisible();
+    await expect(profileCard(page).getByRole('button', { name: '프로필 편집' })).toBeVisible();
+  });
+}
+
+test('달력 컬럼에서 빈 상태 자리표시 문구가 잘리지 않고, 60자 소개가 두 줄 안이다', async ({
   page,
 }) => {
   await page.waitForSelector('main#shell-main');
@@ -118,7 +158,8 @@ test('달력 컬럼에서 빈 상태 자리표시 문구가 잘리지 않고, 60
     height: el.clientHeight,
     line: parseFloat(getComputedStyle(el).lineHeight),
   }));
-  expect(lineBox.height, '60자 소개가 두 줄로 늘어났다').toBeLessThanOrEqual(lineBox.line + 1);
+  // R9: 소개는 두 줄 말줄임(`line-clamp-2`) — 세 줄째가 생기면 카드 높이가 달력을 밀어낸다.
+  expect(lineBox.height, '60자 소개가 세 줄 이상이다').toBeLessThanOrEqual(lineBox.line * 2 + 1);
 });
 
 test('작은 투명 PNG → 카드의 img src 가 data:image/ 로 시작하고 16,384자 이하이며 배경이 흰색, 지우기가 된다', async ({

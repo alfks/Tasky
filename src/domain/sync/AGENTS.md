@@ -21,6 +21,8 @@
   `materializedThrough`→`fillFloor` 재정의·`watermark-merge.ts`(사용처가 없어져 삭제) 도 같은 이유로
   여기 없다.
 
+- `first-sync.ts`(+ `first-sync.test.ts`): 첫 동기화 시드 게이트 `canSeedLocally` — 로그인됐으면 첫 왕복 뒤에도 비었을 때만 로컬 시드를 허용한다(순수 함수).
+
 ## 고유 규칙 (일반 규칙은 [../AGENTS.md](../AGENTS.md))
 
 1. **`server-rules.ts`·`server-rules.vectors.ts` 는 이 디렉토리가 유일한 소스다.** Worker(`worker/`)

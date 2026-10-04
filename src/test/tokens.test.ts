@@ -579,7 +579,7 @@ describe('디자인 토큰: 달력 컬럼 하한 --shell-calendar-col-min(calend
 // 이제 `src` 전체(.ts/.tsx/.css)를 훑고, 소유 디렉토리 두 곳만 그 토큰에 한해 예외로 둔다. 토큰을
 // **정의하는** `src/styles/tokens.css` 와, 담장 토큰 이름을 예시로만 언급하는 이 테스트 파일 자신은
 // "담장 밖 참조"를 찾는 대상이 아니므로 애초에 walk 대상에서 뺀다.
-describe('디자인 토큰: 담장 토큰(--cal-*·--todo-*) 참조가 담장 밖으로 새지 않는다', () => {
+describe('디자인 토큰: 담장 토큰(--cal-*·--todo-*·--profile-*) 참조가 담장 밖으로 새지 않는다', () => {
   const SRC_ROOT = join(process.cwd(), 'src');
   const EXCLUDED = new Set([tokensPath, join(process.cwd(), 'src/test/tokens.test.ts')]);
 
@@ -623,5 +623,18 @@ describe('디자인 토큰: 담장 토큰(--cal-*·--todo-*) 참조가 담장 �
       .filter(([, text]) => text.includes('--todo-'))
       .map(([relPath]) => relPath);
     expect(offenders).toEqual([]);
+  });
+
+  it('--profile- 참조는 features/profile 안에만 있다(profile.md R9-a 담장)', () => {
+    const offenders = files
+      .filter(([relPath]) => !isInFeature(relPath, 'profile'))
+      .filter(([, text]) => text.includes('--profile-'))
+      .map(([relPath]) => relPath);
+    expect(offenders).toEqual([]);
+  });
+
+  it('--profile-card-min-h 는 기본 112px 이고 <680 에서 clamp(112px, 22dvh, 200px) 다', () => {
+    expect(CSS).toMatch(/--profile-card-min-h:\s*112px;/);
+    expect(CSS).toMatch(/--profile-card-min-h:\s*clamp\(112px, 22dvh, 200px\);/);
   });
 });

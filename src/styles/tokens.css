@@ -225,6 +225,20 @@
   }
 }
 
+/* 프로필 카드 높이 하한(profile.md R9-a, app-shell.md R3). 담장 토큰이다 — `src/features/profile/` 밖에서
+   참조하지 않는다(src/test/tokens.test.ts 가 검사). 데스크톱·2영역은 고정 112px(아바타 56 + 안쪽 여백
+   2×12 + 힌트 한 줄 여유); 1열(<680)에서는 뷰포트 비례 상한 200 — 실제로는 셸 슬롯이 달력을 뺀 남는
+   높이로 더 늘려 준다(calendar-layout.md R9). `@theme` 밖인 이유는 위 --cal-* 와 같다. */
+:root {
+  --profile-card-min-h: 112px;
+}
+
+@media (max-width: 679.98px) {
+  :root {
+    --profile-card-min-h: clamp(112px, 22dvh, 200px);
+  }
+}
+
 /* 할 일 행 밀도(theme.md §3-D R32) — 사용자 결정("행높이도 조절해서 한번에 보이는 할일 task가
    더 많이 보였으면 좋겠어"). `@theme` 밖에 두는 이유는 위 --cal-* 와 같다: `todo` 목록 전용
    밀도라 `@theme` 에 넣으면 `h-todo-row-hit-min` 같은 유틸이 생겨 이 값이 todo 담장 밖으로 새

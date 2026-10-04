@@ -12,6 +12,8 @@ export type Env = {
   SESSION_SECRET: string;
   /** `'1'` 이고 요청 호스트가 localhost/127.0.0.1 일 때만 `/auth/stub-login` 이 동작한다(worker/auth/stub.ts). */
   AUTH_STUB?: string;
+  /** 배포 시 `--var BUILD_SHA:<git short sha>` 로 주입. `GET /api/version` 이 돌려준다. */
+  BUILD_SHA?: string;
   /** 서버 소셜 스위치. 누락·잘못된 값은 off. */
   SOCIAL_MODE?: string;
   /** 내부 sub의 JSON 문자열 배열. 누락·잘못된 값은 빈 목록. */

@@ -580,7 +580,7 @@ T-96~T-98 은 위 절에서 이미 쓰였으므로 **T-99 부터** 잇는다. �
 
 - **T-103 — `docs/specs/routine.md` §4 서술 정정.** §4 가 "2026-09-21 정정 … 지금은 배경 채우기(`planRoutineFill`)도 이 값(`fillFloor`)을 전진시킨다 — `SyncRepository.existingIds` 가 배선될 때까지의 임시 조치" 라고 적고 있는데, origin/main 의 코드는 그 반대다 — `src/domain/routine/routine-fill.ts` 머리 주석: "**`fillFloor` 는 이 함수가 옮기지 않는다**(ADR-0018 §결정 3, 최종 설계로 복귀)", `fillFloor` 를 바꾸는 곳은 `routine.rules.ts` 의 `createRoutine`·`resumeRoutine` 둘뿐이고 `existingIds` 는 이미 배선됐다(#123). 스펙의 그 문장을 코드에 맞춰 고치고(채우기는 `fillFloor` 를 바꾸지 않는다, 임시 조치는 끝났다), ADR-0018 "## 정정" 절과 어긋나지 않는지 같이 본다. `docs/specs/**` 는 T-95 owns 밖이라 여기 기록만 남긴다.
 
-- **T-106 — `scripts/deploy.sh` 가 낡은 정적 자산을 배포할 수 있다.** `scripts/deploy.sh:146-151` 의
+- **T-106 — [종결 2026-10-04] `scripts/deploy.sh` 가 낡은 정적 자산을 배포할 수 있다.** _종결: 실제 배포 직전 `pnpm build` 를 스크립트가 직접 돈다(`--skip-build` 로만 생략)·`GET /api/version` 으로 배포 커밋 확인. 아래는 발견 당시 기록._ `scripts/deploy.sh:146-151` 의
   산출물 검사는 `dist/client/index.html`·`sw.js`·`manifest.webmanifest` 가 **존재하고 비어 있지 않은지만**
   본다 — **최신인지는 보지 않는다.** Worker(`worker/index.ts`)는 소스에서 바로 번들되고 D1 마이그레이션도
   매 배포마다 돌지만, 정적 자산은 이 검사만 통과하면 그대로 올라간다. 그래서 pull 이전에 만든 낡은
@@ -598,3 +598,7 @@ T-96~T-98 은 위 절에서 이미 쓰였으므로 **T-99 부터** 잇는다. �
   **T-4 후속 분리 검증**: PID 읽기를 Bash 내장 연산으로 바꾼 tree `8392716a`의 고정 no-flock 3회(각 8명 첫 시도)는 1·2회 8/8 뒤 3회에서 실패했다. 최종 BOARD에는 성공을 보고한 `nf1` 행이 없고, `nf2`는 PID 파일 부재로 락 반납에 실패했다. 이는 읽기 방식 변경만으로 동시성 문제가 해결되지 않았음을 보여 준다. 같은 WSL 호스트의 실제 `mkdir (uutils coreutils) 0.8.0`을 독립된 새 경로에 8개씩 동시 실행한 결과 4번째 경로에서 성공 종료가 3개였고, 설치돼 있던 GNU `mkdir` 9.7은 100개 경로에서 매번 성공 종료가 1개였다. 이 원시 연산 결과는 락 배타성 가정 위반을 직접 보여 주지만, 앞선 `wt.sh` 실패의 정확한 프로세스 순서를 복원하지는 않는다. T-4는 flock 경로와 기존 PID·stale·반납 규칙을 유지하고, flock이 없을 때 종료 코드와 버전을 확인한 GNU `mkdir`만 락 획득에 사용하도록 분리했다. GNU 실행 파일이 없으면 new·rm은 BOARD·worktree 변경 전에 거부하며, 기존 init의 무락 초기화 동작은 유지한다. 수정 tree `dd88079e`에서 PID reader 7건, GNU 선택·거부·통제된 두 작업 경합, 기존 19단계 스모크가 각각 1회 통과했다. 과거 실패 로그와 fixture는 별개로 보존한다.
 
 - **T-107 — 진입 폐포에서 `ShellInsights`(타이머·D-day·통계 섹션)·`DiaryCard` 를 `lazy()` 경계로 뺀다.** R2-C(번들 예산 운영 개선, 2026-09-22) 리뷰에서 나온 제안 — 이번 PR 은 예산·delta 리포트만 다뤘고 `src/**` 는 건드리지 않았다. 지금 진입 폐포 gzip 이 160,070 B 로 예산(164,000 B, R2-C 갱신)의 대부분을 이미 쓰고 있어(여유 3,930 B, `scripts/bundle-baseline.json` 실측 2026-09-23), 다음 기능 PR 이 여유를 또 소진하기 전에 미리 회수해 두는 편이 낫다. 두 컴포넌트 다 날짜 진입 직후 반드시 보여야 하는 화면이 아니라(`ShellInsights` 는 포커스 타이머·D-day·기간 통계처럼 펼쳐야 보이는 2차 섹션, `DiaryCard` 는 다이어리 탭 전환 뒤에야 보인다) `lazy()` + `Suspense` 경계로 빼기 좋은 후보다. 추정 회수량 3~5 kB(gzip) — **추정치이며 이 티켓을 맡는 사람이 `pnpm build` 로 재측정해 근거를 남긴다.** 완료 조건: 진입 폐포 gzip 감소를 `pnpm build` 출력(delta 리포트)으로 확인, 기존 e2e(`tests/e2e/`)가 로딩 스피너·전환 흔들림 없이 그대로 통과, `check-dist.mjs` 의 sync 마커 검사류처럼 "지연 청크로 분리됐는지" 확인이 필요하면 같은 방식으로 검사 추가.
+
+- **T-108 — 첫 동기화 전 설정 쓰기도 같은 게이트 뒤로.** 첫 실행 시드는 첫 왕복 뒤로 미뤘지만(category.md R18), 첫 왕복 전에 사용자가 테마·강조색을 바꾸면 `theme-store` 의 `createSettings` + `save` 가 rev 2 설정 행을 만들어 **`updatedAt` LWW 갱신**으로 올라가 서버 설정(프로필 외 필드)을 덮을 수 있다. 설정 쓰기 경로를 `canSeedLocally` 와 같은 판정으로 막거나(첫 왕복까지 UI 비활성), 첫 왕복 전 로컬 설정 행을 아웃박스에 올리지 않는 쪽을 택한다. 서버 규칙 벡터(세 계층)는 건드리지 않는다.
+
+- **T-109 — `src/features/shell/components/AppShell.tsx` 386줄(>300) 분할.** 기존부터 300줄 상한을 넘어 있다(이번 프로필 위치 변경 이전부터). 훅(`useShellSocial` 같은 방식)이나 조립 조각을 떼어 낸다. 프로필·셸 동시 수정이 끝난 뒤 별도 PR 로 한다.

@@ -109,6 +109,10 @@ tasky --remote` 와 시크릿(`GOOGLE_CLIENT_SECRET`·`SESSION_SECRET`) 존재 �
 curl -s https://tasky.millie020524.workers.dev/api/me
 # 401 JSON({"error":"unauthorized"})이면 Worker 가 붙은 것, SPA index.html(200, HTML)이면 정적 자산만
 
+curl -s https://tasky.millie020524.workers.dev/api/version
+# {"sha":"<짧은 커밋>","protocol":1} — 배포본이 어느 커밋인지. "dev" 면 deploy.sh 를 거치지 않은 배포.
+# git rev-parse --short origin/main 과 비교한다. 404/SPA HTML 이면 이 엔드포인트가 없는 옛 Worker.
+
 curl -s https://tasky.millie020524.workers.dev/auth/stub-login?sub=x&email=x@y.z
 # 반드시 404(not found) — AUTH_STUB 이 닫혀 있다는 뜻. 200/302 가 오면 즉시 롤백한다.
 
@@ -130,7 +134,7 @@ pnpm exec wrangler d1 execute tasky --remote \
 그대로 돌려도 검사를 통과해, Worker·D1 마이그레이션은 새로 나가고 **정적 자산만 옛것**으로 배포될 수
 있다(추적 중 발견 — 이것이 실제 원인인지는 `pnpm build` 후 재배포해 봐야 확정된다, 후속 티켓
 [PHASE2_TICKET_BACKLOG.md](./PHASE2_TICKET_BACKLOG.md) T-106). **먼저 `pnpm build` 를 돌린 뒤 재배포한다**
-(`scripts/deploy.sh` 자체는 고치지 않는다 — owns 밖이고 고치는 방식은 T-106 에서 정한다).
+(**T-106 종결**: `scripts/deploy.sh` 가 실제 배포 직전에 `pnpm build` 를 직접 돈다 — 빌드는 D1 마이그레이션보다 앞이라 빌드가 실패하면 마이그레이션도 안 나간다. 방금 직접 빌드했다면 `bash scripts/deploy.sh --skip-build` 로 생략한다. `--dry-run` 은 빌드하지 않는다.)
 
 **두 번째 용의자: 서비스 워커 캐시.** PWA 라 30개 URL 을 프리캐시하므로, 배포본이 실제로 새것이어도 브라우저에
 남은 옛 서비스 워커가 캐시된 옛 화면을 계속 내줄 수 있다. **구분법**: 시크릿(사생활 보호) 창에서 배포

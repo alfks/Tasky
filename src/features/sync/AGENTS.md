@@ -11,3 +11,5 @@
 ## 관할: components/
 
 ## 관할: store/
+
+`store/sync-rejections.ts`: `sync-engine.ts` 가 300줄 상한 때문에 떼어 낸 거절 응답 판정(drop/keep)·연속 invalid 격리 보조.

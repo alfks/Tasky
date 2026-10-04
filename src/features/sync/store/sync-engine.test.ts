@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createCategory, updateCategory } from '@/domain/category/category.rules';
+import { touch } from '@/domain/meta';
 import type { SyncRequest, SyncResponse } from '@/domain/sync/wire';
 import { setThemeMode } from '@/domain/theme/settings.rules';
 
@@ -10,6 +11,7 @@ import { createMemorySyncServer } from '@/repositories/memory/sync-server';
 import { createMemorySyncTransport } from '@/repositories/memory/sync-transport';
 import type { SessionInfo, SyncTransport } from '@/repositories/sync-transport';
 
+import { useCategoryStore } from '@/features/category';
 import { resetEngineForTest, startEngine } from '@/features/sync/store/sync-engine';
 import type { SyncRuntime, SyncStoreState } from '@/features/sync/store/sync-store';
 import { fixedDeps } from '@/test/fixtures/deps';
@@ -91,7 +93,12 @@ describe('sync-engine: 프로필 재조회 회복', () => {
     );
     setSyncTransport(transport);
     const repo = getRepositories();
-    await repo.sync.setState({ deviceId: 'd1', userSub: 'profile-sync', cursor: 100 });
+    await repo.sync.setState({
+      deviceId: 'd1',
+      userSub: 'profile-sync',
+      cursor: 100,
+      lastSyncedAt: '2026-01-01T00:00:00.000Z', // 첫 왕복이 아니다(첫 왕복은 시드 판정을 돌린다)
+    });
     const { rt } = fakeRuntime();
     startEngine(rt);
     await vi.advanceTimersByTimeAsync(0);
@@ -110,7 +117,13 @@ describe('sync-engine: 프로필 재조회 회복', () => {
     const edited = setThemeMode(local, 'light', fixedDeps());
     const remote = makeSettings({ ...local, profileName: '밀리', profileVersion: 1 });
     await repo.settings.upsert(local);
-    await repo.sync.setState({ deviceId: 'd1', userSub: 'profile-sync', cursor: 100 });
+    // 첫 왕복이 아니어야 한다 — 첫 왕복은 미뤄 둔 첫 실행 시드를 돌려 설정 행을 건드린다.
+    await repo.sync.setState({
+      deviceId: 'd1',
+      userSub: 'profile-sync',
+      cursor: 100,
+      lastSyncedAt: '2026-01-01T00:00:00.000Z',
+    });
     await repo.sync.enqueueAll();
     const response = {
       cursor: 100,
@@ -633,5 +646,72 @@ describe('sync-engine: 계정 삭제 안내가 뜬 뒤 다음 사이클(같은 �
 
     expect(state.accountDeletedNotice).toBe(true); // 안내가 그대로 살아 있어야 한다
     expect(state.phase).not.toBe('login'); // 로그인 화면으로 되돌아가 안내를 무너뜨리면 안 된다
+  });
+});
+
+describe('sync-engine: 첫 왕복 뒤에야 첫 실행 시드를 판정한다(first-sync)', () => {
+  beforeEach(() => {
+    resetEngineForTest();
+  });
+
+  it('채택 0건인 첫 왕복이어도 카테고리를 다시 읽어 그때 시드한다', async () => {
+    const repo = createMemoryRepositories();
+    setRepositories(repo);
+    await repo.sync.setState({ deviceId: 'd1', userSub: 's', cursor: 0 });
+    await useCategoryStore.getState().load();
+    expect(await repo.categories.list({ includeClosed: true })).toHaveLength(0); // 첫 동기화 전 — 미룸
+
+    const { transport } = fakeTransport(
+      [{ cursor: 0, applied: [], rejected: [], pulled: [], more: false, gcFloor: 0 }],
+      { sub: 's', email: 'e', expiresAt: '' },
+    );
+    setSyncTransport(transport);
+    startEngine(fakeRuntime().rt);
+
+    await vi.waitFor(async () => {
+      const list = await repo.categories.list({ includeClosed: true });
+      expect(list.map((c) => c.name)).toEqual(['todo']);
+    });
+  });
+
+  it('기기 B 빈 상태 기동 — 서버의 설정·카테고리가 이기고 todo 는 생기지 않는다(회귀)', async () => {
+    const server = createMemorySyncServer();
+    const session: SessionInfo = { sub: 'user-1', email: 'u@example.com', expiresAt: '' };
+
+    const repoA = createMemoryRepositories();
+    setRepositories(repoA);
+    const study = createCategory(
+      { name: '공부', color: '#CFEB8F', existing: [] },
+      { now: () => '2026-09-21T00:00:00.000Z', id: () => crypto.randomUUID() },
+    );
+    await repoA.categories.upsert(study);
+    await repoA.settings.upsert(
+      touch(
+        makeSettings({ accentColor: '#FF8A65', profileName: '민지', profileVersion: 1 }),
+        '2026-09-21T00:00:00.000Z',
+      ),
+    );
+    await repoA.sync.enqueueAll();
+    await repoA.sync.setState({ deviceId: 'device-a', userSub: session.sub, cursor: 0 });
+    setSyncTransport(createMemorySyncTransport(server, session));
+    startEngine(fakeRuntime().rt);
+    await vi.waitFor(async () => expect(await repoA.sync.countOutbox()).toBe(0));
+
+    resetEngineForTest();
+    const repoB = createMemoryRepositories();
+    setRepositories(repoB);
+    await repoB.sync.setState({ deviceId: 'device-b', userSub: session.sub, cursor: 0 });
+    await useCategoryStore.getState().load(); // CategoryList 마운트가 첫 풀보다 앞선다
+    setSyncTransport(createMemorySyncTransport(server, session));
+    startEngine(fakeRuntime().rt);
+
+    await vi.waitFor(async () => {
+      const names = (await repoB.categories.list({ includeClosed: true })).map((c) => c.name);
+      expect(names).toEqual(['공부']);
+    });
+    await vi.waitFor(async () => expect(await repoB.sync.countOutbox()).toBe(0));
+    const settings = await repoB.settings.get();
+    expect(settings).toMatchObject({ accentColor: '#FF8A65', profileName: '민지' });
+    expect(Object.values(useCategoryStore.getState().byId).map((c) => c.name)).toEqual(['공부']);
   });
 });

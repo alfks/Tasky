@@ -21,6 +21,8 @@ import type { DateKey } from '@/domain/date/date-key';
 import type { Routine } from '@/domain/routine/routine';
 import { planRoutineFill } from '@/domain/routine/routine-fill';
 import { routineInstanceSlotId } from '@/domain/routine/slot-id';
+import { canSeedLocally } from '@/domain/sync/first-sync';
+import { deriveBaseSeq } from '@/domain/sync/outbox';
 import { applyServerRules, type ExistingServerRow } from '@/domain/sync/server-rules';
 
 import { FIXTURE_INSTANT, fixedDeps } from '@/test/fixtures/deps';
@@ -131,5 +133,36 @@ describe('F3 — 슬롯 id(F1)가 dedup 을 넘겨받아 워터마크 후퇴가 
     );
 
     expect(second?.todos).toEqual([]); // 중복 0건 — F1 의 슬롯 id dedup 이 F3 시나리오도 막는다
+  });
+});
+
+// F4 — 빈 기기 B 가 서버에 이미 자료가 있는 계정으로 첫 기동할 때(프로필 초기화·`todo` 강제 생성 사고).
+// 도메인 계층은 저장소·feature 를 import 할 수 없어 여기서는 **게이트 판정과 서버 규칙의 조합**만 고정한다.
+// 가짜 서버·엔진·카테고리 스토어를 실제로 돌리는 "프로필·강조색 보존 + 카테고리 0 추가" 회귀는 한 계층
+// 위인 `src/features/sync/store/sync-engine.test.ts`("기기 B 빈 상태 기동 …")가 맡는다.
+describe('F4 — 첫 동기화 전 시드 게이트(서버 자료가 있는 계정의 빈 기기)', () => {
+  it('로그인됐고 첫 왕복 전이면 시드를 허용하지 않는다 — 허용되는 때는 아래 셋뿐이다', () => {
+    expect(canSeedLocally({ userSub: 'u1' })).toBe(false);
+    expect(canSeedLocally(undefined)).toBe(true);
+    expect(canSeedLocally({ userSub: undefined })).toBe(true);
+    expect(canSeedLocally({ userSub: 'u1', lastSyncedAt: '2026-10-04T00:00:00.000Z' })).toBe(true);
+  });
+
+  it('게이트가 없을 때의 피해: 빈 기기의 시드 설정 행(rev 2)은 서버 행을 LWW 갱신으로 덮는다', () => {
+    // 시드는 `createSettings`(rev 1) 위에 `markSeeded` 를 얹어 rev 2 로 올린다 → baseSeq≠0(갱신 시도).
+    const baseSeq = deriveBaseSeq(2);
+    expect(baseSeq).not.toBe(0);
+    const serverRow: ExistingServerRow = {
+      tbl: 'settings',
+      id: 'default',
+      deleted: false,
+      updatedAt: '2026-10-01T00:00:00.000Z',
+    };
+    const decision = applyServerRules(
+      serverRow,
+      { tbl: 'settings', id: 'default', baseSeq, updatedAt: '2026-10-04T00:00:00.000Z' },
+      '2026-10-04T00:00:00.000Z',
+    );
+    expect(decision).toBe('update'); // reject-exists 가 아니다 — 그래서 시드 자체를 미뤄야 한다
   });
 });

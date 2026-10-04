@@ -83,6 +83,12 @@
 - backup.md **R7-a**(로그인 상태에서 백업 "교체" 모드 비활성화)는 이 스펙 R3·R4가 만드는 상황(서버가 진실, 물리 삭제가 툼스톤 없이 되돌아옴)의 직접적 귀결이다 — backup.md에서 규칙을 정하고 여기서는 역참조만 한다.
 - 로그인 필수 이후 **`Settings`가 동기화 대상이 되면서** `lastBackupAt`(backup R10)이 기기 간에 퍼진다 — 다른 기기의 내보내기가 이 기기의 백업 경고 점을 끈다. 막지 않고 감수한다(후속 ADR에서 정리할 사항으로 남긴다).
 
+### 첫 동기화 시드 게이트와 `GET /api/version`
+
+- **시드 게이트**: 첫 실행 시드(category.md R18)는 `canSeedLocally(syncState)` 가 참일 때만 돈다 — 로그인 표식이 없거나, 첫 왕복이 끝나(`lastSyncedAt` 있음) 있을 때. 로그인됐는데 첫 왕복 전이면 시드를 미루고 빈 상태를 보인다. `applyResponse` 가 첫 왕복(`lastSyncedAt` 가 없던 상태) 직후 채택 건수와 무관하게 카테고리 스토어 `load()` 를 한 번 더 불러 그때 판정한다(`reloadAfterFirstSync`). `completeLogin`·wipe 가 상태를 새로 만들어 `lastSyncedAt` 이 사라지므로 새 필드가 필요 없다. 이유: 시드는 새 id 의 `todo` 와 rev 2 설정 행(생성이 아니라 `updatedAt` LWW **갱신**으로 올라간다)을 만들어, 서버 자료가 있는 계정이면 서버 설정을 덮고 `todo` 를 전파한다.
+- **알려진 구멍(후속)**: 첫 왕복 전의 다른 설정 쓰기(예: 테마 토글)도 rev 2 갱신이라 같은 방식으로 서버 설정을 덮을 수 있다 — PHASE2_TICKET_BACKLOG 후속.
+- **`GET /api/version`**: 비인증·비민감, `{ "sha": "<짧은 커밋>", "protocol": 1 }`(`no-store`). `scripts/deploy.sh` 가 `--var BUILD_SHA:<git rev-parse --short HEAD>` 로 넣고, 없으면 `sha: "dev"`. "배포본이 어느 커밋인가" 를 `curl` 한 번으로 닫는다(`docs/development.md` 배포 확인).
+
 ## 7. 완료 조건
 
 - [ ] R1~R8 각각 테스트/시나리오. R4(충돌)는 **두 브라우저 컨텍스트**(저장소 분리 — Playwright의 별도 `browserContext` 또는 별도 프로필)로 같은 레코드를 동시에 고치는 시나리오다. 같은 브라우저의 두 탭은 IndexedDB·쿠키·`deviceId`를 공유하는 **같은 기기**라 충돌을 재현하지 못한다.
