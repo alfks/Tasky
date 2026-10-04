@@ -3,6 +3,7 @@ import type {
   FriendView,
   InviteCreated,
   InviteView,
+  OwnReactionView,
   Page,
   PairResult,
   PostView,
@@ -194,6 +195,11 @@ export function field<K extends string>(value: unknown, key: K): Record<K, strin
 export function reaction(value: unknown): { postId: string; active: boolean } {
   const data = exact(value, ['postId', 'active']);
   return { postId: id(data.postId), active: boolean(data.active) };
+}
+
+export function ownReaction(value: unknown): OwnReactionView {
+  const data = exact(value, ['postId', 'createdAt']);
+  return { postId: id(data.postId), createdAt: number(data.createdAt) };
 }
 
 export function preview(value: unknown): { nickname: string; expiresAt: number } {

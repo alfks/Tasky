@@ -7,7 +7,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 /** 문자열을 조각으로 조립한다 — 이 파일 자신이 검사에 걸리지 않게 하려는 것이 아니라, 패턴의 단일 소스를 만들려는 것. */
 const BANNED = ['next', 'vinext', '@vinext', 'react-server-dom-webpack'];
@@ -164,5 +164,68 @@ describe('초대 bootstrap: 문서 진입과 같은 문서 fragment 이동', () 
       'tasky-social-invite',
     ]);
     expect(signals.every((signal) => !('detail' in signal))).toBe(true);
+  });
+
+  /** index.html 의 bootstrap 을 제한한 창에서 실행한다. */
+  function runBootstrap(
+    hash: string,
+    options: { pathname?: string; search?: string; replaceFails?: boolean } = {},
+  ) {
+    const script = [...readFileSync('index.html', 'utf8').matchAll(/<script>([\s\S]*?)<\/script>/g)]
+      .map((match) => match[1])
+      .find((source) => source.includes('tasky.social.invite.v1'))!;
+    const stored = new Map<string, string>();
+    const replaced: string[] = [];
+    const replaceState = vi.fn((_state: unknown, _title: string, path: string) => {
+      if (options.replaceFails) throw new Error('blocked');
+      replaced.push(path);
+      fakeWindow.location.hash = '';
+    });
+    const fakeWindow = {
+      location: {
+        hash,
+        pathname: options.pathname ?? '/',
+        search: options.search ?? '',
+        replace: (path: string) => replaced.push(`replace:${path}`),
+      },
+      history: { state: null, replaceState },
+      sessionStorage: {
+        removeItem: (key: string) => stored.delete(key),
+        setItem: (key: string, value: string) => stored.set(key, value),
+      },
+      dispatchEvent: () => true,
+      addEventListener: () => undefined,
+    };
+    new Function('window', 'Event', script)(fakeWindow, Event);
+    return { stored, replaced, replaceState, location: fakeWindow.location };
+  }
+
+  it('비정규 초대 키·중복 값·대소문자·인코딩 변형은 주소에서 지우고 저장하지 않는다', () => {
+    for (const hash of [
+      '#x=1&invite=secret',
+      '#%69nvite=secret',
+      '#invite=abc&invite=def',
+      '#INVITE=secret',
+      '#invite=',
+      `#invite=${'A'.repeat(64)}`,
+    ]) {
+      const run = runBootstrap(hash, { pathname: '/today', search: '?a=1' });
+      expect(run.replaced, hash).toEqual(['/today?a=1']);
+      expect(run.location.hash, hash).toBe('');
+      expect(run.stored.size, hash).toBe(0);
+    }
+  });
+
+  it('초대와 무관한 fragment 는 건드리지 않는다', () => {
+    const run = runBootstrap('#calendar');
+    expect(run.replaceState).not.toHaveBeenCalled();
+    expect(run.location.hash).toBe('#calendar');
+    expect(run.stored.size).toBe(0);
+  });
+
+  it('주소 정리가 막히면 원문을 저장하지 않고 문서를 원문 없는 주소로 교체한다', () => {
+    const run = runBootstrap(`#invite=${'c'.repeat(64)}`, { search: '?x=1', replaceFails: true });
+    expect(run.replaced).toEqual(['replace:/?x=1']);
+    expect(run.stored.size).toBe(0);
   });
 });

@@ -3,6 +3,7 @@ import type {
   FriendView,
   InviteCreated,
   InviteView,
+  OwnReactionView,
   Page,
   PageInput,
   PairResult,
@@ -93,6 +94,7 @@ export interface SocialRepository {
     ids: readonly SocialId[];
   }): Promise<SocialResponse<{ allowedIds: readonly SocialId[] }>>;
   myPosts(page?: PageInput): Promise<SocialResponse<Page<PostView>>>;
+  myReactions(page?: PageInput): Promise<SocialResponse<Page<OwnReactionView>>>;
   createPost(input: PostInput, options: CommandKey): Promise<SocialResponse<{ id: SocialId }>>;
   deletePost(
     input: { id: SocialId },

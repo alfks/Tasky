@@ -275,3 +275,35 @@ it('피드 cursor는 high-water 뒤 새 게시물과 삭제된 앞 게시물에 
   expect(second.items.map((item) => item.id)).toEqual([ids[0]]);
   expect(second.items.map((item) => item.id)).not.toContain(newest);
 });
+
+it('관계 해제 뒤 다시 응원하면 이전 createdAt을 재사용하지 않는다', async () => {
+  let now = VECTOR_NOW;
+  const server = createMemorySocialServer({ now: () => now });
+  const alice = server.forActor('alice');
+  const bob = server.forActor('bob');
+  const a = (await alice.createProfile({ nickname: '가' })).data;
+  const b = (await bob.createProfile({ nickname: '나' })).data;
+  const [lo, hi] = [a.id, b.id].sort();
+  const link = (version: number) =>
+    server.state.pairs.set(pairKey(a.id, b.id), {
+      lo,
+      hi,
+      state: 'accepted',
+      requesterId: null,
+      requestedAt: null,
+      version,
+    });
+  link(1);
+  const post = (
+    await alice.createPost({ text: '공유', happenedOn: '2026-09-28' }, { key: commandKey(51) })
+  ).data;
+  await bob.setReaction({ postId: post.id, active: true }, { key: commandKey(52) });
+  expect((await bob.myReactions()).data.items).toEqual([{ postId: post.id, createdAt: now }]);
+  await bob.removeFriend({ peerId: a.id, expectedVersion: 1 }, { key: commandKey(53) });
+  expect((await bob.myReactions()).data.items).toEqual([]);
+  expect(server.state.reactionTimes.size).toBe(0);
+  link(3);
+  now += 1000;
+  await bob.setReaction({ postId: post.id, active: true }, { key: commandKey(54) });
+  expect((await bob.myReactions()).data.items).toEqual([{ postId: post.id, createdAt: now }]);
+});

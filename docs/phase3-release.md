@@ -22,6 +22,7 @@
 최종 snapshot의 명령/결과와 세 번의 구현 완료 후 검토 루프를 이 절에 기록한다. 설계 검토와 구현 중 조기 검토는 세 루프에 포함하지 않는다. 현재 기록은 최종 검사 전이며 릴리스 통과로 해석하지 않는다.
 
 - 최종 `pnpm check`/`pnpm build`: 최종 검증 예정.
+- 소셜 Draft PR 이식 묶음(2026-10-04, main `e2d27e5` 위): `pnpm build` PASS(진입 폐포 167,164/167,500 B, 첫 로드 218,201/221,000 B), `pnpm check` 는 처음 AGENTS 줄 수·SQL 가드 2건이 실패해 고친 뒤 **11개 검사 전부 PASS**(vitest 345파일 3,930건). E2E: `social-modes.spec.ts` 1/1(enabled→off→enabled, 로컬 Worker/D1), `sync.spec.ts` 8/8. 실제 Google 로그인·원격 D1·실기기·20계정 부하는 **UNVERIFIED**.
 - 영향 E2E·cold network·PWA offline: 최종 검증 예정.
 - 로컬 D1 비용: 50친구 × 각 1,000 private/tombstone 글 fixture에서 기존 200,830 rows_read를 friend membership hint로 첫/최대/다음 페이지 1,313/1,789/1,146으로 줄였다(각 5,000 이하). 최종 canonical ACL을 다시 검사하므로 hint만으로 권한을 부여하지 않는다. 이는 원격 p95/월 비용 증거를 대체하지 않는다.
 - 완료 후 검토 → 반영 → 재검증 1/2/3: 최종 검증 예정.

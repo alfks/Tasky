@@ -50,6 +50,7 @@ export function createLazySocialRepository(
     feed: (page) => dispatch((r) => r.feed(page)),
     validatePosts: (input) => dispatch((r) => r.validatePosts(input)),
     myPosts: (page) => dispatch((r) => r.myPosts(page)),
+    myReactions: (page) => dispatch((r) => r.myReactions(page)),
     createPost: (input, options) => dispatch((r) => r.createPost(input, options)),
     deletePost: (input, options) => dispatch((r) => r.deletePost(input, options)),
     setReaction: (input, options) => dispatch((r) => r.setReaction(input, options)),

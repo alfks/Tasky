@@ -59,6 +59,7 @@ export type MemorySocialState = {
   posts: Map<SocialId, MemoryPost>;
   categories: Map<SocialId, SocialCategoryView & { ownerId: SocialId; deleted: boolean }>;
   reactions: Set<string>;
+  reactionTimes: Map<string, number>;
   receipts: Map<string, Receipt>;
   pendingCommands: Map<string, Promise<unknown>>;
   cursors: Map<string, CursorReceipt>;
@@ -79,6 +80,7 @@ export function createSocialState(now: () => number, mode: SocialMode): MemorySo
     posts: new Map(),
     categories: new Map(),
     reactions: new Set(),
+    reactionTimes: new Map(),
     receipts: new Map(),
     pendingCommands: new Map(),
     cursors: new Map(),
