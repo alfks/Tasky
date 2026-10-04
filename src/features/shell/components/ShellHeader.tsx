@@ -18,11 +18,22 @@
 // (calendar-layout.md R5, `ShellDayPanel`) — 그래서 그 갈래에서는 헤더가 **아무것도** 맡지 않는다.
 // 컬럼이 없을 때(<680, compact 1열)만 여기 링이 달린 버튼이 되어 오버레이를 연다(R6).
 //
+// **프로필 카드는 상단 줄과 `DateStrip` 사이의 슬롯이다(profile.md §2, app-shell §2-A).** 두 레이아웃
+// (2영역 달력 컬럼·1열 `ShellMain`)이 같은 헤더를 쓰므로 "검색 입구 → 프로필 → 달력" 순서의 마운트
+// 지점이 **하나**다. 슬롯은 `flex-1` 이라 바깥이 세로로 늘려 주면(1열의 `min-h-full` 래퍼) 달력의
+// 내용 높이를 뺀 남는 높이를 프로필이 채우고, 2영역(컬럼 안의 내용 높이 블록)에서는 카드의 하한만
+// 적용된다(calendar-layout.md R9). 슬롯에 `min-h-0` 을 **두지 않는다** — 카드의 높이 하한 토큰은
+// 담장 안(`ProfileCard`)에만 있으므로, 슬롯은 flex 기본 `min-height:auto` 로 카드의 내용 높이(= 그
+// 하한)를 흐름 안에 예약한다. `min-h-0` 이면 바깥이 줄어들 때(하단 [+ 할 일] 막대가 서는 순간 등)
+// 슬롯만 접히고 `shrink-0` 카드가 달력 위로 넘친다(리뷰 Major — 390px 에서 5px 겹침).
+//
 // **앱 이름(h1)도 여기로 옮겨 왔다(calendar-layout.md R6).** 사이드바가 드로어가 기본이 되면서
 // (calendar-layout.md §1-A) `h1` 이 화면에서 사라지는 자리가 생겼다 — 사이드바가 컬럼일 때는
 // `ShellSidebar` 가 보이는 제목을 갖지만, 드로어일 때(이제 대부분의 경우)는 이 줄의 ☰ 오른쪽이
 // 그 자리를 맡는다. <768 은 헤더 한 줄 예산(R11) 때문에 `sr-only` 로 남는다 — Tailwind 기본
 // `md:` 브레이크포인트(768px)가 그 경계와 정확히 같다.
+import type { ReactNode } from 'react';
+
 import type { DateKey } from '@/domain/date/date-key';
 
 import { useBackupStore } from '@/features/backup';
@@ -119,6 +130,8 @@ function PaletteEntry() {
 
 type ShellHeaderProps = {
   summary: CompletionSummary;
+  /** 상단 줄과 날짜 스트립 사이의 프로필 카드(머리주석). 없으면 슬롯 자체를 그리지 않는다. */
+  profile?: ReactNode;
   /** 사이드바가 컬럼으로 서 있는가. 아니면 ☰ 버튼을 낸다(§2-B). */
   sidebarIsColumn: boolean;
   /** 인사이트가 컬럼으로 서 있는가. 아니면 달성률이 오버레이를 여는 버튼이 된다(R6). */
@@ -141,6 +154,7 @@ type ShellHeaderProps = {
 
 export function ShellHeader({
   summary,
+  profile,
   sidebarIsColumn,
   insightIsColumn,
   dayPanelVisible,
@@ -160,8 +174,8 @@ export function ShellHeader({
   const materializeRoutines = useTodoStore((state) => state.materializeRoutines);
   const today = useDateStripStore((state) => state.today);
   return (
-    <div className="flex flex-col gap-[var(--space-2)]">
-      <div className="flex min-h-[var(--control-hit-min)] items-center gap-[var(--space-2)]">
+    <div className="flex min-h-0 flex-1 flex-col gap-[var(--space-2)]">
+      <div className="flex min-h-[var(--control-hit-min)] shrink-0 items-center gap-[var(--space-2)]">
         {sidebarIsColumn ? null : (
           <>
             <IconButton
@@ -217,6 +231,8 @@ export function ShellHeader({
           {completionAnnouncement(summary)}
         </span>
       </div>
+
+      {profile === undefined ? null : <div className="flex flex-1">{profile}</div>}
 
       <DateStrip
         summaryRevision={summaryRevision}

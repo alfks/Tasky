@@ -22,7 +22,12 @@
 import { expect, test } from '@playwright/test';
 
 import { randomAccount, stubLogin } from './fixtures/stub-login';
-import { createCategory, createCategoryInDialog, openSidebarDrawer } from './sidebar';
+import {
+  closeSidebarDrawer,
+  createCategory,
+  createCategoryInDialog,
+  openSidebarDrawer,
+} from './sidebar';
 
 import type { Page } from '@playwright/test';
 
@@ -72,6 +77,65 @@ test.describe('동기화: 두 기기(sync.md R5·R6)', () => {
     await expect(
       pageB.getByRole('region', { name: CATEGORY }).getByRole('checkbox', { name: TODO }),
     ).toBeVisible();
+
+    await ctxA.close();
+    await ctxB.close();
+  });
+
+  test('빈 기기 B 가 로그인해도 A 의 카테고리·프로필이 이기고 todo 는 생기지 않는다(첫 동기화 시드 게이트)', async ({
+    browser,
+  }) => {
+    const account = randomAccount();
+    const PROFILE_NAME = '게이트 확인';
+    const ctxA = await browser.newContext();
+    const pageA = await ctxA.newPage();
+    // A 의 첫 왕복을 막아 둔다 — 로그인 직후 사용자가 먼저 만드는 상황을 결정적으로 만든다. 게이트가
+    // 없던 때는 이 상태의 빈 기기 B 가 첫 풀 전에 `todo` 와 빈 설정 행을 올려 A 의 자료를 덮었다.
+    await ctxA.route('**/api/sync', (route) => route.abort());
+    await stubLogin(pageA, account);
+    await waitForShell(pageA);
+
+    await pageA.getByRole('button', { name: '프로필 편집' }).click();
+    const dialog = pageA.getByRole('dialog', { name: '프로필 편집' });
+    await dialog.getByLabel('이름').fill(PROFILE_NAME);
+    await dialog.getByRole('button', { name: '저장' }).click();
+    await expect(dialog).toHaveCount(0);
+    // 시드가 미뤄져 목록이 비어 있다 — 빈 상태의 [첫 카테고리 만들기] 로 연다.
+    const drawerForCreate = await openSidebarDrawer(pageA);
+    await drawerForCreate.getByRole('button', { name: '첫 카테고리 만들기' }).click();
+    const createDialog = pageA.getByRole('dialog', { name: '카테고리 만들기' });
+    await createDialog.getByLabel('이름').fill(CATEGORY);
+    await createDialog.getByRole('button', { name: '만들기' }).click();
+    await expect(createDialog).toHaveCount(0);
+    await closeSidebarDrawer(pageA, drawerForCreate);
+    await expect(pageA.getByRole('region', { name: CATEGORY })).toBeVisible();
+    await expect(pageA.getByRole('region', { name: SEED_CATEGORY_NAME })).toHaveCount(0);
+
+    await ctxA.unroute('**/api/sync');
+    await pageA.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    const drawerA = await openSidebarDrawer(pageA);
+    await expect(statusLine(pageA)).toHaveText('● 동기화됨', { timeout: 20_000 });
+    await closeSidebarDrawer(pageA, drawerA);
+
+    // 기기 B — 빈 IndexedDB 로 같은 계정의 진짜 두 번째 로그인.
+    const ctxB = await browser.newContext();
+    const pageB = await ctxB.newPage();
+    await stubLogin(pageB, account);
+    await waitForShell(pageB);
+    await expect(pageB.getByRole('region', { name: CATEGORY })).toBeVisible({ timeout: 15_000 });
+    // 카테고리가 도착한 그 첫 왕복 뒤에 시드 판정이 끝났다 — 이 시점에 `todo` 가 없어야 한다.
+    await expect(pageB.getByRole('region', { name: SEED_CATEGORY_NAME })).toHaveCount(0);
+    await expect(pageB.getByRole('region', { name: '프로필', exact: true })).toContainText(
+      PROFILE_NAME,
+    );
+
+    // A 를 새로고침해도(B 의 푸시가 A 의 설정을 덮었다면 여기서 드러난다) 프로필이 남는다.
+    await pageA.reload();
+    await waitForShell(pageA);
+    await expect(pageA.getByRole('region', { name: '프로필', exact: true })).toContainText(
+      PROFILE_NAME,
+    );
+    await expect(pageA.getByRole('region', { name: SEED_CATEGORY_NAME })).toHaveCount(0);
 
     await ctxA.close();
     await ctxB.close();

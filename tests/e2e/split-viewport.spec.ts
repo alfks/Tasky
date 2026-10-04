@@ -99,6 +99,9 @@ test('679px 에서는 1열이다 — 패널이 스트립 아래로 내려가고 
   await page.goto('/');
   await waitForShell(page, 679);
 
+  // 하단 [+ 할 일] 막대가 서야 스크롤 영역의 높이가 정해진다 — 첫 화면(헤더)이 그 높이를 채우므로
+  // (calendar-layout.md R9) 막대가 서기 전에 재면 스트립과 목록을 서로 다른 레이아웃에서 읽는다.
+  await expect(page.getByRole('button', { name: '+ 할 일', exact: true })).toBeVisible();
   const strip = await box(page, 'grid', '날짜 선택');
   // 1열의 `main` 은 `ShellMain` — 스트립을 **안에** 품는다. 그래서 "아래" 는 `main` 의 y 가 아니라
   // 목록 영역(첫 그룹 `region`)의 y 로 잰다.
@@ -107,7 +110,6 @@ test('679px 에서는 1열이다 — 패널이 스트립 아래로 내려가고 
   expect(group!.y, '679px 에서 목록이 스트립 옆에 있다').toBeGreaterThanOrEqual(
     strip.y + strip.height,
   );
-  await expect(page.getByRole('button', { name: '+ 할 일', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '오늘 요약 열기' })).toBeVisible();
   await documentFitsViewport(page, '679px');
 });

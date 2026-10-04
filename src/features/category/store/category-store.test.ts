@@ -92,6 +92,58 @@ describe('첫 실행 시드 (R18)', () => {
     await expect(getRepositories().categories.list()).resolves.toHaveLength(1);
   });
 
+  it('로그인됐고 첫 동기화 전이면 시드하지 않고 빈 상태로 ready 가 된다', async () => {
+    await getRepositories().sync.setState({ deviceId: 'd1', userSub: 'u1', cursor: 0 });
+
+    await state().load();
+
+    expect(state().status).toBe('ready');
+    expect(Object.values(state().byId)).toHaveLength(0);
+    await expect(getRepositories().categories.list()).resolves.toHaveLength(0);
+    await expect(getRepositories().settings.get()).resolves.toBeUndefined();
+  });
+
+  it('첫 동기화 뒤에도 여전히 비어 있으면 시드한다', async () => {
+    await getRepositories().sync.setState({
+      deviceId: 'd1',
+      userSub: 'u1',
+      cursor: 3,
+      lastSyncedAt: '2026-02-01T00:00:00.000Z',
+    });
+
+    await state().load();
+
+    expect(Object.values(state().byId).map((category) => category.name)).toEqual(['todo']);
+  });
+
+  it('게이트를 기다리는 사이 첫 풀이 카테고리를 채웠으면 시드하지 않는다(경주 방어)', async () => {
+    const repos = getRepositories();
+    const syncState = {
+      deviceId: 'd1',
+      userSub: 'u1',
+      cursor: 3,
+      lastSyncedAt: '2026-02-01T00:00:00.000Z',
+    };
+    await repos.sync.setState(syncState);
+    const other = createCategoryStore(fixedDeps());
+    setRepositories({
+      ...repos,
+      sync: {
+        ...repos.sync,
+        getState: async () => {
+          // 동기화 상태를 읽는 사이 다른 경로(첫 풀 채택)가 서버 카테고리를 넣는다.
+          await other.getState().createCategory({ name: '공부', color: CORAL.light });
+          return syncState;
+        },
+      },
+    } satisfies Repositories);
+
+    await state().load();
+
+    const names = (await getRepositories().categories.list()).map((category) => category.name);
+    expect(names).toEqual(['공부']);
+  });
+
   it('시드와 함께 `seededAt` 을 기록한다', async () => {
     await state().load();
 

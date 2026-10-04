@@ -1031,3 +1031,46 @@ describe('사이드바 기본값 (calendar-layout.md §1-A · R23~R24 — WU-3)'
     },
   );
 });
+
+describe('프로필 카드 (profile.md §2·R11-a — 검색 입구 아래·달력 위, 두 레이아웃 공통)', () => {
+  /** 팔레트 입구 → 프로필 → 날짜 스트립의 DOM 순서. 두 레이아웃이 같은 헤더를 쓰므로 같은 단언이다. */
+  function expectProfileBetweenEntryAndStrip(): void {
+    const regions = screen.getAllByRole('region', { name: '프로필' });
+    expect(regions).toHaveLength(1);
+    const entry = screen.getByRole('button', { name: /할 일 검색 또는 명령/ });
+    const strip = screen.getByLabelText('날짜 선택');
+    const FOLLOWS = Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(entry.compareDocumentPosition(regions[0]!) & FOLLOWS).toBeTruthy();
+    expect(regions[0]!.compareDocumentPosition(strip) & FOLLOWS).toBeTruthy();
+    expect(within(regions[0]!).getByRole('button', { name: '친구 화면 열기' })).toBeEnabled();
+  }
+
+  it('2영역(≥680)에서 한 번만, 검색 입구 뒤·달력 앞이다', async () => {
+    setWidth(1440);
+    await mount();
+    expectProfileBetweenEntryAndStrip();
+  });
+
+  it('1열(<680)에서도 한 번만, `main` 안의 검색 입구 뒤·달력 앞이다', async () => {
+    setWidth(600);
+    await mount();
+    expectProfileBetweenEntryAndStrip();
+    expect(screen.getByRole('main')).toContainElement(
+      screen.getByRole('region', { name: '프로필' }),
+    );
+  });
+
+  it('본문을 누르면 친구 화면이 열린다 — 사이드바 [친구] 와 같은 경로', async () => {
+    const user = userEvent.setup();
+    await mount();
+    await user.click(screen.getByRole('button', { name: '친구 화면 열기' }));
+    const back = await screen.findByRole('button', { name: '내 할 일로' });
+    expect(screen.queryByRole('region', { name: '프로필' })).toBeNull();
+    // 돌아오면 포커스는 **다시 선** 프로필 본문으로 간다 — 잡아 둔 참조는 헤더가 통째로 교체돼
+    // 끊겨 있으므로 같은 접근 이름의 후임을 찾는다(`captureSocialReturn`).
+    await user.click(back);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '친구 화면 열기' })).toHaveFocus(),
+    );
+  });
+});

@@ -146,6 +146,27 @@ describe('auth-actions: confirmAccountSwitch(R1, 리뷰 Major 2)', () => {
     expect(after).toMatchObject({ deviceId: 'device-1', userSub: 'sub-new', cursor: 0 });
   });
 
+  it('새 표식에는 lastSyncedAt 이 없다 — 첫 동기화 전까지 시드가 미뤄진다(first-sync)', async () => {
+    await getRepositories().sync.setState({
+      deviceId: 'device-1',
+      userSub: 'sub-old',
+      cursor: 5,
+      lastSyncedAt: '2026-01-01T00:00:00.000Z',
+    });
+    setSyncTransport(
+      createMemorySyncTransport(createMemorySyncServer(), {
+        sub: 'sub-new',
+        email: 'new@example.com',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      }),
+    );
+    const { rt } = fakeRuntime();
+    await confirmAccountSwitch(rt, async () => true);
+
+    const after = await getRepositories().sync.getState();
+    expect(after?.lastSyncedAt).toBeUndefined();
+  });
+
   it('exportBackup 이 실패/취소면 아무것도 지우지 않는다', async () => {
     await getRepositories().sync.setState({
       deviceId: 'device-1',

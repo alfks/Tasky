@@ -8,10 +8,11 @@ cd "$(dirname "$0")/.."
 
 usage() {
   cat >&2 <<'MSG'
-사용법: bash scripts/deploy.sh [--dry-run]
+사용법: bash scripts/deploy.sh [--dry-run] [--skip-build]
 
   (인자 없음)   Cloudflare Workers 에 실제로 배포한다.
   --dry-run     업로드 대상·바인딩만 해석하고 배포하지 않는다(자격증명 불필요).
+  --skip-build  실제 배포 전 자동 `pnpm build` 를 건너뛴다(방금 직접 빌드했을 때만).
 
   pnpm run deploy / pnpm run deploy:dry-run 이 이 스크립트를 부른다.
   (`pnpm deploy` 는 pnpm 내장 명령이다 — 반드시 `pnpm run deploy`.)
@@ -19,9 +20,11 @@ MSG
 }
 
 DRY_RUN=0
+SKIP_BUILD=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
+    --skip-build) SKIP_BUILD=1 ;;
     -h | --help)
       usage
       exit 0
@@ -140,6 +143,16 @@ process.stdin.on("end", () => {
   [ "$secrets_missing" -eq 0 ] || exit 1
 fi
 
+# --- 빌드(T-106) ------------------------------------------------------------
+# 실제 배포는 여기서 직접 빌드한다 — 낡은 dist/client 가 Worker·D1 만 최신으로 올라간 채 정적 자산만
+# 옛것으로 나가는 사고를 막는다. dry-run 은 네트워크·빌드 없이 현행 산출물만 본다.
+if [ "$DRY_RUN" -eq 0 ] && [ "$SKIP_BUILD" -eq 0 ]; then
+  pnpm build || {
+    printf 'ERROR: pnpm build 에 실패했습니다 — 배포를 멈춥니다.\n' >&2
+    exit 1
+  }
+fi
+
 # --- 산출물 검사 ------------------------------------------------------------
 # "빌드가 없는데 배포 성공" 을 막는다. **비어 있는 파일도 없는 것으로 친다** — 빈 index.html 이
 # 그대로 올라가면 배포는 성공하고 사이트만 빈다(CI deploy.yml 의 `-s` 와 같은 기준).
@@ -164,4 +177,6 @@ pnpm exec wrangler d1 migrations apply tasky --config wrangler.jsonc --remote ||
   exit 1
 }
 
-exec pnpm exec wrangler deploy --config wrangler.jsonc
+# 배포본이 어느 커밋인지 GET /api/version 으로 확인할 수 있게 짧은 SHA 를 넣는다(없으면 Worker 가 'dev').
+BUILD_SHA=$(git rev-parse --short HEAD 2>/dev/null || printf 'dev')
+exec pnpm exec wrangler deploy --config wrangler.jsonc --var "BUILD_SHA:${BUILD_SHA}"

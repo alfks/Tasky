@@ -336,3 +336,34 @@ describe('달성률 열기 버튼의 링 중복 방지 (calendar-layout.md R5 ·
     expect(opener).toHaveTextContent('60%');
   });
 });
+
+describe('프로필 슬롯 (profile.md §2 · app-shell §2-A)', () => {
+  it('profile 은 상단 줄(팔레트 입구) 뒤·날짜 스트립 앞에 온다', () => {
+    render(
+      <ShellHeader
+        summary={SUMMARY}
+        profile={<p>프로필 슬롯</p>}
+        sidebarIsColumn
+        insightIsColumn
+        dayPanelVisible={false}
+        insightOverlayOpen={false}
+        onOpenDrawer={vi.fn()}
+        onOpenInsight={vi.fn()}
+        onSummaryError={vi.fn()}
+        onDropTodo={vi.fn()}
+      />,
+    );
+    const entry = screen.getByRole('button', { name: ENTRY_NAME });
+    const slot = screen.getByText('프로필 슬롯');
+    const strip = screen.getByLabelText('날짜 선택');
+    const FOLLOWS = Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(entry.compareDocumentPosition(slot) & FOLLOWS).toBeTruthy();
+    expect(slot.compareDocumentPosition(strip) & FOLLOWS).toBeTruthy();
+  });
+
+  it('profile 을 넘기지 않으면 슬롯 자체가 없다', () => {
+    render(<Harness />);
+    expect(screen.queryByText('프로필 슬롯')).toBeNull();
+    expect(screen.getByLabelText('날짜 선택')).toBeInTheDocument();
+  });
+});

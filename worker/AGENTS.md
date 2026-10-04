@@ -22,6 +22,8 @@ docs/specs/sync.md §4·§6, ADR-0019·0022). `src/` 밖의 **두 번째 진입�
 파일 배치·규칙은 각 하위 디렉토리 자신의 `AGENTS.md` 가 전담한다(중복 금지) — `db/migrations/`·
 `test/` 는 그 아래 또 자기 `AGENTS.md` 를 갖는다(`관할:`은 직계 자식만 면제한다).
 
+`version.ts` 는 `GET /api/version`(`{sha, protocol}`) 응답을 만든다 — `BUILD_SHA` 는 `scripts/deploy.sh` 가 주입한다.
+
 ## 고유 규칙 (worker/ 전체 — 하위 디렉토리 규칙은 각자 AGENTS.md)
 
 1. **`src/domain/sync/**` 를 그대로 import 한다** — 복사하지 않는다(SYNC_DESIGN.md §0 결론 9). 특히

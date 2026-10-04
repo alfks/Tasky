@@ -11,7 +11,9 @@
 를 import 하지 않는다(`src/features/sync/lazy-boundary.test.ts` 의 방향 규칙) — 반대로 `sync` 의
 **진입** 파일(`sync-store.ts`)이 이 배럴을 import 해 `SyncRuntime` 으로 지연 청크에 넘긴다. 지연
 청크가 이 배럴을 직접 끌면 `lazy(ProfileDialog)` 의 공유 모듈이 진입에서 갈라진다(그 주석의 실측).
-로그인 이메일은 셸이 prop 으로 내린다.
+로그인 이메일은 셸이 prop 으로 내린다. 카드 본문은 셸이 `onOpenFriends`(= `openSocial`)를 내려줄 때만
+친구 화면 버튼이 된다(profile.md R11-a) — 이 feature 는 `social`·`shell` 을 import 하지 않는다. 카드 높이
+하한 토큰 `--profile-card-min-h` 는 이 feature 안에서만 참조한다(담장, `src/test/tokens.test.ts`).
 
 ## 관할: components/
 

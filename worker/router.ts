@@ -17,6 +17,7 @@ import { forUser } from './db/user-db';
 import { handlePublicRequest } from './social/public-router';
 import { handleSocialRequest } from './social/router';
 import { handleSync } from './sync/handler';
+import { handleVersion } from './version';
 
 import type { Env } from './env';
 
@@ -94,6 +95,8 @@ export async function handleRequest(request: Request, env: Env, now: string): Pr
     if (!hasCsrfHeader(request)) return csrfRejected();
     return handleLogoutOthers(request, env, now);
   }
+
+  if (method === 'GET' && pathname === '/api/version') return handleVersion(env);
 
   if (method === 'GET' && pathname === '/api/me') return handleMe(request, env, now);
 

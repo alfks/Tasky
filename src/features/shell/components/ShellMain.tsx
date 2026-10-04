@@ -39,8 +39,8 @@ type ShellMainProps = {
   failureCard: ReactNode;
   /** 그날 투두가 0개인가 (§2-C 두 번째 빈 상태). */
   todosEmpty: boolean;
+  /** `ShellHeader` — 상단 줄·프로필·달력을 통째로 갖는다(프로필 슬롯은 헤더 안, profile.md §2). */
   header: ReactNode;
-  profile?: ReactNode;
   onCreateCategory: () => void;
   /** 680px 미만(compact)의 하단 고정 `[+ 할 일]` (§2-B). */
   showBottomAdd: boolean;
@@ -69,7 +69,6 @@ export function ShellMain({
   failureCard,
   todosEmpty,
   header,
-  profile,
   onCreateCategory,
   showBottomAdd,
   onStartTimer,
@@ -82,8 +81,11 @@ export function ShellMain({
   const showTodoSkeleton = useDelayedFlag(todosFirstLoading, SKELETON_DELAY_MS);
   // 누를 대상이 없을 때는 비활성이다 — 눌러도 아무 일 없는 버튼을 화면의 유일한 버튼으로 두지 않는다.
   const canAddTodo = todoAreaLive && !showTodoSkeleton && runTodoNew !== undefined;
-  // 첫 스크롤 화면은 프로필·달력에 쓰고, 같은 스크롤 영역 아래에 할 일 목록을 둔다.
-  // 하단 버튼은 flex 형제이므로 스크롤 뷰포트를 가리지 않는다.
+  // 첫 스크롤 화면은 헤더(상단 줄 → 프로필 → 달력)에 쓰고, 같은 스크롤 영역 아래에 할 일 목록을
+  // 둔다(calendar-layout.md R9). 래퍼가 `min-h-full` 세로 flex 라 헤더가 첫 화면을 꽉 채우고, 그 안의
+  // 프로필 슬롯(`flex-1`, `ShellHeader`)이 달력의 내용 높이를 뺀 나머지를 가져간다 — 6주 달·큰 글자로
+  // 내용이 첫 화면을 넘기면 늘리지 않고 그대로 스크롤한다(내용 높이 우선). 하단 버튼은 flex 형제이므로
+  // 스크롤 뷰포트를 가리지 않는다.
   return (
     <main
       id={SHELL_MAIN_ID}
@@ -94,15 +96,9 @@ export function ShellMain({
         data-shell-scroll-region="main"
         className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain"
       >
-        <section
-          aria-label="프로필과 달력"
-          className="mx-auto grid min-h-full w-full max-w-[760px] min-w-0 grid-cols-1 grid-rows-[minmax(min-content,1fr)_minmax(min-content,4fr)]"
-        >
-          <div className="min-w-0 pt-[var(--space-2)]">{profile}</div>
-          <div className="flex w-full min-w-0 flex-col justify-center pb-[var(--space-3)]">
-            {failureCard === null ? header : null}
-          </div>
-        </section>
+        <div className="mx-auto flex min-h-full w-full max-w-[760px] min-w-0 flex-col pt-[var(--space-2)] pb-[var(--space-3)]">
+          {failureCard === null ? header : null}
+        </div>
         <div className="mx-auto w-full max-w-[760px] min-w-0 px-[var(--space-4)] pt-[var(--space-3)] pb-[var(--space-4)]">
           <DayPanelBody
             date={date}

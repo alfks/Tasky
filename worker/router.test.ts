@@ -369,3 +369,23 @@ describe('/api/sync — 두 기기 왕복', () => {
     }
   });
 });
+
+describe('GET /api/version', () => {
+  it('비인증으로 BUILD_SHA 와 protocol 을 돌려준다(없으면 dev)', async () => {
+    const fx = await createD1Fixture();
+    try {
+      const url = 'https://tasky.example.workers.dev/api/version';
+      const dev = await handleRequest(new Request(url), envOf(fx), NOW);
+      expect(dev.status).toBe(200);
+      await expect(dev.json()).resolves.toEqual({ sha: 'dev', protocol: 1 });
+      const res = await handleRequest(
+        new Request(url),
+        { ...envOf(fx), BUILD_SHA: 'abc1234' },
+        NOW,
+      );
+      await expect(res.json()).resolves.toEqual({ sha: 'abc1234', protocol: 1 });
+    } finally {
+      await fx.dispose?.();
+    }
+  });
+});

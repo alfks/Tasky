@@ -200,9 +200,13 @@ function ShellBody() {
     <StorageFailureCard onContinue={() => void loadCategories()} />
   ) : null;
   const handleCreateCategory = () => setCategoryFormOpen(true);
+  // 프로필 카드는 헤더의 슬롯이다(상단 줄과 달력 사이, profile.md §2) — 두 레이아웃이 같은 헤더를
+  // 쓰므로 마운트 지점이 하나다. 본문을 누르면 사이드바 `[친구]` 와 같은 `openSocial` 이 돈다
+  // (지연 청크·포커스 복귀 포함, social.md §2).
   const header = (
     <ShellHeader
       summary={summary}
+      profile={<ProfileCard email={profileEmail} onOpenFriends={openSocial} />}
       sidebarIsColumn={sidebarIsColumn}
       insightIsColumn={insightIsColumn}
       dayPanelVisible={threeRegion}
@@ -288,7 +292,6 @@ function ShellBody() {
             // 가 래퍼 자체를 늘리는 것을 막는다). 잉크 실측은 FEEL_REPORT §14.
             <div className="flex min-h-0 min-w-0 flex-1 justify-center gap-[var(--space-6)]">
               <div className="flex min-h-0 max-w-[440px] min-w-[var(--shell-calendar-col-min)] flex-[2] flex-col gap-[var(--space-3)]">
-                <ProfileCard email={profileEmail} />
                 <div className="shrink-0">{failureCard === null ? header : null}</div>
                 {insightIsColumn ? (
                   <aside
@@ -328,7 +331,6 @@ function ShellBody() {
               onCreateCategory={handleCreateCategory}
               onStartTimer={startTimerForTodo}
               header={header}
-              profile={<ProfileCard email={profileEmail} />}
             />
           )}
         </div>

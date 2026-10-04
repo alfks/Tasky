@@ -2,6 +2,7 @@ import { writeFileSync } from 'node:fs';
 
 import { expect, test } from '@playwright/test';
 
+import { test as personalTest } from './fixtures/stub-login';
 import { stubLogin } from './fixtures/stub-login';
 import {
   completedRecord,
@@ -269,4 +270,23 @@ test.describe('공유 복구와 키보드', () => {
     ).toBeVisible();
     await context.close();
   });
+});
+
+// 프로필 카드 본문이 친구 화면의 두 번째 진입점이다(social.md §2·profile.md R11-a). 소셜 Worker 가
+// 꺼진 기본 e2e 서버에서도 화면 전환·돌아오기·포커스 복귀는 같은 경로라 여기서 항상 잰다.
+personalTest.describe('프로필 카드에서 친구 화면으로', () => {
+  personalTest(
+    '프로필 본문 → 친구 화면 → [내 할 일로] → 포커스가 프로필 본문으로 돌아온다',
+    async ({ page }) => {
+      await page.waitForSelector('main#shell-main');
+      const body = page.getByRole('button', { name: '친구 화면 열기' });
+      await body.click();
+      const back = page.getByRole('button', { name: '내 할 일로' });
+      await expect(back).toBeVisible();
+      await expect(page.getByRole('region', { name: '프로필', exact: true })).toHaveCount(0);
+      await back.click();
+      await expect(body).toBeVisible();
+      await expect(body).toBeFocused();
+    },
+  );
 });

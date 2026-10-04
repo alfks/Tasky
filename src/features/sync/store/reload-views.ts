@@ -51,3 +51,9 @@ export async function reloadAdoptedViews(
 
   await Promise.all(jobs);
 }
+
+/** 첫 동기화 왕복 직후 — 채택 건수와 무관하게 카테고리를 한 번 다시 읽는다. 그동안 미뤄 둔 첫 실행
+ * 시드(R18)가 "서버 자료를 받은 뒤에도 여전히 비었을 때만" 돌게 하는 자리다(`first-sync.ts`). */
+export async function reloadAfterFirstSync(): Promise<void> {
+  await useCategoryStore.getState().load();
+}

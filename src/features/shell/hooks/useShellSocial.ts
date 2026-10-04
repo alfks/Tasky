@@ -114,7 +114,7 @@ export function useShellSocial(closeReports: () => void, onLoadError: () => void
         void import('@/features/shell/components/SocialWorkspace')
           .then((module) => {
             if (!gate.alive || generation !== gate.generation || gate.opening !== opening) return;
-            gate.restore = module.captureSocialReturn(opener);
+            gate.restore = module.captureSocialReturn(opener, () => gate.alive);
             gate.opening = null;
             gate.navigation += 1;
             closeReports();

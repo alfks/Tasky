@@ -1,7 +1,7 @@
 // 카드의 폴백·미러 첫 페인트·진입점 (profile.md §2·R9·R10·R11·R14·§5).
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { setProfile } from '@/domain/profile/profile.rules';
 import { createSettings } from '@/domain/theme/settings.rules';
@@ -143,5 +143,42 @@ describe('ProfileCard — 저장 실패 (app-shell §2-C)', () => {
       '저장하지 못했어요. 다시 시도해 주세요',
     );
     expect(screen.getByRole('dialog', { name: '프로필 편집' })).toBeInTheDocument();
+  });
+});
+
+describe('ProfileCard — 본문은 친구 화면 진입점 (R11-a·§5)', () => {
+  it('onOpenFriends 가 있으면 본문이 "친구 화면 열기" 버튼이고 누르면 그것을 부른다', async () => {
+    const user = userEvent.setup();
+    const onOpenFriends = vi.fn();
+    render(<ProfileCard email="millie@example.com" onOpenFriends={onOpenFriends} />);
+    await screen.findByText('millie');
+    const body = screen.getByRole('button', { name: '친구 화면 열기' });
+    expect(body).toHaveTextContent('millie');
+    expect(body).toHaveTextContent('친구 기록 보기');
+    await user.click(body);
+    expect(onOpenFriends).toHaveBeenCalledTimes(1);
+  });
+
+  it('onOpenFriends 가 없으면 본문은 버튼이 아니고 힌트 줄도 없다', async () => {
+    render(<ProfileCard email="millie@example.com" />);
+    await screen.findByText('millie');
+    expect(screen.queryByRole('button', { name: '친구 화면 열기' })).not.toBeInTheDocument();
+    expect(screen.queryByText('친구 기록 보기 ›')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button')).toHaveLength(1); // ✎ 하나
+  });
+
+  it('✎ 는 본문 버튼 안에 중첩되지 않고 Tab 순서는 본문 → ✎ 다', async () => {
+    render(<ProfileCard email="millie@example.com" onOpenFriends={() => {}} />);
+    await screen.findByText('millie');
+    const body = screen.getByRole('button', { name: '친구 화면 열기' });
+    const edit = screen.getByRole('button', { name: '프로필 편집' });
+    expect(body.contains(edit)).toBe(false);
+    expect(body.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('읽기가 끝나기 전에도 친구 버튼은 활성이다 — 프로필 값과 무관한 진입점이라 막을 이유가 없다', () => {
+    render(<ProfileCard email="millie@example.com" onOpenFriends={() => {}} />);
+    expect(screen.getByRole('button', { name: '친구 화면 열기' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '프로필 편집' })).toBeDisabled();
   });
 });

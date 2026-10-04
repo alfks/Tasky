@@ -166,7 +166,7 @@ for (const [width, height] of [
   [375, 667],
   [390, 844],
 ] as const) {
-  test(`${width}×${height} 첫 화면에 프로필·달력이 보이고 아래로 내리면 할 일이 나온다`, async ({
+  test(`${width}×${height} 첫 화면에 프로필·달력이 보이고(프로필이 남는 높이를 채운다) 아래로 내리면 할 일이 나온다`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height });
@@ -178,6 +178,9 @@ for (const [width, height] of [
     const todo = page.getByRole('region', { name: SEEDED_CATEGORY });
     await expect(profile).toBeVisible();
     await expect(calendar).toBeVisible();
+    // 하단 [+ 할 일] 막대가 선 뒤의 레이아웃을 잰다 — 첫 화면이 스크롤 영역 높이를 채우므로 막대가
+    // 서기 전후로 박스가 다르다(split-viewport.spec 679px 와 같은 이유).
+    await expect(page.getByRole('button', { name: '+ 할 일', exact: true })).toBeVisible();
     const profileBox = await profile.boundingBox();
     const calendarBox = await calendar.boundingBox();
     const todoBox = await todo.boundingBox();
@@ -187,6 +190,14 @@ for (const [width, height] of [
     expect(profileBox!.y + profileBox!.height).toBeLessThan(calendarBox!.y);
     expect(calendarBox!.y + calendarBox!.height).toBeLessThan(height);
     expect(todoBox!.y).toBeGreaterThanOrEqual(height - 90);
+    // 프로필은 하한(--profile-card-min-h, 112) 이상이고 달력을 뺀 남는 높이를 채운다 — 달력 아래에
+    // 빈 띠가 남지 않는다(calendar-layout.md R9, profile.md R9-a). 56 = 헤더 아래 여백 12 + 목록 위
+    // 여백 12 + 첫 그룹 위 여백(실측 51.5) 에 반올림 여유 — 프로필이 채우지 않으면 수백 px 가 된다.
+    expect(profileBox!.height, '프로필 카드가 하한보다 낮다').toBeGreaterThanOrEqual(112);
+    expect(
+      todoBox!.y - (calendarBox!.y + calendarBox!.height),
+      '달력 아래에 빈 띠가 남았다 — 프로필이 남는 높이를 채우지 않는다',
+    ).toBeLessThanOrEqual(56);
 
     await todo.scrollIntoViewIfNeeded();
     await expect(todo.getByRole('button', { name: '+ 할 일 추가' })).toBeVisible();
