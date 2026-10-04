@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createHttpSocialRepository } from '@/infra/social/http-repository';
 
 import { createSocialActor } from './actor';
-import { OWN_REACTION_READ_SQL, readOwnReactions } from './reaction-read';
+import { readOwnReactions } from './reaction-read';
 import { createD1Fixture } from '../test/d1-harness';
 import { key, withServer } from '../test/social-adapter-integration-fixture';
 
@@ -160,9 +160,22 @@ describe('본인 응원 목록 D1 읽기', () => {
           SECRET,
         ),
       ).toEqual({ ok: false, code: 'validation' });
+      const captured = { query: '' };
+      const monitoredDb = new Proxy(fx.db, {
+        get(target, property) {
+          if (property === 'prepare')
+            return (query: string) => {
+              if (query.includes('FROM social_reactions r')) captured.query = query;
+              return target.prepare(query);
+            };
+          return Reflect.get(target, property, target);
+        },
+      });
+      await readOwnReactions({ ...current, db: monitoredDb }, url(), SECRET);
+      if (captured.query === '') throw new Error('Production reaction query was not prepared');
       const plan = await fx.db
-        .prepare(`EXPLAIN QUERY PLAN ${OWN_REACTION_READ_SQL}`)
-        .bind(A, '', A, 'user-a', 'sid-a', current.nowIso, 21)
+        .prepare(`EXPLAIN QUERY PLAN ${captured.query}`)
+        .bind(A, '', A, 'user-a', 'sid-a', current.nowIso, 21, null)
         .all<{ detail: string }>();
       expect(plan.results.map((row) => row.detail).join(' ')).toContain(
         'social_reactions_reactor_post',
@@ -212,6 +225,68 @@ describe('본인 응원 목록 D1 읽기', () => {
         ok: false,
         code: 'unauthorized',
       });
+    } finally {
+      await fx.dispose();
+    }
+  }, 20_000);
+
+  it('친구가 아닌 작성자의 공개 카테고리 글 응원은 목록에 두고 친구 공개 글은 뺀다', async () => {
+    const fx = await createD1Fixture();
+    try {
+      await seed(fx.db);
+      const C = 'c'.repeat(32);
+      await fx.db
+        .prepare('INSERT INTO users(sub,email,created_at) VALUES(?,?,?)')
+        .bind('user-c', 'user-c@example.test', EXPIRY)
+        .run();
+      await fx.db
+        .prepare(
+          'INSERT INTO social_profiles(id,sub,nickname,version,created_at) VALUES(?,?,?,0,?)',
+        )
+        .bind(C, 'user-c', 'user-c', NOW)
+        .run();
+      for (const [id, visibility] of [
+        ['d'.repeat(32), 'public'],
+        ['e'.repeat(32), 'friends'],
+      ] as const) {
+        await fx.db
+          .prepare(
+            'INSERT INTO social_categories(id,owner,name,color,visibility,version,updated_at) VALUES(?,?,?,?,?,0,?)',
+          )
+          .bind(id, C, visibility, '#112233', visibility, NOW)
+          .run();
+      }
+      for (const [n, category] of [
+        [100, 'd'.repeat(32)],
+        [101, 'e'.repeat(32)],
+      ] as const) {
+        await fx.db
+          .prepare(
+            'INSERT INTO social_posts(id,author,text,happened_on,created_at,category_id) VALUES(?,?,?,?,?,?)',
+          )
+          .bind(POST(n), C, `비친구 본문 ${n}`, '2026-09-28', NOW + n, category)
+          .run();
+        await fx.db
+          .prepare('INSERT INTO social_reactions(post_id,reactor,created_at) VALUES(?,?,?)')
+          .bind(POST(n), A, NOW + n)
+          .run();
+      }
+      const current = await actor(fx.db, 'user-a', 'sid-a');
+      const ids: string[] = [];
+      let cursor = '';
+      for (let page = 0; page < 5; page += 1) {
+        const read = await readOwnReactions(
+          current,
+          url(`?limit=20${cursor === '' ? '' : `&cursor=${encodeURIComponent(cursor)}`}`),
+          SECRET,
+        );
+        if (!read.ok) throw new Error(read.code);
+        ids.push(...read.value.items.map((item) => item.postId));
+        if (read.value.nextCursor === null) break;
+        cursor = read.value.nextCursor;
+      }
+      expect(ids).toContain(POST(100));
+      expect(ids).not.toContain(POST(101));
     } finally {
       await fx.dispose();
     }

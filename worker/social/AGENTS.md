@@ -36,9 +36,8 @@ CSRF→세션→모드→8 KiB transport→primitive 순서를 소유한다.
 10. reactions/set은 bounded transport 뒤 최상위 `active === false`만 revoke로 판별한다.
     action을 알 수 없는 transport 오류는 `off`에서도 write bucket 한 번이며, 정상 명령의
     primitive admission을 router에서 중복 실행하지 않는다.
-11. reactions/mine은 off에서도 본인 활성 응원의 postId·createdAt만 반환한다. 같은 SQL에서
-    현재 A/F/V/notself를 확인하고, reactor+post_id 인덱스와 actor·sid·scope 결합 cursor로
-    페이지를 읽는다. 타인 본문·작성자·게시 날짜를 반환하지 않는다.
+11. reactions/mine은 off에서도 본인 활성 응원의 postId·createdAt만, reactions/set 철회와 같은
+    ACL(공개 카테고리는 비친구도, 친구 공개·미분류는 수락된 친구)로 읽는다. 본문·작성자는 없다.
 
 ## 검증
 
