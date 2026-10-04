@@ -1,8 +1,8 @@
 {
-  "entryClosureGzip": 166021,
-  "networkGzip": 218141,
-  "prNumber": 165,
-  "branch": "chore/feedback-batch-status",
-  "recordedAt": "2026-09-29",
+  "entryClosureGzip": 167150,
+  "networkGzip": 218185,
+  "prNumber": 174,
+  "branch": "claude/great-rubin-m8z9yf",
+  "recordedAt": "2026-10-04",
   "note": "node scripts/check-dist.mjs --update-baseline 로 갱신됨 — scripts/AGENTS.md 참고."
 }
