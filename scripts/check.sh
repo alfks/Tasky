@@ -26,7 +26,7 @@ step_forbidden_words() { bash scripts/check-forbidden-words.sh "$@"; }
 # 같은 스크립트를 --staged 로 부르는 쪽이다 — 여기서만 보면 이미 늦는다.
 step_env_secrets()     { bash scripts/check-env-secrets.sh; }
 step_agents_md()       { bash scripts/check-agents-md.sh; }
-step_author()          { bash scripts/check-author.sh "${1:-main}"; }
+step_author()          { bash scripts/check-author.sh "${1:-main}" && bash scripts/test-check-author-body.sh; }
 # arch: 레이어 경계 픽스처 + 아키텍처 규칙 2차 패스(--no-inline-config, ADR-0008). node_modules 가 필요하므로
 # guard 가 아니라 build 에 있다 — 스캐폴딩 전에는 check-arch.sh 가 스스로 SKIP 한다.
 step_arch()            { if has_pnpm; then bash scripts/check-arch.sh; else skip_pnpm; fi; }
