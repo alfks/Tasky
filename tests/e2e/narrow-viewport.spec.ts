@@ -166,7 +166,7 @@ for (const [width, height] of [
   [375, 667],
   [390, 844],
 ] as const) {
-  test(`${width}×${height} 첫 화면에 프로필·달력이 보이고(프로필이 남는 높이를 채운다) 아래로 내리면 할 일이 나온다`, async ({
+  test(`${width}×${height} 첫 화면에 컴팩트한 프로필·달력이 보이고 그 바로 아래에서 할 일이 시작한다`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height });
@@ -189,15 +189,19 @@ for (const [width, height] of [
     expect(todoBox).not.toBeNull();
     expect(profileBox!.y + profileBox!.height).toBeLessThan(calendarBox!.y);
     expect(calendarBox!.y + calendarBox!.height).toBeLessThan(height);
-    expect(todoBox!.y).toBeGreaterThanOrEqual(height - 90);
-    // 프로필은 하한(--profile-card-min-h, 112) 이상이고 달력을 뺀 남는 높이를 채운다 — 달력 아래에
-    // 빈 띠가 남지 않는다(calendar-layout.md R9, profile.md R9-a). 56 = 헤더 아래 여백 12 + 목록 위
-    // 여백 12 + 첫 그룹 위 여백(실측 51.5) 에 반올림 여유 — 프로필이 채우지 않으면 수백 px 가 된다.
-    expect(profileBox!.height, '프로필 카드가 하한보다 낮다').toBeGreaterThanOrEqual(112);
+    // 프로필은 하한(--profile-card-min-h, 96) 이상이되 달력보다 작은 컴팩트 카드다 — 남는 높이를
+    // 채우지 않는다(calendar-layout.md R9 개정 2026-10-04). 채우던 시절에는 390×844 에서 330px 였다.
+    expect(profileBox!.height, '프로필 카드가 하한보다 낮다').toBeGreaterThanOrEqual(96);
+    expect(
+      profileBox!.height,
+      '프로필 카드가 남는 높이를 채워 달력보다 커졌다',
+    ).toBeLessThanOrEqual(120);
+    expect(profileBox!.height).toBeLessThan(calendarBox!.height);
+    // 할 일은 달력 바로 아래에서 시작한다(헤더가 첫 화면을 꽉 채우지 않는다).
     expect(
       todoBox!.y - (calendarBox!.y + calendarBox!.height),
-      '달력 아래에 빈 띠가 남았다 — 프로필이 남는 높이를 채우지 않는다',
-    ).toBeLessThanOrEqual(56);
+      '달력과 할 일 사이가 벌어졌다',
+    ).toBeLessThanOrEqual(80);
 
     await todo.scrollIntoViewIfNeeded();
     await expect(todo.getByRole('button', { name: '+ 할 일 추가' })).toBeVisible();

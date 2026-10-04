@@ -81,11 +81,10 @@ export function ShellMain({
   const showTodoSkeleton = useDelayedFlag(todosFirstLoading, SKELETON_DELAY_MS);
   // 누를 대상이 없을 때는 비활성이다 — 눌러도 아무 일 없는 버튼을 화면의 유일한 버튼으로 두지 않는다.
   const canAddTodo = todoAreaLive && !showTodoSkeleton && runTodoNew !== undefined;
-  // 첫 스크롤 화면은 헤더(상단 줄 → 프로필 → 달력)에 쓰고, 같은 스크롤 영역 아래에 할 일 목록을
-  // 둔다(calendar-layout.md R9). 래퍼가 `min-h-full` 세로 flex 라 헤더가 첫 화면을 꽉 채우고, 그 안의
-  // 프로필 슬롯(`flex-1`, `ShellHeader`)이 달력의 내용 높이를 뺀 나머지를 가져간다 — 6주 달·큰 글자로
-  // 내용이 첫 화면을 넘기면 늘리지 않고 그대로 스크롤한다(내용 높이 우선). 하단 버튼은 flex 형제이므로
-  // 스크롤 뷰포트를 가리지 않는다.
+  // 헤더(상단 줄 → 프로필 → 달력)와 할 일 목록은 같은 스크롤 영역에 위에서 아래로 쌓인다
+  // (calendar-layout.md R9). 헤더는 자기 내용 높이만 차지하고 — 프로필이 남는 높이를 채우던 옛
+  // 규칙은 걷었다 — 목록이 그 바로 아래에서 시작한다. 하단 버튼은 flex 형제이므로 스크롤 뷰포트를
+  // 가리지 않는다.
   return (
     <main
       id={SHELL_MAIN_ID}
@@ -96,7 +95,7 @@ export function ShellMain({
         data-shell-scroll-region="main"
         className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain"
       >
-        <div className="mx-auto flex min-h-full w-full max-w-[760px] min-w-0 flex-col pt-[var(--space-2)] pb-[var(--space-3)]">
+        <div className="mx-auto flex w-full max-w-[760px] min-w-0 flex-col pt-[var(--space-2)] pb-[var(--space-3)]">
           {failureCard === null ? header : null}
         </div>
         <div className="mx-auto w-full max-w-[760px] min-w-0 px-[var(--space-4)] pt-[var(--space-3)] pb-[var(--space-4)]">

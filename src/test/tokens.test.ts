@@ -633,8 +633,8 @@ describe('디자인 토큰: 담장 토큰(--cal-*·--todo-*·--profile-*) 참조
     expect(offenders).toEqual([]);
   });
 
-  it('--profile-card-min-h 는 기본 112px 이고 <680 에서 clamp(112px, 22dvh, 200px) 다', () => {
-    expect(CSS).toMatch(/--profile-card-min-h:\s*112px;/);
-    expect(CSS).toMatch(/--profile-card-min-h:\s*clamp\(112px, 22dvh, 200px\);/);
+  it('--profile-card-min-h 는 모든 폭에서 고정 96px 다(1열에서 남는 높이를 채우지 않는다)', () => {
+    expect(CSS).toMatch(/--profile-card-min-h:\s*96px;/);
+    expect(CSS).not.toMatch(/--profile-card-min-h:\s*clamp\(/);
   });
 });
