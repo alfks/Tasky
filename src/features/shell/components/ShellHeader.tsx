@@ -20,12 +20,10 @@
 //
 // **프로필 카드는 상단 줄과 `DateStrip` 사이의 슬롯이다(profile.md §2, app-shell §2-A).** 두 레이아웃
 // (2영역 달력 컬럼·1열 `ShellMain`)이 같은 헤더를 쓰므로 "검색 입구 → 프로필 → 달력" 순서의 마운트
-// 지점이 **하나**다. 슬롯은 `flex-1` 이라 바깥이 세로로 늘려 주면(1열의 `min-h-full` 래퍼) 달력의
-// 내용 높이를 뺀 남는 높이를 프로필이 채우고, 2영역(컬럼 안의 내용 높이 블록)에서는 카드의 하한만
-// 적용된다(calendar-layout.md R9). 슬롯에 `min-h-0` 을 **두지 않는다** — 카드의 높이 하한 토큰은
-// 담장 안(`ProfileCard`)에만 있으므로, 슬롯은 flex 기본 `min-height:auto` 로 카드의 내용 높이(= 그
-// 하한)를 흐름 안에 예약한다. `min-h-0` 이면 바깥이 줄어들 때(하단 [+ 할 일] 막대가 서는 순간 등)
-// 슬롯만 접히고 `shrink-0` 카드가 달력 위로 넘친다(리뷰 Major — 390px 에서 5px 겹침).
+// 지점이 **하나**다. 카드는 어느 폭에서도 자기 높이(카드의 높이 하한, 96px)만 차지한다 —
+// 1열에서 달력을 뺀 남는 높이를 채우던 옛 규칙은 휴대폰에서 카드가 달력보다 커지는 비율 붕괴를
+// 만들어 걷었다(calendar-layout.md R9 개정 2026-10-04). 달력도 카드 면으로 감싸 세 카드가 같은
+// 문법으로 읽히게 한다.
 //
 // **앱 이름(h1)도 여기로 옮겨 왔다(calendar-layout.md R6).** 사이드바가 드로어가 기본이 되면서
 // (calendar-layout.md §1-A) `h1` 이 화면에서 사라지는 자리가 생겼다 — 사이드바가 컬럼일 때는
@@ -174,7 +172,7 @@ export function ShellHeader({
   const materializeRoutines = useTodoStore((state) => state.materializeRoutines);
   const today = useDateStripStore((state) => state.today);
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-[var(--space-2)]">
+    <div className="flex flex-col gap-[var(--space-3)]">
       <div className="flex min-h-[var(--control-hit-min)] shrink-0 items-center gap-[var(--space-2)]">
         {sidebarIsColumn ? null : (
           <>
@@ -232,16 +230,21 @@ export function ShellHeader({
         </span>
       </div>
 
-      {profile === undefined ? null : <div className="flex flex-1">{profile}</div>}
+      {profile === undefined ? null : <div className="flex">{profile}</div>}
 
-      <DateStrip
-        summaryRevision={summaryRevision}
-        onDropTodo={onDropTodo}
-        onSummaryError={onSummaryError}
-        onVisibleRange={(from, to) =>
-          void materializeRoutines({ from, to, today, revision: summaryRevision })
-        }
-      />
+      {/* 달력도 프로필·인사이트와 같은 카드 면이다 — 면 없이 두 카드 사이에 끼면 가장 빽빽해 보였다
+          (2026-10-04). 안쪽 여백은 한 단계 좁은 `--space-2`(<768 에서 360 폭의 격자 304px 가 328 가터
+          - 테두리 2 - 여백 16 = 310 안에 든다), ≥768 에서 `--space-3` 다. */}
+      <div className="rounded-[var(--radius-xl)] border border-border bg-surface p-[var(--space-2)] shadow-sm md:p-[var(--space-3)]">
+        <DateStrip
+          summaryRevision={summaryRevision}
+          onDropTodo={onDropTodo}
+          onSummaryError={onSummaryError}
+          onVisibleRange={(from, to) =>
+            void materializeRoutines({ from, to, today, revision: summaryRevision })
+          }
+        />
+      </div>
     </div>
   );
 }
