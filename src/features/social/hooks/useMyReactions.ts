@@ -9,6 +9,24 @@ import { socialErrorCode } from '@/features/social/lib/feed-validation';
 import { captureSocialDispatch, onSocialInvalidation } from '@/features/social/session-lifecycle';
 import { useSocialStore } from '@/features/social/store/social-store';
 
+function retryDelay(error: unknown): number {
+  if (typeof error !== 'object' || error === null || !('code' in error)) return 0;
+  if (error.code !== 'rate-limited') return 0;
+  const retryAfter = 'retryAfter' in error ? error.retryAfter : null;
+  const seconds =
+    typeof retryAfter === 'number' && Number.isFinite(retryAfter) && retryAfter > 0
+      ? retryAfter
+      : 60;
+  return Math.min(Math.ceil(seconds * 1000), 2_147_483_647);
+}
+
+function failureMessage(cause: unknown): string {
+  const delay = retryDelay(cause);
+  return delay > 0
+    ? `요청이 많아요. ${Math.ceil(delay / 1000)}초 뒤 다시 시도해 주세요.`
+    : socialFailureMessage(socialErrorCode(cause));
+}
+
 /** 본인 응원 식별자와 응원 시각만 현재 페이지에 보관한다. 본문은 읽지 않는다. */
 export function useMyReactions(enabled: boolean) {
   const [items, setItems] = useState<readonly OwnReactionView[]>([]);
@@ -17,8 +35,12 @@ export function useMyReactions(enabled: boolean) {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [cursorStack, setCursorStack] = useState<readonly (string | null)[]>([null]);
   const [busy, setBusy] = useState(false);
+  const [cursorExpired, setCursorExpired] = useState(false);
+  const [cooldownUntil, setCooldownUntil] = useState(0);
+  const [clock, setClock] = useState(0);
   const generation = useRef(0);
   const busyRef = useRef(false);
+  const cooldownRef = useRef(0);
   const keyFor = useSocialStore((state) => state.keyFor);
   const forgetKey = useSocialStore((state) => state.forgetKey);
 
@@ -33,21 +55,48 @@ export function useMyReactions(enabled: boolean) {
         setNextCursor(null);
         setCursorStack([null]);
         setBusy(false);
+        setCursorExpired(false);
+        cooldownRef.current = 0;
+        setCooldownUntil(0);
       }),
     [],
   );
+
+  useEffect(() => {
+    if (cooldownUntil === 0) return;
+    const tick = () => {
+      const now = Date.now();
+      setClock(now);
+      if (now >= cooldownUntil) {
+        cooldownRef.current = 0;
+        setCooldownUntil(0);
+      }
+    };
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [cooldownUntil]);
+
+  const postpone = useCallback((cause: unknown) => {
+    const delay = retryDelay(cause);
+    if (delay === 0) return;
+    const until = Date.now() + delay;
+    cooldownRef.current = Math.max(cooldownRef.current, until);
+    setCooldownUntil(cooldownRef.current);
+    setClock(Date.now());
+  }, []);
 
   const load = useCallback(
     async (
       cursor: string | null = null,
       stack: readonly (string | null)[] = [null],
     ): Promise<boolean> => {
-      if (!enabled) return false;
+      if (!enabled || Date.now() < cooldownRef.current) return false;
       const current = ++generation.current;
       const allowed = captureSocialDispatch();
       setItems([]);
       setPhase('loading');
       setError(null);
+      setCursorExpired(false);
       try {
         const page = await getSocialRepository().myReactions(
           cursor === null ? undefined : { cursor },
@@ -62,16 +111,18 @@ export function useMyReactions(enabled: boolean) {
         if (!allowed() || generation.current !== current) return false;
         const code =
           typeof cause === 'object' && cause !== null && 'code' in cause ? cause.code : null;
+        setCursorExpired(code === 'validation' && cursor !== null);
+        postpone(cause);
         setError(
           code === 'validation' && cursor !== null
             ? '기록 위치가 만료됐어요. 처음부터 다시 확인해 주세요.'
-            : socialFailureMessage(socialErrorCode(cause)),
+            : failureMessage(cause),
         );
         setPhase('error');
         return false;
       }
     },
-    [enabled],
+    [enabled, postpone],
   );
 
   useEffect(() => {
@@ -79,7 +130,7 @@ export function useMyReactions(enabled: boolean) {
   }, [enabled, load]);
 
   const cancel = async (postId: string): Promise<boolean> => {
-    if (busyRef.current) return false;
+    if (!enabled || busyRef.current || Date.now() < cooldownRef.current) return false;
     const current = generation.current;
     const allowed = captureSocialDispatch();
     if (!allowed()) return false;
@@ -92,11 +143,16 @@ export function useMyReactions(enabled: boolean) {
       await getSocialRepository().setReaction({ postId, active: false }, { key });
       if (!allowed() || generation.current !== current) return false;
       forgetKey(operation);
-      await load(cursorStack.at(-1) ?? null, cursorStack);
-      return true;
+      return (await load(cursorStack.at(-1) ?? null, cursorStack)) && allowed();
     } catch (cause) {
-      if (allowed() && generation.current === current)
-        setError(`응원 취소 완료 여부를 확인하고 있어요. ${socialFailureMessage(socialErrorCode(cause))}`);
+      if (allowed() && generation.current === current) {
+        postpone(cause);
+        setError(
+          retryDelay(cause) > 0
+            ? failureMessage(cause)
+            : `응원 취소 완료 여부를 확인하고 있어요. ${failureMessage(cause)}`,
+        );
+      }
       return false;
     } finally {
       if (allowed()) {
@@ -111,10 +167,12 @@ export function useMyReactions(enabled: boolean) {
     phase,
     error,
     busy,
+    cursorExpired,
+    cooldownSeconds: Math.max(0, Math.ceil((cooldownUntil - clock) / 1000)),
     pageIndex: cursorStack.length - 1,
     nextCursor,
-    refresh: () => load(),
-    retry: () => load(cursorStack.at(-1) ?? null, cursorStack),
+    refresh: load,
+    retry: () => (cursorExpired ? load() : load(cursorStack.at(-1) ?? null, cursorStack)),
     next: () =>
       nextCursor === null ? Promise.resolve(false) : load(nextCursor, [...cursorStack, nextCursor]),
     previous: () =>
