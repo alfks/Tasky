@@ -36,6 +36,9 @@ type TodoEditPanelProps = {
  * 저장은 **한 번에 하나씩 순서대로** 한다: 제목·메모 → 카테고리 → 날짜. 앞이 실패하면 멈추고
  * 패널을 열어 둔다 — 세 쓰기를 한꺼번에 쏘면 스토어의 쓰기 큐에서 뒤엣것이 앞엣것의 결과를
  * 모르는 채 저장돼(핸드오프 T-13 risks) 실패한 편집이 성공한 날짜 이동에 묻힌다.
+ *
+ * 제목·메모는 **비제어 입력**이다 — 저장할 때 ref 로 읽는다. 이유는 `TodoAddRow` 머리주석 "비제어"
+ * (타이핑 중 리렌더·`value` 속성 재기록을 없애 iOS 한글 키보드와 부딪히지 않게 한다).
  */
 export function TodoEditPanel({
   todo,
@@ -47,8 +50,6 @@ export function TodoEditPanel({
   const { editTodo, changeCategory, moveToDate } = useTodoActions();
   const dateLabelId = useId();
   const dateValueId = useId();
-  const [title, setTitle] = useState(todo.title);
-  const [memo, setMemo] = useState(todo.memo ?? '');
   const [categoryId, setCategoryId] = useState<CategoryId>(todo.categoryId);
   const [date, setDate] = useState<DateKey>(todo.date);
   const [saving, setSaving] = useState(false);
@@ -68,6 +69,8 @@ export function TodoEditPanel({
     if (saving) return;
     setSaving(true);
     try {
+      const title = titleRef.current?.value ?? todo.title;
+      const memo = memoRef.current?.value ?? todo.memo ?? '';
       const textChanged = title !== todo.title || memo !== (todo.memo ?? '');
       if (textChanged && !(await editTodo(todo.id, { title, memo: memo === '' ? null : memo }))) {
         return;
@@ -113,9 +116,8 @@ export function TodoEditPanel({
         <input
           ref={titleRef}
           type="text"
-          value={title}
+          defaultValue={todo.title}
           maxLength={TODO_TITLE_MAX_LENGTH}
-          onChange={(e) => setTitle(e.target.value)}
           className={`${FIELD_CLASS} h-[var(--control-height)]`}
         />
       </label>
@@ -124,10 +126,9 @@ export function TodoEditPanel({
         메모
         <textarea
           ref={memoRef}
-          value={memo}
+          defaultValue={todo.memo ?? ''}
           rows={3}
           maxLength={TODO_MEMO_MAX_LENGTH}
-          onChange={(e) => setMemo(e.target.value)}
           className={`${FIELD_CLASS} resize-y py-[var(--space-2)] leading-normal`}
         />
       </label>
