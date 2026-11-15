@@ -306,3 +306,26 @@ describe('저장 중에 온 입력 (T-67)', () => {
     expect(screen.queryByText('할 일을 입력해 주세요')).not.toBeInTheDocument();
   });
 });
+
+describe('타이핑 중 입력칸의 값 속성을 다시 쓰지 않는다 (iOS 한글 키보드)', () => {
+  // 제어 입력이면 키마다 리렌더가 돌고 React 가 `value` 속성(defaultValue)을 다시 쓴다. iOS 한글
+  // 키보드는 조합 중인 글자를 문서에서 직접 바꿔 끼우므로 타이핑 중 DOM 쓰기를 최소로 둔다.
+  // (`name`·`type` 은 React 19 가 change 이벤트마다 비제어 입력에도 쓰므로 여기서 막을 수 없다.)
+  it('글자를 치고 지우는 동안 value 속성이 한 번도 바뀌지 않는다', async () => {
+    const user = userEvent.setup();
+    행();
+    const input = 입력();
+    const changed: string[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) changed.push(record.attributeName ?? '');
+    });
+    observer.observe(input, { attributes: true });
+
+    await user.type(input, '안녕{Backspace}하');
+    for (const record of observer.takeRecords()) changed.push(record.attributeName ?? '');
+    observer.disconnect();
+
+    expect(input).toHaveValue('안하');
+    expect(changed).not.toContain('value');
+  });
+});
