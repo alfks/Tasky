@@ -42,18 +42,13 @@ type TodoAddRowProps = {
  * `Enter` 는 **조합 중이면 무시한다**(R4). 한글에서 첫 `Enter` 는 글자를 확정하는 키라,
  * 그것으로 제출하면 "쓰다 만 할 일" 이 계속 생긴다. 판정은 `lib/ime.ts` 한 곳에서 온다.
  *
- * **입력칸은 비제어(uncontrolled)다** — 글자는 DOM 이 쥐고, 읽고 비우는 것만 ref 로 한다. 제어 입력
- * (`value={title}`)이면 키 하나마다 리렌더가 돌고 React 가 입력칸의 `value` 속성까지 다시 쓴다.
- * iOS 한글 키보드는 조합 중인 글자를 마크드 텍스트 없이 문서의 글자를 직접 바꿔 끼우는 방식이라,
- * 타이핑 중 페이지의 DOM 쓰기를 최소로 둔다(아이폰 홈 화면 앱에서 "치는 글자가 깨지거나 안 보이다가
- * `Enter` 를 치면 맞게 보인다" 는 보고의 대응 — 실기기 확인 전이다).
- *
  * 검증 문구는 필드 아래에 **인라인으로** 남긴다(§2-C "제출 시 표시"). 저장 실패는 반대로 토스트가
  * 맡는다 — 입력한 문장의 문제가 아니라 화면 전체의 사고라 필드 아래에 붙여 둘 이유가 없다(§2-C).
  */
 export function TodoAddRow({ categoryId, categoryName, open, onOpenChange }: TodoAddRowProps) {
   const addTodo = useTodoStore((state) => state.addTodo);
   const clearError = useTodoStore((state) => state.clearError);
+  const [title, setTitle] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const openerRef = useRef<HTMLButtonElement>(null);
@@ -99,8 +94,7 @@ export function TodoAddRow({ categoryId, categoryName, open, onOpenChange }: Tod
       if (!saved) {
         // 실패했으니 문장을 돌려준다. 단 **빈 칸일 때만** — 그 사이 사용자가 새로 친 글자가 있으면
         // 그것이 우선이다. 덮으면 이번엔 새 글자가 소리 없이 사라진다(고치려던 바로 그 사고다).
-        const input = inputRef.current;
-        if (input !== null && input.value === '') input.value = sent;
+        setTitle((current) => (current === '' ? sent : current));
       }
     } finally {
       unsubscribe();
@@ -108,13 +102,11 @@ export function TodoAddRow({ categoryId, categoryName, open, onOpenChange }: Tod
   };
 
   const submit = (): void => {
-    const input = inputRef.current;
-    if (input === null) return;
-    const sent = input.value;
+    const sent = title;
     // 앞 제출이 비운 칸에서 난 `Enter` — 새로 친 글자가 없으니 보낼 것이 없다(연타의 두 번째 키).
     // 사용자가 직접 비운 칸에서 누른 `Enter` 는 그대로 통과해 "할 일을 입력해 주세요" 를 받는다.
     if (sent === '' && consumed.current) return;
-    input.value = '';
+    setTitle('');
     consumed.current = true;
     queue.current = queue.current.then(
       () => run(sent),
@@ -123,7 +115,7 @@ export function TodoAddRow({ categoryId, categoryName, open, onOpenChange }: Tod
   };
 
   const close = (): void => {
-    if (inputRef.current !== null) inputRef.current.value = '';
+    setTitle('');
     consumed.current = false;
     setMessage(null);
     returning.current = true;
@@ -145,7 +137,7 @@ export function TodoAddRow({ categoryId, categoryName, open, onOpenChange }: Tod
   const handleBlur = (): void => {
     // R3: 텍스트가 남아 있으면 저장하고, 비어 있으면 닫는다. 닫을 때 포커스를 끌어오지 않는다 —
     // 이미 다른 곳으로 떠난 포커스를 되돌리면 Tab 으로 빠져나갈 수 없다.
-    if ((inputRef.current?.value ?? '').trim() === '') {
+    if (title.trim() === '') {
       setMessage(null);
       onOpenChange(false);
       return;
@@ -176,14 +168,14 @@ export function TodoAddRow({ categoryId, categoryName, open, onOpenChange }: Tod
         <input
           ref={inputRef}
           type="text"
-          defaultValue=""
+          value={title}
           maxLength={TODO_TITLE_MAX_LENGTH}
           placeholder={M.addPlaceholder}
           aria-label={M.addLabel(categoryName)}
           aria-invalid={message !== null}
-          // 상태를 바꾸지 않는다 — 리렌더가 곧 입력칸 속성 재기록이다(머리주석 "비제어").
-          onChange={() => {
+          onChange={(e) => {
             consumed.current = false;
+            setTitle(e.target.value);
           }}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
