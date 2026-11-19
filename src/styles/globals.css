@@ -48,4 +48,13 @@ body {
   textarea {
     font-size: max(16px, var(--text-base)) !important;
   }
+
+  /* iOS WebKit 은 한 줄 입력칸의 줄 높이가 칸 높이에 꽉 차면(예: line-height 24px · 높이 24px) 편집
+     중에 안쪽 글자를 세로로 밀어 아래가 잘리고, 한글을 치고 지우는 것이 제대로 안 보이다가 Enter
+     뒤에야 맞게 보였다(실기기 보고 — TodoAddRow). 한 줄 입력칸에는 고정 줄 높이가 필요 없으니
+     글꼴 고유값(normal)으로 둔다. textarea 는 여러 줄 간격이 본문이라 제외한다. 이 규칙은 레이어
+     밖(unlayered)이라 Tailwind 유틸리티(`text-base` 의 line-height)보다 우선한다. */
+  input {
+    line-height: normal;
+  }
 }
