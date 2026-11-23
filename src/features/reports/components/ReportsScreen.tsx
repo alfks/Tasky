@@ -127,8 +127,8 @@ type ReportsCardsProps = {
 /** 카드 5장(§2 레이아웃). 데이터는 이미 한 번의 조회로 다 왔다(R7) — 여기서는 그리기만 한다. */
 function ReportsCards({ data, categories, today }: ReportsCardsProps) {
   return (
-    <div className="grid grid-cols-1 gap-[var(--space-3)] sm:grid-cols-2">
-      <ReportsCard title="달성률 추이">
+    <div className="grid grid-cols-1 gap-[var(--space-3)] sm:grid-cols-2 lg:grid-cols-4">
+      <ReportsCard title="달성률 추이" className="lg:col-span-full">
         <TrendChart points={data.trend} />
       </ReportsCard>
       <ReportsCard title="카테고리 비율">
@@ -148,7 +148,7 @@ function ReportsCards({ data, categories, today }: ReportsCardsProps) {
           todoTitles={data.todoTitles}
         />
       </ReportsCard>
-      <ReportsCard title="활동 히트맵" className="sm:col-span-2">
+      <ReportsCard title="활동 히트맵" className="sm:col-span-2 lg:col-span-1">
         <HeatmapCard weeks={data.heatmap} today={today} />
       </ReportsCard>
     </div>

@@ -37,7 +37,10 @@ async function dispatch(context: PublicContext, url: URL, secret: string) {
     const keys = [...url.searchParams.keys()];
     if (keys.length !== 1 || keys[0] !== 'ids')
       return { ok: false as const, code: 'validation' as const };
-    const parsed = parsePostIdsInput({ ids: (url.searchParams.get('ids') ?? '').split(',') });
+    // 빈 피드의 검증 요청은 `ids=` 로 온다 — `''.split(',')` 은 `['']` 라 유효하지 않은 ID 로 거절되므로
+    // 빈 문자열은 빈 목록으로 읽는다(인증 쪽 POST 본문 `ids: []` 와 같은 뜻).
+    const raw = url.searchParams.get('ids') ?? '';
+    const parsed = parsePostIdsInput({ ids: raw === '' ? [] : raw.split(',') });
     return parsed.ok ? validatePublicPosts(context, parsed.value.ids) : parsed;
   }
   if (url.searchParams.size !== 0) return { ok: false as const, code: 'validation' as const };

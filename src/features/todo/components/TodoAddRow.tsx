@@ -151,9 +151,13 @@ export function TodoAddRow({ categoryId, categoryName, open, onOpenChange }: Tod
         ref={openerRef}
         type="button"
         onClick={() => onOpenChange(true)}
-        className="flex h-[var(--control-height)] w-full items-center gap-[var(--space-2)] rounded-[var(--radius-md)] px-[var(--space-2)] text-left text-base text-muted hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        className="flex h-[var(--control-height)] w-full items-center gap-[var(--space-2)] rounded-[var(--radius-md)] border border-dashed border-border px-[var(--space-2)] text-left text-base text-muted hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       >
         {M.addButton}
+        {/* 눌러서 그 자리에서 바로 쓴다는 신호 — 이름은 버튼 글자 그대로 두려고 장식으로만 얹는다. */}
+        <span aria-hidden="true" className="ml-auto text-xs opacity-70">
+          Enter 로 저장 · Esc 로 취소
+        </span>
       </button>
     );
   }

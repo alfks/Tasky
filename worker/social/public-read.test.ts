@@ -108,6 +108,14 @@ describe('공개 HTTP의 인증·모드 경계', () => {
           expect(body).not.toContain('socialCategoryId');
         }
       }
+      // 빈 피드는 `ids=` 로 검증을 요청한다 — 오류가 아니라 허용된 ID 가 없다는 뜻의 200 이다.
+      const emptyValidation = await handleRequest(
+        request('/public/posts/validate?ids='),
+        server.env,
+        NOW,
+      );
+      expect(emptyValidation.status).toBe(200);
+      expect(await emptyValidation.json()).toMatchObject({ data: { allowedIds: [] } });
       const me = await handleRequest(request('/me', profileless), server.env, NOW);
       expect(await me.json()).toMatchObject({ data: { profile: null } });
       expect(await count(server, 'social_profiles')).toBe(1);

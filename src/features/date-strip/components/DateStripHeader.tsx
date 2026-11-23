@@ -80,27 +80,40 @@ export function DateStripHeader({
         onSelect={onSelect}
       />
 
+      {/* 주 · 월 · 오늘을 붙은 한 줄로 둔다(홈 스토리보드 승인안). 현재 보기는 채워진 칸이고
+          aria-pressed 로 알린다. 다른 보기 칸의 이름은 "…로 전환" 이다 — 눌러서 그 보기로 간다. */}
       <div className="flex items-center gap-[var(--space-2)]">
-        {/* 글자가 **가려는 곳**을 가리킨다(주 보기에서는 "월 보기"). aria-pressed 를 쓰면 같은 글자가
-            눌림 상태에 따라 현재와 목적지를 오가며 뜻이 뒤집혀, 소리로만 듣는 쪽에서 방향이 사라진다. */}
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={isMonth ? '주 보기로 전환' : '월 보기로 전환'}
-          onClick={onToggleView}
+        <div
+          role="group"
+          aria-label="보기와 오늘"
+          className="flex overflow-hidden rounded-[var(--radius-md)] border border-border"
         >
-          {isMonth ? '주 보기' : '월 보기'}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          aria-label="오늘로 이동"
-          disabled={selectedDate === today}
-          // 누르는 순간 R5 로 비활성되는 버튼이라 포커스는 항상 오늘 셀이 넘겨받는다.
-          onClick={() => onSelect(today, true)}
-        >
-          오늘
-        </Button>
+          <ViewSegment
+            label="주"
+            current={!isMonth}
+            onSelect={() => {
+              if (isMonth) onToggleView();
+            }}
+          />
+          <ViewSegment
+            label="월"
+            current={isMonth}
+            onSelect={() => {
+              if (!isMonth) onToggleView();
+            }}
+          />
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="오늘로 이동"
+            disabled={selectedDate === today}
+            // 누르는 순간 R5 로 비활성되는 버튼이라 포커스는 항상 오늘 셀이 넘겨받는다.
+            onClick={() => onSelect(today, true)}
+            className="min-w-[44px] rounded-none border-l border-border"
+          >
+            오늘
+          </Button>
+        </div>
         <IconButton
           label={isMonth ? '다음 달' : '다음 주'}
           disabled={nextStep === undefined}
@@ -110,6 +123,24 @@ export function DateStripHeader({
         </IconButton>
       </div>
     </div>
+  );
+}
+
+type ViewSegmentProps = { label: '주' | '월'; current: boolean; onSelect: () => void };
+
+/** 보기 전환 한 칸. 현재 칸은 채워지고(aria-pressed), 다른 칸은 "…보기로 전환" 이라는 이름을 갖는다. */
+function ViewSegment({ label, current, onSelect }: ViewSegmentProps) {
+  return (
+    <Button
+      variant={current ? 'primary' : 'ghost'}
+      size="sm"
+      aria-label={current ? `${label} 보기` : `${label} 보기로 전환`}
+      aria-pressed={current}
+      onClick={onSelect}
+      className={`min-w-[44px] rounded-none ${label === '월' ? 'border-l border-border' : ''}`}
+    >
+      {label}
+    </Button>
   );
 }
 
