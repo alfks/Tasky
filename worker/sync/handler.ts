@@ -3,7 +3,7 @@
 // 그 파일 jsdoc) — 서버·클라이언트가 검증 로직을 각자 구현해 갈라지는 일이 없다.
 import { readRemoteRow } from '@/domain/sync/remote-rows';
 import { clampFutureUpdatedAt } from '@/domain/sync/server-rules';
-import { isSyncTable } from '@/domain/sync/wire';
+import { MAX_PUSH_CHANGES, isSyncTable } from '@/domain/sync/wire';
 import type {
   PulledRow,
   SyncApplied,
@@ -51,7 +51,9 @@ export async function handleSync(
 
   const applied: SyncApplied[] = [];
   const rejected: SyncRejected[] = [];
-  for (const change of body.changes.slice(0, REQUEST_LIMIT)) {
+  // 앞쪽 `MAX_PUSH_CHANGES` 건만 처리한다 — 뒷부분은 응답에 없으니 클라이언트 아웃박스에 남아 다음
+  // 왕복에서 처리된다(`wire.ts#MAX_PUSH_CHANGES` jsdoc: 호출당 D1 쿼리 상한).
+  for (const change of body.changes.slice(0, MAX_PUSH_CHANGES)) {
     // `changes` 원소 형식은 `isSyncRequest` 가 배열 여부만 보고 원소 하나하나는 검증하지 않는다
     // (`SyncRequest.changes: readonly SyncChange[]` 는 타입일 뿐 런타임 보장이 아니다). `null` 원소는
     // `change.tbl` 접근에서 그대로 던져 요청 전체를 500 으로 죽인다 — 숫자·문자열은 프로퍼티 접근이

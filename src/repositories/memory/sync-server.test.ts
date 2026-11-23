@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { SERVER_RULE_VECTORS } from '@/domain/sync/server-rules.vectors';
 import {
+  MAX_PUSH_CHANGES,
   isResyncResponse,
   type SyncChange,
   type SyncOkResponse,
@@ -103,19 +104,39 @@ describe('메모리 가짜 서버 — server-rules.vectors.ts 트랜스포트 �
 });
 
 describe('메모리 가짜 서버 — seq 불변식', () => {
-  it('한 배치 500건이 서로 다른 seq 로 오름차순 applied 된다', async () => {
+  it('500건을 요청 상한 묶음으로 끊어 밀어 넣으면 서로 다른 seq 로 오름차순 applied 된다', async () => {
     const server = createMemorySyncServer();
     const transport = createMemorySyncTransport(server, SESSION);
     const changes = Array.from({ length: 500 }, (_, i) =>
       rowChange('todos', `id-${String(i)}`, 0, '2026-01-01T00:00:00.000Z'),
     );
 
-    const response = expectOk(await transport.sync(request('writer', 0, changes)));
+    const seqs: number[] = [];
+    for (let i = 0; i < changes.length; i += MAX_PUSH_CHANGES) {
+      const response = expectOk(
+        await transport.sync(request('writer', 0, changes.slice(i, i + MAX_PUSH_CHANGES))),
+      );
+      seqs.push(...response.applied.map((a) => a.seq));
+    }
 
-    expect(response.applied).toHaveLength(500);
-    const seqs = response.applied.map((a) => a.seq);
+    expect(seqs).toHaveLength(500);
     expect(new Set(seqs).size).toBe(500);
     expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
+  });
+
+  it('요청 상한을 넘는 변경은 앞부분만 처리하고 나머지는 응답에 없다(Worker 와 같은 규칙)', async () => {
+    const server = createMemorySyncServer();
+    const transport = createMemorySyncTransport(server, SESSION);
+    const changes = Array.from({ length: MAX_PUSH_CHANGES + 5 }, (_, i) =>
+      rowChange('todos', `id-${String(i)}`, 0, '2026-01-01T00:00:00.000Z'),
+    );
+
+    const response = expectOk(await transport.sync(request('writer', 0, changes)));
+
+    expect(response.applied.map((a) => a.id)).toEqual(
+      changes.slice(0, MAX_PUSH_CHANGES).map((c) => c.id),
+    );
+    expect(response.rejected).toEqual([]);
   });
 
   it('여러 왕복에 걸쳐 seq 가 단조 증가한다', async () => {
@@ -158,8 +179,9 @@ describe('메모리 가짜 서버 — 풀', () => {
     const changes = Array.from({ length: 501 }, (_, i) =>
       rowChange('todos', `id-${String(i)}`, 0, '2026-01-01T00:00:00.000Z'),
     );
-    await writer.sync(request('writer', 0, changes.slice(0, 500)));
-    await writer.sync(request('writer', 0, changes.slice(500)));
+    for (let i = 0; i < changes.length; i += MAX_PUSH_CHANGES) {
+      await writer.sync(request('writer', 0, changes.slice(i, i + MAX_PUSH_CHANGES)));
+    }
 
     const reader = createMemorySyncTransport(server, SESSION);
     const firstPull = expectOk(await reader.sync(request('reader', 0, [])));

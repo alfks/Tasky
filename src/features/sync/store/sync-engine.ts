@@ -3,7 +3,7 @@
 // 을 부른다.
 import type { OutboxEntry } from '@/domain/sync/outbox';
 import { toSyncChange } from '@/domain/sync/outbox';
-import { isResyncResponse } from '@/domain/sync/wire';
+import { MAX_PUSH_CHANGES, isResyncResponse } from '@/domain/sync/wire';
 import type { SyncChange, SyncOkResponse, SyncState, SyncTable } from '@/domain/sync/wire';
 
 import { getRepositories, getSyncTransport } from '@/repositories/container';
@@ -24,7 +24,13 @@ import type { SyncRuntime } from '@/features/sync/store/sync-store';
 import { nowIso } from '@/lib/date';
 import { onLocalWrite } from '@/lib/write-signal';
 
-const PAGE_SIZE = 500;
+/** 왕복 하나에 싣는 아웃박스 건수 — 서버가 처리하는 상한과 같은 값이다(`wire.ts#MAX_PUSH_CHANGES`: 호출당
+ * D1 쿼리 상한). 더 실어도 서버는 앞의 이만큼만 처리하므로 보내는 쪽이 미리 끊는다. */
+const PAGE_SIZE = MAX_PUSH_CHANGES;
+/** 사이클 하나가 연속으로 도는 왕복 수의 안전 상한 — 정상이면 백로그가 비는 대로 끝나고, 이 상한은
+ * 응답이 계속 "진전 있음" 으로 보이는 병적인 경우에 한 사이클이 끝없이 도는 것만 막는다. 남은 것은
+ * 다음 사이클(30초 폴링·로컬 쓰기)이 이어서 처리한다. */
+const MAX_ROUNDS_PER_CYCLE = 200;
 const VISIBLE_POLL_MS = 30_000;
 const TRIGGER_DEBOUNCE_MS = 2_000;
 const WRITE_DEBOUNCE_MS = 1_500;
@@ -205,12 +211,22 @@ async function pushAndPull(repo: SyncRepository, state: SyncState): Promise<bool
   }
   await ackApplied(repo, entries, response.applied);
   await applyResponse(repo, state, response);
+  // 이번 왕복이 푸시를 처리했는데(applied/rejected 가 있다) 아웃박스에 아직 남았다면 바로 다음 묶음을
+  // 보낸다. 서버가 요청당 `MAX_PUSH_CHANGES` 건만 처리하므로 백로그(첫 로그인 업로드·대량 정렬)는 여러
+  // 왕복이 필요하다 — 30초 폴링마다 한 묶음씩이면 수백 건이 몇 시간 걸린다. 처리된 게 하나도 없으면
+  // (전부 무시됐다) 같은 요청을 되풀이하지 않는다.
+  const pushProgressed =
+    changes.length > 0 && response.applied.length + response.rejected.length > 0;
+  // **꽉 찬 묶음일 때만** 이어 보낸다 — 묶음이 덜 찼다면 아웃박스에 남은 건 왕복 도중 새로 고친 것뿐이라
+  // 평소처럼 쓰기 디바운스가 다음 사이클을 켠다.
+  const backlogLeft =
+    pushProgressed && entries.length >= PAGE_SIZE && (await repo.countOutbox()) > 0;
   // 대기 중인 설정 편집이 있으면 applyRemote가 서버 프로필을 보류한다. ack 뒤 다시 받아야 한다.
   if (includeOwnSettings && !response.more && (await repo.countOutbox()) === 0) {
     const latest = (await repo.getState()) ?? state;
     await repo.setState({ ...latest, settingsProfileVersion: 1 });
   }
-  return response.more;
+  return response.more || backlogLeft;
 }
 
 async function cycleOnce(): Promise<void> {
@@ -239,7 +255,7 @@ async function cycleOnce(): Promise<void> {
   // 매 반복 `state` 를 다시 읽는다 — `pushAndPull` 이 커서를 저장소에 올려 두므로 그대로 쓰면
   // 이전 커서로 같은 페이지를 또 요청하게 된다.
   let more = await pushAndPull(repo, state);
-  while (more) {
+  for (let round = 1; more && round < MAX_ROUNDS_PER_CYCLE; round += 1) {
     state = (await repo.getState()) ?? state;
     more = await pushAndPull(repo, state);
   }
