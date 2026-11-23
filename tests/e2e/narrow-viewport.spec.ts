@@ -209,3 +209,29 @@ for (const [width, height] of [
     expect(boxAfter!.y).toBeLessThan(height);
   });
 }
+
+// iOS WebKit 은 한 줄 입력칸의 높이에 여유가 없으면(줄 높이 24px = 칸 높이 24px) 편집 중에 글자를
+// 세로로 밀어 아래가 잘리고, 한글을 치고 지우는 것이 Enter 전까지 제대로 안 보였다(아이폰 홈 화면 앱
+// 실기기 보고). 이 러너는 Chromium 이라 증상 자체는 재현되지 않으므로, 그 조건이 다시 생기지 않는지를
+// 잰다: 입력칸이 알약 높이를 채우고, 줄 높이는 고정값이 아니라 글꼴 고유값(normal)이다.
+test('휴대폰 폭에서 할 일 추가 입력칸은 줄 높이보다 넉넉하다(iOS 글자 잘림 회귀)', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: PHONE_WIDTHS[1], height: 740 });
+  await page.goto('/');
+  await waitForShell(page);
+
+  const group = page.getByRole('region', { name: SEEDED_CATEGORY });
+  await group.getByRole('button', { name: '+ 할 일 추가' }).click();
+  const input = page.getByRole('textbox', { name: `${SEEDED_CATEGORY}에 할 일 추가` });
+  await input.fill('올리브영 (10:30-17:00)');
+
+  const metrics = await input.evaluate((el) => {
+    const style = getComputedStyle(el);
+    const fontSize = Number.parseFloat(style.fontSize);
+    return { lineHeight: style.lineHeight, height: el.clientHeight, fontSize };
+  });
+  expect(metrics.lineHeight).toBe('normal');
+  // 한글 폴백 글꼴이 섞여도 줄이 들어갈 여유: 글자 크기의 1.5배 이상.
+  expect(metrics.height).toBeGreaterThanOrEqual(metrics.fontSize * 1.5);
+});

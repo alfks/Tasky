@@ -179,7 +179,11 @@ export function TodoAddRow({ categoryId, categoryName, open, onOpenChange }: Tod
           }}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
-          className="min-w-0 flex-1 bg-transparent text-base text-text outline-none placeholder:text-faint"
+          // `h-full`: 입력칸이 알약(--control-height) 높이를 꽉 채운다. 높이를 안 주면 칸 높이가 줄 높이
+          // (24px)와 똑같아 여유가 0 이 되고, iOS WebKit 은 편집 중인 줄이 칸보다 조금만 높아져도 안쪽을
+          // 세로로 밀어 글자 아래가 잘리고 갱신이 어긋나 보였다(아이폰 홈 화면 앱 실기기 보고 — 한글을
+          // 치는 동안 깨져 보이다가 Enter 뒤에야 맞게 보임). 줄 높이 쪽은 globals.css 모바일 규칙.
+          className="h-full min-w-0 flex-1 bg-transparent text-base text-text outline-none placeholder:text-faint"
         />
         <span className="flex shrink-0 items-center gap-[var(--space-1)] text-xs text-muted">
           <Kbd>Esc</Kbd> 닫기
