@@ -14,11 +14,33 @@ import {
  * 일관되게 취급하게 한다(해로울 것 없다). */
 const HEADERS = { 'Content-Type': 'application/json', 'X-Tasky': '1' } as const;
 
-async function safeFetch(path: string, init: RequestInit): Promise<Response> {
+/**
+ * 요청 하나의 시한. 절전에서 깨어난 노트북·백그라운드에서 멈췄다 돌아온 휴대폰·죽은 연결은 응답이
+ * 영영 안 와서 fetch 가 끝나지 않을 수 있다. 동기화 엔진은 사이클 하나가 끝나야 다음 사이클을 돌리므로
+ * (`sync-engine.ts` 의 `running` 가드) 이 대기가 무한이면 앱을 다시 열 때까지 **그 기기의 동기화가 통째로
+ * 멈춘다** — 로컬에는 편집이 쌓이는데 서버로도, 서버에서도 아무것도 오가지 않는다. 시한이 지나면 오프라인과
+ * 같은 갈래(`offline`)로 끝내 다음 트리거(포커스·쓰기·30초 폴링)가 새 요청을 보내게 한다. 30초 폴링보다
+ * 길되, 느린 회선에서 큰 첫 업로드(요청 상한 2 MB)가 끊겨 영원히 못 끝나는 일은 없을 만큼으로 잡았다.
+ */
+export const REQUEST_TIMEOUT_MS = 45_000;
+
+type Reply = { ok: boolean; status: number; text: string };
+
+/** fetch + 본문 읽기를 **하나의 시한** 아래에서 한다 — 헤더만 오고 본문이 멈추는 경우도 덮는다. */
+async function safeFetch(path: string, init: RequestInit): Promise<Reply> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    return await fetch(path, { ...init, credentials: 'include' });
+    const response = await fetch(path, {
+      ...init,
+      credentials: 'include',
+      signal: controller.signal,
+    });
+    return { ok: response.ok, status: response.status, text: await response.text() };
   } catch {
     throw new TransportError('offline');
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -33,9 +55,8 @@ function failureFor(status: number): TransportError {
   return new TransportError('server', status);
 }
 
-async function parseJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  return text.length === 0 ? undefined : JSON.parse(text);
+function parseJson(reply: Reply): unknown {
+  return reply.text.length === 0 ? undefined : JSON.parse(reply.text);
 }
 
 /** 앱이 쓰는 실제 트랜스포트. `src/app/providers.tsx`(T-94 owns) 가 `setSyncTransport` 에 주입한다. */
@@ -49,7 +70,7 @@ export function createHttpSyncTransport(): SyncTransport {
       if (!response.ok) {
         throw failureFor(response.status);
       }
-      return (await parseJson(response)) as SessionInfo;
+      return parseJson(response) as SessionInfo;
     },
 
     sync: async (body: SyncRequest): Promise<SyncResponse> => {
@@ -62,7 +83,7 @@ export function createHttpSyncTransport(): SyncTransport {
       if (!response.ok) {
         throw failureFor(response.status);
       }
-      return (await parseJson(response)) as SyncResponse;
+      return parseJson(response) as SyncResponse;
     },
 
     logout: async () => {
