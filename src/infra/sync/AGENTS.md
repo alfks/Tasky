@@ -22,6 +22,10 @@
 3. `fetch` 가 던지면(네트워크 단절) `TransportError('offline')` 로 감싼다 — raw `TypeError` 를
    그대로 올리지 않는다. 401 은 `TransportError('unauthorized')`, 그 밖의 실패는 `'server'`.
 4. `me()` 의 401 은 예외가 아니라 `null` 반환이다(로그인 전은 정상 분기, ADR-0018).
+5. **모든 요청에 시한이 있다**(`REQUEST_TIMEOUT_MS`, fetch + 본문 읽기를 한 시한으로 덮는다) — 시한이
+   지나면 `TransportError('offline')`. 시한 없는 `fetch` 는 응답이 영영 안 올 때(절전·백그라운드 중단·
+   죽은 연결) 끝나지 않고, 엔진은 사이클 하나가 끝나야 다음을 돌리므로(`running` 가드) 그 기기의 동기화가
+   앱을 다시 열 때까지 통째로 멈춘다. 새 엔드포인트도 반드시 `safeFetch` 를 거친다.
 
 ## 의존 방향
 
@@ -36,5 +40,6 @@ pnpm test src/infra/sync --reporter=dot 2>&1 | tail -20
 
 ## 자주 하는 실수
 
+- `fetch` 를 `safeFetch` 밖에서 직접 불러 시한을 잃는다 — 평소엔 멀쩡하다가 절전 복귀 뒤 동기화만 조용히 멈춘다.
 - `X-Tasky` 헤더를 빼먹고 배포 환경에서만 403 을 겪는다(로컬 프록시는 CSRF 검사가 없을 수 있다) —
   Worker 완성 전에는 `http-transport.test.ts` 의 모킹으로만 검증된다는 것을 기억한다.
