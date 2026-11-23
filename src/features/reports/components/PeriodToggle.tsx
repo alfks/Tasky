@@ -34,10 +34,15 @@ export function PeriodToggle({ today }: PeriodToggleProps) {
 
   return (
     <div className="flex flex-col gap-[var(--space-2)]">
-      <div role="radiogroup" aria-label="통계 기간" className="flex flex-wrap gap-[var(--space-1)]">
-        {PRESET_OPTIONS.map((option) => (
+      <div
+        role="radiogroup"
+        aria-label="통계 기간"
+        className="flex w-fit max-w-full gap-0 overflow-hidden rounded-[var(--radius-md)] border border-border"
+      >
+        {PRESET_OPTIONS.map((option, index) => (
           <PeriodOption
             key={option.value}
+            joined={index > 0}
             name={groupId}
             label={option.label}
             checked={preset === option.value}
@@ -45,6 +50,7 @@ export function PeriodToggle({ today }: PeriodToggleProps) {
           />
         ))}
         <PeriodOption
+          joined
           name={groupId}
           label="기간 지정"
           checked={preset === 'custom'}
@@ -63,6 +69,8 @@ export function PeriodToggle({ today }: PeriodToggleProps) {
 }
 
 type PeriodOptionProps = {
+  /** 앞 칸이 있으면 사이에 헤어라인을 긋는다(붙어 있는 한 줄 컨트롤). */
+  joined?: boolean;
   name: string;
   label: string;
   checked: boolean;
@@ -70,19 +78,20 @@ type PeriodOptionProps = {
 };
 
 /** 탭처럼 보이는 라디오 한 칸. 시각은 `label`, 의미는 감춘 `input[type=radio]` 가 낸다. */
-function PeriodOption({ name, label, checked, onSelect }: PeriodOptionProps) {
+function PeriodOption({ joined = false, name, label, checked, onSelect }: PeriodOptionProps) {
   return (
     <label
       className={cn(
-        'cursor-pointer rounded-[var(--radius-full)] px-[var(--space-3)] py-[var(--space-1)] text-sm has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-focus',
+        'cursor-pointer px-[var(--space-3)] py-[var(--space-1)] text-sm has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-focus',
         // 선택 = 파스텔/강조 채움 + 중립 잉크 링(theme.md R17, DateCell.tsx 와 같은 처방). 채움만
         // 쓰면 라이트 12 프리셋 전부 배경과 1.14~2.16:1 뿐이라 WCAG 1.4.11(3:1)에 못 미친다 — 3:1
         // 을 지는 건 `--color-selected-ring` 링이다. 강제 색 모드(Windows 고대비)는 UA 가
         // `box-shadow`(ring)를 통째로 지우므로 그때만 같은 굵기의 테두리로 갈아 단다(색은
         // 지정하지 않는다 — 시스템 색이 알아서 입는다).
+        joined && 'border-l border-border',
         checked
-          ? 'bg-accent text-on-accent ring-[length:var(--control-selected-ring)] ring-selected-ring ring-inset forced-colors:[border-width:var(--control-selected-ring)] forced-colors:[border-style:solid]'
-          : 'bg-surface-2 text-text hover:opacity-90',
+          ? 'bg-accent font-semibold text-on-accent ring-[length:var(--control-selected-ring)] ring-selected-ring ring-inset forced-colors:[border-width:var(--control-selected-ring)] forced-colors:[border-style:solid]'
+          : 'bg-transparent text-text hover:bg-surface-2',
       )}
     >
       <input type="radio" name={name} checked={checked} onChange={onSelect} className="sr-only" />

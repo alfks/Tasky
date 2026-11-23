@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 
 import { SocialPagination } from '@/features/social/components/SocialPagination';
 import { SocialPostCard } from '@/features/social/components/SocialPostCard';
@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/Button';
 export function PublicScreen() {
   const feed = usePublicFeed();
   const headingRef = useRef<HTMLHeadingElement>(null);
+  // 빈 피드 배너를 닫은 것은 이 방문 동안만 유지한다(저장하지 않는다).
+  const [emptyDismissed, setEmptyDismissed] = useState(false);
   const change = async (operation: 'refresh' | 'next' | 'previous') => {
     await feed[operation]();
     headingRef.current?.focus();
@@ -34,19 +36,35 @@ export function PublicScreen() {
       <Button variant="outline" onClick={() => void change('refresh')}>
         새로고침
       </Button>
-      {feed.snapshot.phase === 'loading' ? <p role="status">공개 기록을 불러오는 중</p> : null}
+      {feed.snapshot.phase === 'loading' ? (
+        <p role="status" className="flex items-center gap-[var(--space-2)] text-sm text-muted">
+          <span
+            aria-hidden="true"
+            className="size-4 shrink-0 rounded-full border-2 border-surface-2 border-t-accent motion-safe:animate-spin"
+          />
+          공개 기록을 불러오는 중
+        </p>
+      ) : null}
       {feed.snapshot.phase === 'blocked' ? (
         <p role="status">공개 기록은 인터넷 연결이 필요해요.</p>
       ) : null}
       {feed.snapshot.error === null ? null : (
         <p role="alert">{socialFailureMessage(feed.snapshot.error)}</p>
       )}
-      {feed.snapshot.phase === 'ready' && feed.items.length === 0 ? (
-        <p>
-          {feed.snapshot.nextCursor === null
-            ? '아직 모두 공개로 공유한 기록이 없어요.'
-            : '이 페이지에 표시할 기록이 없어요.'}
-        </p>
+      {feed.snapshot.phase === 'ready' && feed.items.length === 0 && !emptyDismissed ? (
+        <div
+          role="status"
+          className="flex items-center gap-[var(--space-3)] rounded-[var(--radius-md)] border border-border bg-surface-2 px-[var(--space-4)] py-[var(--space-3)] text-base"
+        >
+          <p className="min-w-0 flex-1">
+            {feed.snapshot.nextCursor === null
+              ? '아직 모두 공개로 공유한 기록이 없어요.'
+              : '이 페이지에 표시할 기록이 없어요.'}
+          </p>
+          <Button variant="outline" size="sm" onClick={() => setEmptyDismissed(true)}>
+            닫기
+          </Button>
+        </div>
       ) : null}
       <div className="flex min-w-0 flex-col gap-[var(--space-3)]">
         {feed.items.map((post) => (

@@ -109,19 +109,24 @@ export function SocialScreen({
             새로고침
           </Button>
         </header>
-        <div role="group" aria-label="친구 화면" className="flex flex-wrap gap-[var(--space-2)]">
+        <div
+          role="group"
+          aria-label="친구 화면"
+          className="flex w-fit max-w-full gap-0 overflow-hidden rounded-[var(--radius-md)] border border-border"
+        >
           {(
             [
               { value: 'feed', label: '피드' },
               { value: 'friends', label: '친구 관리' },
               { value: 'mine', label: '내 공유' },
             ] as const
-          ).map((entry) => (
+          ).map((entry, index) => (
             <Button
               key={entry.value}
-              variant="outline"
+              variant={tab === entry.value ? 'primary' : 'outline'}
               aria-pressed={tab === entry.value}
               onClick={() => chooseTab(entry.value)}
+              className={`rounded-none border-0 ${index === 0 ? '' : 'border-l border-border'}`}
             >
               {entry.label}
             </Button>
