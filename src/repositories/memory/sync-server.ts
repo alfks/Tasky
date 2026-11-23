@@ -12,6 +12,7 @@ import {
   type ServerChange,
 } from '@/domain/sync/server-rules';
 import {
+  MAX_PUSH_CHANGES,
   isSyncTable,
   type PulledRow,
   type SyncApplied,
@@ -25,7 +26,7 @@ import {
 
 import { pick, withField } from '@/repositories/sync-repository';
 
-/** 요청 배치·풀 배치 공통 상한(SYNC_DESIGN §②-3). */
+/** 풀 배치 상한(SYNC_DESIGN §②-3). 푸시 쪽은 `MAX_PUSH_CHANGES`(호출당 D1 쿼리 상한). */
 const MAX_BATCH = 500;
 
 type StoredRow = {
@@ -118,7 +119,7 @@ export function createMemorySyncServer(options: { gcFloor?: number } = {}): Memo
 
       const applied: SyncApplied[] = [];
       const rejected: SyncRejected[] = [];
-      const batch = request.changes.slice(0, MAX_BATCH);
+      const batch = request.changes.slice(0, MAX_PUSH_CHANGES);
 
       for (const change of batch) {
         if (!isSyncTable(change.tbl)) {

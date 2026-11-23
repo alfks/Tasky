@@ -30,7 +30,6 @@ export type PushInput = {
 export type ApplyOutcome =
   { kind: 'applied'; seq: number } | { kind: 'rejected'; reason: 'exists' | 'stale' | 'invalid' };
 
-const SELECT_EXISTING = sql`SELECT deleted, updated_at FROM entities WHERE sub = ? AND tbl = ? AND id = ?`;
 const CREATE_SQL = sql`INSERT INTO entities (sub, tbl, id, seq, deleted, device_id, updated_at, body)
   VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(seq),0)+1 FROM entities WHERE sub = ?1), ?4, ?5, ?6, ?7)
   ON CONFLICT(sub,tbl,id) DO NOTHING
@@ -58,25 +57,17 @@ export async function pushOne(
   input: PushInput,
   receivedAt: string,
 ): Promise<ApplyOutcome> {
-  const existingRow = await db
-    .prepare(SELECT_EXISTING)
-    .bind(sub, input.tbl, input.id)
-    .first<{ deleted: number; updated_at: string }>();
-  const existing = existingRow
-    ? {
-        tbl: input.tbl,
-        id: input.id,
-        deleted: existingRow.deleted !== 0,
-        updatedAt: existingRow.updated_at,
-      }
-    : undefined;
   const change: ServerChange = {
     tbl: input.tbl,
     id: input.id,
     baseSeq: input.baseSeq,
     updatedAt: input.updatedAt,
   };
-  const verdict = applyServerRules(existing, change, receivedAt);
+  // 형식 검사만 한다(`existing` 없이 부르면 결과는 `insert` 아니면 `reject-invalid` 뿐이다). 있음/없음·
+  // `updatedAt` 판정은 아래 SQL 이 **원자적으로** 한다(`ON CONFLICT … WHERE`) — 미리 SELECT 로 읽어 두면
+  // 같은 판정을 두 번 하면서 변경 한 건당 D1 쿼리가 두 번이 돼 호출당 쿼리 상한(`wire.ts#
+  // MAX_PUSH_CHANGES`)에 두 배로 빨리 닿는다.
+  const verdict = applyServerRules(undefined, change, receivedAt);
   if (verdict === 'reject-invalid') {
     return { kind: 'rejected', reason: 'invalid' };
   }
